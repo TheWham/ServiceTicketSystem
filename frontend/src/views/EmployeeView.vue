@@ -15,6 +15,14 @@
       </div>
 
       <div class="form-grid">
+        <!-- 工单标题 -->
+        <div class="form-group full-width">
+          <label>工单标题 <span class="required">*</span><span class="count">{{ form.title.length }}/50</span></label>
+          <input type="text" v-model="form.title" placeholder="一句话概括问题，如：市场部打印机无法连接"
+            maxlength="50" :class="{ error: errors.title }" @blur="validateTitle" @input="errors.title = ''" />
+          <span v-if="errors.title" class="error-text">{{ errors.title }}</span>
+        </div>
+
         <!-- 分类 -->
         <div class="form-group">
           <label>问题分类 <span class="required">*</span></label>
@@ -49,9 +57,10 @@
 
         <!-- 提交 -->
         <div class="form-group full-width">
-          <button class="btn-submit" :disabled="!canSubmit || submitting" @click="submitTicket">
+          <button class="btn-submit" :disabled="submitting" @click="submitTicket">
             {{ submitting ? '提交中...' : '提交工单' }}
           </button>
+          <span class="submit-hint" v-if="submitHint">{{ submitHint }}</span>
           <span class="draft-status" v-if="draftSaved">✅ 草稿已自动保存 {{ draftTime }}</span>
         </div>
       </div>
@@ -147,7 +156,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { ticketApi, draftApi } from '../api/index.js'
 import { useUserStore } from '../stores/user.js'
 
@@ -157,7 +166,7 @@ const categories = ['硬件', '软件', '网络', '账号', '其他']
 const priorities = ['高', '中', '低']
 const statuses = ['待处理', '处理中', '待补充', '待外部', '待验收', '已完成', '已取消']
 
-const form = ref({ category: '', description: '', priority: '中', expected_finish_time: '' })
+const form = ref({ title: '', category: '', description: '', priority: '中', expected_finish_time: '' })
 const errors = ref({})
 const submitting = ref(false)
 const draftBanner = ref(false)
@@ -189,41 +198,95 @@ function statusClass(s) {
 
 function formatTime(t) { return t ? new Date(t).toLocaleString('zh-CN') : '' }
 
-const canSubmit = computed(() => form.value.category && form.value.description.trim().length >= 10 && form.value.description.trim().length <= 500 && !submitting.value)
+const canSubmit = computed(() => !submitHint.value && !submitting.value)
+
+// 未满足条件时的实时提示（代替“按钮置灰但不说原因”的死锁）
+const submitHint = computed(() => {
+  if (submitting.value) return ''
+  const missing = []
+  const tLen = form.value.title.trim().length
+  if (tLen === 0) missing.push('工单标题')
+  else if (tLen > 50) missing.push('标题需在 50 字以内')
+  if (!form.value.category) missing.push('问题分类')
+  const dLen = form.value.description.trim().length
+  if (dLen < 10) missing.push(`问题描述（还需 ${10 - dLen} 字）`)
+  else if (dLen > 500) missing.push('问题描述需在 500 字以内')
+  if (!missing.length) return ''
+  return '还差：' + missing.join('、')
+})
+
+function validateTitle() {
+  const t = form.value.title.trim()
+  if (!t) errors.value.title = '请填写工单标题'
+  else if (t.length > 50) errors.value.title = '工单标题不能超过 50 个字符'
+  else errors.value.title = ''
+}
+
+// 兼容非安全上下文（crypto.randomUUID 在 http 非 localhost 下不可用）
+function genClientToken() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return 'tk-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10)
+}
+
+// 幂等令牌：同一表单会话内保持不变，双击/重试只会命中后端幂等而不会重复建单
+const formToken = ref('')
+const lastSubmitAt = ref(0)
 
 // 提交工单
 async function submitTicket() {
-  errors.value = {}
-  if (!form.value.category) errors.value.category = '请选择问题分类'
-  if (form.value.description.trim().length < 10) errors.value.description = '请至少填写10个字，说明何时开始、报错原文、已尝试的操作'
-  if (Object.keys(errors.value).length) return
+  if (submitting.value) return
+  // PRD §3.2：防重复点击 Debounce 3 秒
+  if (Date.now() - lastSubmitAt.value < 3000) return
 
+  errors.value = {}
+  validateTitle()
+  if (!form.value.category) errors.value.category = '请选择问题分类'
+  const desc = form.value.description.trim()
+  if (desc.length < 10) errors.value.description = '请至少填写10个字，说明何时开始、报错原文、已尝试的操作'
+  else if (desc.length > 500) errors.value.description = '问题描述不能超过 500 个字符'
+
+  if (Object.keys(errors.value).some(k => errors.value[k])) {
+    nextTick(() => {
+      const el = document.querySelector('.error-text')
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+    return
+  }
+
+  if (!formToken.value) formToken.value = genClientToken()
   submitting.value = true
+  lastSubmitAt.value = Date.now()
   try {
-    const clientToken = crypto.randomUUID()
     await ticketApi.create({
+      title: form.value.title.trim(),
       category: form.value.category,
-      description: form.value.description.trim(),
+      description: desc,
       priority: form.value.priority,
       expected_finish_time: form.value.expected_finish_time || null,
-      client_token: clientToken
+      client_token: formToken.value
     })
     // 清空表单和草稿
-    form.value = { category: '', description: '', priority: '中', expected_finish_time: '' }
+    form.value = { title: '', category: '', description: '', priority: '中', expected_finish_time: '' }
+    formToken.value = genClientToken()
     await draftApi.delete().catch(() => {})
     draftBanner.value = false
+    draftSaved.value = false
     alert('工单提交成功！')
     tab.value = 'list'
     loadTickets()
   } catch (e) {
     alert('提交失败：' + e.message)
+  } finally {
+    submitting.value = false
   }
-  submitting.value = false
 }
 
 // 草稿
 async function saveDraft() {
   await draftApi.save({
+    title: form.value.title,
     category: form.value.category,
     description: form.value.description,
     priority: form.value.priority,
@@ -237,6 +300,7 @@ function restoreDraft() {
   draftApi.get().then(res => {
     if (res.data) {
       form.value = {
+        title: res.data.title || '',
         category: res.data.category || '',
         description: res.data.description || '',
         priority: res.data.priority || '中',
@@ -352,6 +416,7 @@ textarea.error { border-color: #e74c3c; }
 .hint-text { color: #e67e22; font-size: 12px; margin-top: 4px; display: block; }
 .btn-submit { padding: 12px 40px; background: #1a73e8; color: #fff; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
 .btn-submit:disabled { opacity: .5; cursor: not-allowed; }
+.submit-hint { margin-left: 16px; font-size: 13px; color: #e67e22; }
 .draft-banner { background: #fff3cd; padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
 .draft-status { margin-left: 16px; font-size: 13px; color: #52c41a; }
 

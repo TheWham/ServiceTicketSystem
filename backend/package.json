@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "db:init": "node db/init.js"
+    "db:init": "node db/init.js",
+    "db:reset": "node db/init.js --force"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

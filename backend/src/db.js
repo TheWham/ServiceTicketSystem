@@ -12,6 +12,10 @@ if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+// 并发写入时不要直接抛 SQLITE_BUSY，等待锁释放
+db.pragma('busy_timeout = 5000');
+// WAL 下 NORMAL 已足以保证进程崩溃不丢数据，且写入更快
+db.pragma('synchronous = NORMAL');
 
 /**
  * SQL 方言转换：MySQL → SQLite
@@ -74,7 +78,11 @@ function createConnection() {
 const pool = {
   query,
   async getConnection() { return createConnection(); },
-  async end() { db.close(); }
+  // 关闭前把 WAL 合并回主库文件，避免数据只留在 -wal 里
+  async end() {
+    try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) { /* ignore */ }
+    db.close();
+  }
 };
 
 module.exports = pool;

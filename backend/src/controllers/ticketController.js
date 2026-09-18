@@ -8,11 +8,14 @@ const { sendNotification } = require('../services/notification');
 async function createTicket(req, res, next) {
   const conn = await pool.getConnection();
   try {
-    const { category, description, priority = '中', attachment_urls, expected_finish_time, client_token, asset_id } = req.body;
+    const { title, category, description, priority = '中', attachment_urls, expected_finish_time, client_token, asset_id } = req.body;
     const creator = req.currentUser;
 
     // 参数校验
     const errors = [];
+    const finalTitle = (title && String(title).trim()) || description?.trim().slice(0, 50) || '';
+    if (!finalTitle) errors.push('工单标题不能为空');
+    if (finalTitle.length > 50) errors.push('工单标题不能超过50个字符');
     if (!['硬件','软件','网络','账号','其他'].includes(category)) errors.push('问题分类无效');
     if (!description || description.trim().length < 10) errors.push('问题描述至少10个字符');
     if (description && description.trim().length > 500) errors.push('问题描述不能超过500字符');
@@ -29,21 +32,28 @@ async function createTicket(req, res, next) {
       }
     }
 
-    // 生成工单号
-    const ticketId = await generateTicketId();
-    const title = description.trim().slice(0, 50);
-
     await conn.beginTransaction();
 
-    // 插入工单
-    await conn.query(
-      `INSERT INTO ticket (ticket_id, title, description, category, priority, status, creator_id, asset_id,
-        expected_finish_time, attachment_urls, client_token, first_response_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW())`,
-      [ticketId, title, description.trim(), category, priority, STATUS.PENDING, creator.user_id,
-       asset_id || null, expected_finish_time || null,
-       attachment_urls ? JSON.stringify(attachment_urls) : null, client_token || null]
-    );
+    // 生成工单号并插入
+    // 并发场景下「查最大号 + 自增」存在撞号可能，命中主键冲突时重试
+    let ticketId = '';
+    for (let attempt = 0; attempt < 5; attempt++) {
+      ticketId = await generateTicketId();
+      try {
+        await conn.query(
+          `INSERT INTO ticket (ticket_id, title, description, category, priority, status, creator_id, asset_id,
+            expected_finish_time, attachment_urls, client_token, first_response_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,NOW())`,
+          [ticketId, finalTitle, description.trim(), category, priority, STATUS.PENDING, creator.user_id,
+           asset_id || null, expected_finish_time || null,
+           attachment_urls ? JSON.stringify(attachment_urls) : null, client_token || null]
+        );
+        break;
+      } catch (e) {
+        const isDup = /UNIQUE|PRIMARY KEY/i.test(e.message || '');
+        if (!isDup || attempt === 4) throw e;
+      }
+    }
 
     // 记录流水
     await conn.query(
@@ -58,7 +68,7 @@ async function createTicket(req, res, next) {
 
     res.status(201).json({
       code: 0, msg: '创建成功',
-      data: { ticket_id: ticketId, status: STATUS.PENDING, title }
+      data: { ticket_id: ticketId, status: STATUS.PENDING, title: finalTitle }
     });
   } catch (err) { await conn.rollback(); next(err); }
   finally { conn.release(); }
