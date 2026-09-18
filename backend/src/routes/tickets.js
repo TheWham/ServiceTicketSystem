@@ -7,6 +7,7 @@ const router = Router();
 // 工单 CRUD
 router.post('/',           tc.createTicket);              // 创建工单
 router.get('/',            tc.listTickets);               // 工单列表
+router.get('/stats',       tc.stats);                     // 全局统计(须在 /:id 之前)
 router.get('/:id',         tc.getTicket);                 // 工单详情
 
 // 状态操作

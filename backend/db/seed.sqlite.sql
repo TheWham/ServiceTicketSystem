@@ -6,6 +6,7 @@ DELETE FROM notification_log;
 DELETE FROM ticket_flow_log;
 DELETE FROM ticket_draft;
 DELETE FROM ticket;
+DELETE FROM asset;
 DELETE FROM user;
 
 -- ----------------------------
@@ -18,6 +19,15 @@ INSERT INTO user (user_id, name, role, department, phone, wechat_id) VALUES
 ('U004', '赵工',   'engineer',   'IT部',   '13800002001', 'zhao_it'),
 ('U005', '钱工',   'engineer',   'IT部',   '13800002002', 'qian_it'),
 ('U006', '孙主管', 'supervisor', 'IT部',   '13800003001', 'sun_sup');
+
+-- ----------------------------
+-- 资产 (owner_id 关联 user.user_id)
+-- ----------------------------
+INSERT INTO asset (asset_id, model, owner_id, status) VALUES
+('IT-PC-20260901', 'ThinkPad X1 Carbon', 'U001', '在用'),
+('IT-PC-20260902', 'Dell Latitude 5420',  'U002', '在用'),
+('IT-MB-20260815', 'MacBook Pro 14',      'U003', '在用'),
+('IT-PC-20250110', 'HP EliteBook 840',    NULL,   '维修');
 
 -- ----------------------------
 -- 示例工单 (方便测试看板)

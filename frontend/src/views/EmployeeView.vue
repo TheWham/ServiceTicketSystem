@@ -15,6 +15,13 @@
       </div>
 
       <div class="form-grid">
+        <!-- 工单标题 -->
+        <div class="form-group full-width">
+          <label>工单标题 <span class="required">*</span><span class="count">{{ form.title.length }}/50</span></label>
+          <input type="text" v-model="form.title" placeholder="请简要概括问题（1-50字）" maxlength="50" :class="{ error: errors.title }" @input="onTitleInput" />
+          <span v-if="errors.title" class="error-text">{{ errors.title }}</span>
+        </div>
+
         <!-- 分类 -->
         <div class="form-group">
           <label>问题分类 <span class="required">*</span></label>
@@ -45,6 +52,35 @@
         <div class="form-group">
           <label>期望完成时间</label>
           <input type="datetime-local" v-model="form.expected_finish_time" :min="minDate" />
+        </div>
+
+        <!-- 资产编号 -->
+        <div class="form-group">
+          <label>资产编号</label>
+          <input type="text" v-model="form.asset_id" placeholder="IT-PC-20260901" @blur="onAssetBlur" />
+          <span v-if="assetInfo" class="hint-text">📦 {{ assetInfo.model }} / 责任人：{{ assetInfo.owner_name }}</span>
+          <span v-if="assetError" class="error-text">{{ assetError }}</span>
+        </div>
+
+        <!-- 截图附件 -->
+        <div class="form-group full-width">
+          <label>截图附件（选填，jpg/png，单张≤5MB，最多3张）</label>
+          <input type="file" ref="fileInput" accept="image/jpeg,image/png" multiple @change="onFileChange" />
+          <div v-if="form.attachment_urls.length" class="attachment-list">
+            <div v-for="(url, i) in form.attachment_urls" :key="i" class="attachment-item">
+              <span class="attachment-name">{{ fileName(url) }}</span>
+              <button type="button" class="attachment-del" @click="removeAttachment(i)">删除</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 知识库推荐 -->
+        <div v-if="kbShow" class="form-group full-width kb-card">
+          <div class="kb-header">💡 知识库推荐</div>
+          <div v-for="a in kbList" :key="a.article_id" class="kb-item" @click="showSolution(a)">
+            <span class="kb-title">{{ a.title }}</span>
+            <span class="kb-score">相似度 {{ Math.round(a.similarity_score * 100) }}%</span>
+          </div>
         </div>
 
         <!-- 提交 -->
@@ -148,7 +184,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { ticketApi, draftApi } from '../api/index.js'
+import { ticketApi, draftApi, assetApi, kbApi, uploadApi } from '../api/index.js'
 import { useUserStore } from '../stores/user.js'
 
 const userStore = useUserStore()
@@ -157,13 +193,26 @@ const categories = ['硬件', '软件', '网络', '账号', '其他']
 const priorities = ['高', '中', '低']
 const statuses = ['待处理', '处理中', '待补充', '待外部', '待验收', '已完成', '已取消']
 
-const form = ref({ category: '', description: '', priority: '中', expected_finish_time: '' })
+const form = ref({ title: '', category: '', description: '', priority: '中', expected_finish_time: '', asset_id: '', attachment_urls: [] })
 const errors = ref({})
 const submitting = ref(false)
 const draftBanner = ref(false)
 const draftSaved = ref(false)
 const draftTime = ref('')
 let draftTimer = null
+
+// 资产校验
+const assetInfo = ref(null)
+const assetError = ref('')
+const assetIdRegex = /^[A-Za-z0-9-]+$/
+
+// 附件
+const fileInput = ref(null)
+
+// 知识库推荐
+const kbList = ref([])
+const kbShow = ref(false)
+let kbTimer = null
 
 // 工单列表
 const tickets = ref([])
@@ -180,7 +229,7 @@ const rejectError = ref('')
 const ratingScore = ref(0)
 const ratingComment = ref('')
 
-const minDate = computed(() => new Date().toISOString().slice(0, 16))
+const minDate = computed(() => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16))
 
 function statusClass(s) {
   const map = { '待处理': 'pending', '处理中': 'processing', '待补充': 'need-info', '待外部': 'external', '待验收': 'acceptance', '已完成': 'done', '已取消': 'cancelled' }
@@ -194,6 +243,8 @@ const canSubmit = computed(() => form.value.category && form.value.description.t
 // 提交工单
 async function submitTicket() {
   errors.value = {}
+  if (!form.value.title.trim()) errors.value.title = '请填写工单标题'
+  else if (form.value.title.trim().length > 50) errors.value.title = '工单标题不能超过50字'
   if (!form.value.category) errors.value.category = '请选择问题分类'
   if (form.value.description.trim().length < 10) errors.value.description = '请至少填写10个字，说明何时开始、报错原文、已尝试的操作'
   if (Object.keys(errors.value).length) return
@@ -202,14 +253,17 @@ async function submitTicket() {
   try {
     const clientToken = crypto.randomUUID()
     await ticketApi.create({
+      title: form.value.title.trim(),
       category: form.value.category,
       description: form.value.description.trim(),
       priority: form.value.priority,
       expected_finish_time: form.value.expected_finish_time || null,
+      attachment_urls: form.value.attachment_urls,
+      asset_id: form.value.asset_id || null,
       client_token: clientToken
     })
     // 清空表单和草稿
-    form.value = { category: '', description: '', priority: '中', expected_finish_time: '' }
+    form.value = { title: '', category: '', description: '', priority: '中', expected_finish_time: '', asset_id: '', attachment_urls: [] }
     await draftApi.delete().catch(() => {})
     draftBanner.value = false
     alert('工单提交成功！')
@@ -224,10 +278,13 @@ async function submitTicket() {
 // 草稿
 async function saveDraft() {
   await draftApi.save({
+    title: form.value.title,
     category: form.value.category,
     description: form.value.description,
     priority: form.value.priority,
-    expected_finish_time: form.value.expected_finish_time || null
+    expected_finish_time: form.value.expected_finish_time || null,
+    asset_id: form.value.asset_id || null,
+    attachment_urls: form.value.attachment_urls
   })
   draftSaved.value = true
   draftTime.value = new Date().toLocaleTimeString('zh-CN')
@@ -237,10 +294,13 @@ function restoreDraft() {
   draftApi.get().then(res => {
     if (res.data) {
       form.value = {
+        title: res.data.title || '',
         category: res.data.category || '',
         description: res.data.description || '',
         priority: res.data.priority || '中',
-        expected_finish_time: res.data.expected_finish_time ? res.data.expected_finish_time.slice(0, 16) : ''
+        expected_finish_time: res.data.expected_finish_time ? res.data.expected_finish_time.slice(0, 16) : '',
+        asset_id: res.data.asset_id || '',
+        attachment_urls: res.data.attachment_urls || []
       }
       draftBanner.value = false
     }
@@ -312,6 +372,112 @@ function onDescInput() {
   errors.value.description = ''
 }
 
+function onTitleInput() {
+  errors.value.title = ''
+}
+
+// 资产编号失焦校验
+async function onAssetBlur() {
+  assetInfo.value = null
+  assetError.value = ''
+  const id = form.value.asset_id.trim()
+  if (!id) return
+  if (!assetIdRegex.test(id)) {
+    assetError.value = '资产编号格式不正确'
+    return
+  }
+  try {
+    const res = await assetApi.detail(id)
+    if (res.code === 0 && res.data) {
+      assetInfo.value = res.data
+    } else {
+      assetError.value = '未在资产库中找到该编号'
+    }
+  } catch (e) {
+    assetError.value = '未在资产库中找到该编号'
+  }
+}
+
+// 附件上传
+async function onFileChange(e) {
+  const files = Array.from(e.target.files || [])
+  if (!files.length) return
+  // 校验数量
+  if (form.value.attachment_urls.length + files.length > 3) {
+    alert('最多上传3张截图')
+    e.target.value = ''
+    return
+  }
+  for (const f of files) {
+    if (!['image/jpeg', 'image/png'].includes(f.type)) {
+      alert('仅支持 jpg/png 图片：' + f.name)
+      e.target.value = ''
+      return
+    }
+    if (f.size > 5 * 1024 * 1024) {
+      alert('单张图片不能超过5MB：' + f.name)
+      e.target.value = ''
+      return
+    }
+  }
+  const fd = new FormData()
+  files.forEach(f => fd.append('files', f))
+  try {
+    const res = await uploadApi.upload(fd)
+    if (res.code === 0 && res.data && res.data.urls) {
+      form.value.attachment_urls.push(...res.data.urls)
+    } else {
+      alert('上传失败，请重试')
+    }
+  } catch (err) {
+    alert('上传失败：' + err.message)
+  }
+  e.target.value = ''
+}
+
+function removeAttachment(i) {
+  form.value.attachment_urls.splice(i, 1)
+}
+
+function fileName(url) {
+  const parts = (url || '').split('/')
+  return parts[parts.length - 1] || url
+}
+
+// 知识库推荐
+function showSolution(a) {
+  alert(a.solution_summary || a.title)
+}
+
+function fetchRecommend() {
+  if (!form.value.category || !form.value.description.trim()) {
+    kbShow.value = false
+    return
+  }
+  // 2s 超时保护：超时或异常时静默隐藏，不阻塞提单
+  const timeout = new Promise(resolve => setTimeout(() => resolve(null), 2000))
+  Promise.race([kbApi.recommend({ category: form.value.category, description: form.value.description }), timeout])
+    .then(res => {
+      if (res && res.code === 0 && res.data && res.data.has_recommendation) {
+        kbList.value = res.data.recommend_list || []
+        kbShow.value = kbList.value.length > 0
+      } else {
+        kbShow.value = false
+      }
+    })
+    .catch(() => { kbShow.value = false })
+}
+
+// 监听分类与描述触发知识库推荐（描述 300ms 防抖）
+watch(() => form.value.category, () => {
+  clearTimeout(kbTimer)
+  kbTimer = setTimeout(fetchRecommend, 300)
+})
+watch(() => form.value.description, () => {
+  clearTimeout(kbTimer)
+  kbTimer = setTimeout(fetchRecommend, 300)
+})
+
 // 自动保存草稿：每30s
 watch(form, () => {
   if (!form.value.description.trim()) return
@@ -327,7 +493,7 @@ onMounted(async () => {
   loadTickets()
 })
 
-onUnmounted(() => clearTimeout(draftTimer))
+onUnmounted(() => { clearTimeout(draftTimer); clearTimeout(kbTimer) })
 </script>
 
 <style scoped>
@@ -354,6 +520,22 @@ textarea.error { border-color: #e74c3c; }
 .btn-submit:disabled { opacity: .5; cursor: not-allowed; }
 .draft-banner { background: #fff3cd; padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
 .draft-status { margin-left: 16px; font-size: 13px; color: #52c41a; }
+
+/* 附件 */
+.attachment-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.attachment-item { display: flex; align-items: center; justify-content: space-between; background: #f5f5f5; padding: 6px 12px; border-radius: 6px; font-size: 13px; }
+.attachment-name { color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attachment-del { border: none; background: none; color: #e74c3c; cursor: pointer; font-size: 13px; }
+.attachment-del:hover { text-decoration: underline; }
+
+/* 知识库推荐卡 */
+.kb-card { background: #f0f7ff; border: 1px solid #bae0ff; border-radius: 8px; padding: 12px 16px; }
+.kb-header { font-weight: 600; font-size: 14px; color: #096dd9; margin-bottom: 8px; }
+.kb-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #d6e4ff; cursor: pointer; font-size: 14px; }
+.kb-item:last-child { border-bottom: none; }
+.kb-item:hover .kb-title { color: #1a73e8; }
+.kb-title { color: #333; flex: 1; }
+.kb-score { color: #52c41a; font-size: 12px; margin-left: 12px; white-space: nowrap; }
 
 /* 列表 */
 .filter-bar { margin-bottom: 16px; }

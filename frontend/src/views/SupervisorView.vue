@@ -128,17 +128,15 @@ const filter = ref({ status: '', category: '', assignee: '' })
 const engineers = ref([])
 
 // 统计
-const stats = computed(() => {
-  const counts = {}
-  statuses.forEach(s => counts[s] = tickets.value.filter(t => t.status === s).length)
-  return [
-    { label: '待处理', count: counts['待处理'] },
-    { label: '处理中', count: counts['处理中'] },
-    { label: '待验收', count: counts['待验收'] },
-    { label: '已完成', count: counts['已完成'] },
-    { label: '全部', count: total.value }
-  ]
-})
+const statsData = ref({ 待处理: 0, 处理中: 0, 待补充: 0, 待外部: 0, 待验收: 0, 已完成: 0, 已取消: 0, 全部: 0 })
+
+const stats = computed(() => [
+  { label: '待处理', count: statsData.value['待处理'] },
+  { label: '处理中', count: statsData.value['处理中'] },
+  { label: '待验收', count: statsData.value['待验收'] },
+  { label: '已完成', count: statsData.value['已完成'] },
+  { label: '全部', count: statsData.value['全部'] }
+])
 
 // 派单
 const assignTicket = ref(null)
@@ -171,6 +169,15 @@ async function loadTickets() {
     const res = await ticketApi.list(params)
     tickets.value = res.data.list
     total.value = res.data.total
+  } catch (e) { console.error(e) }
+}
+
+async function loadStats() {
+  try {
+    const res = await ticketApi.stats()
+    if (res.code === 0 && res.data) {
+      statsData.value = { ...statsData.value, ...res.data }
+    }
   } catch (e) { console.error(e) }
 }
 
@@ -218,6 +225,7 @@ async function forceResolve(ticket) {
 onMounted(() => {
   loadEngineers()
   loadTickets()
+  loadStats()
 })
 </script>
 

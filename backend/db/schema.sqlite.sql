@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS ticket (
   rating_comment       TEXT,
   rated_at             TEXT,
   created_at           TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at           TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  updated_at           TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  status_changed_at    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_ticket_status   ON ticket(status);
 CREATE INDEX IF NOT EXISTS idx_ticket_creator  ON ticket(creator_id);
@@ -110,3 +111,14 @@ CREATE TABLE IF NOT EXISTS ticket_draft (
   expected_finish_time TEXT,
   updated_at           TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
+
+-- ----------------------------
+-- 6. 资产表 (owner_id 关联 user.user_id)
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS asset (
+  asset_id  TEXT PRIMARY KEY,                                        -- 资产编号，如 IT-PC-20260901
+  model     TEXT,                                                    -- 型号
+  owner_id  TEXT,                                                    -- 归属人，关联 user.user_id（可为 NULL）
+  status    TEXT NOT NULL DEFAULT '在用' CHECK (status IN ('在用','维修','报废'))
+);
+CREATE INDEX IF NOT EXISTS idx_asset_owner ON asset(owner_id);

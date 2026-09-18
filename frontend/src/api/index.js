@@ -40,7 +40,24 @@ export const ticketApi = {
   detail: (id) => api.get(`/tickets/${id}`),
   assign: (id, data) => api.post(`/tickets/${id}/assign`, data),
   action: (id, data) => api.post(`/tickets/${id}/actions`, data),
-  rating: (id, data) => api.post(`/tickets/${id}/rating`, data)
+  rating: (id, data) => api.post(`/tickets/${id}/rating`, data),
+  stats: () => api.get('/tickets/stats')
+}
+
+// ---- 资产 API ----
+export const assetApi = {
+  list: (params) => api.get('/assets', { params }),
+  detail: (id) => api.get(`/assets/${id}`)
+}
+
+// ---- 知识库 API ----
+export const kbApi = {
+  recommend: (data) => api.post('/kb/recommend', data)
+}
+
+// ---- 上传 API ----
+export const uploadApi = {
+  upload: (formData) => api.post('/uploads', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
 }
 
 // ---- 草稿 API ----

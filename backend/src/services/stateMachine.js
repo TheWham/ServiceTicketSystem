@@ -53,6 +53,16 @@ function validateTransition(fromStatus, toStatus, userRole) {
   return { valid: true, transition: match };
 }
 
+// 根据动作解析目标状态与转移项（单一校验入口）
+// 返回 { to, transition }；找不到合法转移返回 null
+function resolveAction(fromStatus, action) {
+  const allowed = TRANSITIONS[fromStatus];
+  if (!allowed) return null;
+  const match = allowed.find(t => t.action === action);
+  if (!match) return null;
+  return { to: match.to, transition: match };
+}
+
 // 判断通知事件类型
 function getEventType(fromStatus, toStatus, action) {
   const map = {
@@ -66,6 +76,7 @@ function getEventType(fromStatus, toStatus, action) {
     'reject':            'ACCEPT_REJECTED',
     'supply_info':       'INFO_SUPPLIED',
     'timeout':           'TIMEOUT_CANCEL',
+    'timeout_alert':     'TIMEOUT_ALERT',
     'external_resolved': 'EXTERNAL_RESOLVED'
   };
   return map[action] || 'STATUS_CHANGED';
@@ -96,6 +107,7 @@ module.exports = {
   TRANSITIONS,
   TERMINAL_STATUSES,
   validateTransition,
+  resolveAction,
   getEventType,
   getNotifyReceivers
 };
