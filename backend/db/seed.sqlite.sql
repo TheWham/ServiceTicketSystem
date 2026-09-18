@@ -11,7 +11,7 @@ DELETE FROM user;
 -- ----------------------------
 -- 用户 (3 种角色)
 -- ----------------------------
-INSERT INTO user (user_id, name, role, department, phone, wechat_id) VALUES
+INSERT OR IGNORE INTO user (user_id, name, role, department, phone, wechat_id) VALUES
 ('U001', '张小明', 'employee',   '市场部', '13800001001', 'zhangxm'),
 ('U002', '李丽',   'employee',   '财务部', '13800001002', 'lily_li'),
 ('U003', '王强',   'employee',   '研发部', '13800001003', 'wangqiang'),
@@ -22,7 +22,7 @@ INSERT INTO user (user_id, name, role, department, phone, wechat_id) VALUES
 -- ----------------------------
 -- 示例工单 (方便测试看板)
 -- ----------------------------
-INSERT INTO ticket (ticket_id, title, description, category, priority, status, creator_id, assignee_id, created_at) VALUES
+INSERT OR IGNORE INTO ticket (ticket_id, title, description, category, priority, status, creator_id, assignee_id, created_at) VALUES
 ('TK202609180001', '笔记本电脑无法开机', '今早到公司发现笔记本电脑按电源键无反应，电源灯不亮，已尝试插拔电源适配器无效。', '硬件', '高', '待处理', 'U001', NULL, '2026-09-18 08:30:00'),
 ('TK202609180002', 'VPN 连接失败', '从昨天下午开始 AnyConnect 一直报"无法建立连接"，已重启电脑和路由器均无效。', '网络', '中', '处理中', 'U002', 'U004', '2026-09-18 09:00:00'),
 ('TK202609180003', 'ERP 系统无法登录', '登录 ERP 提示"账号已锁定"，需要解锁账号。', '账号', '高', '待验收', 'U003', 'U005', '2026-09-18 09:15:00');
@@ -30,10 +30,26 @@ INSERT INTO ticket (ticket_id, title, description, category, priority, status, c
 -- ----------------------------
 -- 示例流转日志
 -- ----------------------------
-INSERT INTO ticket_flow_log (ticket_id, from_status, to_status, operator_id, remark, created_at) VALUES
-('TK202609180001', NULL, '待处理', 'U001', '提交工单', '2026-09-18 08:30:00'),
-('TK202609180002', NULL, '待处理', 'U002', '提交工单', '2026-09-18 09:00:00'),
-('TK202609180002', '待处理', '处理中', 'U006', '分配给赵工处理', '2026-09-18 09:05:00'),
-('TK202609180003', NULL, '待处理', 'U003', '提交工单', '2026-09-18 09:15:00'),
-('TK202609180003', '待处理', '处理中', 'U006', '分配给钱工处理', '2026-09-18 09:20:00'),
-('TK202609180003', '处理中', '待验收', 'U005', '已重置密码，请尝试重新登录', '2026-09-18 09:40:00');
+INSERT INTO ticket_flow_log (ticket_id, from_status, to_status, operator_id, remark, created_at)
+SELECT 'TK202609180001', NULL, '待处理', 'U001', '提交工单', '2026-09-18 08:30:00'
+WHERE NOT EXISTS (SELECT 1 FROM ticket_flow_log WHERE ticket_id = 'TK202609180001' AND remark = '提交工单');
+
+INSERT INTO ticket_flow_log (ticket_id, from_status, to_status, operator_id, remark, created_at)
+SELECT 'TK202609180002', NULL, '待处理', 'U002', '提交工单', '2026-09-18 09:00:00'
+WHERE NOT EXISTS (SELECT 1 FROM ticket_flow_log WHERE ticket_id = 'TK202609180002' AND remark = '提交工单');
+
+INSERT INTO ticket_flow_log (ticket_id, from_status, to_status, operator_id, remark, created_at)
+SELECT 'TK202609180002', '待处理', '处理中', 'U006', '分配给赵工处理', '2026-09-18 09:05:00'
+WHERE NOT EXISTS (SELECT 1 FROM ticket_flow_log WHERE ticket_id = 'TK202609180002' AND remark = '分配给赵工处理');
+
+INSERT INTO ticket_flow_log (ticket_id, from_status, to_status, operator_id, remark, created_at)
+SELECT 'TK202609180003', NULL, '待处理', 'U003', '提交工单', '2026-09-18 09:15:00'
+WHERE NOT EXISTS (SELECT 1 FROM ticket_flow_log WHERE ticket_id = 'TK202609180003' AND remark = '提交工单');
+
+INSERT INTO ticket_flow_log (ticket_id, from_status, to_status, operator_id, remark, created_at)
+SELECT 'TK202609180003', '待处理', '处理中', 'U006', '分配给钱工处理', '2026-09-18 09:20:00'
+WHERE NOT EXISTS (SELECT 1 FROM ticket_flow_log WHERE ticket_id = 'TK202609180003' AND remark = '分配给钱工处理');
+
+INSERT INTO ticket_flow_log (ticket_id, from_status, to_status, operator_id, remark, created_at)
+SELECT 'TK202609180003', '处理中', '待验收', 'U005', '已重置密码，请尝试重新登录', '2026-09-18 09:40:00'
+WHERE NOT EXISTS (SELECT 1 FROM ticket_flow_log WHERE ticket_id = 'TK202609180003' AND remark = '已重置密码，请尝试重新登录');

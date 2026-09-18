@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m '更新工单提交与工程师视图 *)",
+      "Bash(git push *)"
+    ]
+  }
+}

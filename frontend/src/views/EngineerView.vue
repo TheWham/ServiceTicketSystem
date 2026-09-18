@@ -213,9 +213,16 @@ async function doAction(action) {
 
   try {
     await ticketApi.action(detail.value.ticket_id, { action, remark: remarkMap[action] })
-    alert('操作成功！')
-    detail.value = null
-    loadTickets()
+    await loadTickets()
+
+    if (action === 'progress') {
+      // 记录进展后留在弹窗内，方便接着提交方案
+      progressRemark.value = ''
+      await openDetail({ ticket_id: detail.value.ticket_id })
+    } else {
+      alert('操作成功！')
+      detail.value = null
+    }
   } catch (e) { actionError.value = e.message }
 }
 

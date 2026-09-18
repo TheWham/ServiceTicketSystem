@@ -37,17 +37,15 @@ function countRows(table) {
 const existingTickets = countRows('ticket');
 const existingUsers = countRows('user');
 
+// 种子数据全部使用 INSERT OR IGNORE / WHERE NOT EXISTS，可重复执行不会产生重复或覆盖已有数据
 if (force) {
   console.log('⚠️  检测到 --force，将清空全部数据并重建...');
+  db.exec('DELETE FROM ticket_flow_log; DELETE FROM notification_log; DELETE FROM ticket_draft; DELETE FROM ticket;');
   db.exec(seed);
   console.log('✅ 已重置并写入种子数据');
-} else if (existingTickets > 0 || existingUsers > 0) {
-  console.log(`⏭️  跳过种子数据（已有 ${existingUsers} 个用户 / ${existingTickets} 张工单，不会覆盖）`);
-  console.log('   如需清空重建，请执行: npm run db:reset');
 } else {
-  console.log('🌱 空库，正在写入种子数据...');
   db.exec(seed);
-  console.log('✅ 种子数据写入完成');
+  console.log(`🌱 种子数据已同步（幂等，已有 ${existingUsers} 个用户 / ${existingTickets} 张工单不会被覆盖）`);
 }
 
 // ---------- 3. 汇总 ----------
