@@ -1,7 +1,7 @@
 <template>
   <div class="engineer-view">
     <h2>🔧 工程师工作台</h2>
-    <p class="sub">已分配工单 · 看板视图</p>
+    <p class="sub">我负责的工单 + 待领取工单 · 看板视图（每 15 秒自动刷新）</p>
 
     <div class="kanban">
       <div v-for="col in columns" :key="col.status" class="kanban-col">
@@ -21,6 +21,11 @@
             <span>{{ t.category }}</span>
           </div>
           <div class="card-time">{{ formatTime(t.created_at) }}</div>
+          <button
+            v-if="t.status === '待处理' && !t.assignee_id"
+            class="btn-claim"
+            @click.stop="claimTicket(t)"
+          >✋ 领取</button>
         </div>
       </div>
     </div>
@@ -43,6 +48,12 @@
 
         <!-- 状态操作按钮 -->
         <div class="action-section">
+          <!-- 待处理（未领取）→ 领取 -->
+          <div v-if="detail.status === '待处理'" class="action-row">
+            <button class="btn-action success" @click="claimCurrent">✋ 领取该工单</button>
+            <span class="hint">领取后即可开始处理</span>
+          </div>
+
           <!-- 处理中 → 记录进展 -->
           <div v-if="detail.status === '处理中'" class="action-row">
             <input v-model="progressRemark" placeholder="请输入说明（记录进展≥5字；转外部支持≥10字）" />
@@ -93,7 +104,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ticketApi } from '../api/index.js'
 import { useUserStore } from '../stores/user.js'
 
@@ -107,7 +118,7 @@ let pollTimer = null
 
 const columns = computed(() => {
   const statusMap = {
-    '待处理':   { label: '待处理', color: 'yellow' },
+    '待处理':   { label: '待处理 / 待领取', color: 'yellow' },
     '处理中':   { label: '处理中', color: 'blue' },
     '待补充':   { label: '待补充', color: 'purple' },
     '待外部':   { label: '待外部', color: 'orange' },
@@ -136,9 +147,35 @@ function formatTime(t) { return t ? new Date(t).toLocaleString('zh-CN') : '' }
 
 async function loadTickets() {
   try {
-    const res = await ticketApi.list({ assignee_id: userStore.userId, page_size: 100 })
+    // 我负责的工单 + 尚未被人领取的「待处理」工单
+    const res = await ticketApi.list({ mine_or_pool: userStore.userId, page_size: 100 })
     allTickets.value = res.data.list
   } catch (e) { console.error(e) }
+}
+
+// 从看板卡片直接领取
+async function claimTicket(t) {
+  try {
+    await ticketApi.claim(t.ticket_id)
+    await loadTickets()
+  } catch (e) {
+    alert('领取失败：' + e.message)
+    loadTickets() // 可能已被他人领取，刷新看板
+  }
+}
+
+// 从详情弹窗领取
+async function claimCurrent() {
+  actionError.value = ''
+  const id = detail.value.ticket_id
+  try {
+    await ticketApi.claim(id)
+    await loadTickets()
+    await openDetail({ ticket_id: id }) // 重新拉详情，拿到处理中状态
+  } catch (e) {
+    actionError.value = e.message
+    loadTickets()
+  }
 }
 
 async function openDetail(t) {
@@ -188,6 +225,16 @@ onMounted(() => {
   pollTimer = setInterval(loadTickets, 15000)
 })
 onUnmounted(() => clearInterval(pollTimer))
+
+// 切换账号时清空并重新拉取，避免看到上一个账号的残留数据
+watch(() => userStore.userId, (id) => {
+  allTickets.value = []
+  detail.value = null
+  detailFlows.value = []
+  progressRemark.value = ''
+  actionError.value = ''
+  if (id) loadTickets()
+})
 </script>
 
 <style scoped>
@@ -216,6 +263,8 @@ onUnmounted(() => clearInterval(pollTimer))
 .card-title { font-size: 14px; font-weight: 500; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-meta { font-size: 12px; color: #999; display: flex; gap: 8px; }
 .card-time { font-size: 11px; color: #bbb; margin-top: 4px; }
+.btn-claim { margin-top: 8px; width: 100%; padding: 6px 0; border: none; border-radius: 6px; background: #52c41a; color: #fff; font-size: 13px; cursor: pointer; }
+.btn-claim:hover { background: #45a818; }
 
 /* 弹窗 */
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }

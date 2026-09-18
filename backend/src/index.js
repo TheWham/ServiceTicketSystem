@@ -58,4 +58,14 @@ async function shutdown(signal) {
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
+// 兜底：任何未捕获的异常都要留下痕迹，不能静默失败
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] 未捕获异常:', err.message);
+  console.error(err.stack);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] 未处理的 Promise 拒绝:', reason);
+  if (reason && reason.stack) console.error(reason.stack);
+});
+
 module.exports = app;

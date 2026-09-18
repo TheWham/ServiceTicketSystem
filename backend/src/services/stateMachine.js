@@ -13,6 +13,8 @@ const STATUS = {
 const TRANSITIONS = {
   [STATUS.PENDING]: [
     { to: STATUS.PROCESSING, action: 'assign',     role: ['supervisor'],           remark: '派单' },
+    // 工程师自主领取未派单工单：与 supervisor 派单等价，只是操作者不同
+    { to: STATUS.PROCESSING, action: 'claim',      role: ['engineer'],             remark: '领取工单' },
     { to: STATUS.CANCELLED,  action: 'cancel',     role: ['employee'],             remark: '撤回',  guard: 'no_flow_log' }
   ],
   [STATUS.PROCESSING]: [
@@ -37,19 +39,28 @@ const TRANSITIONS = {
 const TERMINAL_STATUSES = [STATUS.DONE, STATUS.CANCELLED];
 
 // 校验状态转移是否合法
-function validateTransition(fromStatus, toStatus, userRole) {
+// action 可选：指定后精确匹配该动作，否则在所有通向目标状态的转移中选一个当前角色有权执行的
+function validateTransition(fromStatus, toStatus, userRole, action) {
   const allowed = TRANSITIONS[fromStatus];
   if (!allowed) {
     return { valid: false, msg: `当前状态「${fromStatus}」已是终态或不可操作` };
   }
-  const match = allowed.find(t => t.to === toStatus);
-  if (!match) {
+
+  const candidates = allowed.filter(t => t.to === toStatus && (!action || t.action === action));
+
+  if (candidates.length === 0) {
     const allowedTo = allowed.map(t => t.to).join('、');
     return { valid: false, msg: `不允许从「${fromStatus}」转到「${toStatus}」，允许的目标状态：${allowedTo}` };
   }
-  if (!match.role.includes(userRole) && !match.role.includes('system')) {
-    return { valid: false, msg: `角色「${userRole}」无权执行此操作` };
+
+  // 优先选一个当前角色有权执行的转移（同一目标状态可能对应多个动作，如 assign / claim）
+  const match = candidates.find(t => t.role.includes(userRole) || t.role.includes('system'));
+
+  if (!match) {
+    const requiredRoles = [...new Set(candidates.flatMap(t => t.role))].join(' 或 ');
+    return { valid: false, msg: `角色「${userRole}」无权执行此操作（需要 ${requiredRoles}）` };
   }
+
   return { valid: true, transition: match };
 }
 
@@ -57,6 +68,7 @@ function validateTransition(fromStatus, toStatus, userRole) {
 function getEventType(fromStatus, toStatus, action) {
   const map = {
     'assign':            'DISPATCH',
+    'claim':             'DISPATCH',
     'cancel':            'CANCEL',
     'need_info':         'PENDING_SUPPLEMENT',
     'external':          'PENDING_EXTERNAL',

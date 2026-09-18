@@ -11,6 +11,7 @@ router.get('/:id',         tc.getTicket);                 // 工单详情
 
 // 状态操作
 router.post('/:id/assign', requireRole('supervisor'), tc.assignTicket);  // 派单(仅主管)
+router.post('/:id/claim',  requireRole('engineer'),   tc.claimTicket);   // 领取(仅工程师)
 router.post('/:id/actions', tc.actionTicket);                             // 通用状态操作
 router.post('/:id/rating', tc.rateTicket);                                // 评价
 

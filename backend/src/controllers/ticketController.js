@@ -85,7 +85,7 @@ function parseTicketRow(row) {
 // GET /api/v1/tickets —— 工单列表(支持筛选)
 async function listTickets(req, res, next) {
   try {
-    const { status, category, assignee_id, creator_id, priority, page = 1, page_size = 20 } = req.query;
+    const { status, category, assignee_id, creator_id, priority, unassigned, mine_or_pool, page = 1, page_size = 20 } = req.query;
     const conditions = [];
     const params = [];
 
@@ -94,6 +94,17 @@ async function listTickets(req, res, next) {
     if (assignee_id) { conditions.push('t.assignee_id = ?'); params.push(assignee_id); }
     if (creator_id) { conditions.push('t.creator_id = ?'); params.push(creator_id); }
     if (priority) { conditions.push('t.priority = ?'); params.push(priority); }
+
+    // 待领取池：尚未派单的「待处理」工单
+    if (unassigned === 'true' || unassigned === '1') {
+      conditions.push("t.assignee_id IS NULL AND t.status = '待处理'");
+    }
+
+    // 工程师看板：我负责的工单 + 尚无人认领的待处理工单
+    if (mine_or_pool) {
+      conditions.push("(t.assignee_id = ? OR (t.assignee_id IS NULL AND t.status = '待处理'))");
+      params.push(mine_or_pool);
+    }
 
     const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
     const offset = (parseInt(page) - 1) * parseInt(page_size);
@@ -104,7 +115,9 @@ async function listTickets(req, res, next) {
        FROM ticket t
        LEFT JOIN user c ON t.creator_id = c.user_id
        LEFT JOIN user a ON t.assignee_id = a.user_id
-       ${where} ORDER BY t.created_at DESC LIMIT ? OFFSET ?`,
+       ${where}
+       ORDER BY t.created_at DESC, t.ticket_id DESC
+       LIMIT ? OFFSET ?`,
       [...params, parseInt(page_size), offset]
     );
 
@@ -129,7 +142,7 @@ async function getTicket(req, res, next) {
     const [flows] = await pool.query(
       `SELECT f.*, u.name as operator_name FROM ticket_flow_log f
        LEFT JOIN user u ON f.operator_id = u.user_id
-       WHERE f.ticket_id = ? ORDER BY f.created_at ASC`, [id]
+       WHERE f.ticket_id = ? ORDER BY f.created_at ASC, f.log_id ASC`, [id]
     );
 
     res.json({ code: 0, msg: 'success', data: { ticket: parseTicketRow(tickets[0]), flow_logs: flows } });
@@ -155,7 +168,7 @@ async function assignTicket(req, res, next) {
     const ticket = tickets[0];
 
     // 校验状态转移
-    const validation = validateTransition(ticket.status, STATUS.PROCESSING, operator.role);
+    const validation = validateTransition(ticket.status, STATUS.PROCESSING, operator.role, 'assign');
     if (!validation.valid) return res.status(409).json({ code: 40910, msg: validation.msg });
 
     const oldAssignee = ticket.assignee_id;
@@ -171,6 +184,54 @@ async function assignTicket(req, res, next) {
     sendNotification(id, 'DISPATCH', assignee_id).catch(console.error);
 
     res.json({ code: 0, msg: isReassign ? '改派成功' : '派单成功', data: { ticket_id: id, status: STATUS.PROCESSING, assignee_id } });
+  } catch (err) { await conn.rollback(); next(err); }
+  finally { conn.release(); }
+}
+
+// POST /api/v1/tickets/:id/claim —— 工程师领取未派单的「待处理」工单
+async function claimTicket(req, res, next) {
+  const conn = await pool.getConnection();
+  try {
+    const { id } = req.params;
+    const operator = req.currentUser;
+
+    const [tickets] = await conn.query('SELECT * FROM ticket WHERE ticket_id = ?', [id]);
+    if (tickets.length === 0) return res.status(404).json({ code: 40400, msg: '工单不存在' });
+    const ticket = tickets[0];
+
+    // 状态机校验（claim 转移仅限 engineer）
+    const validation = validateTransition(ticket.status, STATUS.PROCESSING, operator.role, 'claim');
+    if (!validation.valid) return res.status(409).json({ code: 40910, msg: validation.msg });
+    if (validation.transition.action !== 'claim') {
+      return res.status(409).json({ code: 40911, msg: '当前工单不可领取，请使用派单功能' });
+    }
+
+    await conn.beginTransaction();
+
+    // 条件更新：仅当工单仍无人认领时才成功（防止两人同时点「领取」）
+    const [result] = await conn.query(
+      'UPDATE ticket SET assignee_id = ?, status = ?, first_response_at = COALESCE(first_response_at, NOW()) ' +
+      'WHERE ticket_id = ? AND assignee_id IS NULL AND status = ?',
+      [operator.user_id, STATUS.PROCESSING, id, STATUS.PENDING]
+    );
+
+    if (result.affectedRows === 0) {
+      await conn.rollback();
+      return res.status(409).json({ code: 40912, msg: '手慢了，该工单已被其他工程师领取' });
+    }
+
+    await conn.query(
+      'INSERT INTO ticket_flow_log (ticket_id, from_status, to_status, operator_id, remark) VALUES (?,?,?,?,?)',
+      [id, ticket.status, STATUS.PROCESSING, operator.user_id, '工程师领取工单']
+    );
+    await conn.commit();
+
+    sendNotification(id, 'DISPATCH', operator.user_id).catch(console.error);
+
+    res.json({
+      code: 0, msg: '领取成功',
+      data: { ticket_id: id, status: STATUS.PROCESSING, assignee_id: operator.user_id }
+    });
   } catch (err) { await conn.rollback(); next(err); }
   finally { conn.release(); }
 }
@@ -264,4 +325,4 @@ async function rateTicket(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { createTicket, listTickets, getTicket, assignTicket, actionTicket, rateTicket };
+module.exports = { createTicket, listTickets, getTicket, assignTicket, claimTicket, actionTicket, rateTicket };

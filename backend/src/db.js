@@ -63,15 +63,64 @@ async function query(sql, params = []) {
 }
 
 /**
+ * 异步互斥锁
+ *
+ * better-sqlite3 是单连接同步驱动，db.js 又把它包装成了“连接池”供异步代码使用。
+ * 两个请求的事务一旦交错（await 处让出控制权），第二个 BEGIN 就会报
+ * “cannot start a transaction within a transaction” → 间歇性 500。
+ * 用互斥锁保证同一时刻只有一个事务在跑。
+ */
+class Mutex {
+  constructor() { this._tail = Promise.resolve(); }
+  async lock() {
+    let release;
+    const gate = new Promise(res => { release = res; });
+    const prev = this._tail;
+    this._tail = prev.then(() => gate);
+    await prev;
+    return release;
+  }
+}
+
+const txMutex = new Mutex();
+
+/**
  * 模拟连接对象（支持事务）
  */
 function createConnection() {
+  let unlock = null;
+
+  function releaseLock() {
+    if (unlock) { const u = unlock; unlock = null; u(); }
+  }
+
   return {
     query,
-    async beginTransaction() { db.exec('BEGIN'); },
-    async commit() { db.exec('COMMIT'); },
-    async rollback() { try { db.exec('ROLLBACK'); } catch (e) { /* 无活动事务 */ } },
-    release() { /* sqlite 无需释放 */ }
+    async beginTransaction() {
+      unlock = await txMutex.lock();
+      try {
+        // IMMEDIATE：开局就取写锁，避开延迟事务升级导致的 SQLITE_BUSY
+        db.exec('BEGIN IMMEDIATE');
+      } catch (e) {
+        releaseLock();
+        throw e;
+      }
+    },
+    async commit() {
+      try { db.exec('COMMIT'); }
+      finally { releaseLock(); }
+    },
+    async rollback() {
+      try { db.exec('ROLLBACK'); } catch (e) { /* 无活动事务 */ }
+      finally { releaseLock(); }
+    },
+    // 兼容层：若调用方忘了提交/回滚，释放锁并回滚，避免后续请求全部卡死
+    release() {
+      if (unlock) {
+        try { db.exec('ROLLBACK'); } catch (e) { /* ignore */ }
+        releaseLock();
+      }
+    }
   };
 }
 

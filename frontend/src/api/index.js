@@ -39,6 +39,7 @@ export const ticketApi = {
   list: (params) => api.get('/tickets', { params }),
   detail: (id) => api.get(`/tickets/${id}`),
   assign: (id, data) => api.post(`/tickets/${id}/assign`, data),
+  claim: (id) => api.post(`/tickets/${id}/claim`),
   action: (id, data) => api.post(`/tickets/${id}/actions`, data),
   rating: (id, data) => api.post(`/tickets/${id}/rating`, data)
 }
