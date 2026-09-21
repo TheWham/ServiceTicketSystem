@@ -7,11 +7,11 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' }
 })
 
-// 请求拦截：注入 Mock 用户标识
+// 请求拦截：注入 JWT（Spring Cloud 网关统一鉴权）
 api.interceptors.request.use(config => {
   const userStore = useUserStore()
-  if (userStore.userId) {
-    config.headers['X-User-Id'] = userStore.userId
+  if (userStore.token) {
+    config.headers['Authorization'] = `Bearer ${userStore.token}`
   }
   return config
 })
@@ -28,6 +28,7 @@ api.interceptors.response.use(
 
 // ---- 用户 API ----
 export const userApi = {
+  login: (data) => api.post('/users/login', data),
   loginOptions: () => api.get('/users/login-options'),
   getMe: () => api.get('/users/me'),
   listUsers: (params) => api.get('/users', { params })

@@ -1,0 +1,3 @@
+com.itticket.common.web.CommonWebAutoConfiguration
+com.itticket.common.web.GlobalExceptionHandler
+com.itticket.common.web.JacksonTimeConfig

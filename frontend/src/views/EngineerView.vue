@@ -1,110 +1,181 @@
 <template>
   <div class="engineer-view">
-    <h2>🔧 工程师工作台</h2>
-    <p class="sub">我负责的工单 + 待领取工单 · 看板视图（每 15 秒自动刷新）</p>
+    <!-- 页头 -->
+    <div class="page-head">
+      <div>
+        <h2 class="page-title">
+          <el-icon><Tools /></el-icon> 工程师工作台
+        </h2>
+        <p class="page-sub">我负责的工单 + 待领取工单 · 看板视图（每 15 秒自动刷新）</p>
+      </div>
+      <el-button :icon="Refresh" circle @click="loadTickets" />
+    </div>
 
+    <!-- 看板 -->
     <div class="kanban">
       <div v-for="col in columns" :key="col.status" class="kanban-col">
         <div class="col-header" :class="col.color">
-          {{ col.label }}
-          <span class="count">{{ col.tickets.length }}</span>
+          <span class="col-label">{{ col.label }}</span>
+          <el-badge :value="col.tickets.length" :type="col.badgeType" :max="99" />
         </div>
-        <div v-if="col.tickets.length === 0" class="empty-col">暂无</div>
-        <div v-for="t in col.tickets" :key="t.ticket_id" class="kanban-card" :class="{ high: t.priority === '高' }" @click="openDetail(t)">
-          <div class="card-top">
-            <span class="card-id">{{ t.ticket_id }}</span>
-            <span class="priority-dot" :class="t.priority">{{ t.priority }}</span>
-          </div>
-          <div class="card-title">{{ t.title }}</div>
-          <div class="card-meta">
-            <span>{{ t.creator_name }}</span>
-            <span>{{ t.category }}</span>
-          </div>
-          <div class="card-time">{{ formatTime(t.created_at) }}</div>
-          <button
-            v-if="t.status === '待处理' && !t.assignee_id"
-            class="btn-claim"
-            @click.stop="claimTicket(t)"
-          >✋ 领取</button>
-        </div>
+        <el-scrollbar class="col-body">
+          <el-empty
+            v-if="col.tickets.length === 0"
+            description="暂无"
+            :image-size="48"
+          />
+          <el-card
+            v-for="t in col.tickets"
+            :key="t.ticket_id"
+            shadow="hover"
+            class="kanban-card"
+            :class="{ high: t.priority === '高' }"
+            @click="openDetail(t)"
+          >
+            <div class="card-top">
+              <span class="card-id">{{ t.ticket_id }}</span>
+              <el-tag :type="priorityTagType(t.priority)" size="small" effect="plain">{{ t.priority }}</el-tag>
+            </div>
+            <div class="card-title">{{ t.title }}</div>
+            <div class="card-meta">
+              <el-tag size="small" type="info" effect="plain">{{ t.category }}</el-tag>
+              <span>{{ t.creator_name }}</span>
+            </div>
+            <div class="card-time">{{ formatTime(t.created_at) }}</div>
+            <el-button
+              v-if="t.status === '待处理' && !t.assignee_id"
+              type="success"
+              size="small"
+              class="claim-btn"
+              :icon="Pointer"
+              @click.stop="claimTicket(t)"
+            >领取</el-button>
+          </el-card>
+        </el-scrollbar>
       </div>
     </div>
 
     <!-- ===== 工单详情弹窗 ===== -->
-    <div v-if="detail" class="modal-overlay" @click.self="detail = null">
-      <div class="modal">
-        <button class="modal-close" @click="detail = null">✕</button>
-        <h3>工单处理 · {{ detail.ticket_id }}</h3>
+    <el-dialog
+      v-model="detailVisible"
+      :title="`工单处理 · ${detail?.ticket_id || ''}`"
+      width="720px"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <template v-if="detail">
+        <el-descriptions :column="2" border class="detail-desc">
+          <el-descriptions-item label="标题" :span="2">{{ detail.title }}</el-descriptions-item>
+          <el-descriptions-item label="分类">{{ detail.category }}</el-descriptions-item>
+          <el-descriptions-item label="优先级">
+            <el-tag :type="priorityTagType(detail.priority)" size="small">{{ detail.priority }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag :type="statusTagType(detail.status)" size="small">{{ detail.status }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="提单人">{{ detail.creator_name }}</el-descriptions-item>
+          <el-descriptions-item v-if="detail.expected_finish_time" label="期望完成" :span="2">
+            {{ formatTime(detail.expected_finish_time) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="创建时间" :span="2">{{ formatTime(detail.created_at) }}</el-descriptions-item>
+          <el-descriptions-item label="问题描述" :span="2">{{ detail.description }}</el-descriptions-item>
+        </el-descriptions>
 
-        <div class="detail-grid">
-          <div><b>标题：</b>{{ detail.title }}</div>
-          <div><b>分类：</b>{{ detail.category }} | <b>优先级：</b>{{ detail.priority }}</div>
-          <div><b>状态：</b><span class="status-tag" :class="statusClass(detail.status)">{{ detail.status }}</span></div>
-          <div><b>提单人：</b>{{ detail.creator_name }}</div>
-          <div><b>描述：</b>{{ detail.description }}</div>
-          <div v-if="detail.expected_finish_time"><b>期望完成：</b>{{ formatTime(detail.expected_finish_time) }}</div>
-          <div><b>创建：</b>{{ formatTime(detail.created_at) }}</div>
-        </div>
+        <!-- 状态操作 -->
+        <el-card shadow="never" class="action-card">
+          <template #header><span class="action-title">工单操作</span></template>
 
-        <!-- 状态操作按钮 -->
-        <div class="action-section">
           <!-- 待处理（未领取）→ 领取 -->
           <div v-if="detail.status === '待处理'" class="action-row">
-            <button class="btn-action success" @click="claimCurrent">✋ 领取该工单</button>
-            <span class="hint">领取后即可开始处理</span>
+            <el-button type="success" :icon="Pointer" @click="claimCurrent">领取该工单</el-button>
+            <el-text type="info" size="small">领取后即可开始处理</el-text>
           </div>
 
           <!-- 处理中 → 记录进展 -->
           <div v-if="detail.status === '处理中'" class="action-row">
-            <input v-model="progressRemark" placeholder="请输入说明（记录进展≥5字；转外部支持≥10字）" />
-            <button class="btn-action" @click="doAction('progress')">📝 记录进展</button>
-            <button class="btn-action warn" @click="doAction('need_info')">❓ 申请补充</button>
-            <button class="btn-action warn" @click="doAction('external')">🔗 需外部支持</button>
+            <el-input
+              v-model="progressRemark"
+              placeholder="请输入说明（记录进展 ≥5 字；转外部支持 ≥10 字）"
+              class="remark-input"
+              maxlength="200"
+              show-word-limit
+            />
+            <el-button-group>
+              <el-button type="primary" @click="doAction('progress')">记录进展</el-button>
+              <el-button type="warning" @click="doAction('need_info')">申请补充</el-button>
+              <el-button type="warning" @click="doAction('external')">需外部支持</el-button>
+            </el-button-group>
           </div>
 
-          <!-- 待补充 → 已补回 -->
-          <div v-if="detail.status === '待补充'" class="action-row">
-            <span class="hint">等待员工补充信息中...</span>
-          </div>
+          <!-- 待补充 → 等待员工 -->
+          <el-alert v-if="detail.status === '待补充'" type="info" :closable="false">
+            <template #title>等待员工补充信息中...</template>
+          </el-alert>
 
           <!-- 待外部 → 外部解除 -->
           <div v-if="detail.status === '待外部'" class="action-row">
-            <span class="hint">等待外部支持中...</span>
-            <button class="btn-action success" @click="doAction('external_resolved')">✅ 外部已解除</button>
+            <el-text type="info" size="small">等待外部支持中...</el-text>
+            <el-button type="success" :icon="CircleCheck" @click="doAction('external_resolved')">
+              外部已解除
+            </el-button>
           </div>
 
           <!-- 处理中 → 提交方案 -->
           <div v-if="detail.status === '处理中'" class="action-row submit-row">
-            <button class="btn-action success big" :disabled="!canDone" @click="doAction('done')">
-              ✅ 提交解决方案
-            </button>
-            <span v-if="!canDone" class="hint">请先记录至少一条处理进展</span>
+            <el-button
+              type="success"
+              size="large"
+              :disabled="!canDone"
+              :icon="Promotion"
+              @click="doAction('done')"
+            >
+              提交解决方案
+            </el-button>
+            <el-text v-if="!canDone" type="warning" size="small">
+              请先记录至少一条处理进展
+            </el-text>
           </div>
 
-          <!-- 待验收 → 等待中 -->
-          <div v-if="detail.status === '待验收'" class="action-row">
-            <span class="hint">⏳ 已提交方案，等待员工验收...</span>
-          </div>
-        </div>
-        <span v-if="actionError" class="error-text">{{ actionError }}</span>
+          <!-- 待验收 -->
+          <el-alert v-if="detail.status === '待验收'" type="warning" :closable="false">
+            <template #title>⏳ 已提交方案，等待员工验收...</template>
+          </el-alert>
+
+          <el-text v-if="actionError" type="danger" size="small" class="action-error">
+            {{ actionError }}
+          </el-text>
+        </el-card>
 
         <!-- 流转日志 -->
-        <div class="flow-log">
-          <h4>流转记录</h4>
-          <div v-for="f in detailFlows" :key="f.log_id" class="flow-item">
-            <span class="flow-time">{{ formatTime(f.created_at) }}</span>
-            <span class="flow-status">{{ f.to_status || f.from_status }}</span>
-            <span>{{ f.operator_name }}</span>
-            <span class="flow-remark">{{ f.remark }}</span>
-          </div>
-        </div>
-      </div>
-    </div>
+        <el-card shadow="never" class="flow-card">
+          <template #header><span class="action-title">流转记录</span></template>
+          <el-empty v-if="detailFlows.length === 0" description="暂无记录" :image-size="60" />
+          <el-timeline v-else>
+            <el-timeline-item
+              v-for="f in detailFlows"
+              :key="f.log_id"
+              :timestamp="formatTime(f.created_at)"
+              :type="flowTimelineType(f.to_status)"
+            >
+              <div class="flow-content">
+                <el-tag size="small" effect="plain">{{ f.to_status || f.from_status }}</el-tag>
+                <span class="flow-operator">{{ f.operator_name }}</span>
+                <span class="flow-remark">{{ f.remark }}</span>
+              </div>
+            </el-timeline-item>
+          </el-timeline>
+        </el-card>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+import {
+  Tools, Refresh, Pointer, CircleCheck, Promotion
+} from '@element-plus/icons-vue'
 import { ticketApi } from '../api/index.js'
 import { useUserStore } from '../stores/user.js'
 
@@ -112,19 +183,20 @@ const userStore = useUserStore()
 const allTickets = ref([])
 const detail = ref(null)
 const detailFlows = ref([])
+const detailVisible = ref(false)
 const progressRemark = ref('')
 const actionError = ref('')
 let pollTimer = null
 
 const columns = computed(() => {
   const statusMap = {
-    '待处理':   { label: '待处理 / 待领取', color: 'yellow' },
-    '处理中':   { label: '处理中', color: 'blue' },
-    '待补充':   { label: '待补充', color: 'purple' },
-    '待外部':   { label: '待外部', color: 'orange' },
-    '待验收':   { label: '待验收', color: 'cyan' },
-    '已完成':   { label: '已完成', color: 'green' },
-    '已取消':   { label: '已取消', color: 'gray' }
+    '待处理':   { label: '待处理 / 待领取', color: 'yellow', badgeType: 'warning' },
+    '处理中':   { label: '处理中', color: 'blue', badgeType: 'primary' },
+    '待补充':   { label: '待补充', color: 'purple', badgeType: 'info' },
+    '待外部':   { label: '待外部', color: 'orange', badgeType: 'warning' },
+    '待验收':   { label: '待验收', color: 'cyan', badgeType: 'primary' },
+    '已完成':   { label: '已完成', color: 'green', badgeType: 'success' },
+    '已取消':   { label: '已取消', color: 'gray', badgeType: 'info' }
   }
   const result = Object.keys(statusMap).map(s => ({ status: s, ...statusMap[s], tickets: [] }))
   allTickets.value.forEach(t => {
@@ -135,43 +207,58 @@ const columns = computed(() => {
 })
 
 const canDone = computed(() => {
-  // 至少有一条处理进展（非提交工单的log）
   return detailFlows.value.some(f => f.remark && f.remark !== '提交工单' && f.operator_id === userStore.userId)
 })
 
-function statusClass(s) {
-  const map = { '待处理': 'pending', '处理中': 'processing', '待补充': 'need-info', '待外部': 'external', '待验收': 'acceptance', '已完成': 'done', '已取消': 'cancelled' }
-  return map[s] || ''
+function statusTagType(s) {
+  const map = {
+    '待处理': 'warning', '处理中': 'primary', '待补充': 'info',
+    '待外部': 'info', '待验收': 'primary', '已完成': 'success', '已取消': 'info'
+  }
+  return map[s] || 'info'
 }
+
+function priorityTagType(p) {
+  const map = { '高': 'danger', '中': 'warning', '低': 'info' }
+  return map[p] || 'info'
+}
+
+function flowTimelineType(status) {
+  const map = {
+    '已完成': 'success', '待验收': 'primary', '处理中': 'primary',
+    '待处理': 'warning', '已取消': 'info'
+  }
+  return map[status] || 'primary'
+}
+
 function formatTime(t) { return t ? new Date(t).toLocaleString('zh-CN') : '' }
 
 async function loadTickets() {
   try {
-    // 我负责的工单 + 尚未被人领取的「待处理」工单
     const res = await ticketApi.list({ mine_or_pool: userStore.userId, page_size: 100 })
     allTickets.value = res.data.list
   } catch (e) { console.error(e) }
 }
 
-// 从看板卡片直接领取
 async function claimTicket(t) {
   try {
     await ticketApi.claim(t.ticket_id)
+    ElMessage.success('领取成功')
     await loadTickets()
   } catch (e) {
-    alert('领取失败：' + e.message)
-    loadTickets() // 可能已被他人领取，刷新看板
+    ElMessage.error('领取失败：' + e.message)
+    loadTickets()
   }
 }
 
-// 从详情弹窗领取
 async function claimCurrent() {
   actionError.value = ''
   const id = detail.value.ticket_id
   try {
     await ticketApi.claim(id)
+    ElMessage.success('领取成功')
     await loadTickets()
-    await openDetail({ ticket_id: id }) // 重新拉详情，拿到处理中状态
+    await openDetail({ ticket_id: id })
   } catch (e) {
     actionError.value = e.message
     loadTickets()
@@ -185,20 +272,20 @@ async function openDetail(t) {
     detailFlows.value = res.data.flow_logs
     progressRemark.value = ''
     actionError.value = ''
-  } catch (e) { console.error(e) }
+    detailVisible.value = true
+  } catch (e) { ElMessage.error('加载详情失败：' + e.message) }
 }
 
 async function doAction(action) {
   actionError.value = ''
   const input = progressRemark.value.trim()
 
-  // 各操作对备注的要求
   const needRemark = { progress: 5, need_info: 5, external: 10 }
   if (needRemark[action]) {
     if (input.length < needRemark[action]) {
       actionError.value = action === 'external'
-        ? `外部依赖说明至少${needRemark[action]}个字符`
-        : `说明至少${needRemark[action]}个字符`
+        ? `外部依赖说明至少 ${needRemark[action]} 个字符`
+        : `说明至少 ${needRemark[action]} 个字符`
       return
     }
   }
@@ -216,28 +303,26 @@ async function doAction(action) {
     await loadTickets()
 
     if (action === 'progress') {
-      // 记录进展后留在弹窗内，方便接着提交方案
       progressRemark.value = ''
       await openDetail({ ticket_id: detail.value.ticket_id })
     } else {
-      alert('操作成功！')
-      detail.value = null
+      ElMessage.success('操作成功！')
+      detailVisible.value = false
     }
   } catch (e) { actionError.value = e.message }
 }
 
 onMounted(() => {
   loadTickets()
-  // 15s 轮询看板
   pollTimer = setInterval(loadTickets, 15000)
 })
 onUnmounted(() => clearInterval(pollTimer))
 
-// 切换账号时清空并重新拉取，避免看到上一个账号的残留数据
 watch(() => userStore.userId, (id) => {
   allTickets.value = []
   detail.value = null
   detailFlows.value = []
+  detailVisible.value = false
   progressRemark.value = ''
   actionError.value = ''
   if (id) loadTickets()
@@ -245,62 +330,134 @@ watch(() => userStore.userId, (id) => {
 </script>
 
 <style scoped>
-.sub { color: #999; margin-bottom: 20px; }
-.kanban { display: flex; gap: 12px; overflow-x: auto; }
-.kanban-col { min-width: 220px; flex: 1; background: #f5f5f5; border-radius: 10px; padding: 12px; }
-.col-header { font-weight: 700; font-size: 14px; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px; display: flex; justify-content: space-between; }
-.col-header.yellow { background: #fffbe6; color: #ad6800; }
-.col-header.blue { background: #e6f7ff; color: #096dd9; }
-.col-header.purple { background: #f9f0ff; color: #722ed1; }
-.col-header.orange { background: #fff7e6; color: #d46b08; }
-.col-header.cyan { background: #e6fffb; color: #08979c; }
-.col-header.green { background: #f6ffed; color: #389e0d; }
-.col-header.gray { background: #fafafa; color: #999; }
-.count { background: rgba(255,255,255,.7); padding: 0 8px; border-radius: 10px; font-size: 12px; }
-.empty-col { text-align: center; color: #ccc; padding: 20px; font-size: 13px; }
-.kanban-card { background: #fff; border-radius: 8px; padding: 12px; margin-bottom: 8px; cursor: pointer; border-left: 3px solid #1890ff; transition: box-shadow .2s; }
-.kanban-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.1); }
-.kanban-card.high { border-left-color: #e74c3c; }
-.card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-.card-id { font-family: monospace; font-size: 12px; color: #1a73e8; }
-.priority-dot { font-size: 11px; padding: 1px 6px; border-radius: 4px; }
-.priority-dot.高 { background: #fff1f0; color: #e74c3c; }
-.priority-dot.中 { background: #fffbe6; color: #faad14; }
-.priority-dot.低 { background: #f0f0f0; color: #999; }
-.card-title { font-size: 14px; font-weight: 500; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.card-meta { font-size: 12px; color: #999; display: flex; gap: 8px; }
-.card-time { font-size: 11px; color: #bbb; margin-top: 4px; }
-.btn-claim { margin-top: 8px; width: 100%; padding: 6px 0; border: none; border-radius: 6px; background: #52c41a; color: #fff; font-size: 13px; cursor: pointer; }
-.btn-claim:hover { background: #45a818; }
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.page-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.page-sub {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+/* 看板 */
+.kanban {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+.kanban-col {
+  min-width: 240px;
+  flex: 1;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+}
+.col-header {
+  font-weight: 700;
+  font-size: 14px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #fff;
+}
+.col-header.yellow { background: #b88230; }
+.col-header.blue   { background: #337ecc; }
+.col-header.purple { background: #722ed1; }
+.col-header.orange { background: #c4562d; }
+.col-header.cyan   { background: #13a8a8; }
+.col-header.green  { background: #529b2e; }
+.col-header.gray   { background: #6b6b6b; }
+.col-label { flex: 1; }
+.col-body { flex: 1; min-height: 200px; max-height: calc(100vh - 220px); }
+
+.kanban-card {
+  margin-bottom: 8px;
+  cursor: pointer;
+  border-left: 3px solid var(--el-color-primary);
+}
+.kanban-card.high { border-left-color: var(--el-color-danger); }
+
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.card-id {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--el-color-primary);
+  font-weight: 600;
+}
+.card-title {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 6px;
+  color: var(--el-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.card-meta {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.card-time {
+  font-size: 11px;
+  color: var(--el-text-color-placeholder);
+  margin-top: 6px;
+}
+.claim-btn { width: 100%; margin-top: 8px; }
 
 /* 弹窗 */
-.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.modal { background: #fff; border-radius: 12px; padding: 32px; width: 700px; max-height: 80vh; overflow-y: auto; position: relative; }
-.modal-close { position: absolute; top: 12px; right: 16px; border: none; background: none; font-size: 20px; cursor: pointer; color: #999; }
-.modal h3 { margin-bottom: 16px; }
-.detail-grid { display: grid; gap: 10px; margin-bottom: 20px; }
-.status-tag { padding: 2px 8px; border-radius: 10px; font-size: 12px; color: #fff; }
-.status-tag.pending { background: #faad14; }
-.status-tag.processing { background: #1890ff; }
-.status-tag.need-info, .status-tag.external { background: #722ed1; }
-.status-tag.acceptance { background: #13c2c2; }
-.status-tag.done { background: #52c41a; }
-.status-tag.cancelled { background: #999; }
-.action-section { background: #f9f9f9; padding: 16px; border-radius: 8px; margin-bottom: 16px; }
-.action-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.action-row input { flex: 1; min-width: 200px; padding: 8px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 14px; }
-.btn-action { padding: 8px 16px; border: 1px solid #d9d9d9; border-radius: 6px; background: #fff; cursor: pointer; font-size: 13px; white-space: nowrap; }
-.btn-action:hover { border-color: #1890ff; color: #1890ff; }
-.btn-action.success { background: #52c41a; color: #fff; border-color: #52c41a; }
-.btn-action.warn { background: #fff7e6; border-color: #faad14; color: #d48806; }
-.btn-action.big { padding: 10px 24px; font-size: 15px; }
-.submit-row { margin-top: 12px; }
-.hint { font-size: 13px; color: #999; }
-.error-text { color: #e74c3c; font-size: 13px; margin-top: 8px; display: block; }
-.flow-log { border-top: 1px solid #e8e8e8; padding-top: 16px; }
-.flow-log h4 { margin-bottom: 10px; }
-.flow-item { display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px dashed #f0f0f0; font-size: 13px; }
-.flow-time { color: #999; white-space: nowrap; }
-.flow-status { padding: 1px 6px; border-radius: 4px; background: #e8f0fe; color: #1a73e8; font-size: 12px; }
-.flow-remark { color: #666; }
+.detail-desc { margin-bottom: 16px; }
+
+.action-card { margin-bottom: 16px; background: var(--el-fill-color-light); }
+.action-title { font-weight: 600; }
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.remark-input { flex: 1; min-width: 200px; }
+.submit-row {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--el-border-color);
+}
+.action-error { display: block; margin-top: 8px; }
+
+.flow-card { background: var(--el-fill-color-light); }
+.flow-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.flow-operator { font-size: 13px; color: var(--el-text-color-secondary); }
+.flow-remark { font-size: 13px; color: var(--el-text-color-regular); }
 </style>

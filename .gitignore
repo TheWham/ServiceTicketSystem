@@ -3,3 +3,19 @@ dist/
 .env
 .env.*
 !.env.example
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# 构建产物与日志
+target/
+logs/
+*.log
+
+# 运行时数据(数据库文件不入库,用 db/init 脚本初始化)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
