@@ -1,0 +1,37 @@
+server:
+  port: 8101
+
+spring:
+  application:
+    name: user-service
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/it_user?useSSL=false&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:root123}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+itticket:
+  jwt:
+    # 必须与 gateway 一致
+    secret: ${JWT_SECRET:it-ticket-dev-jwt-secret-key-32bytes-minimum!!}
+    ttl-hours: 12
+  auth:
+    exclude-paths:
+      - /api/v1/users/login
+      - /api/v1/users/login-options
+      - /api/internal/**
+      - /api/health
+      - /error
+
+logging:
+  level:
+    root: info
+    com.itticket.user.mapper: debug

@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m '更新工单提交与工程师视图 *)",
+      "Bash(git push *)",
+      "Bash(git config *)",
+      "Bash(git commit *)",
+      "Bash(npm start *)",
+      "Bash(npm run *)",
+      "Bash(curl -s \"https://gitee.com/api/v5/user?access_token=U1Y9iglVzPv6nR%2B3jnTDq4mh50Fnq44taOP7laFQEpc\")",
+      "Bash(curl -s -H \"Authorization: Bearer U1Y9iglVzPv6nR+3jnTDq4mh50Fnq44taOP7laFQEpc\" \"https://gitee.com/api/v5/user\")",
+      "Bash(awk '{print $1}')",
+      "Bash(git commit -m '重组 it-ticket-cloud 目录结构,新增 SupervisorView *)",
+      "Read(//c/Users/Admin/.ssh/**)",
+      "Bash(ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -T git@gitee.com)",
+      "Bash(ssh -o ConnectTimeout=15 -T git@gitee.com)",
+      "Bash(git remote *)",
+      "Bash(curl -s \"https://gitee.com/api/v5/users/early-rise/repos?type=all&sort=updated&page=1&per_page=20\")",
+      "Bash(curl -s \"https://gitee.com/api/v5/users/early-rise\")",
+      "Bash(curl -s -X POST \"https://gitee.com/api/v5/user/repos\" -d \"access_token=0d2025170539659a1a7e624e4ec8471b\" -d \"name=it-ticket-system\" -d \"private=true\" -d \"description=IT 工单系统\")",
+      "Bash(curl -s -X POST \"https://gitee.com/api/v5/user/repos\" -d \"access_token=e6081e5d41a58911e5891f76fce36428\" -d \"name=it-ticket-system\" -d \"private=true\" -d \"description=IT 工单系统\")"
+    ]
+  }
+}
