@@ -1,0 +1,65 @@
+# ============================================================
+# IT 服务工单系统 P0 —— 工具链受控代码生成约束（.cursorrules）
+# 依据：《技术SPEC规格书 V1.1》《验收评测协议书》
+# 任何 AI 代码生成（Cursor Composer / Claude Code）必须逐条遵守；
+# 违反任一条即视为生成失败，返工重生成，禁止"先跑起来再说"。
+# ============================================================
+
+## 0. 技术栈与基线
+- Python 3.12，仅标准库 + pytest；存储 SQLite，**所有 SQL 一律参数化绑定，禁止字符串拼接 SQL**。
+- 工程结构：src/ticket_p0/（实现）+ tests/（pytest）+ scripts/（验收回放）。
+- 时间统一格式 `%Y-%m-%d %H:%M:%S`，时区 GMT+8；枚举一律存 name() 字符串，禁止 ordinal。
+
+## 1. 错误码（SPEC §2.7，只允许这 8 个，禁止新造）
+0 成功 / 40000 业务错误 / 40100 未登录 / 40300 无权限 / 40400 资源不存在 /
+40401 资产不存在 / 40900 数据冲突 / 500 系统繁忙。
+
+## 2. 字段校验契约（SPEC §1.7，前后端同规则）
+- title：必填，1~50 字符，含 `<`/`>` 直接拒绝（XSS 防线）。
+- category：必填，值域 HARDWARE/SOFTWARE/NETWORK/ACCOUNT/OTHER。
+- priority：必填可缺省 MEDIUM，值域 HIGH/MEDIUM/LOW。
+- description：必填，10~500 字符；内容原样参数化落库（含 SQL 注入串也只当文本）。
+- assetId：选填，正则 `^IT-[A-Z]{2,4}-\d{8}$`；正则过后必须查 CMDB，查无 → 40401。
+- attachmentUrls：选填，≤3 个，元素须为 `/files/{32位hex}.{jpg|jpeg|png}` 的上传返回 URL。
+- expectedFinishTime：选填，必须 ≥ 当前时间，否则 40000。
+- 多字段同时越界时必须**逐字段收集错误一次性返回**，禁止遇第一个错就中断。
+
+## 3. 附件上传安全（SPEC §1.7 / 协议书 TC-10）
+- 扩展名白名单 jpg/jpeg/png；单张 ≤5MB。
+- **必须嗅探文件头部魔数判定真实类型**（JPEG=FFD8FF、PNG=89504E47…），
+  不信任扩展名；魔数与扩展名不符或为可执行文件（MZ/PE）→ 40000 拒绝。
+- 落盘文件名 UUID32 + 原扩展名，访问 URL `/files/{filename}`。
+
+## 4. 幂等与并发（SPEC §2.1/§2.3）
+- 提单防重：键 `submit:{userId}:{title.javaHashCode}`，TTL 3s，抢不到 → 40900「请勿重复提交」。
+- 通知幂等：键 `notify:{ticketId}:{eventType}:{receiverId}`，TTL 60s，抢不到 → 跳过该接收人。
+- 乐观锁：ticket.version，`UPDATE ... WHERE ticket_id=? AND version=?`，影响行数=0 → 40900。
+- 校验失败的提交**不得**占用防重锁。
+
+## 5. 状态机（SPEC §3，只允许以下 13 条边，其余一律 40900「非法状态流转:X -> Y」）
+- (无)→CREATED：SUBMIT（仅 EMPLOYEE）；CREATED→ASSIGNED：ACCEPT（仅 ENGINEER，落 assignee）。
+- ASSIGNED→PENDING_SUPPLEMENT：REQUEST_SUPPLEMENT（remark 必填）。
+- PENDING_SUPPLEMENT→ASSIGNED：SUPPLEMENT（仅提单本人）。
+- ASSIGNED→PENDING_EXTERNAL：TRANSFER_EXTERNAL（remark 必填）。
+- PENDING_EXTERNAL→ASSIGNED：RESUME。
+- ASSIGNED→PENDING_ACCEPTANCE：RESOLVE。
+- REJECTED→ASSIGNED：REWORK（仅 ENGINEER，复用 DISPATCH 事件）。
+- PENDING_ACCEPTANCE→ACCEPTED：ACCEPT_APPROVE（仅提单本人）。
+- PENDING_ACCEPTANCE→REJECTED：ACCEPT_REJECT（仅提单本人，remark 必填，reject_count+1）。
+- ACCEPTED/REJECTED/CREATED→CLOSED：CLOSE（仅提单本人）。CLOSED/ACCEPTED 为终态边界。
+- SUPERVISOR 对角色守卫放行，但**不放行** creator_only 守卫。
+- **超时扫描只生成 TIMEOUT_ALERT 事件告警，绝不隐式改变 ticket_status**。
+
+## 6. 通知（P0 仅落库，SPEC §2.4）
+- 8 类事件：SUBMIT_SUCCESS/DISPATCH/PENDING_SUPPLEMENT/PENDING_EXTERNAL/
+  PENDING_ACCEPTANCE/ACCEPT_APPROVED/ACCEPT_REJECTED/TIMEOUT_ALERT。
+- channel_used 恒为 LOG；通知失败只记日志，绝不影响主事务与状态流转。
+
+## 7. 主键与发号
+- ticket_id = `TK + yyyyMMdd + 当日4位序号`（如 TK202609210001），发号必须原子（seq 表 ON CONFLICT 自增）。
+
+## 8. 禁止事项
+- 禁止引入 SPEC 未定义的字段、状态、错误码、事件类型。
+- 禁止在扫描/定时任务里修改工单状态；禁止自动销毁工单。
+- 禁止向前端/调用方泄露堆栈；未识别异常统一兜底 500「系统繁忙,请稍后重试」。
+- 禁止为了让测试变绿而修改测试断言（除非测试本身与 SPEC 冲突并注明理由）。
