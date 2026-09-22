@@ -1,3 +1,5 @@
+-- 防止容器初始化时连接字符集为 latin1 导致中文乱码
+SET NAMES utf8mb4;
 -- ============================================================
 -- user-service 库结构(it_user):用户表 + 提单草稿表
 -- 与旧版 backend/db/schema.sql 一致,新增 password_hash 列(JWT 登录)
