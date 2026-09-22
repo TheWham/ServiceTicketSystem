@@ -3,7 +3,14 @@
     "allow": [
       "Bash(git add *)",
       "Bash(git commit -m '更新工单提交与工程师视图 *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git config *)",
+      "Bash(git commit *)",
+      "Bash(npm start *)",
+      "Bash(npm run *)",
+      "Bash(curl -s \"https://gitee.com/api/v5/user?access_token=U1Y9iglVzPv6nR%2B3jnTDq4mh50Fnq44taOP7laFQEpc\")",
+      "Bash(curl -s -H \"Authorization: Bearer U1Y9iglVzPv6nR+3jnTDq4mh50Fnq44taOP7laFQEpc\" \"https://gitee.com/api/v5/user\")",
+      "Bash(awk '{print $1}')"
     ]
   }
 }

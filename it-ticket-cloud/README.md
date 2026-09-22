@@ -1,110 +1,138 @@
-# IT 服务工单系统 · Spring Cloud 微服务版
+# IT 服务工单系统 — 全栈项目
 
-由 Node.js(Express + SQLite)单体迁移而来的 Spring Cloud 微服务后端。**API 路径、`{code,msg,data}` 响应包裹、错误码与前端除登录外完全兼容**。
+> 企业级 IT 服务工单管理系统,覆盖**提单→派单→处理→验收→评价**完整闭环。
+> 后端已完成 **Node.js 单体 → Spring Cloud 微服务** 迁移,新旧两套并存,前端默认对接微服务版。
 
-## 架构
-
-```
-frontend (5173, vite proxy /api → 8080)
-   │
-   ▼
-gateway :8080 ──── JWT 统一鉴权(AuthGlobalFilter),剥离/注入 X-User-* 头
-   │  ├─ /api/v1/users/**    → lb://user-service
-   │  └─ /api/v1/tickets/**  → lb://ticket-service
-   │
-   ├── user-service :8101   库 it_user(user、ticket_draft)
-   │      登录签发 JWT、login-options、me、用户列表、草稿 CRUD、
-   │      /api/internal/users(供 gateway 校验用户、供 ticket-service 查处理人)
-   │
-   └── ticket-service :8201 库 it_ticket(ticket、ticket_flow_log、notification_log)
-          工单创建(幂等+编号)/列表/详情/派单/领取/状态操作/评分、
-          状态机、通知(事务提交后异步 + 1 分钟幂等)、OpenFeign → user-service
-
-注册中心/配置中心:Nacos(8848 HTTP / 9848 gRPC)
-```
+---
 
 ## 技术栈
 
-- Java 17 + Spring Boot 3.2.5
-- Spring Cloud 2023.0.1 + Spring Cloud Alibaba 2023.0.1.2(Nacos 注册+配置)
-- Spring Cloud Gateway(唯一入口)、OpenFeign(服务间调用)
-- MyBatis-Plus 3.5.7 + MySQL 8(每服务独立库)
-- JWT(jjwt 0.12,HS256,12h)+ BCrypt 密码
+| 层 | 微服务版(当前) | 旧单体版(legacy) |
+|:---|:---|:---|
+| 前端 | Vue 3 + Vite + Pinia + Vue Router + Axios | 同左 |
+| 后端 | Java 17 + Spring Boot 3.2.5 + Spring Cloud 2023.0.1 + Spring Cloud Alibaba | Node.js + Express |
+| 数据库 | MySQL 8(双库 it_user / it_ticket) | SQLite(better-sqlite3) |
+| 服务治理 | Nacos(注册中心)+ OpenFeign + Gateway | — |
+| 认证 | JWT(HS256,12h)+ BCrypt,网关统一鉴权 | Mock(请求头 X-User-Id) |
 
-## 快速开始
+## 项目结构
 
-### 方式 A:Docker(推荐)
+```
+it-ticket-system/
+├── it-ticket-cloud/          # ✅ 微服务后端(当前使用)
+│   ├── gateway/              # 网关 :8080 —— 唯一入口 + JWT 统一鉴权 + 路由
+│   ├── user-service/         # 用户服务 :8101 —— 登录/JWT、用户、草稿(库 it_user)
+│   ├── ticket-service/       # 工单服务 :8201 —— 工单全业务、状态机、通知(库 it_ticket)
+│   ├── common/               # Result/错误码/JWT 工具(纯 Java,gateway 可引用)
+│   ├── common-web/           # 全局异常、UserContext 透传头解析、时间格式
+│   ├── db/init/              # MySQL 建库 + 建表 + 种子(自动执行顺序 00→21)
+│   ├── scripts/              # 本地一键启动/初始化脚本(Windows)
+│   ├── docker-compose.yml    # Nacos + MySQL 一键起(Docker 环境)
+│   └── README.md             # 微服务版详细文档 ⭐
+├── backend/                  # 旧 Node.js 单体(:3001,保留作行为基准,可随时删除)
+│   ├── db/                   # SQLite 建表/种子/init 脚本
+│   └── src/                  # Express 入口、controllers、stateMachine 等
+└── frontend/                 # Vue 3 前端(:5173,vite proxy /api → 8080)
+    └── src/
+        ├── api/index.js      # Axios 封装(自动注入 Authorization: Bearer)
+        ├── stores/user.js    # Pinia(token + 用户信息,localStorage 持久化)
+        └── views/            # 登录(选身份+密码)/ 员工端 / 工程师端 / 主管端
+```
+
+## 快速开始(微服务版)
+
+### 1. 起依赖
+
+**有 Docker:**
+```bash
+cd it-ticket-cloud && docker compose up -d   # Nacos(8848/9848) + MySQL(3306,自动建库+种子)
+```
+
+**无 Docker(Windows,本项目已验证的方式):**
+```bash
+# MySQL 免安装版:Nacos 需先就绪顺序无要求
+it-ticket-cloud\scripts\start-mysql-local.cmd   # 首次自动初始化数据目录并启动 3306
+it-ticket-cloud\scripts\start-nacos.cmd         # standalone 模式启动 8848/9848
+it-ticket-cloud\scripts\init-db.cmd             # 建库+建表+种子(root/root123)
+```
+
+### 2. 起服务(需 JDK 17 + Maven)
 
 ```bash
 cd it-ticket-cloud
-docker compose up -d          # 起 MySQL(自动建库+种子) 和 Nacos
+mvn package                                    # 或 IDE 中分别启动三个 Application
+java -jar gateway/target/it-ticket-gateway-1.0.0.jar
+java -jar user-service/target/it-ticket-user-service-1.0.0.jar
+java -jar ticket-service/target/it-ticket-ticket-service-1.0.0.jar
 ```
 
-### 方式 B:Windows 手动安装(无 Docker)
+环境变量(均有默认值):`NACOS_ADDR=127.0.0.1:8848`、`MYSQL_PASSWORD=root123`、`JWT_SECRET`(生产必换)。
 
-1. **MySQL 8**:安装后以 root 运行初始化脚本(顺序执行):
-   ```
-   mysql -uroot -p < db/init/00-create-databases.sql
-   mysql -uroot -p < db/init/10-user-db.sql
-   mysql -uroot -p < db/init/11-user-seed.sql
-   mysql -uroot -p < db/init/20-ticket-db.sql
-   mysql -uroot -p < db/init/21-ticket-seed.sql
-   ```
-   root 密码默认假定 `root123`,不同则用环境变量 `MYSQL_PASSWORD` 覆盖。
-2. **Nacos**:下载 nacos-server 2.3.x zip(https://github.com/alibaba/nacos/releases),
-   解压后在 `bin` 下执行 `startup.cmd -m standalone`(需放行 8848 与 9848 端口)。
-
-### 启动服务(任一 IDE 或命令行)
+### 3. 起前端
 
 ```bash
-# 需 JDK 17 + Maven
-mvn -pl gateway,spring-boot:run     # 或逐个启动
+cd frontend && npm run dev    # 5173,proxy /api → 8080 网关
 ```
 
-启动顺序(本地可任意,Nacos 先就绪即可):
+### 4. 登录
 
-| 服务 | 端口 | 说明 |
-|---|---|---|
-| gateway | 8080 | 唯一入口,前端 proxy 指向它 |
-| user-service | 8101 | 用户/登录/草稿 |
-| ticket-service | 8201 | 工单全业务 |
+种子账号 6 个,**默认密码均为 `123456`**:
 
-环境变量(均有默认值):`NACOS_ADDR`(默认 127.0.0.1:8848)、`MYSQL_HOST/PORT/USERNAME/PASSWORD`(默认 localhost:3306 root/root123)、`JWT_SECRET`(默认开发密钥,**生产必换**)。
+| 账号 | 姓名 | 角色 |
+|:---|:---|:---|
+| U001 | 张小明 | 员工 employee |
+| U002 | 李丽 | 员工 employee |
+| U003 | 王强 | 员工 employee |
+| U004 | 赵工 | 工程师 engineer |
+| U005 | 钱工 | 工程师 engineer |
+| U006 | 孙主管 | 主管 supervisor |
 
-## 登录(JWT)
+## API 一览(与旧版完全兼容)
 
-- 种子账号 6 个,**统一默认密码 `123456`**(BCrypt 存储,见 `db/init/11-user-seed.sql`)。
-- `POST /api/v1/users/login` body `{userId, password}` → `{code:0, data:{token, user}}`。
-- `GET /api/v1/users/login-options` 保留(免认证),前端先选身份再输密码。
-- 前端持 `Authorization: Bearer <token>` 访问;网关校验后向下游注入 `X-User-Id/Name/Role/Dept` 头。
-- 401/40100(未登录/过期)、401/40101(用户被禁用)由网关返回,msg 格式与旧版一致。
+统一响应 `{code, msg, data}`,`code=0` 成功。经网关访问:`http://localhost:8080/api/v1/**`。
 
-## 与旧版的差异(有意为之)
+| 方法 | 路径 | 说明 | 权限 |
+|:---|:---|:---|:---|
+| GET | /api/health | 健康检查 | 免认证 |
+| POST | /api/v1/users/login | 登录,`{userId,password}` → `{token,user}` | 免认证 |
+| GET | /api/v1/users/login-options | 可登录用户列表 | 免认证 |
+| GET | /api/v1/users/me | 当前用户 | 登录 |
+| GET | /api/v1/users?role= | 用户列表(派单用) | 登录 |
+| GET/POST/DELETE | /api/v1/users/drafts | 提单草稿(每用户一条) | 登录 |
+| POST | /api/v1/tickets | 创建工单(client_token 幂等) | 登录 |
+| GET | /api/v1/tickets | 列表(8 种筛选 + 分页) | 登录 |
+| GET | /api/v1/tickets/:id | 详情 + 流转日志 | 登录 |
+| POST | /api/v1/tickets/:id/assign | 派单/改派 | supervisor |
+| POST | /api/v1/tickets/:id/claim | 领取(条件更新防抢领) | engineer |
+| POST | /api/v1/tickets/:id/actions | 状态操作(progress/need_info/external/done/accept/reject/cancel/supply_info/external_resolved) | 状态机校验 |
+| POST | /api/v1/tickets/:id/rating | 评价 1-5 星(仅已完成) | 登录 |
+
+核心错误码:`40001` 参数校验、`40021` 处理人无效、`40100/40101` 未登录/用户禁用、`40300` 权限不足、`40400` 工单不存在、`40901` 幂等冲突、`40910` 非法状态转移、`40912` 已被他人领取。
+
+工单状态机:待处理→处理中→待补充/待外部→待验收→已完成/已取消,7 状态 12 条转移规则(含驳回≥10字、完成需有进展记录等 guard),每次流转写 `ticket_flow_log`,并按事件类型异步发通知(`notification_log` 落库,1 分钟幂等)。
+
+## 迁移验证状态(2026-09-21)
+
+全链路已在本地实测通过:登录/JWT、网关鉴权与透传、建单+幂等、工单号连续、派单 403/40021、领取防抢领、状态机 guard、验收评分、撤回、草稿 CRUD、7 种通知事件落库。详见 [it-ticket-cloud/README.md](it-ticket-cloud/README.md)。
+
+## 与旧版的差异
 
 | 差异点 | 说明 |
-|---|---|
-| 登录 | Mock 选择身份 → 选身份+密码,JWT 12h;`X-User-Id` 头不再被信任(网关会剥离防伪造) |
-| 40101 校验位置 | 旧版每个请求查库校验用户;新版由网关统一调 user-service 校验 |
-| client_token 幂等并发 | 旧版并发同 token 会重试 5 次后 500;新版识别后幂等返回已有工单 |
-| `expected_finish_time` 非法格式 | 旧版静默放过(SQLite 存文本);新版返回 40001 格式无效 |
-| 错误响应 `data` 字段 | 成功带 data 不变;错误响应省略 `data:null`(前端只读 code/msg,无影响) |
-| 通知 | 仍为模拟企微(记录 notification_log,1 分钟幂等);P1 接真实企微/短信 |
+|:---|:---|
+| 登录 | Mock 选身份 → 选身份+密码,JWT 12h;`X-User-Id` 头不再被信任(网关剥离防伪造) |
+| 40101 校验位置 | 旧版每请求查库;新版由网关统一调 user-service 校验 |
+| client_token 并发幂等 | 旧版并发会 500;新版识别后幂等返回已有工单 |
+| 错误响应 | data 为 null 时省略字段(前端只读 code/msg,无影响) |
 
-## 验证状态
+---
 
-已完成并通过的验证(2026-09-21,本地 Nacos + MySQL 8.0.28 实测):
+<details>
+<summary><b>旧 Node.js 单体(legacy,已停用)</b></summary>
 
-- 全模块 `mvn package` 成功;状态机/JWT 单元测试通过
-- 登录签发 JWT、错误密码 40001、`me`/`login-options` 中文正常
-- 网关:白名单放行、无 token 401/40100、剥离伪造头、URL 编码透传中文身份
-- 工单:创建(201)+ client_token 幂等重放 + 40001 合并报错 + 工单号 TK+日期连续
-- 派单 403/40021/成功、claim 条件更新、状态机转移(guard:驳回≥10字、未知操作 40001)
-- done→待验收→accept→已完成→评分 5 星;驳回回处理中;员工撤回已取消
-- 通知:SUBMIT_SUCCESS/DISPATCH/STATUS_CHANGED/PENDING_ACCEPTANCE/ACCEPT_APPROVED/ACCEPT_REJECTED/CANCEL 全部正确落库(事务提交后异步)
-- 草稿 UPSERT/GET/DELETE;Feign 姓名组装(creator_name/assignee_name/operator_name)
+```bash
+cd backend && npm install && npm run db:init && npm start   # :3001
+```
+前端切回旧后端:把 `frontend/vite.config.js` 的 proxy target 改回 `http://localhost:3001`。
+技术细节见 `backend/` 源码与 `db/schema.sqlite.sql`(5 张表)、`db/init.js`(一键建库)。
 
-## 待办(P1)
-
-- [ ] 真实企微/短信通知渠道
-- [ ] JWT secret / 数据源迁移到 Nacos 配置中心统一管理(现为本地文件 + 环境变量)
-- [ ] 超时自动通过/取消的定时任务(旧版也未实现,状态机规则已预留 system 角色)
+</details>

@@ -19,3 +19,5 @@ logs/
 *.db-wal
 *.db-shm
 *.sqlite
+# 旧微服务完整副本(本地备份,不入库)
+it-ticket-cloud/it-ticket-cloud/
