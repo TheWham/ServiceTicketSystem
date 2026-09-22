@@ -32,11 +32,15 @@ it-ticket-system/
 ├── backend/                  # 旧 Node.js 单体(:3001,保留作行为基准,可随时删除)
 │   ├── db/                   # SQLite 建表/种子/init 脚本
 │   └── src/                  # Express 入口、controllers、stateMachine 等
-└── frontend/                 # Vue 3 前端(:5173,vite proxy /api → 8080)
-    └── src/
-        ├── api/index.js      # Axios 封装(自动注入 Authorization: Bearer)
-        ├── stores/user.js    # Pinia(token + 用户信息,localStorage 持久化)
-        └── views/            # 登录(选身份+密码)/ 员工端 / 工程师端 / 主管端
+├── frontend/                 # Vue 3 + Element Plus 前端(:5173,vite proxy /api → 8080)
+│   └── src/
+│       ├── api/index.js      # Axios 封装(自动注入 Authorization: Bearer)
+│       ├── stores/user.js    # Pinia(token + 用户信息,localStorage 持久化)
+│       └── views/            # 登录(选身份+密码)/ 员工端 / 工程师端 / 主管端
+└── acceptance/               # 验收评测(27 项用例全绿,详见 acceptance/README.md)
+    ├── src/ticket_p0/        # P0 阶段 8 大模块参考实现
+    ├── tests/                # pytest 测试套件(含 TC-10 注入防护)
+    └── reports/              # 评测报告输出
 ```
 
 ## 快速开始(微服务版)
@@ -111,9 +115,14 @@ cd frontend && npm run dev    # 5173,proxy /api → 8080 网关
 
 工单状态机:待处理→处理中→待补充/待外部→待验收→已完成/已取消,7 状态 12 条转移规则(含驳回≥10字、完成需有进展记录等 guard),每次流转写 `ticket_flow_log`,并按事件类型异步发通知(`notification_log` 落库,1 分钟幂等)。
 
-## 迁移验证状态(2026-09-21)
+## 当前进展(2026-09-22)
 
-全链路已在本地实测通过:登录/JWT、网关鉴权与透传、建单+幂等、工单号连续、派单 403/40021、领取防抢领、状态机 guard、验收评分、撤回、草稿 CRUD、7 种通知事件落库。详见 [it-ticket-cloud/README.md](it-ticket-cloud/README.md)。
+**已完成**:
+- 后端微服务化:登录/JWT、网关鉴权与透传、建单+幂等、工单号连续、派单 403/40021、领取防抢领、状态机 guard、验收评分、撤回、草稿 CRUD、7 种通知事件落库(详见 [it-ticket-cloud/README.md](it-ticket-cloud/README.md))
+- 前端 Element Plus 化:经典后台布局 + 暗黑模式 + ElMessage/MessageBox,业务调用零改动
+- 验收评测:27 项用例全绿(含 TC-10 注入防护),代码位于 `acceptance/`
+
+**未完成 / 待办**:见 [ROADMAP.md](ROADMAP.md) —— 按 PRD(7) + SPEC(2) 对比列出的功能缺口,含 F-01 知识库推荐、F-02 通知调度、F-03 智能客服等。
 
 ## 与旧版的差异
 
