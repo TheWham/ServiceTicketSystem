@@ -149,23 +149,39 @@
       <p>AI 前置自愈 ➔ 人工把关提单 ➔ 工程师维修 ➔ 经验沉淀 RAG 双飞轮闭环</p>
     </div>
     <div class="btn-group">
-      <button class="btn btn-primary" onclick="downloadImage('chart-main', 'IT工单系统-紧凑泳道图', 'png')">
-        📥 下载紧凑泳道图 (PNG)
-      </button>
-      <button class="btn btn-outline" onclick="downloadSVG('chart-main', 'IT工单系统-紧凑泳道图')">
-        📐 下载矢量图 (SVG)
-      </button>
+      <a class="btn btn-primary" href="./业务流程泳道图-超清4K.png" download="业务流程泳道图-超清4K.png">
+        📥 下载 4K 超高清大图 (4320×2080 PNG)
+      </a>
+      <a class="btn btn-outline" href="./业务流程泳道图-矢量高清.svg" download="业务流程泳道图-矢量高清.svg">
+        📐 下载纯矢量图 (SVG / 无限放大)
+      </a>
       <button class="btn btn-success" onclick="downloadImage('chart-flywheel', 'IT工单系统-双飞轮闭环图', 'png')">
         📥 下载双飞轮图 (PNG)
       </button>
     </div>
   </div>
 
-  <!-- 主图：超紧凑一体化泳道图 (一屏看完无须滚动) -->
+  <!-- 重点展示：5层角色标准 4K 矢量泳道大图 (已带左侧角色列：员工 / 前端 / 后端 / 人工客服和工程师 / 存储引擎层) -->
   <div class="chart-panel">
     <div class="panel-header">
-      <h2>🎯 1. 紧凑型端到端业务泳道图 (100% 一屏完整呈现，适合放 PPT)</h2>
-      <span>流程横向流转 · 职责垂直分区</span>
+      <h2>🎯 1. 4K 超高清业务流程泳道图（已全量矢量重构，4320×2080 视网膜级锐利）</h2>
+      <span>五层职责架构：员工 ➔ 前端 ➔ 后端 ➔ 人工客服与工程师 ➔ 存储引擎层</span>
+    </div>
+    <div class="chart-container" style="padding: 10px 0;">
+      <a href="./业务流程泳道图-超清4K.png" target="_blank" title="点击查看 4K 原始超大图">
+        <img src="./业务流程泳道图-超清4K.png" alt="业务流程泳道图-超清4K" style="width: 100%; max-width: 1100px; height: auto; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); transition: transform 0.2s ease;" />
+      </a>
+    </div>
+    <div class="hint-bar">
+      🔍 提示：上图为 4K 超高清渲染版，字迹与线条 100% 锐利，点击图片可在新标签页查看 4320×2080 原图，支持直接插入 PPT 放映。
+    </div>
+  </div>
+
+  <!-- 备用：Mermaid 矢量交互版 -->
+  <div class="chart-panel">
+    <div class="panel-header">
+      <h2>📐 2. Mermaid 矢量泳道图 (可局部修改节点文字与连线)</h2>
+      <span>轻量级纯文本流 · 支持 SVG 矢量缩放</span>
     </div>
     <div class="chart-container" id="chart-main">
       <div class="mermaid">

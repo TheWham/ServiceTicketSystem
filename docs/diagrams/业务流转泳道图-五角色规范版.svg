@@ -1,0 +1,302 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1450 1360" width="1450" height="1360" style="background:#ffffff; font-family:'PingFang SC','Microsoft YaHei','Segoe UI',sans-serif;">
+  <defs>
+    <!-- 箭头标记 -->
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#1e293b"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7e22ce"/>
+    </marker>
+    <!-- 柔和阴影 -->
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="1" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <style>
+    .title-text { font-size: 21px; font-weight: 800; font-style: italic; fill: #2e1065; letter-spacing: 0.5px; }
+    .col-header { font-size: 16px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+    .node-text { font-size: 13.5px; font-weight: 600; fill: #0f172a; text-anchor: middle; }
+    .sub-text { font-size: 11px; font-weight: normal; fill: #475569; text-anchor: middle; }
+    .decision-text { font-size: 13px; font-weight: 700; fill: #0f172a; text-anchor: middle; dominant-baseline: central; }
+    .cond-yes { font-size: 12px; font-weight: 800; fill: #16a34a; }
+    .cond-no { font-size: 12px; font-weight: 800; fill: #dc2626; }
+    .flow-line { fill: none; stroke: #1e293b; stroke-width: 1.8; marker-end: url(#arrow); }
+    .dash-line { fill: none; stroke: #2563eb; stroke-width: 1.8; stroke-dasharray: 5,4; marker-end: url(#arrow-blue); }
+    .feed-line { fill: none; stroke: #7e22ce; stroke-width: 2; stroke-dasharray: 6,4; marker-end: url(#arrow-purple); }
+  </style>
+
+  <!-- 外边框 (大矩形) -->
+  <rect x="25" y="20" width="1400" height="1310" fill="#ffffff" stroke="#1e293b" stroke-width="2.5" rx="4"/>
+
+  <!-- 1. 顶部总标题横幅 -->
+  <rect x="25" y="20" width="1400" height="52" fill="#e9d5ff" stroke="#1e293b" stroke-width="2"/>
+  <text x="50" y="52" class="title-text">IT 服务工单系统业务流转泳道图</text>
+
+  <!-- 2. 五大泳道列头 (无序号，清晰角色名) -->
+  <!-- 泳道1: 员工 -->
+  <rect x="25" y="72" width="280" height="46" fill="#bae6fd" stroke="#1e293b" stroke-width="1.8"/>
+  <text x="165" y="95" class="col-header" fill="#0369a1">员 工</text>
+
+  <!-- 泳道2: AI 客服 -->
+  <rect x="305" y="72" width="280" height="46" fill="#fed7aa" stroke="#1e293b" stroke-width="1.8"/>
+  <text x="445" y="95" class="col-header" fill="#9a3412">AI 客服</text>
+
+  <!-- 泳道3: 人工客服 -->
+  <rect x="585" y="72" width="280" height="46" fill="#fef08a" stroke="#1e293b" stroke-width="1.8"/>
+  <text x="725" y="95" class="col-header" fill="#854d0e">人工客服</text>
+
+  <!-- 泳道4: 工程师 -->
+  <rect x="865" y="72" width="280" height="46" fill="#bbf7d0" stroke="#1e293b" stroke-width="1.8"/>
+  <text x="1005" y="95" class="col-header" fill="#166534">工 程 师</text>
+
+  <!-- 泳道5: 知识库管理员 -->
+  <rect x="1145" y="72" width="280" height="46" fill="#f5d0fe" stroke="#1e293b" stroke-width="1.8"/>
+  <text x="1285" y="95" class="col-header" fill="#7e22ce">知识库管理员</text>
+
+  <!-- 泳道垂直分割线 -->
+  <line x1="305" y1="118" x2="305" y2="1330" stroke="#1e293b" stroke-width="1.8"/>
+  <line x1="585" y1="118" x2="585" y2="1330" stroke="#1e293b" stroke-width="1.8"/>
+  <line x1="865" y1="118" x2="865" y2="1330" stroke="#1e293b" stroke-width="1.8"/>
+  <line x1="1145" y1="118" x2="1145" y2="1330" stroke="#1e293b" stroke-width="1.8"/>
+
+  <!-- ======================= 节点区域 (已去除所有数字序号) ======================= -->
+
+  <!-- [列5 顶层前置] 知识库管理员：手册与规范上传 -->
+  <g id="node-km-upload" filter="url(#shadow)">
+    <rect x="1180" y="148" width="210" height="60" rx="4" fill="#ffedd5" stroke="#1e293b" stroke-width="1.8"/>
+    <text x="1285" y="173" class="node-text">上传/维护故障手册</text>
+    <text x="1285" y="193" class="sub-text">（录入规范文档与基础排查库）</text>
+  </g>
+
+  <!-- [列1 阶段1] 员工：开始 -->
+  <g id="node-start" filter="url(#shadow)">
+    <rect x="95" y="152" width="140" height="44" rx="22" fill="#cffafe" stroke="#0891b2" stroke-width="1.8"/>
+    <text x="165" y="179" class="decision-text" fill="#0e7490">开 始</text>
+  </g>
+
+  <!-- [列1 阶段1] 员工：发起咨询 (已去序号) -->
+  <g id="node-u1" filter="url(#shadow)">
+    <rect x="65" y="240" width="200" height="56" rx="4" fill="#ffedd5" stroke="#1e293b" stroke-width="1.8"/>
+    <text x="165" y="264" class="node-text">发起故障咨询与提问</text>
+    <text x="165" y="282" class="sub-text">（输入现象描述 / 错误代码）</text>
+  </g>
+
+  <!-- [列2 阶段1] AI客服：RAG知识检索 (已去序号) -->
+  <g id="node-ai-rag" filter="url(#shadow)">
+    <rect x="345" y="240" width="200" height="56" rx="4" fill="#ffedd5" stroke="#1e293b" stroke-width="1.8"/>
+    <text x="445" y="264" class="node-text">检索知识库并生成方案</text>
+    <text x="445" y="282" class="sub-text">（AI+RAG 输出自愈排查步骤）</text>
+  </g>
+
+  <!-- [列2 阶段1] AI客服：判断问题是否解决 -->
+  <g id="node-ai-decide" filter="url(#shadow)">
+    <polygon points="445,338 525,378 445,418 365,378" fill="#fef3c7" stroke="#1e293b" stroke-width="1.8"/>
+    <text x="445" y="374" class="node-text">问题是否</text>
+    <text x="445" y="390" class="node-text">已解决？</text>
+  </g>
+
+  <!-- [列1 阶段1] 员工：对AI方案确认与满意反馈 (已更新说明) -->
+  <g id="node-u-solved" filter="url(#shadow)">
+    <rect x="65" y="350" width="200" height="56" rx="4" fill="#dcfce7" stroke="#16a34a" stroke-width="1.8"/>
+    <text x="165" y="374" class="node-text" fill="#14532d">✨ 方案有效·反馈解决</text>
+    <text x="165" y="392" class="sub-text" fill="#166534">（反馈AI方案有效，无需建单）</text>
+  </g>
+
+  <!-- [列1 阶段1] 员工：自愈结束胶囊 -->
+  <g id="node-end-self" filter="url(#shadow)">
+    <rect x="105" y="440" width="120" height="38" rx="19" fill="#cffafe" stroke="#0891b2" stroke-width="1.8"/>
+    <text x="165" y="464" class="decision-text" fill="#0e7490">结 束</text>
+  </g>
+
+  <!-- [列3 阶段2] 人工客服：接收转人工 (已去序号) -->
+  <g id="node-cs-receive" filter="url(#shadow)">
+    <rect x="625" y="470" width="200" height="60" rx="4" fill="#ffedd5" stroke="#1e293b" stroke-width="1.8"/>
+    <text x="725" y="495" class="node-text">接收转人工与上下文</text>
+    <text x="725" y="515" class="sub-text">（继承对话历史/故障多模态截图）</text>
+  </g>
+
+  <!-- [列3 阶段2] 人工客服：研判能否在线解决 -->
+  <g id="node-cs-judge" filter="url(#shadow)">
+    <polygon points="725,570 810,612 725,654 640,612" fill="#fef3c7" stroke="#1e293b" stroke-width="1.8"/>
+    <text x="725" y="607" class="node-text">人工客服研判</text>
+    <text x="725" y="623" class="node-text">确需维修？</text>
+  </g>
+
+  <!-- [列3 阶段2] 人工客服：在线指导排除 -->
+  <g id="node-cs-online" filter="url(#shadow)">
+    <rect x="625" y="695" width="200" height="52" rx="4" fill="#dcfce7" stroke="#16a34a" stroke-width="1.8"/>
+    <text x="725" y="718" class="node-text" fill="#14532d">在线指导排除故障</text>
+    <text x="725" y="736" class="sub-text" fill="#166534">（常规权限/远程配置，直接化解）</text>
+  </g>
+
+  <!-- [列1 阶段2] 员工：在线解决结束 -->
+  <g id="node-u-cs-solved" filter="url(#shadow)">
+    <rect x="105" y="700" width="120" height="42" rx="21" fill="#cffafe" stroke="#0891b2" stroke-width="1.8"/>
+    <text x="165" y="726" class="decision-text" fill="#0e7490">结 束</text>
+  </g>
+
+  <!-- [列3 阶段2] 人工客服：推送报障卡片 (已去序号) -->
+  <g id="node-cs-push" filter="url(#shadow)">
+    <rect x="625" y="785" width="200" height="54" rx="4" fill="#ffedd5" stroke="#1e293b" stroke-width="1.8"/>
+    <text x="725" y="808" class="node-text">推送【报障提单卡片】</text>
+    <text x="725" y="826" class="sub-text">（预填分类、故障等级与设备信息）</text>
+  </g>
+
+  <!-- [列1 阶段2] 员工：填写并提交工单 (已去序号) -->
+  <g id="node-u-submit" filter="url(#shadow)">
+    <rect x="65" y="785" width="200" height="54" rx="4" fill="#ffedd5" stroke="#1e293b" stroke-width="1.8"/>
+    <text x="165" y="808" class="node-text">补全信息并提交工单</text>
+    <text x="165" y="826" class="sub-text">（补全具体工位/补充故障图片）</text>
+  </g>
+
+  <!-- [列3 阶段2] 人工客服：审核建单派发 (已去序号) -->
+  <g id="node-cs-dispatch" filter="url(#shadow)">
+    <rect x="625" y="885" width="200" height="54" rx="4" fill="#ffedd5" stroke="#1e293b" stroke-width="1.8"/>
+    <text x="725" y="908" class="node-text">生成工单并派发工程师</text>
+    <text x="725" y="926" class="sub-text">（生成TK单号/指派专人工程师）</text>
+  </g>
+
+  <!-- [列4 阶段3] 工程师：接单待办 (已去序号) -->
+  <g id="node-eng-accept" filter="url(#shadow)">
+    <rect x="905" y="885" width="200" height="54" rx="4" fill="#ffedd5" stroke="#1e293b" stroke-width="1.8"/>
+    <text x="1005" y="908" class="node-text">查看待办并认领工单</text>
+    <text x="1005" y="926" class="sub-text">（锁定工单状态：维修中）</text>
+  </g>
+
+  <!-- [列4 阶段3] 工程师：排查维修 (已去序号) -->
+  <g id="node-eng-repair" filter="url(#shadow)">
+    <rect x="905" y="980" width="200" height="54" rx="4" fill="#ffedd5" stroke="#1e293b" stroke-width="1.8"/>
+    <text x="1005" y="1003" class="node-text">现场/远程排查与维修</text>
+    <text x="1005" y="1021" class="sub-text">（备件更换 / 系统深层修复）</text>
+  </g>
+
+  <!-- [列4 阶段3] 工程师：提交处理结果 (已去序号) -->
+  <g id="node-eng-done" filter="url(#shadow)">
+    <rect x="905" y="1070" width="200" height="58" rx="4" fill="#ffedd5" stroke="#1e293b" stroke-width="1.8"/>
+    <text x="1005" y="1094" class="node-text">解决故障并提交处理结果</text>
+    <text x="1005" y="1112" class="sub-text">（填写根本原因与解决方案记录）</text>
+  </g>
+
+  <!-- [列1 阶段4] 员工：验收与评价 (已去序号) -->
+  <g id="node-u-accept" filter="url(#shadow)">
+    <rect x="65" y="1072" width="200" height="54" rx="4" fill="#ffedd5" stroke="#1e293b" stroke-width="1.8"/>
+    <text x="165" y="1095" class="node-text">接收完工通知与验收</text>
+    <text x="165" y="1113" class="sub-text">（服务打分评价 / 工单办结）</text>
+  </g>
+
+  <!-- [列1 阶段4] 员工：最终结束 -->
+  <g id="node-end" filter="url(#shadow)">
+    <rect x="105" y="1165" width="120" height="44" rx="22" fill="#cffafe" stroke="#0891b2" stroke-width="1.8"/>
+    <text x="165" y="1192" class="decision-text" fill="#0e7490">结 束</text>
+  </g>
+
+  <!-- [列5 阶段4] 知识库管理员：研判是否需要沉淀到知识库 -->
+  <g id="node-km-judge" filter="url(#shadow)">
+    <polygon points="1285,1052 1380,1099 1285,1146 1190,1099" fill="#fef3c7" stroke="#1e293b" stroke-width="1.8"/>
+    <text x="1285" y="1093" class="node-text">知识库管理员研判</text>
+    <text x="1285" y="1111" class="node-text">需沉淀到知识库？</text>
+  </g>
+
+  <!-- [列5 阶段4] 知识库管理员：仅归档不沉淀 (已去常规/偶发字样) -->
+  <g id="node-km-no" filter="url(#shadow)">
+    <rect x="1185" y="1190" width="200" height="48" rx="4" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+    <text x="1285" y="1211" class="node-text" fill="#475569">仅工单归档</text>
+    <text x="1285" y="1228" class="sub-text">（无需生成公共知识）</text>
+  </g>
+
+  <!-- [列5 阶段4] 知识库管理员：沉淀至知识库 (已去序号与Q&A) -->
+  <g id="node-km-yes" filter="url(#shadow)">
+    <rect x="1175" y="885" width="220" height="54" rx="4" fill="#dcfce7" stroke="#16a34a" stroke-width="1.8"/>
+    <text x="1285" y="908" class="node-text" fill="#14532d">提炼结构化知识并入库</text>
+    <text x="1285" y="926" class="sub-text" fill="#166534">（沉淀为企业标准化知识案卷）</text>
+  </g>
+
+  <!-- ======================= 连线流转 ======================= -->
+
+  <!-- 1. 顶层：知识库管理员上传手册 -> 直插精准指到 AI 客服“检索知识库并生成方案”模块顶部 (已修复悬空问题) -->
+  <path d="M 1180 178 L 445 178 L 445 240" class="dash-line"/>
+  <text x="815" y="170" font-size="12" font-weight="600" fill="#2563eb" text-anchor="middle">初始化与规范维护：上传故障手册赋能 AI 知识库底座</text>
+
+  <!-- 2. 员工开始 -> 发起咨询 -->
+  <path d="M 165 196 L 165 240" class="flow-line"/>
+
+  <!-- 3. 发起咨询 -> AI客服检索 -->
+  <path d="M 265 268 L 345 268" class="flow-line"/>
+
+  <!-- 4. AI检索 -> 是否解决 -->
+  <path d="M 445 296 L 445 338" class="flow-line"/>
+
+  <!-- 5. 是否解决 -> [是] 方案有效反馈解决 -->
+  <path d="M 365 378 L 265 378" class="flow-line"/>
+  <text x="315" y="370" class="cond-yes">是</text>
+
+  <!-- 6. 满意反馈 -> 结束胶囊 -->
+  <path d="M 165 406 L 165 440" class="flow-line"/>
+
+  <!-- 7. 是否解决 -> [否] 转人工客服 -->
+  <path d="M 445 418 L 445 500 L 625 500" class="flow-line"/>
+  <text x="452" y="442" class="cond-no">否 (转人工)</text>
+
+  <!-- 8. 接收转人工 -> 研判能否在线解决 -->
+  <path d="M 725 530 L 725 570" class="flow-line"/>
+
+  <!-- 9. 研判 -> [否] 在线指导排除 -->
+  <path d="M 725 654 L 725 695" class="flow-line"/>
+  <text x="732" y="678" class="cond-no">否 (在线可解)</text>
+
+  <!-- 10. 在线指导 -> 员工结束 -->
+  <path d="M 625 721 L 225 721" class="flow-line"/>
+
+  <!-- 11. 研判 -> [是] 推送报障卡片 -->
+  <path d="M 810 612 L 845 612 L 845 812 L 825 812" class="flow-line"/>
+  <text x="852" y="675" class="cond-yes">是 (确需维修)</text>
+
+  <!-- 12. 推送报障卡片 -> 员工填写提交 -->
+  <path d="M 625 812 L 265 812" class="flow-line"/>
+
+  <!-- 13. 员工提交 -> 客服生成工单派工 -->
+  <path d="M 165 839 L 165 912 L 625 912" class="flow-line"/>
+
+  <!-- 14. 客服派工 -> 工程师认领 -->
+  <path d="M 825 912 L 905 912" class="flow-line"/>
+
+  <!-- 15. 工程师认领 -> 现场/远程排查维修 -->
+  <path d="M 1005 939 L 1005 980" class="flow-line"/>
+
+  <!-- 16. 排查维修 -> 解决故障提交方案 -->
+  <path d="M 1005 1034 L 1005 1070" class="flow-line"/>
+
+  <!-- 17. 提交方案 -> [支流A] 员工验收通知 -->
+  <path d="M 905 1099 L 265 1099" class="dash-line"/>
+  <text x="545" y="1090" font-size="11" font-weight="600" fill="#2563eb" text-anchor="middle">完工通知：邀请员工验收与评价</text>
+
+  <!-- 18. 员工验收 -> 最终结束 -->
+  <path d="M 165 1126 L 165 1165" class="flow-line"/>
+
+  <!-- 19. 提交方案 -> [支流B] 知识库管理员研判审核 -->
+  <path d="M 1105 1099 L 1190 1099" class="flow-line"/>
+
+  <!-- 20. 知识库管理员研判 -> [否] 仅归档 (已去掉偶发/常规) -->
+  <path d="M 1285 1146 L 1285 1190" class="flow-line"/>
+  <text x="1292" y="1170" class="cond-no">否</text>
+
+  <!-- 21. 知识库管理员研判 -> [是] 提炼结构化入库 (已去掉典型方案) -->
+  <path d="M 1285 1052 L 1285 939" class="flow-line"/>
+  <text x="1292" y="1000" class="cond-yes">是</text>
+
+  <!-- 22. 提炼入库 -> 反哺更新 AI客服知识库 (沉淀 RAG 向量库) -->
+  <path d="M 1175 912 L 1130 912 L 1130 955 L 565 955 L 565 268 L 545 268" class="feed-line"/>
+  <rect x="785" y="942" width="160" height="24" rx="4" fill="#faf5ff" stroke="#d8b4fe" stroke-width="1"/>
+  <text x="865" y="958" font-size="12" font-weight="700" fill="#7e22ce" text-anchor="middle">沉淀 RAG 向量库</text>
+
+</svg>

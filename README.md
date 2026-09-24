@@ -133,6 +133,7 @@ cd frontend && npm install && npm run dev    # 5173,proxy /api → 8080 网关
 
 ## 相关文档
 
+- [docs/README.md](docs/README.md) —— **项目核心技术文档大纲与全景业务流转泳道图 (五角色规范版)** ⭐
 - [ROADMAP.md](ROADMAP.md) —— 未完成功能点清单(P0/P1/P2 共 15 项)
 - [it-ticket-cloud/README.md](it-ticket-cloud/README.md) —— 微服务版详细技术文档(架构/接口/错误码/状态机/数据库/排查指南)
 - [acceptance/README.md](acceptance/README.md) —— 验收评测报告(27 项用例全绿)
