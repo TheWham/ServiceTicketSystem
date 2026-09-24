@@ -53,6 +53,8 @@ public class UserService {
                 .eq("status", UserStatus.active.getValue())
                 .last("ORDER BY CASE role WHEN 'employee' THEN 1 WHEN 'engineer' THEN 2 WHEN 'supervisor' THEN 3 ELSE 4 END, name");
         return userMapper.selectList(qw).stream()
+                // 过滤掉 role 为空的异常数据，避免 NPE
+                .filter(u -> u.getRole() != null)
                 .map(u -> new UserVO(u.getUserId(), u.getName(), u.getRole().getValue(), u.getDepartment()))
                 .toList();
     }
@@ -67,6 +69,7 @@ public class UserService {
         }
         qw.orderByAsc("role").orderByAsc("name");
         return userMapper.selectList(qw).stream()
+                .filter(u -> u.getRole() != null)
                 .map(u -> new UserVO(u.getUserId(), u.getName(), u.getRole().getValue(), u.getDepartment()))
                 .toList();
     }

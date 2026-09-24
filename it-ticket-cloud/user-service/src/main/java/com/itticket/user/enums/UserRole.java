@@ -7,7 +7,8 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum UserRole {
     employee("employee"),
     engineer("engineer"),
-    supervisor("supervisor");
+    supervisor("supervisor"),
+    customer_service("customer_service");  // AI客服角色
 
     @EnumValue
     @JsonValue
