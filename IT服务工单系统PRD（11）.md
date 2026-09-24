@@ -11,7 +11,7 @@
 
 ## 二、业务流程泳道图设计
 
-![image-20260923163308117](C:\Users\Admin\AppData\Roaming\Typora\typora-user-images\image-20260923163308117.png)
+![业务流程泳道图](docs/images/swimlane.png)
 
 ## 三、界面与交互设计
 
@@ -19,25 +19,25 @@
 
 1.1登录界面
 
-![img](file:///C:\Users\Admin\AppData\Local\Temp\ksohtml5108\wps1.png) 
+![原型图](docs/images/proto-01-login.jpg) 
 
  
 
 1.2员工（发起咨询）
 
-![img](file:///C:\Users\Admin\AppData\Local\Temp\ksohtml5108\wps2.png) 
+![原型图](docs/images/proto-02-employee-consult.jpg) 
 
  
 
 1.3员工（提交工单）
 
-![img](file:///C:\Users\Admin\AppData\Local\Temp\ksohtml5108\wps3.png) 
+![原型图](docs/images/proto-03-employee-submit.jpg) 
 
  
 
 1.4员工（我的工单）
 
-![img](file:///C:\Users\Admin\AppData\Local\Temp\ksohtml5108\wps4.png) 
+![原型图](docs/images/proto-04-employee-my-tickets.jpg) 
 
  
 
@@ -51,31 +51,31 @@
 
 1.5员工（工单详情）
 
-![img](file:///C:\Users\Admin\AppData\Local\Temp\ksohtml5108\wps5.png) 
+![原型图](docs/images/proto-05-employee-ticket-detail.jpg) 
 
  
 
 2.1 IT工程师（工单池）
 
-![img](file:///C:\Users\Admin\AppData\Local\Temp\ksohtml5108\wps6.png) 
+![原型图](docs/images/proto-06-engineer-pool.jpg) 
 
 
 
 2.2 IT工程师（我的任务）
 
-![img](file:///C:\Users\Admin\AppData\Local\Temp\ksohtml5108\wps7.png) 
+![原型图](docs/images/proto-07-engineer-my-tasks.jpg) 
 
  
 
 2.3 IT工程师（已完成）
 
-![img](file:///C:\Users\Admin\AppData\Local\Temp\ksohtml5108\wps8.png) 
+![原型图](docs/images/proto-08-engineer-done.jpg) 
 
 
 
 3.1 人工客服（会话队列）
 
-![img](file:///C:\Users\Admin\AppData\Local\Temp\ksohtml5108\wps9.png) 
+![原型图](docs/images/proto-09-agent-queue.jpg) 
 
  
 
@@ -83,37 +83,37 @@
 
 3.2 人工客服（处理工作台）
 
-![img](file:///C:\Users\Admin\AppData\Local\Temp\ksohtml5108\wps10.png) 
+![原型图](docs/images/proto-10-agent-workbench.jpg) 
 
 
 
 3.3 人工客服（提单卡片）
 
-![img](file:///C:\Users\Admin\AppData\Local\Temp\ksohtml5108\wps11.png) 
+![原型图](docs/images/proto-11-agent-ticket-card.jpg) 
 
  
 
 4.1 管理人员（数据看板）
 
-![img](file:///C:\Users\Admin\AppData\Local\Temp\ksohtml5108\wps12.png) 
+![原型图](docs/images/proto-12-admin-dashboard.jpg) 
 
 
 
 4.2 管理人员（团队监控）
 
-![img](file:///C:\Users\Admin\AppData\Local\Temp\ksohtml5108\wps13.png) 
+![原型图](docs/images/proto-13-admin-team-monitor.jpg) 
 
  
 
 4.3 管理人员（知识库管理）
 
-![img](file:///C:\Users\Admin\AppData\Local\Temp\ksohtml5108\wps14.png) 
+![原型图](docs/images/proto-14-admin-knowledge-base.jpg) 
 
 
 
 4.4 管理人员（流程配置）
 
-![img](file:///C:\Users\Admin\AppData\Local\Temp\ksohtml5108\wps15.png) 
+![原型图](docs/images/proto-15-admin-flow-config.jpg) 
 
 ### 2. 字段级校验与交互反馈表
 
