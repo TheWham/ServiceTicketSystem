@@ -21,3 +21,9 @@ logs/
 *.sqlite
 # 旧微服务完整副本(本地备份,不入库)
 it-ticket-cloud/it-ticket-cloud/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+

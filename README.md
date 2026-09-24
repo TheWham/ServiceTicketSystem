@@ -131,9 +131,10 @@ cd frontend && npm install && npm run dev    # 5173,proxy /api → 8080 网关
 
 **未完成 / 待办**:见 [ROADMAP.md](ROADMAP.md) —— 按 PRD(7) + SPEC(2) 对比列出的功能缺口,含 F-01 知识库推荐、F-02 通知调度、F-03 智能客服等。
 
-## 相关文档
-
-- [docs/README.md](docs/README.md) —— **项目核心技术文档大纲与全景业务流转泳道图 (五角色规范版)** ⭐
+- [AGENTS.md](AGENTS.md) —— **智能体研发宪法与规范注入书 (工业级标准，最高法律地位)** ⚖️
+- [CLAUDE.md](CLAUDE.md) —— **架构宪法与开发指令库 (Claude Code / AI 专属执行手册)** 📜
+- [specs/](specs/) (及 [docs/specs/](docs/specs/)) —— **Day 4 签署技术 SPEC 规格书、PRD 与评测协议归档库** 📋
+- [docs/diagrams/业务流转泳道图.png](docs/diagrams/业务流转泳道图.png) —— **全景业务流转泳道图 (五角色规范版)** ⭐
 - [ROADMAP.md](ROADMAP.md) —— 未完成功能点清单(P0/P1/P2 共 15 项)
 - [it-ticket-cloud/README.md](it-ticket-cloud/README.md) —— 微服务版详细技术文档(架构/接口/错误码/状态机/数据库/排查指南)
 - [acceptance/README.md](acceptance/README.md) —— 验收评测报告(27 项用例全绿)
