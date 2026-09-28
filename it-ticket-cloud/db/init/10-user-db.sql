@@ -11,7 +11,7 @@ USE it_user;
 CREATE TABLE `user` (
   `user_id`        VARCHAR(32)  NOT NULL COMMENT '用户ID，如 U001',
   `name`           VARCHAR(20)  NOT NULL COMMENT '姓名',
-  `role`           ENUM('employee','engineer','supervisor') NOT NULL COMMENT '角色',
+  `role`           ENUM('employee','engineer','supervisor','customer_service') NOT NULL COMMENT '角色(customer_service=人工客服,AI 智能受理用)',
   `department`     VARCHAR(50)  DEFAULT NULL COMMENT '部门',
   `phone`          VARCHAR(20)  DEFAULT NULL COMMENT '手机号(短信兜底)',
   `wechat_id`      VARCHAR(50)  DEFAULT NULL COMMENT '企业微信ID',

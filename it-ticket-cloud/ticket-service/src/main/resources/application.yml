@@ -7,7 +7,7 @@ spring:
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/it_ticket?useSSL=false&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: ${MYSQL_USERNAME:root}
-    password: ${MYSQL_PASSWORD:123456.A}
+    password: ${MYSQL_PASSWORD:root123}
     driver-class-name: com.mysql.cj.jdbc.Driver
   cloud:
     nacos:
@@ -30,6 +30,8 @@ itticket:
     exclude-paths:
       - /api/health
       - /error
+      # 内部接口(ai-service 知识回流/转工单),不经网关,服务间直连
+      - /api/internal/**
 
 logging:
   level:
