@@ -105,17 +105,17 @@ const isLoginPage = computed(() => route.path === '/login')
 const activeMenu = computed(() => 'home')
 
 const breadcrumb = computed(() => {
-  const map = { '/employee': '员工工作台', '/engineer': '工程师工作台', '/supervisor': '主管看板' }
+  const map = { '/employee': '员工工作台', '/engineer': '工程师工作台', '/supervisor': '主管看板', '/agent': '客服工作台' }
   return map[route.path] || '工作台'
 })
 
 const roleLabel = computed(() => {
-  const map = { employee: '员工', engineer: '工程师', supervisor: '主管' }
+  const map = { employee: '员工', engineer: '工程师', supervisor: '主管', customer_service: '客服' }
   return map[userStore.currentUser?.role] || ''
 })
 
 const roleTagType = computed(() => {
-  const map = { employee: 'success', engineer: 'primary', supervisor: 'warning' }
+  const map = { employee: 'success', engineer: 'primary', supervisor: 'warning', customer_service: 'danger' }
   return map[userStore.currentUser?.role] || 'info'
 })
 

@@ -2,13 +2,15 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '../stores/user.js'
 import { userApi } from '../api/index.js'
 
-const HOME = { employee: '/employee', engineer: '/engineer', supervisor: '/supervisor' }
+const HOME = { employee: '/employee', engineer: '/engineer', supervisor: '/supervisor', customer_service: '/agent' }
 
 const routes = [
   { path: '/login', name: 'Login', component: () => import('../views/LoginView.vue') },
   { path: '/employee', name: 'Employee', component: () => import('../views/EmployeeView.vue'), meta: { role: 'employee' } },
   { path: '/engineer', name: 'Engineer', component: () => import('../views/EngineerView.vue'), meta: { role: 'engineer' } },
   { path: '/supervisor', name: 'Supervisor', component: () => import('../views/SupervisorView.vue'), meta: { role: 'supervisor' } },
+  // 人工客服工作台:承接 AI 转人工的会话
+  { path: '/agent', name: 'AgentWorkbench', component: () => import('../views/AgentWorkbenchView.vue'), meta: { role: 'customer_service' } },
   { path: '/:pathMatch(.*)*', redirect: '/login' }
 ]
 

@@ -14,6 +14,7 @@ public enum ErrorCode {
     USER_INVALID(40101, "用户不存在或已禁用", 401),
     FORBIDDEN(40300, "权限不足", 403),
     TICKET_NOT_FOUND(40400, "工单不存在", 404),
+    SESSION_NOT_FOUND(40401, "会话不存在", 404),
     IDEMPOTENT_CONFLICT(40901, "重复提交", 409),
     ILLEGAL_TRANSITION(40910, "非法状态转移", 409),
     NOT_CLAIMABLE(40911, "当前工单不可领取，请使用派单功能", 409),

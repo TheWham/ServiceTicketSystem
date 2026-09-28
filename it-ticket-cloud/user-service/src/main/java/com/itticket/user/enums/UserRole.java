@@ -7,7 +7,9 @@ import com.fasterxml.jackson.annotation.JsonValue;
 public enum UserRole {
     employee("employee"),
     engineer("engineer"),
-    supervisor("supervisor");
+    supervisor("supervisor"),
+    /** 人工客服:承接 AI 无法解决的咨询,决定是否转工单 */
+    customer_service("customer_service");
 
     @EnumValue
     @JsonValue

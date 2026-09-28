@@ -75,8 +75,8 @@ import { Lock } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user.js'
 import { userApi } from '../api/index.js'
 
-const roleMap = { employee: '员工', engineer: '工程师', supervisor: '主管' }
-const roleTagType = (role) => ({ employee: 'success', engineer: 'primary', supervisor: 'warning' }[role] || 'info')
+const roleMap = { employee: '员工', engineer: '工程师', supervisor: '主管', customer_service: '客服' }
+const roleTagType = (role) => ({ employee: 'success', engineer: 'primary', supervisor: 'warning', customer_service: 'danger' }[role] || 'info')
 
 const users = ref([])
 const selectedId = ref('')
@@ -106,7 +106,7 @@ async function doLogin() {
     const res = await userApi.login({ userId: selectedId.value, password: password.value })
     userStore.setLogin(res.data.user, res.data.token)
     ElMessage.success(`欢迎，${res.data.user.name}`)
-    const roleRoute = { employee: '/employee', engineer: '/engineer', supervisor: '/supervisor' }
+    const roleRoute = { employee: '/employee', engineer: '/engineer', supervisor: '/supervisor', customer_service: '/agent' }
     router.push(roleRoute[res.data.user.role])
   } catch (e) {
     loginError.value = e.message || '登录失败'

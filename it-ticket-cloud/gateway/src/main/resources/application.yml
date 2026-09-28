@@ -25,6 +25,16 @@ spring:
           uri: lb://ticket-service
           predicates:
             - Path=/api/v1/tickets/**
+        # ai-service:AI 智能受理(问答/人工客服/知识库)
+        - id: ai-service
+          uri: lb://ai-service
+          predicates:
+            - Path=/api/v1/ai/**
+        # ai-service 的 WebSocket(人工实时聊天);握手鉴权由 ai-service 自行校验 token 参数
+        - id: ai-service-ws
+          uri: lb:ws://ai-service
+          predicates:
+            - Path=/ws/ai/**
 
 itticket:
   jwt:
