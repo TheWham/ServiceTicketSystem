@@ -28,7 +28,7 @@ public class AgentController {
 
     private final ChatSessionService sessionService;
 
-    /** 会话队列:全部待接入 + 我处理中的  PUSH3 */
+    /** 会话队列:全部待接入 + 我处理中的  PUSH4 */
     @GetMapping("/queue")
     public Result<List<ChatSession>> queue() {
         UserContext.CurrentUser user = checkAgent();
