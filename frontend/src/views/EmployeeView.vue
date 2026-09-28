@@ -73,7 +73,7 @@
           <el-col :span="12">
             <el-form-item prop="category_id" label="问题分类">
               <el-select v-model="form.category_id" placeholder="选择末级分类" style="width:100%" filterable>
-                <el-option v-for="c in categories" :key="c.category_id" :value="c.category_id" :label="c.category_name" />
+                <el-option v-for="c in filteredCategories" :key="c.categoryId" :value="c.categoryId" :label="c.name" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -340,6 +340,8 @@ const userStore = useUserStore()
 const tab = ref('create')
 // 末级分类从后端动态加载（PRD §10.1 分类目录）
 const categories = ref([])
+// 按当前工单性质过滤末级分类（PRD §10.1：分类目录按 nature 分组）
+const filteredCategories = computed(() => categories.value.filter(c => c.ticketNature === form.value.nature))
 const natures = [
   { value: 'INCIDENT', label: '故障报修' },
   { value: 'SERVICE_REQUEST', label: '服务申请' }
@@ -624,7 +626,10 @@ onMounted(async () => {
   try {
     const res = await categoryApi.leaf()
     categories.value = res.data || []
-  } catch (e) { console.error('加载分类失败', e) }
+  } catch (e) {
+    console.error('加载分类失败', e)
+    ElMessage.error('分类加载失败，请刷新重试；若持续失败请联系管理员')
+  }
   try {
     const draft = await draftApi.get()
     if (draft.data) draftBanner.value = true

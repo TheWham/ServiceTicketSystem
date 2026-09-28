@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 @Data
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class DraftVO {
-    private Long draftId;
+    private String draftId;
     private String userId;
     private String nature;
     private String categoryId;

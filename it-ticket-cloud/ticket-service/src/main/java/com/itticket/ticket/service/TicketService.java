@@ -230,7 +230,7 @@ public class TicketService {
         }
         List<TicketFlowLog> flows = flowLogMapper.selectList(new QueryWrapper<TicketFlowLog>()
                 .eq("ticket_id", ticketId)
-                .orderByAsc("created_at").orderByAsc("log_id"));
+                .orderByAsc("occurred_at").orderByAsc("transition_id"));
 
         LinkedHashSet<String> userIds = new LinkedHashSet<>();
         userIds.add(ticket.getCreatorId());
@@ -262,7 +262,7 @@ public class TicketService {
 
     @Transactional
     public AssignOutcome assign(UserContext.CurrentUser operator, String ticketId, AssignRequest req) {
-        UserContext.checkRole(operator, "supervisor");
+        UserContext.checkRole(operator, "PLATFORM_ADMIN");
         if (req.getAssigneeId() == null || req.getAssigneeId().isBlank()) {
             throw new BizException(ErrorCode.PARAM_INVALID, "请选择处理人");
         }
@@ -275,7 +275,7 @@ public class TicketService {
             log.error("[TICKET] 校验处理人失败: {}", e.getMessage());
             throw new BizException(ErrorCode.SYSTEM_ERROR, "用户服务暂不可用");
         }
-        if (assignee == null || !"engineer".equals(assignee.getRole()) || !"active".equals(assignee.getStatus())) {
+        if (assignee == null || !"ENGINEER".equals(assignee.getRole()) || !"ACTIVE".equals(assignee.getStatus())) {
             throw new BizException(ErrorCode.ASSIGNEE_INVALID);
         }
 
@@ -311,7 +311,7 @@ public class TicketService {
 
     @Transactional
     public Map<String, Object> claim(UserContext.CurrentUser operator, String ticketId, AcceptRequest req) {
-        UserContext.checkRole(operator, "engineer");
+        UserContext.checkRole(operator, "ENGINEER");
 
         Ticket ticket = ticketMapper.selectById(ticketId);
         if (ticket == null) throw new BizException(ErrorCode.TICKET_NOT_FOUND);
@@ -418,11 +418,11 @@ public class TicketService {
         }
 
         // 工程师完成前至少有一条进展记录
-        if ("done".equals(req.getAction()) && "engineer".equals(operator.getRole())) {
+        if ("done".equals(req.getAction()) && "ENGINEER".equals(operator.getRole())) {
             Long cnt = flowLogMapper.selectCount(new QueryWrapper<TicketFlowLog>()
                     .eq("ticket_id", ticketId)
                     .eq("operator_id", operator.getUserId())
-                    .ne("remark", "提交工单"));
+                    .ne("reason", "提交工单"));
             if (cnt == null || cnt == 0) {
                 throw new BizException(ErrorCode.PARAM_INVALID, "请至少记录一条处理进展后再提交");
             }
@@ -536,9 +536,10 @@ public class TicketService {
         flow.setTicketId(ticketId);
         flow.setFromStatus(fromStatus);
         flow.setToStatus(toStatus);
+        flow.setEvent(toStatus != null ? toStatus.toLowerCase() : null);
         flow.setOperatorId(operatorId);
-        flow.setRemark(remark);
-        flow.setCreatedAt(LocalDateTime.now());
+        flow.setReason(remark);
+        flow.setOccurredAt(LocalDateTime.now());
         flowLogMapper.insert(flow);
     }
 

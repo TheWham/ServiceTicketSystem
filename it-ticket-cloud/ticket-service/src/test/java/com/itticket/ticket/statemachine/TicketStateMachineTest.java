@@ -24,7 +24,7 @@ class TicketStateMachineTest {
 
     @Test
     void assignedToInProgress_accept_engineer() {
-        var r = TicketStateMachine.validateTransition(TicketStatus.ASSIGNED, TicketStatus.IN_PROGRESS, "engineer", "accept");
+        var r = TicketStateMachine.validateTransition(TicketStatus.ASSIGNED, TicketStatus.IN_PROGRESS, "ENGINEER", "accept");
         assertTrue(r.isValid());
     }
 
@@ -36,14 +36,14 @@ class TicketStateMachineTest {
 
     @Test
     void inProgressToPendingSupplement_engineer() {
-        var r = TicketStateMachine.validateTransition(TicketStatus.IN_PROGRESS, TicketStatus.PENDING_SUPPLEMENT, "engineer", "request_supplement");
+        var r = TicketStateMachine.validateTransition(TicketStatus.IN_PROGRESS, TicketStatus.PENDING_SUPPLEMENT, "ENGINEER", "request_supplement");
         assertTrue(r.isValid());
     }
 
     @Test
     void pendingAcceptance_reject_employee_backToInProgress() {
         // 验收驳回不占独立状态，返回 IN_PROGRESS
-        var r = TicketStateMachine.validateTransition(TicketStatus.PENDING_ACCEPTANCE, TicketStatus.IN_PROGRESS, "employee", "reject");
+        var r = TicketStateMachine.validateTransition(TicketStatus.PENDING_ACCEPTANCE, TicketStatus.IN_PROGRESS, "EMPLOYEE", "reject");
         assertTrue(r.isValid());
         assertEquals("reject", r.getTransition().action());
     }
@@ -52,7 +52,7 @@ class TicketStateMachineTest {
     void universal_cancel_anyNonTerminal_employee() {
         // 任意非终态员工可撤销（通用边）
         for (TicketStatus s : new TicketStatus[]{TicketStatus.NEW, TicketStatus.ASSIGNED, TicketStatus.IN_PROGRESS}) {
-            var r = TicketStateMachine.validateTransition(s, TicketStatus.CANCELLED, "employee", "cancel");
+            var r = TicketStateMachine.validateTransition(s, TicketStatus.CANCELLED, "EMPLOYEE", "cancel");
             assertTrue(r.isValid(), s + " 应允许员工撤销");
         }
     }
@@ -61,26 +61,26 @@ class TicketStateMachineTest {
     void universal_abnormalClose_onlyPlatformAdmin() {
         var ok = TicketStateMachine.validateTransition(TicketStatus.IN_PROGRESS, TicketStatus.CLOSED, "platform_admin", "abnormal_close");
         assertTrue(ok.isValid());
-        var forbidden = TicketStateMachine.validateTransition(TicketStatus.IN_PROGRESS, TicketStatus.CLOSED, "engineer", "abnormal_close");
+        var forbidden = TicketStateMachine.validateTransition(TicketStatus.IN_PROGRESS, TicketStatus.CLOSED, "ENGINEER", "abnormal_close");
         assertFalse(forbidden.isValid());
     }
 
     @Test
     void terminalCompleted_reopen_employee() {
-        var r = TicketStateMachine.validateTransition(TicketStatus.COMPLETED, TicketStatus.IN_PROGRESS, "employee", "reopen");
+        var r = TicketStateMachine.validateTransition(TicketStatus.COMPLETED, TicketStatus.IN_PROGRESS, "EMPLOYEE", "reopen");
         assertTrue(r.isValid());
     }
 
     @Test
     void terminalCancelled_noTransition() {
-        var r = TicketStateMachine.validateTransition(TicketStatus.CANCELLED, TicketStatus.IN_PROGRESS, "employee", "reopen");
+        var r = TicketStateMachine.validateTransition(TicketStatus.CANCELLED, TicketStatus.IN_PROGRESS, "EMPLOYEE", "reopen");
         assertFalse(r.isValid());
         assertEquals("当前状态「CANCELLED」已是终态或不可操作", r.getMsg());
     }
 
     @Test
     void engineerCannotSubmitResolutionAsEmployee() {
-        var r = TicketStateMachine.validateTransition(TicketStatus.IN_PROGRESS, TicketStatus.PENDING_ACCEPTANCE, "employee", "submit_resolution");
+        var r = TicketStateMachine.validateTransition(TicketStatus.IN_PROGRESS, TicketStatus.PENDING_ACCEPTANCE, "EMPLOYEE", "submit_resolution");
         assertFalse(r.isValid());
         assertTrue(r.getMsg().contains("无权"));
     }

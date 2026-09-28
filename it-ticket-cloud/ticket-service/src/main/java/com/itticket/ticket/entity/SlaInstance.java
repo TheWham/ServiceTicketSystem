@@ -17,8 +17,8 @@ public class SlaInstance {
     /** RESPONSE / COMPLETION */
     private String slaType;
     private String prioritySnapshot;
-    /** 目标工作秒（按优先级） */
-    private Long targetSeconds;
+    /** 目标时刻（按优先级工作时长推算，PRD §20 target_at） */
+    private LocalDateTime targetAt;
     /** 累计有效工作秒 */
     private Long elapsedWorkSeconds;
     private Long pausedSeconds;

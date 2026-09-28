@@ -12,7 +12,7 @@
 
     <artifactId>it-ticket-user-service</artifactId>
     <name>it-ticket-user-service</name>
-    <description>用户服务:登录签发 JWT、用户查询、提单草稿、内部用户接口。拥有 user、ticket_draft 两张表(it_user 库)</description>
+    <description>用户服务:登录签发 JWT、用户查询、提单草稿、内部用户接口。使用单库 it_ticket_system(user、user_role、ticket_draft)</description>
 
     <dependencies>
         <dependency>

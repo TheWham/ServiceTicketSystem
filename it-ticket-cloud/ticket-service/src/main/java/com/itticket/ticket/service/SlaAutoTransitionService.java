@@ -139,9 +139,10 @@ public class SlaAutoTransitionService {
         flow.setTicketId(ticketId);
         flow.setFromStatus(from.getValue());
         flow.setToStatus(to.getValue());
+        flow.setEvent(to.getValue().toLowerCase());
         flow.setOperatorId(operatorId);
-        flow.setRemark(remark);
-        flow.setCreatedAt(LocalDateTime.now());
+        flow.setReason(remark);
+        flow.setOccurredAt(LocalDateTime.now());
         flowLogMapper.insert(flow);
     }
 }

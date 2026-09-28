@@ -11,8 +11,8 @@ import java.time.LocalDateTime;
 @Data
 @TableName("ticket_draft")
 public class TicketDraft {
-    @TableId(value = "draft_id", type = IdType.AUTO)
-    private Long draftId;
+    @TableId(value = "draft_id", type = IdType.ASSIGN_ID)
+    private String draftId;
     private String userId;
     /** INCIDENT / REQUEST */
     private String nature;

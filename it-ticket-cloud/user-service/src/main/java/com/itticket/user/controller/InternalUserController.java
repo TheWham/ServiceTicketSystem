@@ -5,8 +5,9 @@ import com.itticket.common.user.UserInfo;
 import com.itticket.user.dto.IdsRequest;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.itticket.user.entity.User;
-import com.itticket.user.enums.UserRole;
+import com.itticket.user.entity.UserRoleEntity;
 import com.itticket.user.mapper.UserMapper;
+import com.itticket.user.mapper.UserRoleMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,6 +28,7 @@ import java.util.List;
 public class InternalUserController {
 
     private final UserMapper userMapper;
+    private final UserRoleMapper userRoleMapper;
 
     @GetMapping("/{userId}")
     public Result<UserInfo> getUser(@PathVariable String userId) {
@@ -43,20 +45,36 @@ public class InternalUserController {
             return Result.ok(List.of());
         }
         List<User> users = userMapper.selectBatchIds(request.getIds());
-        return Result.ok(users.stream().map(InternalUserController::toInfo).toList());
+        return Result.ok(users.stream().map(this::toInfo).toList());
     }
 
-    /** 查询可用工程师列表（F-06 路由用：在职状态为 ACTIVE 的工程师） */
+    /** 查询可用工程师列表（F-06 路由用：user_role 中 ENGINEER 且未撤销、用户 ACTIVE） */
     @GetMapping("/engineers")
     public Result<List<UserInfo>> engineers() {
+        List<String> ids = userRoleMapper.selectList(new QueryWrapper<UserRoleEntity>()
+                        .eq("role_code", "ENGINEER").isNull("revoked_at"))
+                .stream().map(UserRoleEntity::getUserId).toList();
+        if (ids.isEmpty()) return Result.ok(List.of());
         List<User> users = userMapper.selectList(new QueryWrapper<User>()
-                .eq("role", UserRole.engineer.getValue())
-                .eq("status", "active"));
-        return Result.ok(users.stream().map(InternalUserController::toInfo).toList());
+                .in("user_id", ids).eq("status", "ACTIVE"));
+        return Result.ok(users.stream().map(u -> toInfo(u, "engineer")).toList());
     }
 
-    private static UserInfo toInfo(User user) {
-        return new UserInfo(user.getUserId(), user.getName(), user.getRole().getValue(),
-                user.getDepartment(), user.getStatus().getValue());
+    private UserInfo toInfo(User user) {
+        return toInfo(user, primaryRole(user.getUserId()));
+    }
+
+    /** role/status 出口统一小写,与 ticket-service、网关的比较口径一致 */
+    private UserInfo toInfo(User user, String role) {
+        String status = user.getStatus();
+        return new UserInfo(user.getUserId(), user.getName(), role,
+                user.getDepartmentId(), status == null ? null : status.toLowerCase());
+    }
+
+    private String primaryRole(String userId) {
+        UserRoleEntity r = userRoleMapper.selectOne(new QueryWrapper<UserRoleEntity>()
+                .eq("user_id", userId).isNull("revoked_at")
+                .orderByDesc("granted_at").last("LIMIT 1"));
+        return r != null && r.getRoleCode() != null ? r.getRoleCode().toLowerCase() : "employee";
     }
 }

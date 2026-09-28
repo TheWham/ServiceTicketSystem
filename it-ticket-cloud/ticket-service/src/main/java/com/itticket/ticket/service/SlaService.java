@@ -59,10 +59,10 @@ public class SlaService {
         SlaInstance upd = new SlaInstance();
         upd.setSlaId(sla.getSlaId());
         upd.setPrioritySnapshot(newPriority);
-        upd.setTargetSeconds(targetSeconds(newPriority));
+        upd.setTargetAt(workCalendarService.addWorkSeconds(sla.getCreatedAt(), targetSeconds(newPriority)));
         upd.setUpdatedAt(LocalDateTime.now());
         slaInstanceMapper.updateById(upd);
-        log.info("[SLA] 优先级变化重算目标: {} -> {} 目标s", ticketId, newPriority, targetSeconds(newPriority));
+        log.info("[SLA] 优先级变化重算目标: {} -> {} 目标时刻", ticketId, newPriority, upd.getTargetAt());
     }
 
     /** 查运行中或暂停中的完成 SLA（优先级重算用） */
@@ -80,7 +80,7 @@ public class SlaService {
         sla.setTicketId(ticketId);
         sla.setSlaType("COMPLETION");
         sla.setPrioritySnapshot(priority);
-        sla.setTargetSeconds(targetSeconds(priority));
+        sla.setTargetAt(workCalendarService.addWorkSeconds(createdAt != null ? createdAt : LocalDateTime.now(), targetSeconds(priority)));
         sla.setElapsedWorkSeconds(0L);
         sla.setPausedSeconds(0L);
         sla.setNearBreachNotified(0);
@@ -176,11 +176,13 @@ public class SlaService {
         long paused = sla.getPausedSeconds() == null ? 0 : sla.getPausedSeconds();
         long effective = elapsed - paused;
         if (effective < 0) effective = 0;
-        long target = sla.getTargetSeconds();
+        LocalDateTime targetAt = sla.getTargetAt();
+        if (targetAt == null) return; // 无目标时刻（历史数据）跳过
+        long target = workCalendarService.workSecondsBetween(sla.getCreatedAt(), targetAt);
         double ratio = target > 0 ? (double) effective / target : 0;
 
         // 违约（§11.2）
-        if (effective >= target && sla.getBreachAt() == null) {
+        if (!now.isBefore(targetAt) && sla.getBreachAt() == null) {
             SlaInstance upd = new SlaInstance();
             upd.setSlaId(sla.getSlaId());
             upd.setStatus("BREACHED");

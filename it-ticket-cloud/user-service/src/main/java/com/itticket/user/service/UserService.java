@@ -8,14 +8,15 @@ import com.itticket.user.config.JwtProperties;
 import com.itticket.user.dto.LoginRequest;
 import com.itticket.user.dto.LoginResponse;
 import com.itticket.user.entity.User;
-import com.itticket.user.enums.UserRole;
-import com.itticket.user.enums.UserStatus;
+import com.itticket.user.entity.UserRoleEntity;
 import com.itticket.user.mapper.UserMapper;
+import com.itticket.user.mapper.UserRoleMapper;
 import com.itticket.user.vo.UserVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -23,10 +24,11 @@ import java.util.List;
 public class UserService {
 
     private final UserMapper userMapper;
+    private final UserRoleMapper userRoleMapper;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtProperties jwtProperties;
 
-    /** 登录校验 + 签发 JWT(12h) */
+    /** 登录校验 + 签发 JWT(12h)。角色取自 user_role（PRD §20，一人可多角色取最新授予） */
     public LoginResponse login(LoginRequest request) {
         if (request == null || isBlank(request.getUserId()) || isBlank(request.getPassword())) {
             throw new BizException(ErrorCode.PARAM_INVALID, "请输入用户ID和密码");
@@ -37,38 +39,65 @@ public class UserService {
                 || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             throw new BizException(ErrorCode.PARAM_INVALID, "用户名或密码错误");
         }
-        if (user.getStatus() != UserStatus.active) {
+        if (!"ACTIVE".equals(user.getStatus())) {
             throw new BizException(ErrorCode.USER_INVALID, "用户不存在或已禁用");
         }
+        String role = primaryRole(user.getUserId());
         String token = JwtUtil.sign(jwtProperties.getSecret(), user.getUserId(), user.getName(),
-                user.getRole().getValue(), user.getDepartment(), jwtProperties.getTtlHours() * 3600_000L);
-        return new LoginResponse(token, new UserVO(user.getUserId(), user.getName(),
-                user.getRole().getValue(), user.getDepartment()));
+                role, user.getDepartmentId(), jwtProperties.getTtlHours() * 3600_000L);
+        return new LoginResponse(token, new UserVO(user.getUserId(), user.getName(), role, user.getDepartmentId()));
     }
 
-    /** Mock 登录选项:列出所有活跃用户,role 排序与旧版 CASE 一致(employee→engineer→supervisor) */
+    /** Mock 登录选项:列出所有活跃用户（角色经 user_role 关联） */
     public List<UserVO> loginOptions() {
-        QueryWrapper<User> qw = new QueryWrapper<>();
-        qw.select("user_id", "name", "role", "department")
-                .eq("status", UserStatus.active.getValue())
-                .last("ORDER BY CASE role WHEN 'employee' THEN 1 WHEN 'engineer' THEN 2 WHEN 'supervisor' THEN 3 ELSE 4 END, name");
-        return userMapper.selectList(qw).stream()
-                .map(u -> new UserVO(u.getUserId(), u.getName(), u.getRole().getValue(), u.getDepartment()))
+        return userMapper.selectList(new QueryWrapper<User>()
+                        .select("user_id", "name", "department_id")
+                        .eq("status", "ACTIVE"))
+                .stream()
+                .map(u -> new UserVO(u.getUserId(), u.getName(), primaryRole(u.getUserId()), u.getDepartmentId()))
+                // 与旧版 CASE 排序一致:employee→engineer→其余角色,再按姓名
+                .sorted(Comparator
+                        .comparingInt((UserVO v) -> roleOrder(v.getRole()))
+                        .thenComparing(UserVO::getName))
                 .toList();
     }
 
-    /** 用户列表(供派单选择),与旧版 listUsers 一致 */
+    /** 用户列表(供派单选择),按角色过滤（user_role 未撤销记录;入参小写,库值大写） */
     public List<UserVO> listUsers(String role) {
-        QueryWrapper<User> qw = new QueryWrapper<>();
-        qw.select("user_id", "name", "role", "department")
-                .eq("status", UserStatus.active.getValue());
+        QueryWrapper<User> uw = new QueryWrapper<User>()
+                .select("user_id", "name", "department_id")
+                .eq("status", "ACTIVE");
         if (role != null && !role.isBlank()) {
-            qw.eq("role", UserRole.valueOf(role).getValue());
+            List<String> userIds = userRoleMapper.selectList(new QueryWrapper<UserRoleEntity>()
+                            .eq("role_code", role.trim().toUpperCase()).isNull("revoked_at"))
+                    .stream().map(UserRoleEntity::getUserId).toList();
+            if (userIds.isEmpty()) return List.of();
+            uw.in("user_id", userIds);
         }
-        qw.orderByAsc("role").orderByAsc("name");
-        return userMapper.selectList(qw).stream()
-                .map(u -> new UserVO(u.getUserId(), u.getName(), u.getRole().getValue(), u.getDepartment()))
+        return userMapper.selectList(uw).stream()
+                .map(u -> new UserVO(u.getUserId(), u.getName(), primaryRole(u.getUserId()), u.getDepartmentId()))
+                .sorted(Comparator
+                        .comparingInt((UserVO v) -> roleOrder(v.getRole()))
+                        .thenComparing(UserVO::getName))
                 .toList();
+    }
+
+    /** 角色展示排序:employee→engineer→supervisor→其余,与旧版 CASE 一致 */
+    private static int roleOrder(String role) {
+        return switch (role == null ? "" : role) {
+            case "employee" -> 1;
+            case "engineer" -> 2;
+            case "supervisor" -> 3;
+            default -> 4;
+        };
+    }
+
+    /** 主角色：最新授予且未撤销的角色（PRD §5.1，一人可多角色）;出口统一小写,与下游判断口径一致 */
+    private String primaryRole(String userId) {
+        UserRoleEntity r = userRoleMapper.selectOne(new QueryWrapper<UserRoleEntity>()
+                .eq("user_id", userId).isNull("revoked_at")
+                .orderByDesc("granted_at").last("LIMIT 1"));
+        return r != null && r.getRoleCode() != null ? r.getRoleCode().toLowerCase() : "employee";
     }
 
     private static boolean isBlank(String s) {

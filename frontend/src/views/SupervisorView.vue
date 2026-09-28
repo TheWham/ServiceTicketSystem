@@ -46,7 +46,7 @@
             style="width: 140px"
             @change="loadTickets"
           >
-            <el-option v-for="c in categories" :key="c.category_id" :label="c.category_name" :value="c.category_id" />
+            <el-option v-for="c in categories" :key="c.categoryId" :label="c.name" :value="c.categoryId" />
           </el-select>
         </el-form-item>
         <el-form-item label="处理人">
