@@ -40,9 +40,13 @@ export const ticketApi = {
   list: (params) => api.get('/tickets', { params }),
   detail: (id) => api.get(`/tickets/${id}`),
   assign: (id, data) => api.post(`/tickets/${id}/assign`, data),
-  claim: (id) => api.post(`/tickets/${id}/claim`),
+  claim: (id, data) => api.post(`/tickets/${id}/claim`, data),
   action: (id, data) => api.post(`/tickets/${id}/actions`, data),
   rating: (id, data) => api.post(`/tickets/${id}/rating`, data)
+}
+
+export const categoryApi = {
+  leaf: () => api.get('/categories/leaf')
 }
 
 // ---- 草稿 API ----

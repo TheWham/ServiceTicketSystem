@@ -5,21 +5,21 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
-/** 草稿响应(snake_case,attachment_urls 为数组,与旧版 JSON.parse 后一致) */
+/** 草稿响应(snake_case，对齐新提单字段 §10.2) */
 @Data
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class DraftVO {
     private Long draftId;
     private String userId;
+    private String nature;
+    private String categoryId;
     private String title;
-    private String category;
-    private String subCategory;
-    private String priority;
     private String description;
-    private List<String> attachmentUrls;
+    private String impactDescription;
+    private String urgencyDescription;
+    private String location;
+    private String contact;
     private String assetId;
-    private LocalDateTime expectedFinishTime;
     private LocalDateTime updatedAt;
 }

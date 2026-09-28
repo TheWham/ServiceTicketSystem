@@ -1,6 +1,14 @@
-# IT 工单系统微服务本地依赖:Nacos(注册+配置) + MySQL 8(双库)
-# 用法:docker compose up -d
+# IT 工单系统微服务本地依赖:Nacos(注册+配置) + MySQL 8
+# 用法:
+#   模式 A(本地):直接连本机 MySQL/Nacos,无需启动本 compose
+#   模式 B(Docker):docker compose up -d 起来后,
+#                   给工程注入环境变量 MYSQL_HOST=mysql NACOS_ADDR=nacos:8848
 # MySQL 初始化自动执行 db/init/ 下的建库与种子脚本
+
+networks:
+  it-ticket-net:
+    driver: bridge
+
 services:
   mysql:
     image: mysql:8.0
@@ -14,6 +22,13 @@ services:
       - ./db/init:/docker-entrypoint-initdb.d:ro
       - it-ticket-mysql-data:/var/lib/mysql
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    networks:
+      - it-ticket-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   nacos:
     image: nacos/nacos-server:v2.3.2
@@ -25,6 +40,11 @@ services:
     ports:
       - "8848:8848"   # HTTP 控制台/OpenAPI
       - "9848:9848"   # gRPC 客户端(2.x 必需)
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - it-ticket-net
 
 volumes:
   it-ticket-mysql-data:

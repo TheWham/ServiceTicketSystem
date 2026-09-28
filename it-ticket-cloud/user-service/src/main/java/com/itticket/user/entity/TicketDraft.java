@@ -7,21 +7,22 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
-/** 提单草稿表(it_user.ticket_draft),每用户一条 */
+/** 提单草稿表(ticket_draft),每用户一条 —— 字段对齐新提单 §10.2 */
 @Data
 @TableName("ticket_draft")
 public class TicketDraft {
     @TableId(value = "draft_id", type = IdType.AUTO)
     private Long draftId;
     private String userId;
+    /** INCIDENT / REQUEST */
+    private String nature;
+    private String categoryId;
     private String title;
-    private String category;
-    private String subCategory;
-    private String priority;
     private String description;
-    /** JSON 数组字符串,如 ["url1","url2"] */
-    private String attachmentUrls;
+    private String impactDescription;
+    private String urgencyDescription;
+    private String location;
+    private String contact;
     private String assetId;
-    private LocalDateTime expectedFinishTime;
     private LocalDateTime updatedAt;
 }

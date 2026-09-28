@@ -3,63 +3,94 @@ package com.itticket.ticket.statemachine;
 import com.itticket.ticket.enums.TicketStatus;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
-/** 状态机行为与旧版 stateMachine.js 对齐的回归测试 */
+/** 状态机行为回归测试（PRD-Ultimate §9.3 状态转换表） */
 class TicketStateMachineTest {
 
     @Test
-    void pendingToProcessing_assign_supervisor() {
-        var r = TicketStateMachine.validateTransition(TicketStatus.PENDING, TicketStatus.PROCESSING, "supervisor", "assign");
+    void newToAssigned_route_system() {
+        var r = TicketStateMachine.validateTransition(TicketStatus.NEW, TicketStatus.ASSIGNED, "system", "route");
         assertTrue(r.isValid());
-        assertEquals("assign", r.getTransition().action());
+        assertEquals("route", r.getTransition().action());
     }
 
     @Test
-    void pendingToProcessing_claim_engineer() {
-        var r = TicketStateMachine.validateTransition(TicketStatus.PENDING, TicketStatus.PROCESSING, "engineer", "claim");
+    void newRouteFailed_selfLoop_system() {
+        var r = TicketStateMachine.validateTransition(TicketStatus.NEW, TicketStatus.NEW, "system", "route_failed");
         assertTrue(r.isValid());
-        assertEquals("claim", r.getTransition().action());
+        assertEquals("route_failed", r.getTransition().action());
     }
 
     @Test
-    void pendingCancel_engineerForbidden_msgMatchesLegacy() {
-        // engineer 想转 PROCESSING 时若只允许 assign,提示「需要 supervisor」;employee 无权 assign
-        var r = TicketStateMachine.validateTransition(TicketStatus.PENDING, TicketStatus.PROCESSING, "employee", null);
-        assertFalse(r.isValid());
-        assertEquals("角色「employee」无权执行此操作（需要 supervisor 或 engineer）", r.getMsg());
+    void assignedToInProgress_accept_engineer() {
+        var r = TicketStateMachine.validateTransition(TicketStatus.ASSIGNED, TicketStatus.IN_PROGRESS, "engineer", "accept");
+        assertTrue(r.isValid());
     }
 
     @Test
-    void terminalStatus_msgMatchesLegacy() {
-        var r = TicketStateMachine.validateTransition(TicketStatus.DONE, TicketStatus.PROCESSING, "engineer", "progress");
-        assertFalse(r.isValid());
-        assertEquals("当前状态「已完成」已是终态或不可操作", r.getMsg());
+    void assignedResponseTimeout_selfLoop_system() {
+        var r = TicketStateMachine.validateTransition(TicketStatus.ASSIGNED, TicketStatus.ASSIGNED, "system", "response_timeout");
+        assertTrue(r.isValid());
     }
 
     @Test
-    void illegalTarget_msgMatchesLegacy() {
-        var r = TicketStateMachine.validateTransition(TicketStatus.PENDING, TicketStatus.DONE, "employee", "done");
+    void inProgressToPendingSupplement_engineer() {
+        var r = TicketStateMachine.validateTransition(TicketStatus.IN_PROGRESS, TicketStatus.PENDING_SUPPLEMENT, "engineer", "request_supplement");
+        assertTrue(r.isValid());
+    }
+
+    @Test
+    void pendingAcceptance_reject_employee_backToInProgress() {
+        // 验收驳回不占独立状态，返回 IN_PROGRESS
+        var r = TicketStateMachine.validateTransition(TicketStatus.PENDING_ACCEPTANCE, TicketStatus.IN_PROGRESS, "employee", "reject");
+        assertTrue(r.isValid());
+        assertEquals("reject", r.getTransition().action());
+    }
+
+    @Test
+    void universal_cancel_anyNonTerminal_employee() {
+        // 任意非终态员工可撤销（通用边）
+        for (TicketStatus s : new TicketStatus[]{TicketStatus.NEW, TicketStatus.ASSIGNED, TicketStatus.IN_PROGRESS}) {
+            var r = TicketStateMachine.validateTransition(s, TicketStatus.CANCELLED, "employee", "cancel");
+            assertTrue(r.isValid(), s + " 应允许员工撤销");
+        }
+    }
+
+    @Test
+    void universal_abnormalClose_onlyPlatformAdmin() {
+        var ok = TicketStateMachine.validateTransition(TicketStatus.IN_PROGRESS, TicketStatus.CLOSED, "platform_admin", "abnormal_close");
+        assertTrue(ok.isValid());
+        var forbidden = TicketStateMachine.validateTransition(TicketStatus.IN_PROGRESS, TicketStatus.CLOSED, "engineer", "abnormal_close");
+        assertFalse(forbidden.isValid());
+    }
+
+    @Test
+    void terminalCompleted_reopen_employee() {
+        var r = TicketStateMachine.validateTransition(TicketStatus.COMPLETED, TicketStatus.IN_PROGRESS, "employee", "reopen");
+        assertTrue(r.isValid());
+    }
+
+    @Test
+    void terminalCancelled_noTransition() {
+        var r = TicketStateMachine.validateTransition(TicketStatus.CANCELLED, TicketStatus.IN_PROGRESS, "employee", "reopen");
         assertFalse(r.isValid());
-        assertEquals("不允许从「待处理」转到「已完成」，允许的目标状态：处理中、处理中、已取消", r.getMsg());
+        assertEquals("当前状态「CANCELLED」已是终态或不可操作", r.getMsg());
+    }
+
+    @Test
+    void engineerCannotSubmitResolutionAsEmployee() {
+        var r = TicketStateMachine.validateTransition(TicketStatus.IN_PROGRESS, TicketStatus.PENDING_ACCEPTANCE, "employee", "submit_resolution");
+        assertFalse(r.isValid());
+        assertTrue(r.getMsg().contains("无权"));
     }
 
     @Test
     void eventTypeMapping() {
-        assertEquals("DISPATCH", TicketStateMachine.getEventType("claim"));
-        assertEquals("ACCEPT_APPROVED", TicketStateMachine.getEventType("accept"));
-        assertEquals("STATUS_CHANGED", TicketStateMachine.getEventType("unknown"));
-    }
-
-    @Test
-    void notifyReceivers_processing_goesToAssignee() {
-        var ticket = new com.itticket.ticket.entity.Ticket();
-        ticket.setCreatorId("U001");
-        ticket.setAssigneeId("U004");
-        var receivers = TicketStateMachine.getNotifyReceivers(ticket, TicketStatus.PROCESSING);
-        assertEquals(1, receivers.size());
-        assertEquals("U004", receivers.get(0));
+        assertEquals("ASSIGNED", TicketStateMachine.getEventType("route"));
+        assertEquals("ACCEPTANCE_REJECTED", TicketStateMachine.getEventType("reject"));
+        assertEquals("AUTO_ACCEPTED", TicketStateMachine.getEventType("auto_accept"));
+        assertEquals("SUPPLEMENT_TIMEOUT_CLOSED", TicketStateMachine.getEventType("supplement_timeout"));
+        assertEquals("ROUTE_FAILED", TicketStateMachine.getEventType("route_failed"));
     }
 }

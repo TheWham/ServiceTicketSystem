@@ -3,9 +3,9 @@ name: ai-agent-guard
 description: AI Agent 参与环节（AI 客服对话、工单→FAQ 入库）的合规与质量检测 Skill。两大能力：①FAQ DRAFT 入库前检测——PII 脱敏（工号/手机号/邮箱/资产编号）、字段格式校验、与正式库相似度查重、提示注入特征检测；②AI 客服对话记录检测——拒答合规（知识库未命中必须拒答/转人工，禁止编造）、越界承诺、PII 泄露、敏感操作指引。适用于：FAQ DRAFT 主管审核辅助、AI 生成内容入库前质量门禁、AI 客服对话抽检、CI 集成。
 ---
 
-# ai-agent-guard —— AI Agent 参与环节合规守卫
+# ai-agent-guard — AI Agent 参与环节合规守卫
 
-## 定位边界（重要）
+## 定位边界
 
 本 Skill **只守卫 AI Agent 参与的环节**，与 Java 后端职责严格分工：
 

@@ -3,7 +3,9 @@ package com.itticket.user.controller;
 import com.itticket.common.api.Result;
 import com.itticket.common.user.UserInfo;
 import com.itticket.user.dto.IdsRequest;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.itticket.user.entity.User;
+import com.itticket.user.enums.UserRole;
 import com.itticket.user.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -41,6 +43,15 @@ public class InternalUserController {
             return Result.ok(List.of());
         }
         List<User> users = userMapper.selectBatchIds(request.getIds());
+        return Result.ok(users.stream().map(InternalUserController::toInfo).toList());
+    }
+
+    /** 查询可用工程师列表（F-06 路由用：在职状态为 ACTIVE 的工程师） */
+    @GetMapping("/engineers")
+    public Result<List<UserInfo>> engineers() {
+        List<User> users = userMapper.selectList(new QueryWrapper<User>()
+                .eq("role", UserRole.engineer.getValue())
+                .eq("status", "active"));
         return Result.ok(users.stream().map(InternalUserController::toInfo).toList());
     }
 
