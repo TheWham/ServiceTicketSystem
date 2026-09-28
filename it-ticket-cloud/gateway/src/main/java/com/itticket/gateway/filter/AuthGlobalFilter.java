@@ -125,7 +125,9 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
     }
 
     private boolean isWhitelisted(String path, String method) {
-        return "/api/health".equals(path)
+        // WebSocket 握手无法携带 Authorization 头,放行后由 ai-service 在握手阶段校验 token 参数
+        return path.startsWith("/ws/")
+                || "/api/health".equals(path)
                 || ("/api/v1/users/login-options".equals(path) && "GET".equals(method))
                 || ("/api/v1/users/login".equals(path) && "POST".equals(method));
     }

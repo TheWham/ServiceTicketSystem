@@ -13,6 +13,12 @@
           <el-badge :value="total" :max="99" class="tab-badge" />
         </template>
       </el-tab-pane>
+      <!-- AI 智能助手:AI 先解答,未解决可转人工客服 -->
+      <el-tab-pane name="ai">
+        <template #label>
+          <el-icon style="vertical-align:-2px;margin-right:4px"><ChatDotRound /></el-icon>AI 助手
+        </template>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- ===== 提单表单 ===== -->
@@ -192,6 +198,11 @@
       />
     </el-card>
 
+    <!-- ===== AI 智能助手面板 ===== -->
+    <el-card v-if="tab === 'ai'" shadow="never" class="panel">
+      <AiChatPanel />
+    </el-card>
+
     <!-- ===== 工单详情弹窗 ===== -->
     <el-dialog
       v-model="detailVisible"
@@ -309,9 +320,10 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  EditPen, List, WarningFilled, SuccessFilled, CircleCheck, CircleClose
+  EditPen, List, WarningFilled, SuccessFilled, CircleCheck, CircleClose, ChatDotRound
 } from '@element-plus/icons-vue'
 import { ticketApi, draftApi } from '../api/index.js'
+import AiChatPanel from '../components/AiChatPanel.vue'
 import { useUserStore } from '../stores/user.js'
 
 const userStore = useUserStore()
