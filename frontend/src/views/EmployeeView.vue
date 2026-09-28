@@ -19,6 +19,12 @@
           <el-badge :value="total" :max="99" class="tab-badge" />
         </template>
       </el-tab-pane>
+      <!-- AI 智能助手:AI 先解答,未解决可转人工客服 -->
+      <el-tab-pane name="ai">
+        <template #label>
+          <el-icon style="vertical-align:-2px;margin-right:4px"><ChatDotRound /></el-icon>AI 助手
+        </template>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- ===== 提单表单 ===== -->
