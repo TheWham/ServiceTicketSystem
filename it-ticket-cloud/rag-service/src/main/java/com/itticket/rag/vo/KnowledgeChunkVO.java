@@ -41,7 +41,16 @@ public class KnowledgeChunkVO {
     /** Elasticsearch 存储文档 ID */
     private String esDocId;
 
-    /** 切片处理状态 (CHUNKED-已切片, SUCCESS-已入库, FAILED-失败) */
+    /** 1024 维密集向量数据 */
+    private java.util.List<Float> vector;
+
+    /** 是否已生成向量嵌入 */
+    private Boolean hasVector;
+
+    /** 向量维度（例如 1024） */
+    private Integer vectorDimensions;
+
+    /** 切片处理状态 (CHUNKED-已切片, EMBEDDED-已向量化, SUCCESS-已入库, FAILED-失败) */
     private String status;
 
     /** 异常信息 (若有) */

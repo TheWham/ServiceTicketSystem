@@ -52,6 +52,7 @@ public class RagPipelineService {
 
     private final DocumentParserService parserService;
     private final DocumentChunkerService chunkerService;
+    private final EmbeddingClientService embeddingService;
     private final ElasticsearchIndexService indexService;
     private final KnowledgeArticleMapper articleMapper;
     private final KnowledgeVersionMapper versionMapper;
@@ -61,7 +62,7 @@ public class RagPipelineService {
     private final Map<String, PipelineTraceVO> traceStore = new ConcurrentHashMap<>();
 
     /**
-     * 处理文档上传并执行 RAG 切片与入库完整链路
+     * 处理文档上传并执行 RAG 切片、向量化与入库完整链路
      *
      * @param file    上传的原始文件
      * @param request 文档元数据及切片配置
@@ -101,7 +102,7 @@ public class RagPipelineService {
             stages.add(PipelineStageVO.builder()
                     .stageCode("PARSING")
                     .stageName("文档解析与文本提取")
-                    .description("读取原始文件流，清洗特殊控制符，提取 Markdown 标题层级与正文文本")
+                    .description("读取原始文件流，清洗特殊控制符与 BOM，提取 Markdown 标题层级与正文文本")
                     .status("SUCCESS")
                     .startTime(s1Start)
                     .endTime(LocalDateTime.now())
@@ -144,11 +145,51 @@ public class RagPipelineService {
                     .metrics(s2Metrics)
                     .build());
 
-            // ================= Stage 3: 持久化与 ES 索引 =================
+            // ================= Stage 3: 向量嵌入计算 (Vector Embedding) =================
             LocalDateTime s3Start = LocalDateTime.now();
             long s3StartMs = System.currentTimeMillis();
 
-            // 3.1 尝试持久化到 MySQL (知识库文章表与版本表)
+            List<String> chunkTexts = chunks.stream().map(KnowledgeChunkVO::getContent).toList();
+            EmbeddingClientService.EmbeddingResult embeddingRes = embeddingService.generateEmbeddings(chunkTexts);
+
+            // 将计算出的密集向量附加到各切片实体中
+            List<List<Float>> vectors = embeddingRes.getVectors();
+            for (int i = 0; i < chunks.size(); i++) {
+                if (i < vectors.size()) {
+                    chunks.get(i).setVector(vectors.get(i));
+                    chunks.get(i).setHasVector(true);
+                    chunks.get(i).setVectorDimensions(embeddingRes.getDimensions());
+                    chunks.get(i).setStatus("EMBEDDED");
+                }
+            }
+
+            long s3EndMs = System.currentTimeMillis();
+            Map<String, Object> s3Metrics = new HashMap<>();
+            s3Metrics.put("embeddingModel", embeddingRes.getModel());
+            s3Metrics.put("dimensions", embeddingRes.getDimensions());
+            s3Metrics.put("totalTokensUsed", embeddingRes.getTotalTokens());
+            s3Metrics.put("batchCount", embeddingRes.getBatchCount());
+            s3Metrics.put("vectorCount", vectors.size());
+            s3Metrics.put("embeddingDurationMs", s3EndMs - s3StartMs);
+
+            stages.add(PipelineStageVO.builder()
+                    .stageCode("VECTOR_EMBEDDING")
+                    .stageName("向量嵌入计算 (Embedding)")
+                    .description("调用百炼/Maas 向量模型生成 1024 维密集语义向量 (Dense Vector)")
+                    .status("SUCCESS")
+                    .startTime(s3Start)
+                    .endTime(LocalDateTime.now())
+                    .durationMs(s3EndMs - s3StartMs)
+                    .message(String.format("向量化完成: 生成 %d 组 %d 维密集向量, 消耗 %d Tokens, 耗时 %dms",
+                            vectors.size(), embeddingRes.getDimensions(), embeddingRes.getTotalTokens(), s3EndMs - s3StartMs))
+                    .metrics(s3Metrics)
+                    .build());
+
+            // ================= Stage 4: 持久化与 ES 向量索引 (ES Indexing) =================
+            LocalDateTime s4Start = LocalDateTime.now();
+            long s4StartMs = System.currentTimeMillis();
+
+            // 4.1 持久化到 MySQL (知识库文章表与版本表)
             KnowledgeArticle article = new KnowledgeArticle();
             article.setArticleId(articleId);
             article.setStatus(KnowledgeStatus.PUBLISHED);
@@ -162,7 +203,7 @@ public class RagPipelineService {
             version.setArticleId(articleId);
             version.setVersionNo(1);
             version.setAuthorId(request.getAuthorId() != null ? request.getAuthorId() : "kb_admin");
-            version.setChangeNote("初始文档上传与智能切片");
+            version.setChangeNote("初始文档上传、智能切片与 1024 维向量化");
             version.setPublishedAt(LocalDateTime.now());
 
             try {
@@ -170,6 +211,8 @@ public class RagPipelineService {
                 contentMap.put("title", parsedDoc.getExtractedTitle());
                 contentMap.put("fileName", parsedDoc.getOriginalFileName());
                 contentMap.put("chunkCount", chunks.size());
+                contentMap.put("embeddingModel", embeddingRes.getModel());
+                contentMap.put("dimensions", embeddingRes.getDimensions());
                 contentMap.put("rawContent", parsedDoc.getFullContent());
                 version.setContentJson(objectMapper.writeValueAsString(contentMap));
 
@@ -180,32 +223,32 @@ public class RagPipelineService {
                 log.warn("MySQL persist warning (continuing pipeline): {}", e.getMessage());
             }
 
-            // 3.2 批量存入 Elasticsearch
+            // 4.2 批量存入 Elasticsearch (包含 content、title、dense_vector 向量)
             ElasticsearchIndexService.IndexResult esResult = indexService.indexChunks(
                     articleId, versionId, article.getCategoryId(), chunks
             );
 
-            long s3EndMs = System.currentTimeMillis();
-            Map<String, Object> s3Metrics = new HashMap<>();
-            s3Metrics.put("targetIndex", esResult.getIndexName());
-            s3Metrics.put("totalChunks", esResult.getTotalChunks());
-            s3Metrics.put("indexedChunks", esResult.getIndexedChunks());
-            s3Metrics.put("esEndpoint", esResult.getEsEndpoint());
-            s3Metrics.putAll(esResult.getDetails());
+            long s4EndMs = System.currentTimeMillis();
+            Map<String, Object> s4Metrics = new HashMap<>();
+            s4Metrics.put("targetIndex", esResult.getIndexName());
+            s4Metrics.put("totalChunks", esResult.getTotalChunks());
+            s4Metrics.put("indexedChunks", esResult.getIndexedChunks());
+            s4Metrics.put("esEndpoint", esResult.getEsEndpoint());
+            s4Metrics.putAll(esResult.getDetails());
 
             stages.add(PipelineStageVO.builder()
                     .stageCode("ES_INDEXING")
-                    .stageName("Elasticsearch 索引与持久化")
-                    .description("将切片及其元数据批量构建全文索引并存储至 Elasticsearch 知识库索引")
+                    .stageName("Elasticsearch 向量索引与持久化")
+                    .description("将切片文本及其 1024 维 Dense Vector 写入 Elasticsearch 索引")
                     .status(esResult.isSuccess() ? "SUCCESS" : "WARNING")
-                    .startTime(s3Start)
+                    .startTime(s4Start)
                     .endTime(LocalDateTime.now())
-                    .durationMs(s3EndMs - s3StartMs)
+                    .durationMs(s4EndMs - s4StartMs)
                     .message(esResult.getMessage())
-                    .metrics(s3Metrics)
+                    .metrics(s4Metrics)
                     .build());
 
-            // 4. 组装全链路追踪结果对象
+            // 5. 组装全链路追踪结果对象
             LocalDateTime overallEnd = LocalDateTime.now();
             long totalDuration = System.currentTimeMillis() - s1StartMs;
 
@@ -221,7 +264,7 @@ public class RagPipelineService {
                     .startTime(overallStart)
                     .endTime(overallEnd)
                     .totalDurationMs(totalDuration)
-                    .summary(String.format("处理成功: 共解析 %d 字符, 切片为 %d 个文本块, 成功入库 ES 索引",
+                    .summary(String.format("处理成功: 共解析 %d 字符, 生成 %d 块切片与 1024 维向量, 成功入库 ES 索引",
                             parsedDoc.getCharacterCount(), chunks.size()))
                     .stages(stages)
                     .chunks(chunks)

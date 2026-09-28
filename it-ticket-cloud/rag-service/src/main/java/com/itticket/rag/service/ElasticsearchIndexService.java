@@ -154,6 +154,11 @@ public class ElasticsearchIndexService {
                 doc.put("char_count", chunk.getCharCount());
                 doc.put("created_at", LocalDateTime.now().toString());
 
+                // 写入 1024 维 Dense Vector
+                if (chunk.getVector() != null && !chunk.getVector().isEmpty()) {
+                    doc.put("vector", chunk.getVector());
+                }
+
                 String jsonBody = objectMapper.writeValueAsString(doc);
                 String docUri = String.format("%s/%s/_doc/%s", baseUri, indexName, chunk.getChunkId());
 
@@ -199,7 +204,7 @@ public class ElasticsearchIndexService {
     }
 
     /**
-     * 检查并自动初始化 ES 索引结构与字段类型 Mapping
+     * 检查并自动初始化 ES 索引结构与字段类型 Mapping（包含 dense_vector 1024 维向量字段）
      */
     private boolean checkAndEnsureIndex(String baseUri) {
         try {
@@ -222,10 +227,12 @@ public class ElasticsearchIndexService {
                     .build();
             HttpResponse<Void> headRes = httpClient.send(headReq, HttpResponse.BodyHandlers.discarding());
             if (headRes.statusCode() == 200) {
+                // 尝试向已有索引增量注入 vector 字段 Mapping（如果尚未定义）
+                tryUpdateVectorMapping(baseUri);
                 return true;
             }
 
-            // 若索引不存在，创建索引并定义字段 Schema Mapping
+            // 若索引不存在，创建索引并定义字段 Schema Mapping（含 dense_vector 向量字段）
             String mappingJson = """
                     {
                       "settings": {
@@ -242,7 +249,13 @@ public class ElasticsearchIndexService {
                           "content": { "type": "text", "analyzer": "standard" },
                           "chunk_index": { "type": "integer" },
                           "char_count": { "type": "integer" },
-                          "created_at": { "type": "date" }
+                          "created_at": { "type": "date" },
+                          "vector": {
+                            "type": "dense_vector",
+                            "dims": 1024,
+                            "index": true,
+                            "similarity": "cosine"
+                          }
                         }
                       }
                     }
@@ -260,6 +273,34 @@ public class ElasticsearchIndexService {
         } catch (Exception e) {
             log.debug("ES connect probe failed: {}", e.getMessage());
             return false;
+        }
+    }
+
+    /**
+     * 兼容升级：为已有索引增量补充 vector dense_vector mapping
+     */
+    private void tryUpdateVectorMapping(String baseUri) {
+        try {
+            String updateMappingJson = """
+                    {
+                      "properties": {
+                        "vector": {
+                          "type": "dense_vector",
+                          "dims": 1024,
+                          "index": true,
+                          "similarity": "cosine"
+                        }
+                      }
+                    }
+                    """;
+            HttpRequest putMappingReq = HttpRequest.newBuilder()
+                    .uri(URI.create(baseUri + "/" + indexName + "/_mapping"))
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofMillis(connectTimeoutMs))
+                    .PUT(HttpRequest.BodyPublishers.ofString(updateMappingJson))
+                    .build();
+            httpClient.send(putMappingReq, HttpResponse.BodyHandlers.discarding());
+        } catch (Exception ignored) {
         }
     }
 

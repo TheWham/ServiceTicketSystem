@@ -38,6 +38,15 @@ elasticsearch:
   connect-timeout-ms: 3000
   socket-timeout-ms: 5000
 
+rag:
+  embedding:
+    base-url: ${EMBEDDING_BASE_URL:https://ws-klculckg6dog3won.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
+    api-key: ${EMBEDDING_API_KEY:sk-ws-H.PLYPHLE.Zvdn.MEUCIQDAkPAHsTzjr_yE5FKXbFSED0EYkPnWuBOhl4YIc1PfkAIgU9F0mF9nYISNFHRb3IqhmAuUkzu-sgB_S3sH2S2TxkM}
+    model: ${EMBEDDING_MODEL:qwen3.7-text-embedding}
+    dimensions: ${EMBEDDING_DIMENSIONS:1024}
+    batch-size: 16
+    timeout-seconds: 15
+
 logging:
   level:
     root: info
