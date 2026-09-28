@@ -124,12 +124,13 @@ const endedTip = computed(() => {
   return ''
 })
 
-// 输入框:AI 阶段与人工阶段可输入,排队中禁用
+// 输入框:AI 阶段与人工阶段可输入,排队中禁用;CLOSED 允许继续输入以发起新咨询
 const inputDisabled = computed(() =>
-  sending.value || ['WAITING_HUMAN', 'RESOLVED', 'TO_TICKET', 'REJECTED', 'CLOSED'].includes(status.value))
+  sending.value || ['WAITING_HUMAN', 'RESOLVED', 'TO_TICKET', 'REJECTED'].includes(status.value))
 const inputPlaceholder = computed(() => {
   if (status.value === 'WAITING_HUMAN') return '客服尚未接入，请稍候…'
   if (status.value === 'HUMAN_HANDLING') return '与客服沟通中，回车发送…'
+  if (status.value === 'CLOSED') return '咨询已结束，输入内容可发起新咨询…'
   if (inputDisabled.value) return '本次咨询已结束，请发起新咨询'
   return '描述你的 IT 问题，回车发送…'
 })
@@ -159,6 +160,10 @@ onUnmounted(() => closeWs())
 async function onSend() {
   const question = input.value.trim()
   if (!question) return
+  // 结束态:自动重置为新会话再发送
+  if (['CLOSED', 'RESOLVED', 'TO_TICKET', 'REJECTED'].includes(status.value)) {
+    resetSession()
+  }
   // 人工阶段:走 WebSocket 实时聊天
   if (status.value === 'HUMAN_HANDLING') {
     if (ws && ws.readyState === WebSocket.OPEN) {

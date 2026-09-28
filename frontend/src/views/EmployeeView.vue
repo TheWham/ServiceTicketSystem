@@ -2,6 +2,12 @@
   <div class="employee-view">
     <!-- ===== 顶部 Tabs ===== -->
     <el-tabs v-model="tab" class="view-tabs">
+      <!-- AI 智能助手:AI 先解答,未解决可转人工客服 -->
+      <el-tab-pane name="ai">
+        <template #label>
+          <el-icon style="vertical-align:-2px;margin-right:4px"><ChatDotRound /></el-icon>AI 助手
+        </template>
+      </el-tab-pane>
       <el-tab-pane name="create">
         <template #label>
           <el-icon style="vertical-align:-2px;margin-right:4px"><EditPen /></el-icon>提交工单
@@ -11,12 +17,6 @@
         <template #label>
           <el-icon style="vertical-align:-2px;margin-right:4px"><List /></el-icon>我的工单
           <el-badge :value="total" :max="99" class="tab-badge" />
-        </template>
-      </el-tab-pane>
-      <!-- AI 智能助手:AI 先解答,未解决可转人工客服 -->
-      <el-tab-pane name="ai">
-        <template #label>
-          <el-icon style="vertical-align:-2px;margin-right:4px"><ChatDotRound /></el-icon>AI 助手
         </template>
       </el-tab-pane>
     </el-tabs>
@@ -327,7 +327,7 @@ import AiChatPanel from '../components/AiChatPanel.vue'
 import { useUserStore } from '../stores/user.js'
 
 const userStore = useUserStore()
-const tab = ref('create')
+const tab = ref('ai')
 const categories = ['硬件', '软件', '网络', '账号', '其他']
 const statuses = ['待处理', '处理中', '待补充', '待外部', '待验收', '已完成', '已取消']
 
