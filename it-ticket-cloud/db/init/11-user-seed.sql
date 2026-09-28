@@ -13,4 +13,5 @@ INSERT INTO `user` (`user_id`, `name`, `role`, `department`, `phone`, `wechat_id
 ('U003', '王强',   'employee',   '研发部', '13800001003', 'wangqiang', '$2a$10$r6O5H5zxGln1pHqCJmp8ROvUOHSc8RcH24xt389XXc46ZSV6b.Dya'),
 ('U004', '赵工',   'engineer',   'IT部',   '13800002001', 'zhao_it', '$2a$10$r6O5H5zxGln1pHqCJmp8ROvUOHSc8RcH24xt389XXc46ZSV6b.Dya'),
 ('U005', '钱工',   'engineer',   'IT部',   '13800002002', 'qian_it', '$2a$10$r6O5H5zxGln1pHqCJmp8ROvUOHSc8RcH24xt389XXc46ZSV6b.Dya'),
-('U006', '孙主管', 'supervisor', 'IT部',   '13800003001', 'sun_sup', '$2a$10$r6O5H5zxGln1pHqCJmp8ROvUOHSc8RcH24xt389XXc46ZSV6b.Dya');
+('U006', '孙主管', 'supervisor', 'IT部',   '13800003001', 'sun_sup', '$2a$10$r6O5H5zxGln1pHqCJmp8ROvUOHSc8RcH24xt389XXc46ZSV6b.Dya'),
+('kb_admin', '知识库管理员', 'knowledge_admin', 'IT部', '13800003002', 'kb_admin', '$2a$10$r6O5H5zxGln1pHqCJmp8ROvUOHSc8RcH24xt389XXc46ZSV6b.Dya');

@@ -17,10 +17,10 @@
           :class="{ selected: selectedId === user.user_id }"
           @click="selectedId = user.user_id"
         >
-          <el-avatar :size="40" class="avatar">{{ user.name[0] }}</el-avatar>
+          <el-avatar :size="40" class="avatar">{{ getUserAvatar(user) }}</el-avatar>
           <div class="info">
-            <div class="name">{{ user.name }}</div>
-            <div class="meta">{{ user.department }} · {{ roleMap[user.role] }}</div>
+            <div class="name">{{ getUserDisplayName(user) }}</div>
+            <div class="meta">{{ getUserDepartment(user) }} · {{ roleMap[user.role] }}</div>
           </div>
           <el-tag :type="roleTagType(user.role)" size="small" effect="dark">
             {{ roleMap[user.role] }}
@@ -75,8 +75,29 @@ import { Lock } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user.js'
 import { userApi } from '../api/index.js'
 
-const roleMap = { employee: '员工', engineer: '工程师', supervisor: '主管' }
-const roleTagType = (role) => ({ employee: 'success', engineer: 'primary', supervisor: 'warning' }[role] || 'info')
+const roleMap = { employee: '员工', engineer: '工程师', supervisor: '主管', knowledge_admin: '知识库管理员' }
+const roleTagType = (role) => ({ employee: 'success', engineer: 'primary', supervisor: 'warning', knowledge_admin: 'danger' }[role] || 'info')
+
+const getUserDisplayName = (user) => {
+  if (!user) return ''
+  if (user.role === 'knowledge_admin' || user.user_id === 'kb_admin' || user.name === '孙知识') {
+    return '知识库管理员'
+  }
+  return user.name || ''
+}
+
+const getUserAvatar = (user) => {
+  const displayName = getUserDisplayName(user)
+  return displayName ? displayName[0] : '知'
+}
+
+const getUserDepartment = (user) => {
+  if (!user) return ''
+  if (user.role === 'knowledge_admin' || user.user_id === 'kb_admin') {
+    return 'IT部'
+  }
+  return user.department || ''
+}
 
 const users = ref([])
 const selectedId = ref('')
@@ -89,9 +110,35 @@ const userStore = useUserStore()
 onMounted(async () => {
   try {
     const res = await userApi.loginOptions()
-    users.value = res.data
+    const rawList = res.data || []
+    const list = rawList.map(u => {
+      if (u.role === 'knowledge_admin' || u.user_id === 'kb_admin' || u.name === '孙知识') {
+        return {
+          ...u,
+          name: '知识库管理员',
+          department: 'IT部',
+          role: 'knowledge_admin'
+        }
+      }
+      return u
+    })
+    const hasKb = list.some(u => u.role === 'knowledge_admin' || u.user_id === 'kb_admin')
+    if (!hasKb) {
+      list.push({ user_id: 'kb_admin', name: '知识库管理员', department: 'IT部', role: 'knowledge_admin' })
+    }
+    users.value = list
   } catch (e) {
     ElMessage.error('获取登录选项失败：' + e.message)
+    // 降级兜底预设
+    users.value = [
+      { user_id: 'emp_01', name: '张小明', department: '市场部', role: 'employee' },
+      { user_id: 'emp_02', name: '李丽', department: '财务部', role: 'employee' },
+      { user_id: 'emp_03', name: '王强', department: '研发部', role: 'employee' },
+      { user_id: 'eng_01', name: '赵工', department: 'IT部', role: 'engineer' },
+      { user_id: 'eng_02', name: '钱工', department: 'IT部', role: 'engineer' },
+      { user_id: 'sup_01', name: '周主管', department: 'IT部', role: 'supervisor' },
+      { user_id: 'kb_admin', name: '知识库管理员', department: 'IT部', role: 'knowledge_admin' }
+    ]
   }
 })
 
@@ -104,10 +151,21 @@ async function doLogin() {
       return
     }
     const res = await userApi.login({ userId: selectedId.value, password: password.value })
+    if (res.data && res.data.user) {
+      if (res.data.user.role === 'knowledge_admin' || res.data.user.user_id === 'kb_admin' || res.data.user.name === '孙知识') {
+        res.data.user.name = '知识库管理员'
+        res.data.user.department = 'IT部'
+      }
+    }
     userStore.setLogin(res.data.user, res.data.token)
     ElMessage.success(`欢迎，${res.data.user.name}`)
-    const roleRoute = { employee: '/employee', engineer: '/engineer', supervisor: '/supervisor' }
-    router.push(roleRoute[res.data.user.role])
+    const roleRoute = {
+      employee: '/employee',
+      engineer: '/engineer',
+      supervisor: '/supervisor',
+      knowledge_admin: '/knowledge-admin'
+    }
+    router.push(roleRoute[res.data.user.role] || '/knowledge-admin')
   } catch (e) {
     loginError.value = e.message || '登录失败'
   } finally {

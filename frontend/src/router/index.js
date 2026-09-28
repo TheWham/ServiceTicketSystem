@@ -2,13 +2,14 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '../stores/user.js'
 import { userApi } from '../api/index.js'
 
-const HOME = { employee: '/employee', engineer: '/engineer', supervisor: '/supervisor' }
+const HOME = { employee: '/employee', engineer: '/engineer', supervisor: '/supervisor', knowledge_admin: '/knowledge-admin' }
 
 const routes = [
   { path: '/login', name: 'Login', component: () => import('../views/LoginView.vue') },
   { path: '/employee', name: 'Employee', component: () => import('../views/EmployeeView.vue'), meta: { role: 'employee' } },
   { path: '/engineer', name: 'Engineer', component: () => import('../views/EngineerView.vue'), meta: { role: 'engineer' } },
   { path: '/supervisor', name: 'Supervisor', component: () => import('../views/SupervisorView.vue'), meta: { role: 'supervisor' } },
+  { path: '/knowledge-admin', name: 'KnowledgeAdmin', component: () => import('../views/KnowledgeAdminView.vue'), meta: { role: 'knowledge_admin' } },
   { path: '/:pathMatch(.*)*', redirect: '/login' }
 ]
 

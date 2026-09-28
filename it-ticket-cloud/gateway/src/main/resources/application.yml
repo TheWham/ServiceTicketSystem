@@ -25,6 +25,10 @@ spring:
           uri: lb://ticket-service
           predicates:
             - Path=/api/v1/tickets/**
+        - id: rag-service
+          uri: lb://rag-service
+          predicates:
+            - Path=/api/v1/rag/**
 
 itticket:
   jwt:

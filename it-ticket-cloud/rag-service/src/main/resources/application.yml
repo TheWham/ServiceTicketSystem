@@ -1,0 +1,44 @@
+server:
+  port: 8301
+
+spring:
+  application:
+    name: rag-service
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:120.92.138.195}:${MYSQL_PORT:3306}/it_ticket_system?useSSL=false&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:clt123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+itticket:
+  jwt:
+    secret: ${JWT_SECRET:it-ticket-dev-jwt-secret-key-32bytes-minimum!!}
+  auth:
+    exclude-paths:
+      - /api/health
+      - /error
+
+elasticsearch:
+  host: ${ES_HOST:localhost}
+  port: ${ES_PORT:9200}
+  scheme: ${ES_SCHEME:http}
+  index-name: ${ES_KNOWLEDGE_INDEX:knowledge_chunk}
+  connect-timeout-ms: 3000
+  socket-timeout-ms: 5000
+
+logging:
+  level:
+    root: info
+    com.itticket.rag: debug

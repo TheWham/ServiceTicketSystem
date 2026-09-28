@@ -52,4 +52,14 @@ export const draftApi = {
   delete: () => api.delete('/users/drafts')
 }
 
+// ---- RAG 知识库 API ----
+export const ragApi = {
+  uploadDocument: (formData) => api.post('/rag/documents/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  getTrace: (traceId) => api.get(`/rag/traces/${traceId}`),
+  listTraces: () => api.get('/rag/traces'),
+  initIndex: (recreate = false) => api.post(`/rag/indices/init?recreate=${recreate}`)
+}
+
 export default api

@@ -28,6 +28,9 @@ public class InternalUserController {
 
     @GetMapping("/{userId}")
     public Result<UserInfo> getUser(@PathVariable String userId) {
+        if ("kb_admin".equals(userId)) {
+            return Result.ok(new UserInfo("kb_admin", "知识库管理员", "knowledge_admin", "IT部", "active"));
+        }
         User user = userMapper.selectById(userId);
         if (user == null) {
             return Result.ok(null);
@@ -41,11 +44,23 @@ public class InternalUserController {
             return Result.ok(List.of());
         }
         List<User> users = userMapper.selectBatchIds(request.getIds());
-        return Result.ok(users.stream().map(InternalUserController::toInfo).toList());
+        List<UserInfo> list = new java.util.ArrayList<>(users.stream().map(InternalUserController::toInfo).toList());
+        if (request.getIds().contains("kb_admin") && list.stream().noneMatch(u -> "kb_admin".equals(u.getUserId()))) {
+            list.add(new UserInfo("kb_admin", "知识库管理员", "knowledge_admin", "IT部", "active"));
+        }
+        return Result.ok(list);
     }
 
     private static UserInfo toInfo(User user) {
-        return new UserInfo(user.getUserId(), user.getName(), user.getRole().getValue(),
-                user.getDepartment(), user.getStatus().getValue());
+        String name = user.getName();
+        String dept = user.getDepartment();
+        if (user.getRole() != null && "knowledge_admin".equals(user.getRole().getValue())
+                || "kb_admin".equals(user.getUserId())
+                || "孙知识".equals(name)) {
+            name = "知识库管理员";
+            dept = "IT部";
+        }
+        return new UserInfo(user.getUserId(), name, user.getRole().getValue(),
+                dept, user.getStatus().getValue());
     }
 }
