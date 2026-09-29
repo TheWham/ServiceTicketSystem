@@ -44,6 +44,9 @@
           </el-breadcrumb>
         </div>
         <div class="header-right">
+          <!-- 通知中心 -->
+          <NotificationBell />
+
           <!-- 暗黑切换 -->
           <el-tooltip :content="isDark ? '切换亮色' : '切换暗黑'" placement="bottom">
             <el-button text circle @click="toggleDark">
@@ -63,12 +66,21 @@
                 <el-dropdown-item disabled>
                   <el-icon><User /></el-icon>{{ userStore.currentUser?.department }}
                 </el-dropdown-item>
+                <el-dropdown-item command="changePwd">
+                  <el-icon><Lock /></el-icon>修改密码
+                </el-dropdown-item>
+                <el-dropdown-item v-if="isAdmin" command="accounts">
+                  <el-icon><Setting /></el-icon>账号管理
+                </el-dropdown-item>
                 <el-dropdown-item divided command="logout">
                   <el-icon><SwitchButton /></el-icon>切换账号
                 </el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
+
+          <!-- 修改密码弹窗 -->
+          <ChangePasswordDialog v-model="pwdVisible" />
         </div>
       </el-header>
 
@@ -84,8 +96,10 @@ import { computed, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from './stores/user.js'
 import {
-  Monitor, Expand, Fold, Sunny, Moon, User, SwitchButton
+  Monitor, Expand, Fold, Sunny, Moon, User, SwitchButton, Lock, Setting
 } from '@element-plus/icons-vue'
+import NotificationBell from './components/NotificationBell.vue'
+import ChangePasswordDialog from './components/ChangePasswordDialog.vue'
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -105,19 +119,25 @@ const isLoginPage = computed(() => route.path === '/login')
 const activeMenu = computed(() => 'home')
 
 const breadcrumb = computed(() => {
-  const map = { '/employee': '员工工作台', '/engineer': '工程师工作台', '/supervisor': '主管看板' }
+  const map = { '/employee': '员工工作台', '/engineer': '工程师工作台', '/supervisor': '主管看板', '/accounts': '账号管理' }
   return map[route.path] || '工作台'
 })
 
+// PRD §5.1 角色值域（大写）
 const roleLabel = computed(() => {
-  const map = { employee: '员工', engineer: '工程师', supervisor: '主管' }
+  const map = { EMPLOYEE: '员工', ENGINEER: '工程师', PLATFORM_ADMIN: '平台管理员', KB_ADMIN: '知识库管理员' }
   return map[userStore.currentUser?.role] || ''
 })
 
 const roleTagType = computed(() => {
-  const map = { employee: 'success', engineer: 'primary', supervisor: 'warning' }
+  const map = { EMPLOYEE: 'success', ENGINEER: 'primary', PLATFORM_ADMIN: 'warning', KB_ADMIN: 'danger' }
   return map[userStore.currentUser?.role] || 'info'
 })
+
+// 主管（平台管理员/知识库管理员）可见账号管理
+const isAdmin = computed(() => ['PLATFORM_ADMIN', 'KB_ADMIN'].includes(userStore.currentUser?.role))
+
+const pwdVisible = ref(false)
 
 function toggleDark() { isDark.value = !isDark.value }
 
@@ -127,6 +147,10 @@ function onUserCommand(cmd) {
   if (cmd === 'logout') {
     userStore.logout()
     router.push('/login')
+  } else if (cmd === 'changePwd') {
+    pwdVisible.value = true
+  } else if (cmd === 'accounts') {
+    router.push('/accounts')
   }
 }
 </script>

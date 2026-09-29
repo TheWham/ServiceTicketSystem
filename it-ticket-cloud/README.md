@@ -33,11 +33,11 @@ gateway :8080 ──── JWT 统一鉴权(AuthGlobalFilter),剥离/注入 X-Us
    │  ├─ /api/v1/users/**    → lb://user-service
    │  └─ /api/v1/tickets/**  → lb://ticket-service
    │
-   ├── user-service :8101   库 it_user(user、ticket_draft)
+   ├── user-service :8101   单库 it_ticket_system(user、user_role、ticket_draft)
    │      登录签发 JWT、login-options、me、用户列表、草稿 CRUD、
    │      /api/internal/users(供 gateway 校验用户、供 ticket-service 查处理人)
    │
-   └── ticket-service :8201 库 it_ticket(ticket、ticket_flow_log、notification_log)
+   └── ticket-service :8201 单库 it_ticket_system(ticket、ticket_transition、notification 等)
           工单创建(幂等+编号)/列表/详情/派单/领取/状态操作/评分、
           状态机、通知(事务提交后异步 + 1 分钟幂等)、OpenFeign → user-service
 
@@ -47,8 +47,8 @@ gateway :8080 ──── JWT 统一鉴权(AuthGlobalFilter),剥离/注入 X-Us
 | 服务 | 端口 | 数据库 | 职责 |
 |---|---|---|---|
 | gateway | 8080 | — | 唯一入口:JWT 鉴权、用户状态二次校验、路由转发、CORS、健康检查 |
-| user-service | 8101 | it_user | 登录/用户查询/提单草稿/内部用户接口 |
-| ticket-service | 8201 | it_ticket | 工单全生命周期:创建/列表/派单/领取/状态流转/评分/通知 |
+| user-service | 8101 | it_ticket_system | 登录/用户查询/提单草稿/内部用户接口 |
+| ticket-service | 8201 | it_ticket_system | 工单全生命周期:创建/列表/派单/领取/状态流转/评分/通知 |
 
 ## 项目结构
 
@@ -66,7 +66,7 @@ it-ticket-cloud/
 │   └── AuthController / UserController / DraftController / InternalUserController
 ├── ticket-service/         # 工单服务(8201)
 │   └── TicketController / TicketService / TicketStateMachine / NotificationService / UserClient(Feign)
-├── db/init/                # 建库 + 建表 + 种子 SQL(00/10/11/20/21 顺序执行)
+├── db/init/                # 单库 it_ticket_system:00-schema.sql(28 表结构) + 10-seed.sql(种子数据)
 └── scripts/                # Windows 本地脚本(start-all / start-mysql-local / start-nacos / init-db)
 ```
 
@@ -97,7 +97,7 @@ docker compose up -d          # 起 MySQL(自动挂载 db/init 建库+种子) �
    scripts\init-db.cmd
    ```
 
-   等价于按顺序执行 `db/init/` 下 5 个 SQL(00 建库 → 10/11 user 库表+种子 → 20/21 ticket 库表+种子),默认 `root/root123`,不同请改脚本内 `-p`。
+   等价于执行 `db/init/` 下 2 个 SQL(00 全量表结构 → 10 种子数据),单库 `it_ticket_system`,默认 `root/root123`,不同请改脚本内 `-p`。
 3. **Nacos**:下载 nacos-server 2.3.x zip(https://github.com/alibaba/nacos/releases),解压后:
 
    ```cmd
@@ -135,7 +135,7 @@ java -jar ticket-service/target/it-ticket-ticket-service-1.0.0.jar
 | U005 | 钱工 | engineer(工程师) | IT部 |
 | U006 | 孙主管 | supervisor(主管) | IT部 |
 
-另预置 3 条示例工单(`TK202609180001` 待处理 / `TK202609180002` 处理中 / `TK202609180003` 待验收)及对应流转日志。
+种子数据含 4 个演示用户(`U_ADM01` 平台管理员 / `U_EMP01` 员工 / `U_ENG01` 工程师 / `U_KBA01` 知识库管理员,默认密码 `123456`)及其角色授权、分类/团队/路由配置;`ticket` 表为空,由前端实际提单产生数据。
 
 ## 环境变量
 
@@ -144,7 +144,7 @@ java -jar ticket-service/target/it-ticket-ticket-service-1.0.0.jar
 | 环境变量 | 默认值 | 说明 |
 |---|---|---|
 | `NACOS_ADDR` | `127.0.0.1:8848` | Nacos 注册中心地址(三个服务共用) |
-| `MYSQL_HOST` / `MYSQL_PORT` | `localhost` / `3306` | MySQL 地址(user→it_user,ticket→it_ticket) |
+| `MYSQL_HOST` / `MYSQL_PORT` | `localhost` / `3306` | MySQL 地址(单库 `it_ticket_system`,两个业务服务共用) |
 | `MYSQL_USERNAME` / `MYSQL_PASSWORD` | `root` / `root123` | MySQL 账号 |
 | `JWT_SECRET` | `it-ticket-dev-jwt-secret-key-32bytes-minimum!!` | JWT 密钥,**gateway 与 user-service 必须一致;生产必换** |
 
@@ -152,21 +152,23 @@ JWT 有效期 12 小时(`itticket.jwt.ttl-hours`,代码默认 12)。
 
 ## 数据库设计
 
-数据库按服务拆分:`it_user`(user-service 拥有)、`it_ticket`(ticket-service 拥有),均 utf8mb4。
+单库 `it_ticket_system`(utf8mb4_unicode_ci),28 张表,与 `IT服务工单系统PRD-Ultimate.md` §20 数据模型一致;完整结构见 `db/init/00-schema.sql`。核心表:
 
-### it_user 库
+**user**(用户):`user_id` PK、`employee_no` UNIQUE、`name`、`department_id`、`status`(ACTIVE/DISABLED)、`identity_source`、`password_hash`(BCrypt,登录过渡用,F-01 SSO 上线后移除)、`created_at/updated_at`。
 
-**user**(用户表):`user_id` PK、`name`、`role` ENUM(employee/engineer/supervisor)、`department`、`phone`、`wechat_id`、`password_hash`(BCrypt)、`status` ENUM(active/inactive)、`created_at/updated_at`。索引:`idx_role`、`idx_department`。
+**user_role**(角色授权,一人可多角色):`id` PK 自增、`user_id`、`role_code`(EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KB_ADMIN,§5.1)、`granted_by`、`granted_at`、`revoked_at`(NULL=有效)。
 
-**ticket_draft**(提单草稿,每用户一条):`draft_id` PK、`user_id` **唯一索引** `uk_user_draft`、`title/category/sub_category/priority/description/asset_id/expected_finish_time`、`attachment_urls` JSON、`updated_at`。
+**ticket**(工单主表):`ticket_id` PK(工单号)、`creator_id`、`nature`(INCIDENT/SERVICE_REQUEST)、`category_id` + `category_snapshot`(停用分类保留 §10.1)、`title`(≤100)、`description`(10-5000)、`impact_description`/`urgency_description`、`location`/`contact`/`asset_id`/`asset_check_status`、`status`(NEW/ASSIGNED/IN_PROGRESS/PENDING_SUPPLEMENT/PENDING_EXTERNAL/PENDING_ACCEPTANCE/COMPLETED/CANCELLED/CLOSED)、`priority`(HIGH/MEDIUM/LOW,接单时按矩阵确认 §11.4)、`impact_scope`/`urgency_level`(矩阵输入)、`assignee_id`、`source_session_id`(咨询转单)、`auto_accepted`(48h 自动验收 §11.6)、`reopen_count`、`idempotency_key`(提单幂等 §10.4)、`version`(乐观锁)、`first_response_at`/`solved_at`/`rating_score`/`rating_comment`/`rated_at`。
 
-### it_ticket 库
+**ticket_transition**(工单流转,只追加 §2.2):`transition_id` PK、`ticket_id`、`from_status`/`to_status`、`event`(SUBMIT/ROUTE/ACCEPT/... §9.3)、`operator_id`(含 SYSTEM)、`reason`(驳回/撤销/异常关闭必填)、`occurred_at`。
 
-**ticket**(工单表):`ticket_id` PK(工单号)、`title`(≤50)、`description`(10-500)、`category` ENUM(硬件/软件/网络/账号/其他)、`sub_category`(预留)、`priority` ENUM(高/中/低)、`status` ENUM(待处理/处理中/待补充/待外部/待验收/已完成/已取消)、`creator_id`、`assignee_id`、`asset_id`(预留 CMDB)、`expected_finish_time`、`attachment_urls` JSON(≤3)、`client_token`(幂等)、`first_response_at`、`solved_at`、`pause_minutes`、`rating_score`(1-5)、`rating_comment`(≤200)、`rated_at`、`created_at/updated_at`。索引:唯一 `uk_client_token` + `idx_status/idx_creator/idx_assignee/idx_category/idx_priority/idx_created`。
+**sla_instance**(SLA 实例 §11.2):`sla_id` PK、`ticket_id`、`sla_type`(RESPONSE/COMPLETION)、`priority_snapshot`、`target_at`(按工作日历推算)、`elapsed_work_seconds`/`paused_seconds`、`near_breach_notified`(80% 提醒)、`breach_at`(违约时间不可删)、`status`(RUNNING/PAUSED/STOPPED/BREACHED);配套 **sla_pause**(暂停记录 §11.3)。
 
-**ticket_flow_log**(流转日志):`log_id` PK、`ticket_id`、`from_status`(可 NULL,创建时)、`to_status`、`operator_id`、`remark`(≤500)、`created_at`。
+**notification**(通知 §14):`notification_id` PK、`event_id`、`receiver_id`、`channel`(INBOX/EMAIL)、`dedup_key` UNIQUE(幂等 §14.3)、`title`/`content`/`action_url`、`status`(PENDING/SENT/FAILED)、`attempts`/`last_error`。
 
-**notification_log**(通知记录):`id` PK、`ticket_id`、`event_type`、`receiver_id`、`channel` ENUM(企微/短信/站内)、`is_fallback`、`delivery_status` ENUM(SUCCESS/FAILED/PENDING)、`created_at`。索引:复合 `idx_ticket_event(ticket_id, event_type)`(幂等查询用)、`idx_receiver`。
+**exception_queue**(异常队列 §18):`exception_id` PK、`biz_type`/`biz_id`、`exception_type`(NO_RESPONSE/ROUTE_FAILED/LONG_PENDING/NOTIFY_FAILED/LIMIT_EXCEEDED)、`title`/`detail`/`priority`、`status`(OPEN/RESOLVED/DISMISSED)、`resolved_by`/`resolved_at`/`resolution`。
+
+其余:`category`/`category_field_def`/`category_route`(分类与路由 §12.1)、`support_team`/`team_member`(团队)、`assignment`(分配记录 §12.3)、`engineer_status_log`(工程师状态 §6.2)、`ticket_draft`(提单草稿 §10.5)、`ticket_message`/`consultation*`(沟通与咨询 §13)、`attachment`(附件,先扫描后用)、`work_calendar`(服务日历)、`knowledge_*`/`case_candidate`/`ai_interaction`(知识库与 AI §16-17)、`audit_log`(审计,只追加 §23)、`ticket_field_value`(扩展字段 §10.3)。
 
 ## 接口一览
 

@@ -19,4 +19,10 @@ public interface UserClient {
 
     @PostMapping("/api/internal/users/batch")
     Result<List<UserInfo>> batch(@RequestBody IdsRequest request);
+
+    @GetMapping("/api/internal/users/engineers")
+    Result<List<UserInfo>> engineers();
+
+    @GetMapping("/api/internal/users/admins")
+    Result<List<UserInfo>> admins();
 }

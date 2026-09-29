@@ -2,6 +2,7 @@ package com.itticket.ticket.controller;
 
 import com.itticket.common.api.Result;
 import com.itticket.common.web.UserContext;
+import com.itticket.ticket.dto.AcceptRequest;
 import com.itticket.ticket.dto.ActionRequest;
 import com.itticket.ticket.dto.AssignRequest;
 import com.itticket.ticket.dto.CreateTicketRequest;
@@ -23,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
-/** 工单全部对外接口 —— 路径与旧版 /api/v1/tickets 完全一致 */
+/** 工单全部对外接口 —— 路径与 /api/v1/tickets 完全一致 */
 @RestController
 @RequestMapping("/api/v1/tickets")
 @RequiredArgsConstructor
@@ -42,7 +43,7 @@ public class TicketController {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(Result.ok("创建成功", Map.of(
                         "ticket_id", outcome.ticketId(),
-                        "status", TicketStatus.PENDING.getValue(),
+                        "status", TicketStatus.NEW.getValue(),
                         "title", outcome.title())));
     }
 
@@ -69,13 +70,13 @@ public class TicketController {
     public Result<Map<String, Object>> assign(@PathVariable String id, @RequestBody AssignRequest request) {
         TicketService.AssignOutcome outcome = ticketService.assign(UserContext.get(), id, request);
         return Result.ok(outcome.reassign() ? "改派成功" : "派单成功",
-                Map.of("ticket_id", outcome.ticketId(), "status", TicketStatus.PROCESSING.getValue(),
+                Map.of("ticket_id", outcome.ticketId(), "status", TicketStatus.IN_PROGRESS.getValue(),
                         "assignee_id", outcome.assigneeId()));
     }
 
     @PostMapping("/{id}/claim")
-    public Result<Map<String, Object>> claim(@PathVariable String id) {
-        return Result.ok("领取成功", ticketService.claim(UserContext.get(), id));
+    public Result<Map<String, Object>> claim(@PathVariable String id, @RequestBody AcceptRequest request) {
+        return Result.ok("接单成功", ticketService.claim(UserContext.get(), id, request));
     }
 
     @PostMapping("/{id}/actions")

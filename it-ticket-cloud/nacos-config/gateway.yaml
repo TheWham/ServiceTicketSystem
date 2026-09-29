@@ -1,0 +1,37 @@
+# Nacos DataId: gateway.yaml  (Group: DEFAULT_GROUP)
+# 网关路由 + 跨域配置；改路由后 Nacos 发布即生效，无需重启 gateway
+spring:
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+            maxAge: 36000
+      routes:
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/users/**
+        - id: ticket-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/tickets/**
+        - id: category-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/categories/**
+        - id: sla-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/sla/**
+        - id: notification-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/notifications/**
+        - id: exception-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/exceptions/**
