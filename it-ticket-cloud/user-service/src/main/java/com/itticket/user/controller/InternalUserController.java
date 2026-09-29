@@ -3,8 +3,11 @@ package com.itticket.user.controller;
 import com.itticket.common.api.Result;
 import com.itticket.common.user.UserInfo;
 import com.itticket.user.dto.IdsRequest;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.itticket.user.entity.User;
+import com.itticket.user.entity.UserRoleEntity;
 import com.itticket.user.mapper.UserMapper;
+import com.itticket.user.mapper.UserRoleMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,12 +28,10 @@ import java.util.List;
 public class InternalUserController {
 
     private final UserMapper userMapper;
+    private final UserRoleMapper userRoleMapper;
 
     @GetMapping("/{userId}")
     public Result<UserInfo> getUser(@PathVariable String userId) {
-        if ("kb_admin".equals(userId)) {
-            return Result.ok(new UserInfo("kb_admin", "知识库管理员", "knowledge_admin", "IT部", "active"));
-        }
         User user = userMapper.selectById(userId);
         if (user == null) {
             return Result.ok(null);
@@ -44,23 +45,48 @@ public class InternalUserController {
             return Result.ok(List.of());
         }
         List<User> users = userMapper.selectBatchIds(request.getIds());
-        List<UserInfo> list = new java.util.ArrayList<>(users.stream().map(InternalUserController::toInfo).toList());
-        if (request.getIds().contains("kb_admin") && list.stream().noneMatch(u -> "kb_admin".equals(u.getUserId()))) {
-            list.add(new UserInfo("kb_admin", "知识库管理员", "knowledge_admin", "IT部", "active"));
-        }
-        return Result.ok(list);
+        return Result.ok(users.stream().map(this::toInfo).toList());
     }
 
-    private static UserInfo toInfo(User user) {
-        String name = user.getName();
-        String dept = user.getDepartment();
-        if (user.getRole() != null && "knowledge_admin".equals(user.getRole().getValue())
-                || "kb_admin".equals(user.getUserId())
-                || "孙知识".equals(name)) {
-            name = "知识库管理员";
-            dept = "IT部";
-        }
-        return new UserInfo(user.getUserId(), name, user.getRole().getValue(),
-                dept, user.getStatus().getValue());
+    /** 查询可用工程师列表（F-06 路由用：user_role 中 ENGINEER 且未撤销、用户 ACTIVE） */
+    @GetMapping("/engineers")
+    public Result<List<UserInfo>> engineers() {
+        List<String> ids = userRoleMapper.selectList(new QueryWrapper<UserRoleEntity>()
+                        .eq("role_code", "ENGINEER").isNull("revoked_at"))
+                .stream().map(UserRoleEntity::getUserId).toList();
+        if (ids.isEmpty()) return Result.ok(List.of());
+        List<User> users = userMapper.selectList(new QueryWrapper<User>()
+                .in("user_id", ids).eq("status", "ACTIVE"));
+        return Result.ok(users.stream().map(u -> toInfo(u, "engineer")).toList());
+    }
+
+    /** 查询平台管理员列表（路由失败/异常队列通知用：PLATFORM_ADMIN + KB_ADMIN 且未撤销、用户 ACTIVE） */
+    @GetMapping("/admins")
+    public Result<List<UserInfo>> admins() {
+        List<UserRoleEntity> roles = userRoleMapper.selectList(new QueryWrapper<UserRoleEntity>()
+                .in("role_code", "PLATFORM_ADMIN", "KB_ADMIN").isNull("revoked_at"));
+        List<String> ids = roles.stream().map(UserRoleEntity::getUserId).distinct().toList();
+        if (ids.isEmpty()) return Result.ok(List.of());
+        List<User> users = userMapper.selectList(new QueryWrapper<User>()
+                .in("user_id", ids).eq("status", "ACTIVE"));
+        return Result.ok(users.stream().map(this::toInfo).toList());
+    }
+
+    private UserInfo toInfo(User user) {
+        return toInfo(user, primaryRole(user.getUserId()));
+    }
+
+    /** role/status 出口统一小写,与 ticket-service、网关的比较口径一致 */
+    private UserInfo toInfo(User user, String role) {
+        String status = user.getStatus();
+        return new UserInfo(user.getUserId(), user.getName(), role,
+                user.getDepartmentId(), status == null ? null : status.toLowerCase());
+    }
+
+    private String primaryRole(String userId) {
+        UserRoleEntity r = userRoleMapper.selectOne(new QueryWrapper<UserRoleEntity>()
+                .eq("user_id", userId).isNull("revoked_at")
+                .orderByDesc("granted_at").last("LIMIT 1"));
+        return r != null && r.getRoleCode() != null ? r.getRoleCode().toLowerCase() : "employee";
     }
 }

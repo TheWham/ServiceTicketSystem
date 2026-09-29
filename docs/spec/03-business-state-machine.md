@@ -97,18 +97,18 @@
 | `PUBLISHED` | 新版本发布 | `PUBLISHED` | 知识库管理员 | 新版本审核完成后切换当前版本。 |
 | `OFFLINE` | 新版本发布 | `PUBLISHED` | 知识库管理员 | 版本关联完整。 |
 
-知识发布副作用：写入 `KnowledgePublished` 或 `KnowledgeOffline` 领域事件，要求刷新搜索和 RAG 索引；索引失败不回滚已经合法的知识状态，补偿规则引用 `RD-006` 和 `RD-008`。
+知识发布副作用：写入 `KNOWLEDGE_PUBLISHED` 或 `KNOWLEDGE_OFFLINE` 领域事实事件，要求刷新搜索和 RAG 索引；索引失败不回滚已经合法的知识状态，补偿规则引用 `RD-006` 和 `RD-008`。
 
 ## SM-EVENT-001 领域事件最小集合
 
-| 状态机域 | 事件码 |
+| 状态机域 | 领域事实事件类型 `event_type` |
 |---|---|
 | 咨询 | `CONSULTATION_TRANSFERRED`、`CONSULTATION_RESPONDED`、`CONSULTATION_RESOLVED`、`CONSULTATION_REOPENED`、`CONSULTATION_CONVERTED` |
 | 工单 | `TICKET_CREATED`、`TICKET_ASSIGNED`、`TICKET_RESPONDED`、`TICKET_STATUS_CHANGED`、`TICKET_PRIORITY_CHANGED`、`TICKET_TRANSFERRED`、`TICKET_REOPENED` |
 | SLA | `SLA_NEAR_BREACH`、`SLA_BREACHED` |
 | 知识 | `KNOWLEDGE_SUBMITTED`、`KNOWLEDGE_PUBLISHED`、`KNOWLEDGE_OFFLINE`、`KNOWLEDGE_INDEX_REFRESH_REQUESTED` |
 
-事件载荷只携带对象 ID、事件码、版本、操作者和发生时间；字段详情和持久化结构由 `DM-*` 负责，投递失败由 `RD-*` 负责。
+领域事实事件的 `event_type` 统一使用 `SCREAMING_SNAKE_CASE`；状态迁移记录的 `eventCode` 是 `DOMAIN_ACTION` 业务动作码。事件载荷只携带对象 ID、领域事实事件类型、版本、操作者和发生时间；字段详情和持久化结构由 `DM-*` 负责，投递失败由 `RD-*` 负责。
 
 ## SM-ROLE-001 角色动作边界
 

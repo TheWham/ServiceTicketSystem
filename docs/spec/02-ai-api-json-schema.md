@@ -168,6 +168,76 @@ DTO 不直接暴露 `DM-*` 实体；`AiInteraction` 只保存回答审计、引�
 
 反馈请求必须包含 `interactionId` 和 `feedback` (`HELPFUL|NOT_HELPFUL|INCORRECT`)，可选 `comment` 最长 2000 字符。转人工请求必须包含 `categoryId`，可选 `priorityHint` (`HIGH|MEDIUM|LOW`)；响应返回 `sessionId`、`status`、可选 `assignmentId` 和非负等待秒数。知识搜索响应只允许返回已发布文章的 `articleId/versionId/title/summary/categoryId` 及分页元数据，不暴露来源工单。
 
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/ai-feedback-request-1.0.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["interactionId", "feedback"],
+  "properties": {
+    "interactionId": {"type": "string", "minLength": 1, "maxLength": 64},
+    "feedback": {"enum": ["HELPFUL", "NOT_HELPFUL", "INCORRECT"]},
+    "comment": {"type": "string", "maxLength": 2000}
+  }
+}
+```
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/consultation-transfer-request-1.0.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["categoryId"],
+  "properties": {
+    "categoryId": {"type": "string", "minLength": 1, "maxLength": 64},
+    "priorityHint": {"enum": ["HIGH", "MEDIUM", "LOW"]}
+  }
+}
+```
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/consultation-transfer-response-1.0.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["sessionId", "status", "estimatedWaitSeconds"],
+  "properties": {
+    "sessionId": {"type": "string", "minLength": 1, "maxLength": 32},
+    "status": {"const": "WAITING_ENGINEER"},
+    "assignmentId": {"type": "string", "minLength": 1, "maxLength": 64},
+    "estimatedWaitSeconds": {"type": "integer", "minimum": 0}
+  }
+}
+```
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/knowledge-search-response-1.0.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["items", "page", "pageSize", "total"],
+  "properties": {
+    "items": {"type": "array", "items": {"$ref": "#/$defs/item"}},
+    "page": {"type": "integer", "minimum": 1},
+    "pageSize": {"type": "integer", "minimum": 1, "maximum": 100},
+    "total": {"type": "integer", "minimum": 0}
+  },
+  "$defs": {
+    "item": {
+      "type": "object", "additionalProperties": false,
+      "required": ["articleId", "versionId", "title", "summary", "categoryId"],
+      "properties": {
+        "articleId": {"type": "string", "minLength": 1, "maxLength": 64},
+        "versionId": {"type": "string", "minLength": 1, "maxLength": 64},
+        "title": {"type": "string", "minLength": 1, "maxLength": 200},
+        "summary": {"type": "string", "maxLength": 2000},
+        "categoryId": {"type": "string", "minLength": 1, "maxLength": 64}
+      }
+    }
+  }
+}
+```
+
 ## AI-005 接口目录
 
 | 编号 | 方法与路径 | 请求 | 响应 | 说明 |

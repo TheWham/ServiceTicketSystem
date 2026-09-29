@@ -1,40 +1,26 @@
+# 网关启动配置
+# 业务配置：本地 application-{profile}.yml（dev 默认 / prod 生产，见同目录）
+# 后期上服务器改用 Nacos 下发：设 NACOS_CONFIG_ENABLED=true 即用 Nacos 覆盖本地
 server:
   port: 8080
 
 spring:
   application:
     name: gateway
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}   # 默认测试环境，生产设 prod
   cloud:
     nacos:
+      server-addr: ${NACOS_ADDR:127.0.0.1:8848}
       discovery:
-        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
-    gateway:
-      globalcors:
-        cors-configurations:
-          '[/**]':
-            allowedOriginPatterns: "*"
-            allowedMethods: "*"
-            allowedHeaders: "*"
-            maxAge: 36000
-      routes:
-        - id: user-service
-          uri: lb://user-service
-          predicates:
-            - Path=/api/v1/users/**
-        - id: ticket-service
-          uri: lb://ticket-service
-          predicates:
-            - Path=/api/v1/tickets/**
-        - id: rag-service
-          uri: lb://rag-service
-          predicates:
-            - Path=/api/v1/rag/**
-
-itticket:
-  jwt:
-    # 必须与 user-service 一致;生产用环境变量 JWT_SECRET 或 Nacos 配置中心覆盖
-    secret: ${JWT_SECRET:it-ticket-dev-jwt-secret-key-32bytes-minimum!!}
-
-logging:
-  level:
-    root: info
+        server-addr: ${spring.cloud.nacos.server-addr}
+      config:
+        server-addr: ${spring.cloud.nacos.server-addr}
+        # NACOS_CONFIG_ENABLED=true 时从 Nacos 拉配置；默认 false 用本地 profile
+        enabled: ${NACOS_CONFIG_ENABLED:false}
+        shared-configs:
+          - data-id: common-config.yaml
+            refresh: true
+  config:
+    import:
+      - optional:nacos:${spring.application.name}-${spring.profiles.active}.yaml

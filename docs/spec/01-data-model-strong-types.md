@@ -118,9 +118,19 @@ class SupportTeam {  String teamId; String name; boolean enabled;  Long version;
 class TeamMember {
    TeamMemberId id; Instant joinedAt; Instant leftAt; boolean enabled;
 }
+class EngineerRuntimeState {
+   String engineerId; EngineerPresence presence; Instant lastActivityAt;
+  Instant lastAssignedAt; long version;
+}
+class EngineerCategoryCapability {
+   String engineerId; String categoryId; String teamId; boolean enabled;
+  Instant effectiveAt; Instant expiredAt;
+}
 ```
 
-MySQL：`user_account(user_id PK, employee_no UNIQUE, department_id INDEX, enabled)`；`user_role(user_id, role_code PK, revoked_at INDEX)`；`support_team(team_id PK)`；`team_member(team_id, engineer_id PK, enabled INDEX)`。
+MySQL：`user_account(user_id PK, employee_no UNIQUE, department_id INDEX, enabled)`；`user_role(user_id, role_code PK, revoked_at INDEX)`；`support_team(team_id PK)`；`team_member(team_id, engineer_id PK, enabled INDEX)`；`engineer_runtime_state(engineer_id PK, presence, last_activity_at)`；`engineer_category_capability(engineer_id, category_id, team_id, effective_at UNIQUE)`。
+
+加权负载不作为权限或状态事实持久化：分配器在同一 MySQL 一致性快照内，按当前未结束 `Assignment`、活跃咨询/工单和 PRD 默认权重实时聚合；允许建立可重建的负载投影缓存，但命中前必须校验投影版本，Redis 丢失时回源聚合。
 
 ### 分类、路由与字段快照
 
@@ -151,7 +161,8 @@ class Consultation {
 }
 class ConsultationMessage {
    String messageId; String sessionId; String senderId; MessageSenderType senderType;
-  String content; String citationJson; Instant sentAt; Instant withdrawnAt; String withdrawReason;
+  String clientMessageId; String content; String citationJson;
+  Instant sentAt; Instant withdrawnAt; String withdrawReason;
 }
 ```
 
@@ -173,7 +184,7 @@ class TicketTransition {
 }
 class TicketMessage {
    String messageId; String ticketId; String senderId; MessageSenderType senderType;
-  String content; Instant sentAt; Instant withdrawnAt; String withdrawReason;
+  String clientMessageId; String content; Instant sentAt; Instant withdrawnAt; String withdrawReason;
 }
 class TicketDraft {
    String draftId; String creatorId; TicketNature nature; String categoryId;
@@ -194,15 +205,20 @@ class TicketResolution {
 class TicketAcceptance {
    String acceptanceId; String ticketId; AcceptanceResult result;
   String reason; String operatorId; Instant occurredAt;
+  Integer ratingScore; String ratingComment; Instant ratedAt;
 }
 class Attachment {
    String attachmentId; AttachmentBizType bizType; String bizId; String uploaderId;
   String objectKey; String originalName; long sizeBytes; String sha256;
   String contentType; AttachmentScanStatus scanStatus; Instant uploadedAt; Instant withdrawnAt;
 }
+class AttachmentAccess {
+   String accessId; String attachmentId; String subjectId; String requestId;
+  Instant issuedAt; Instant expiresAt; Instant accessedAt; String accessResult; Instant revokedAt;
+}
 ```
 
-约束：`ticket(title, category_id, created_at)`、`ticket(creator_id, status)`、`ticket(assignee_id, status)`、`ticket(priority, status)` 建索引；`ticket_transition(ticket_id, occurred_at, transition_id)` 唯一排序；`ticket_message(ticket_id, sent_at, message_id)`；`attachment(biz_type, biz_id, sha256)` 唯一，防止同一业务对象重复上传相同文件。
+约束：`ticket(title, category_id, created_at)`、`ticket(creator_id, status)`、`ticket(assignee_id, status)`、`ticket(priority, status)` 建索引；`ticket_transition(ticket_id, occurred_at, transition_id)` 唯一排序；消息按业务对象与 `client_message_id` 唯一；`attachment(biz_type, biz_id, sha256)` 唯一；`attachment_access(attachment_id, subject_id, expires_at)` 建索引并追加记录每次访问结果。
 
 ### 分配、SLA、通知和审计
 
@@ -212,9 +228,9 @@ class Assignment {
   Instant assignedAt; Instant responseDeadline; Instant respondedAt; AssignmentEndReason endReason;
 }
 class SlaInstance {
-   String slaId; String ticketId; SlaType slaType; SlaStatus status;
+   String slaId; AssignmentBizType bizType; String bizId; SlaType slaType; SlaStatus status;
   long targetWorkSeconds; long elapsedWorkSeconds; long pausedSeconds;
-  Instant targetAt; Instant breachedAt; Instant metAt;
+  Instant targetAt; Instant breachedAt; Instant metAt; String calendarId; long calendarVersion;
 }
 class SlaPause {  String pauseId; String slaId; SlaPauseReason reasonType; Instant startedAt; Instant endedAt; String operatorId; }
 class Notification {
@@ -228,7 +244,7 @@ class AuditLog {
 }
 ```
 
-`assignment(biz_type, biz_id, engineer_id, assigned_at)`、`sla_instance(ticket_id, sla_type)` 唯一；`sla_pause(sla_id, started_at)`；`notification(dedup_key)` 唯一；`audit_log(object_type, object_id, occurred_at)` 和 `audit_log(actor_id, occurred_at)` 建索引。审计表只允许追加。
+`assignment(biz_type, biz_id, engineer_id, assigned_at)`、`sla_instance(biz_type, biz_id, sla_type)` 唯一；`sla_pause(sla_id, started_at)`；`notification(dedup_key)` 唯一；`audit_log(object_type, object_id, occurred_at)` 和 `audit_log(actor_id, occurred_at)` 建索引。审计表只允许追加。
 
 `ticket_draft(creator_id)` 唯一保证每位员工只有一个活动草稿；`supplement_request(ticket_id, sequence_no)` 唯一；`external_wait(ticket_id, started_at)`；`ticket_resolution(ticket_id, submitted_at)`；`ticket_acceptance(ticket_id, occurred_at)`；`idempotency_record(owner_id, operation, key)` 唯一；`outbox_event(status, next_attempt_at)` 建索引。草稿可更新，补充、等待、解决方案和验收记录只追加。
 
@@ -246,6 +262,7 @@ class KnowledgeArticle {
 class KnowledgeVersion {
    String versionId; String articleId; int versionNo; String contentJson;
   String authorId; String reviewerId; Instant publishedAt; String changeNote;
+  String platformReviewerId; Instant platformReviewedAt; String platformReviewDecision;
 }
 class KnowledgeCluster {  String clusterId; String similarityBasis; KnowledgeClusterStatus status; }
 class AiInteraction {
@@ -262,6 +279,8 @@ class OutboxEvent {
   String payloadJson; OutboxStatus status; int attempts; Instant nextAttemptAt; Instant publishedAt;
 }
 ```
+
+`TicketTransition.eventCode` 保存 `DOMAIN_ACTION` 业务动作码（例如 `TICKET_ACCEPT`）；`OutboxEvent.eventType` 保存 `SCREAMING_SNAKE_CASE` 领域事实事件类型（例如 `TICKET_RESPONDED`）。禁止把动作码写入 `event_type`，也禁止用领域事实事件类型替代流转动作码。
 
 知识版本使用 `(article_id, version_no)` 唯一；`PUBLISHED` 只能有一个当前版本；RAG 索引版本必须可追溯到 `knowledge_version.version_id`。`AiInteraction` 只保存审计、反馈和引用元数据，不作为训练语料自动发布。
 
