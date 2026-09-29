@@ -30,7 +30,7 @@ public class NotificationController {
         String receiverId = UserContext.get().getUserId();
         QueryWrapper<Notification> qw = new QueryWrapper<Notification>()
                 .eq("receiver_id", receiverId)
-                .eq("channel", "INBOX")
+                .eq("channel", "IN_APP")
                 .orderByDesc("created_at");
         Page<Notification> p = notificationMapper.selectPage(new Page<>(page, page_size), qw);
         Map<String, Object> body = new HashMap<>();
@@ -47,7 +47,7 @@ public class NotificationController {
         String receiverId = UserContext.get().getUserId();
         Long cnt = notificationMapper.selectCount(new QueryWrapper<Notification>()
                 .eq("receiver_id", receiverId)
-                .eq("channel", "INBOX"));
+                .eq("channel", "IN_APP"));
         return Result.ok(cnt);
     }
 }

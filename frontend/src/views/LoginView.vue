@@ -79,7 +79,7 @@
           <el-input v-model="forgotForm.userId" placeholder="如 U_EMP01" />
         </el-form-item>
         <el-form-item label="姓名" required>
-          <el-input v-model="forgotForm.name" placeholder="请输入姓名" />
+          <el-input v-model="forgotForm.display_name" placeholder="请输入姓名" />
         </el-form-item>
         <el-form-item label="员工号" required>
           <el-input v-model="forgotForm.employeeNo" placeholder="如 E1001" />
@@ -105,35 +105,27 @@ import { Lock } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user.js'
 import { userApi } from '../api/index.js'
 
-// PRD §5.1 角色值域（大写）：EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KB_ADMIN；同时兼容旧版小写值域
+// PRD §5.1 角色值域：EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KNOWLEDGE_ADMIN（KB_ADMIN 为历史别名）
+// 兼容后端历史上出口的小写值域
 const roleMap = {
-  EMPLOYEE: '员工',
-  ENGINEER: '工程师',
-  PLATFORM_ADMIN: '平台管理员',
+  EMPLOYEE: '员工', ENGINEER: '工程师', PLATFORM_ADMIN: '平台管理员', KNOWLEDGE_ADMIN: '知识库管理员',
   KB_ADMIN: '知识库管理员',
-  employee: '员工',
-  engineer: '工程师',
-  supervisor: '主管',
-  knowledge_admin: '知识库管理员',
-  kb_admin: '知识库管理员'
+  employee: '员工', engineer: '工程师', supervisor: '平台管理员', knowledge_admin: '知识库管理员', kb_admin: '知识库管理员'
 }
 
 const roleTagType = (role) => {
   const r = (role || '').toUpperCase()
   if (r === 'EMPLOYEE') return 'success'
   if (r === 'ENGINEER') return 'primary'
-  if (r === 'PLATFORM_ADMIN' || r === 'SUPERVISOR') return 'warning'
-  if (r === 'KB_ADMIN' || r === 'KNOWLEDGE_ADMIN') return 'danger'
+  if (r === 'PLATFORM_ADMIN') return 'warning'
+  if (r === 'KNOWLEDGE_ADMIN' || r === 'KB_ADMIN') return 'danger'
   return 'info'
 }
 
+/** 展示名优先取后端出口的 display_name，其次旧字段 name */
 const getUserDisplayName = (user) => {
   if (!user) return ''
-  const r = (user.role || '').toUpperCase()
-  if (r === 'KB_ADMIN' || r === 'KNOWLEDGE_ADMIN' || user.user_id === 'kb_admin' || user.user_id === 'U_KBA01') {
-    return '知识库管理员'
-  }
-  return user.name || ''
+  return user.display_name || user.name || ''
 }
 
 const getUserAvatar = (user) => {
@@ -143,10 +135,6 @@ const getUserAvatar = (user) => {
 
 const getUserDepartment = (user) => {
   if (!user) return ''
-  const r = (user.role || '').toUpperCase()
-  if (r === 'KB_ADMIN' || r === 'KNOWLEDGE_ADMIN' || user.user_id === 'kb_admin' || user.user_id === 'U_KBA01') {
-    return 'IT部'
-  }
   return user.department || user.department_id || 'IT部'
 }
 
@@ -161,11 +149,11 @@ const userStore = useUserStore()
 // 忘记密码
 const forgotVisible = ref(false)
 const forgotLoading = ref(false)
-const forgotForm = ref({ userId: '', name: '', employeeNo: '', newPassword: '' })
+const forgotForm = ref({ userId: '', display_name: '', employeeNo: '', newPassword: '' })
 
 async function doForgot() {
   const f = forgotForm.value
-  if (!f.userId || !f.name || !f.employeeNo || !f.newPassword) {
+  if (!f.userId || !f.display_name || !f.employeeNo || !f.newPassword) {
     ElMessage.warning('请填写完整的身份验证信息和新密码')
     return
   }
@@ -174,7 +162,7 @@ async function doForgot() {
     await userApi.forgotPassword(f)
     ElMessage.success('密码已重置，请使用新密码登录')
     forgotVisible.value = false
-    forgotForm.value = { userId: '', name: '', employeeNo: '', newPassword: '' }
+    forgotForm.value = { userId: '', display_name: '', employeeNo: '', newPassword: '' }
     password.value = ''
   } catch (e) {
     ElMessage.error(e.message || '重置失败')
@@ -186,35 +174,15 @@ async function doForgot() {
 onMounted(async () => {
   try {
     const res = await userApi.loginOptions()
-    const rawList = res.data || []
-    const list = rawList.map(u => {
-      const r = (u.role || '').toUpperCase()
-      if (r === 'KB_ADMIN' || r === 'KNOWLEDGE_ADMIN' || u.user_id === 'kb_admin' || u.user_id === 'U_KBA01' || u.name === '孙知识') {
-        return {
-          ...u,
-          name: '知识库管理员',
-          department: 'IT部',
-          role: 'KB_ADMIN'
-        }
-      }
-      return u
-    })
-    const hasKb = list.some(u => {
-      const r = (u.role || '').toUpperCase()
-      return r === 'KB_ADMIN' || r === 'KNOWLEDGE_ADMIN' || u.user_id === 'kb_admin' || u.user_id === 'U_KBA01'
-    })
-    if (!hasKb) {
-      list.push({ user_id: 'U_KBA01', name: '知识库管理员', department: 'IT部', role: 'KB_ADMIN' })
-    }
-    users.value = list
+    users.value = res.data || []
   } catch (e) {
     ElMessage.error('获取登录选项失败：' + e.message)
     // 降级兜底预设
     users.value = [
-      { user_id: 'U_EMP01', name: '演示员工', department: 'D001', role: 'EMPLOYEE' },
-      { user_id: 'U_ENG01', name: '演示工程师', department: 'D002', role: 'ENGINEER' },
-      { user_id: 'U_ADM01', name: '平台管理员', department: 'D003', role: 'PLATFORM_ADMIN' },
-      { user_id: 'U_KBA01', name: '知识库管理员', department: 'IT部', role: 'KB_ADMIN' }
+      { user_id: 'U_EMP01', display_name: '演示员工', department_id: 'D001', role: 'EMPLOYEE' },
+      { user_id: 'U_ENG01', display_name: '演示工程师', department_id: 'D002', role: 'ENGINEER' },
+      { user_id: 'U_ADM01', display_name: '平台管理员', department_id: 'D003', role: 'PLATFORM_ADMIN' },
+      { user_id: 'U_KBA01', display_name: '知识库管理员', department_id: 'D003', role: 'KNOWLEDGE_ADMIN' }
     ]
   }
 })
@@ -228,25 +196,17 @@ async function doLogin() {
       return
     }
     const res = await userApi.login({ userId: selectedId.value, password: password.value })
-    if (res.data && res.data.user) {
-      const r = (res.data.user.role || '').toUpperCase()
-      if (r === 'KB_ADMIN' || r === 'KNOWLEDGE_ADMIN' || res.data.user.user_id === 'kb_admin' || res.data.user.user_id === 'U_KBA01') {
-        res.data.user.name = '知识库管理员'
-        res.data.user.department = 'IT部'
-      }
-    }
     userStore.setLogin(res.data.user, res.data.token)
-    ElMessage.success(`欢迎，${res.data.user.name}`)
-    const role = (res.data.user.role || '').toUpperCase()
+    ElMessage.success(`欢迎，${getUserDisplayName(userStore.currentUser)}`)
+    const role = (userStore.currentUser.role || '').toUpperCase()
     const roleRoute = {
       EMPLOYEE: '/employee',
       ENGINEER: '/engineer',
       PLATFORM_ADMIN: '/supervisor',
-      SUPERVISOR: '/supervisor',
-      KB_ADMIN: '/knowledge-admin',
-      KNOWLEDGE_ADMIN: '/knowledge-admin'
+      KNOWLEDGE_ADMIN: '/knowledge',
+      KB_ADMIN: '/knowledge'
     }
-    router.push(roleRoute[role] || (role.includes('KB') ? '/knowledge-admin' : '/employee'))
+    router.push(roleRoute[role] || (role.includes('KB') ? '/knowledge' : '/employee'))
   } catch (e) {
     loginError.value = e.message || '登录失败'
   } finally {

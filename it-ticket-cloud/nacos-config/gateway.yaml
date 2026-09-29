@@ -18,7 +18,11 @@ spring:
         - id: ticket-service
           uri: lb://ticket-service
           predicates:
-            - Path=/api/v1/tickets/**
+            - Path=/api/v1/tickets/**,/api/v1/ticket-drafts/**
+        - id: consultation-service
+          uri: lb://consultation-service
+          predicates:
+            - Path=/api/v1/consultations/**,/api/v1/knowledge/**
         - id: category-service
           uri: lb://ticket-service
           predicates:

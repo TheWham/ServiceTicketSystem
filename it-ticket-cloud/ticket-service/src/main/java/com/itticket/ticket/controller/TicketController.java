@@ -6,6 +6,8 @@ import com.itticket.ticket.dto.AcceptRequest;
 import com.itticket.ticket.dto.ActionRequest;
 import com.itticket.ticket.dto.AssignRequest;
 import com.itticket.ticket.dto.CreateTicketRequest;
+import com.itticket.ticket.dto.ContractEnvelope;
+import com.itticket.ticket.dto.TicketProjection;
 import com.itticket.ticket.dto.RatingRequest;
 import com.itticket.ticket.enums.TicketStatus;
 import com.itticket.ticket.service.TicketService;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -33,18 +36,14 @@ public class TicketController {
     private final TicketService ticketService;
 
     @PostMapping
-    public ResponseEntity<Result<Map<String, Object>>> create(@RequestBody CreateTicketRequest request) {
-        UserContext.CurrentUser user = UserContext.get();
-        TicketService.CreateOutcome outcome = ticketService.create(user, request);
-        if (outcome.duplicated()) {
-            // 幂等命中:HTTP 200,与旧版一致
-            return ResponseEntity.ok(Result.ok("重复提交(幂等)", Map.of("ticket_id", outcome.ticketId())));
-        }
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(Result.ok("创建成功", Map.of(
-                        "ticket_id", outcome.ticketId(),
-                        "status", TicketStatus.NEW.getValue(),
-                        "title", outcome.title())));
+    public ResponseEntity<ContractEnvelope<TicketProjection>> create(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
+            @RequestBody CreateTicketRequest request) {
+        TicketService.CreateOutcome outcome = ticketService.create(UserContext.get(), request, idempotencyKey);
+        return ResponseEntity.status(outcome.duplicated() ? HttpStatus.OK : HttpStatus.CREATED)
+                .body(ContractEnvelope.ok(requestId, outcome.duplicated() ? "Already created" : "Created",
+                        TicketProjection.of(outcome.ticket())));
     }
 
     @GetMapping
@@ -70,7 +69,7 @@ public class TicketController {
     public Result<Map<String, Object>> assign(@PathVariable String id, @RequestBody AssignRequest request) {
         TicketService.AssignOutcome outcome = ticketService.assign(UserContext.get(), id, request);
         return Result.ok(outcome.reassign() ? "改派成功" : "派单成功",
-                Map.of("ticket_id", outcome.ticketId(), "status", TicketStatus.IN_PROGRESS.getValue(),
+                Map.of("ticket_id", outcome.ticketId(), "status", TicketStatus.ASSIGNED.getValue(),
                         "assignee_id", outcome.assigneeId()));
     }
 

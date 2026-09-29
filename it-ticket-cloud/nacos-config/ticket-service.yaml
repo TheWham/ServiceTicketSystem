@@ -2,9 +2,9 @@
 # 工单服务：数据源 + MyBatis-Plus + Feign + 鉴权排除路径
 spring:
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:120.92.138.195}:${MYSQL_PORT:3306}/it_ticket_system?useSSL=false&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://${MYSQL_HOST:120.92.138.195}:${MYSQL_PORT:3306}/${MYSQL_DB:it_ticket_system}?useSSL=false&characterEncoding=utf8&serverTimezone=UTC&forceConnectionTimeZoneToSession=true&allowPublicKeyRetrieval=true
     username: ${MYSQL_USERNAME:root}
-    password: ${MYSQL_PASSWORD:clt123456}
+    password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
 mybatis-plus:
@@ -17,6 +17,9 @@ spring.cloud.openfeign:
       user-service:
         connectTimeout: 2000
         readTimeout: 3000
+      consultation-service:
+        connectTimeout: 2000
+        readTimeout: 5000
 
 itticket:
   auth:

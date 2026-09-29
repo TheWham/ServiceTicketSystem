@@ -1,5 +1,7 @@
 package com.itticket.ticket.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -63,14 +65,30 @@ public class TicketService {
     private final SlaService slaService;
     private final RoutingService routingService;
     private final ExceptionQueueService exceptionQueueService;
+    private final ConsultationConvertNotifier convertNotifier;
+    private final ObjectMapper objectMapper;
 
     // ---------------- 创建工单 ----------------
 
-    public record CreateOutcome(boolean duplicated, String ticketId, String title) {
+    public record CreateOutcome(boolean duplicated, Ticket ticket) {
+        public String ticketId() { return ticket.getTicketId(); }
+        public String title() { return ticket.getTitle(); }
     }
 
     @Transactional
     public CreateOutcome create(UserContext.CurrentUser creator, CreateTicketRequest req) {
+        return create(creator, req, null);
+    }
+
+    @Transactional
+    public CreateOutcome create(UserContext.CurrentUser creator, CreateTicketRequest req, String headerKey) {
+        String bodyKey = trimToNull(req.getIdempotencyKey());
+        headerKey = trimToNull(headerKey);
+        if (headerKey != null && bodyKey != null && !headerKey.equals(bodyKey)) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "Idempotency-Key and idempotency_key must match");
+        }
+        req.setIdempotencyKey(headerKey == null ? bodyKey : headerKey);
+        req.setSourceSessionId(trimToNull(req.getSourceSessionId()));
         // 参数校验（PRD §10.2 固定字段）
         List<String> errors = new ArrayList<>();
         if (!TicketNature.isValid(req.getNature())) errors.add("工单性质无效（INCIDENT/SERVICE_REQUEST）");
@@ -83,6 +101,13 @@ public class TicketService {
         if (req.getAttachments() != null && req.getAttachments().size() > 3) errors.add("附件最多3个");
 
         // 分类必须为启用的末级分类（§10.2）
+        validateLength(errors, req.getImpactDescription(), 2000, "impact_description");
+        validateLength(errors, req.getUrgencyDescription(), 2000, "urgency_description");
+        validateLength(errors, req.getLocation(), 255, "location");
+        validateLength(errors, req.getContact(), 255, "contact");
+        validateLength(errors, req.getAssetId(), 64, "asset_id");
+        validateLength(errors, req.getSourceSessionId(), 32, "source_session_id");
+        validateLength(errors, req.getIdempotencyKey(), 128, "idempotency_key");
         Category category = null;
         if (req.getCategoryId() == null || req.getCategoryId().isBlank()) {
             errors.add("分类不能为空");
@@ -104,46 +129,53 @@ public class TicketService {
         if (req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) {
             Ticket existing = selectByIdempotencyKey(creator.getUserId(), req.getIdempotencyKey());
             if (existing != null) {
-                return new CreateOutcome(true, existing.getTicketId(), existing.getTitle());
+                notifyConsultationAfterCommit(existing, creator);
+                return new CreateOutcome(true, existing);
             }
         }
 
         // 生成工单号并插入：撞号重试（最多 5 次）
         String ticketId = null;
+        Ticket created = null;
         for (int attempt = 0; attempt < 5; attempt++) {
             String candidate = noGenerator.generate();
             try {
                 ticketId = candidate;
-                insertTicket(candidate, req, category, creator);
+                created = insertTicket(candidate, req, category, creator);
                 break;
             } catch (DuplicateKeyException e) {
                 if (attempt == 4) throw e;
                 Ticket byKey = req.getIdempotencyKey() == null ? null
-                        : selectByIdempotencyKey(creator.getUserId(), req.getIdempotencyKey());
+                        : ticketMapper.selectOne(new QueryWrapper<Ticket>()
+                            .eq("creator_id", creator.getUserId()).eq("idempotency_key", req.getIdempotencyKey())
+                            .last("FOR UPDATE"));
                 if (byKey != null) {
-                    return new CreateOutcome(true, byKey.getTicketId(), byKey.getTitle());
+                    notifyConsultationAfterCommit(byKey, creator);
+                    return new CreateOutcome(true, byKey);
                 }
             }
         }
 
+        slaService.startCompletionSla(ticketId, created.getPriority(), created.getCreatedAt());
         String finalTicketId = ticketId;
-        insertFlowLog(finalTicketId, null, TicketStatus.NEW.getValue(), creator.getUserId(), "提交工单");
+        insertFlowLog(finalTicketId, null, TicketStatus.NEW.getValue(), "TICKET_CREATE", creator.getUserId(), "提交工单");
 
         // 异步通知 + SLA 起算 + 自动路由（事务提交后）
         afterCommit(() -> notificationService.sendNotification(finalTicketId, "SUBMIT_SUCCESS", creator.getUserId()));
         afterCommit(() -> afterCreate(finalTicketId));
 
-        return new CreateOutcome(false, finalTicketId, req.getTitle().trim());
+        notifyConsultationAfterCommit(created, creator);
+        return new CreateOutcome(false, created);
     }
 
     /** 是否末级分类：没有 ACTIVE 子分类即为末级 */
     private boolean isLeafCategory(Category category) {
         Long children = categoryMapper.selectCount(new QueryWrapper<Category>()
-                .eq("parent_id", category.getCategoryId()).eq("status", "ACTIVE"));
+                .eq("parent_id", category.getCategoryId()).eq("enabled", true));
         return children == null || children == 0;
     }
 
-    private void insertTicket(String ticketId, CreateTicketRequest req, Category category, UserContext.CurrentUser creator) {
+    private Ticket insertTicket(String ticketId, CreateTicketRequest req, Category category, UserContext.CurrentUser creator) {
         Ticket ticket = new Ticket();
         ticket.setTicketId(ticketId);
         ticket.setCreatorId(creator.getUserId());
@@ -163,14 +195,39 @@ public class TicketService {
         ticket.setPriority(PriorityMatrix.MEDIUM);
         ticket.setAssigneeId(null);
         ticket.setSourceSessionId(req.getSourceSessionId());
+        ticket.setFieldSnapshotJson(serializeFields(req.getFieldValues()));
         ticket.setAutoAccepted(0);
         ticket.setReopenCount(0);
         ticket.setIdempotencyKey(req.getIdempotencyKey());
-        ticket.setVersion(0);
+        ticket.setVersion(0L);
         ticket.setFirstResponseAt(null);
-        ticket.setCreatedAt(LocalDateTime.now());
-        ticket.setUpdatedAt(LocalDateTime.now());
+        ticket.setCreatedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
+        ticket.setUpdatedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         ticketMapper.insert(ticket);
+        return ticket;
+    }
+
+    private void notifyConsultationAfterCommit(Ticket ticket, UserContext.CurrentUser creator) {
+        if (ticket.getSourceSessionId() != null && !ticket.getSourceSessionId().isBlank()) {
+            afterCommit(() -> convertNotifier.notifyConverted(ticket.getSourceSessionId(), ticket.getTicketId(), creator));
+        }
+    }
+
+    private String serializeFields(Map<String, Object> values) {
+        if (values == null || values.isEmpty()) return null;
+        try {
+            return objectMapper.writeValueAsString(values);
+        } catch (JsonProcessingException ex) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "Invalid field_values");
+        }
+    }
+
+    private static String trimToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static void validateLength(List<String> errors, String value, int max, String field) {
+        if (value != null && value.length() > max) errors.add(field + " exceeds " + max + " characters");
     }
 
     /** 分类快照：停用后仍可读（§10.1），格式 一级/二级/三级 */
@@ -293,14 +350,14 @@ public class TicketService {
         boolean isReassign = oldAssignee != null && !oldAssignee.equals(req.getAssigneeId());
 
         // 写 assignment 分配记录（转派不删历史责任 §12.3）
-        routingService.assign(ticket, req.getAssigneeId(), isReassign ? "TRANSFER_APPLY" : null);
+        routingService.assign(ticket, req.getAssigneeId(), isReassign ? "TRANSFERRED" : null);
 
         ticketMapper.update(null, new LambdaUpdateWrapper<Ticket>()
                 .eq(Ticket::getTicketId, ticketId)
                 .set(Ticket::getStatus, TicketStatus.ASSIGNED)
-                .set(Ticket::getUpdatedAt, LocalDateTime.now()));
+                .set(Ticket::getUpdatedAt, LocalDateTime.now(java.time.ZoneOffset.UTC)));
         insertFlowLog(ticketId, ticket.getStatus().getValue(), TicketStatus.ASSIGNED.getValue(),
-                operator.getUserId(), (isReassign ? "改派: " : "派单: ") + (req.getReason() == null || req.getReason().isBlank() ? "无" : req.getReason()));
+                isReassign ? "TICKET_REASSIGN" : "TICKET_ASSIGN", operator.getUserId(), (isReassign ? "改派: " : "派单: ") + (req.getReason() == null || req.getReason().isBlank() ? "无" : req.getReason()));
 
         afterCommit(() -> notificationService.sendNotification(ticketId, "ASSIGNED", req.getAssigneeId()));
 
@@ -340,7 +397,7 @@ public class TicketService {
                 .set(Ticket::getPriority, priority)
                 .set(Ticket::getImpactScope, req.getImpactScope())
                 .set(Ticket::getUrgencyLevel, req.getUrgencyLevel())
-                .setSql("first_response_at = COALESCE(first_response_at, NOW())"));
+                .setSql("first_response_at = COALESCE(first_response_at, UTC_TIMESTAMP())"));
         if (rows == 0) {
             throw new BizException(ErrorCode.NOT_CLAIMABLE, "工单未分配给你或已被处理");
         }
@@ -354,7 +411,7 @@ public class TicketService {
         }
 
         insertFlowLog(ticketId, ticket.getStatus().getValue(), TicketStatus.IN_PROGRESS.getValue(),
-                operator.getUserId(), "工程师接单，确认影响=" + req.getImpactScope() + " 紧急=" + req.getUrgencyLevel()
+                "TICKET_ACCEPT", operator.getUserId(), "工程师接单，确认影响=" + req.getImpactScope() + " 紧急=" + req.getUrgencyLevel()
                         + "，优先级 " + oldPriority + "→" + priority);
 
         afterCommit(() -> notificationService.sendNotification(ticketId, "ACCEPTED", ticket.getCreatorId()));
@@ -365,19 +422,19 @@ public class TicketService {
 
     // ---------------- 通用状态操作 ----------------
 
-    private record ActionSpec(TicketStatus to, List<TicketStatus> froms) {
+    private record ActionSpec(String eventCode, TicketStatus to, List<TicketStatus> froms) {
     }
 
     private static final Map<String, ActionSpec> ACTION_MAP = Map.of(
-            "progress", new ActionSpec(TicketStatus.IN_PROGRESS, List.of(TicketStatus.PENDING_SUPPLEMENT, TicketStatus.PENDING_EXTERNAL, TicketStatus.IN_PROGRESS)),
-            "need_info", new ActionSpec(TicketStatus.PENDING_SUPPLEMENT, List.of(TicketStatus.IN_PROGRESS)),
-            "external", new ActionSpec(TicketStatus.PENDING_EXTERNAL, List.of(TicketStatus.IN_PROGRESS)),
-            "done", new ActionSpec(TicketStatus.PENDING_ACCEPTANCE, List.of(TicketStatus.IN_PROGRESS)),
-            "accept", new ActionSpec(TicketStatus.COMPLETED, List.of(TicketStatus.PENDING_ACCEPTANCE)),
-            "reject", new ActionSpec(TicketStatus.IN_PROGRESS, List.of(TicketStatus.PENDING_ACCEPTANCE)),
-            "cancel", new ActionSpec(TicketStatus.CANCELLED, List.of(TicketStatus.NEW)),
-            "supply_info", new ActionSpec(TicketStatus.IN_PROGRESS, List.of(TicketStatus.PENDING_SUPPLEMENT)),
-            "external_resolved", new ActionSpec(TicketStatus.IN_PROGRESS, List.of(TicketStatus.PENDING_EXTERNAL))
+            "progress", new ActionSpec("TICKET_PROGRESS", TicketStatus.IN_PROGRESS, List.of(TicketStatus.PENDING_SUPPLEMENT, TicketStatus.PENDING_EXTERNAL, TicketStatus.IN_PROGRESS)),
+            "need_info", new ActionSpec("TICKET_REQUEST_SUPPLEMENT", TicketStatus.PENDING_SUPPLEMENT, List.of(TicketStatus.IN_PROGRESS)),
+            "external", new ActionSpec("TICKET_START_EXTERNAL_WAIT", TicketStatus.PENDING_EXTERNAL, List.of(TicketStatus.IN_PROGRESS)),
+            "done", new ActionSpec("TICKET_SUBMIT_RESOLUTION", TicketStatus.PENDING_ACCEPTANCE, List.of(TicketStatus.IN_PROGRESS)),
+            "accept", new ActionSpec("TICKET_APPROVE_ACCEPTANCE", TicketStatus.COMPLETED, List.of(TicketStatus.PENDING_ACCEPTANCE)),
+            "reject", new ActionSpec("TICKET_REJECT_ACCEPTANCE", TicketStatus.IN_PROGRESS, List.of(TicketStatus.PENDING_ACCEPTANCE)),
+            "cancel", new ActionSpec("TICKET_CANCEL", TicketStatus.CANCELLED, List.of(TicketStatus.NEW)),
+            "supply_info", new ActionSpec("TICKET_SUBMIT_SUPPLEMENT", TicketStatus.IN_PROGRESS, List.of(TicketStatus.PENDING_SUPPLEMENT)),
+            "external_resolved", new ActionSpec("TICKET_RESUME_EXTERNAL", TicketStatus.IN_PROGRESS, List.of(TicketStatus.PENDING_EXTERNAL))
     );
 
     /** 前端动作名 → 状态机边 action 名（用于 getEventType，保持前端契约不变） */
@@ -448,19 +505,23 @@ public class TicketService {
                 .eq(Ticket::getTicketId, ticketId)
                 .set(Ticket::getStatus, mapping.to());
         if ("done".equals(req.getAction()) || "accept".equals(req.getAction()) || "cancel".equals(req.getAction())) {
-            uw.set(Ticket::getSolvedAt, LocalDateTime.now());
+            uw.set(Ticket::getSolvedAt, LocalDateTime.now(java.time.ZoneOffset.UTC));
         }
         // 取消时清除处理人
         if ("cancel".equals(req.getAction())) {
             uw.set(Ticket::getAssigneeId, null);
         }
+        if (mapping.to() == TicketStatus.COMPLETED) uw.set(Ticket::getCompletedAt, LocalDateTime.now(java.time.ZoneOffset.UTC));
+        if (mapping.to() == TicketStatus.CANCELLED || mapping.to() == TicketStatus.CLOSED)
+            uw.set(Ticket::getClosedAt, LocalDateTime.now(java.time.ZoneOffset.UTC));
+        uw.set(Ticket::getUpdatedAt, LocalDateTime.now(java.time.ZoneOffset.UTC));
         ticketMapper.update(null, uw);
 
         // SLA 联动（F-08，§11.3/§11.4）
         applySlaOnTransition(ticketId, req.getAction(), mapping.to(), operator.getUserId());
 
         String flowRemark = (req.getRemark() != null && !req.getRemark().isEmpty()) ? req.getRemark() : mapping.to().getValue();
-        insertFlowLog(ticketId, ticket.getStatus().getValue(), mapping.to().getValue(), operator.getUserId(), flowRemark);
+        insertFlowLog(ticketId, ticket.getStatus().getValue(), mapping.to().getValue(), mapping.eventCode(), operator.getUserId(), flowRemark);
 
         // 通知(接收人按「更新后」的工单计算,与旧版 {...ticket, ...updateFields} 一致)
         Ticket updated = copyOf(ticket);
@@ -493,7 +554,7 @@ public class TicketService {
         update.setTicketId(ticketId);
         update.setRatingScore(req.getScore());
         update.setRatingComment(req.getComment());
-        update.setRatedAt(LocalDateTime.now());
+        update.setRatedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         ticketMapper.updateById(update);
     }
 
@@ -509,14 +570,15 @@ public class TicketService {
     private void applySlaOnTransition(String ticketId, String action, TicketStatus toStatus, String operatorId) {
         try {
             switch (action) {
-                case "need_info" -> slaService.pause(ticketId, "SUPPLEMENT", operatorId);
-                case "external" -> slaService.pause(ticketId, "EXTERNAL", operatorId);
-                case "supply_info", "external_resolved" -> slaService.resume(ticketId, operatorId);
+                case "need_info" -> slaService.pause(ticketId, "PENDING_SUPPLEMENT", operatorId);
+                case "external" -> slaService.pause(ticketId, "PENDING_EXTERNAL", operatorId);
+                case "supply_info", "external_resolved", "reject" -> slaService.resume(ticketId, operatorId);
                 case "progress" -> {
                     slaService.resume(ticketId, operatorId);
                     routingService.markResponded(ticketId, operatorId);
                 }
-                case "done", "accept", "cancel" -> slaService.stop(ticketId);
+                case "done", "accept" -> slaService.stop(ticketId);
+                case "cancel" -> slaService.cancel(ticketId);
                 default -> { /* 其他流转不动 SLA */ }
             }
         } catch (Exception e) {
@@ -531,15 +593,15 @@ public class TicketService {
                 .eq("creator_id", creatorId).eq("idempotency_key", idempotencyKey));
     }
 
-    private void insertFlowLog(String ticketId, String fromStatus, String toStatus, String operatorId, String remark) {
+    private void insertFlowLog(String ticketId, String fromStatus, String toStatus, String eventCode, String operatorId, String remark) {
         TicketFlowLog flow = new TicketFlowLog();
         flow.setTicketId(ticketId);
         flow.setFromStatus(fromStatus);
         flow.setToStatus(toStatus);
-        flow.setEvent(toStatus != null ? toStatus.toLowerCase() : null);
+        flow.setEvent(eventCode);
         flow.setOperatorId(operatorId);
         flow.setReason(remark);
-        flow.setOccurredAt(LocalDateTime.now());
+        flow.setOccurredAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         flowLogMapper.insert(flow);
     }
 
@@ -555,7 +617,7 @@ public class TicketService {
                 return;
             }
             // 1. SLA 起算（完成 SLA 创建起算，新单默认 MEDIUM）
-            slaService.startCompletionSla(ticketId, ticket.getPriority(), LocalDateTime.now());
+
 
             // 2. 自动路由
             String engineerId = routingService.route(ticket);
@@ -567,9 +629,9 @@ public class TicketService {
                     .eq(Ticket::getTicketId, ticketId)
                     .eq(Ticket::getStatus, TicketStatus.NEW)
                     .set(Ticket::getStatus, TicketStatus.ASSIGNED)
-                    .set(Ticket::getUpdatedAt, LocalDateTime.now()));
+                    .set(Ticket::getUpdatedAt, LocalDateTime.now(java.time.ZoneOffset.UTC)));
             insertFlowLog(ticketId, TicketStatus.NEW.getValue(), TicketStatus.ASSIGNED.getValue(),
-                    "SYSTEM", "自动路由分配: " + engineerId);
+                    "TICKET_ASSIGN", "SYSTEM", "自动路由分配: " + engineerId);
             notificationService.sendNotification(ticketId, "ASSIGNED", engineerId);
         } catch (Exception e) {
             log.error("[TICKET] 创建后处理失败: " + ticketId, e);

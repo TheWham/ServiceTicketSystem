@@ -63,7 +63,7 @@ public class NotificationService {
      */
     @Async("notifyExecutor")
     public void sendInbox(String eventId, String receiverId, String title, String content, String actionUrl) {
-        deliver(eventId, receiverId, "INBOX", title, content, actionUrl);
+        deliver(eventId, receiverId, "IN_APP", title, content, actionUrl);
     }
 
     /** 高优先级邮件（一期 Mock，仅记录日志）。 */
@@ -90,7 +90,7 @@ public class NotificationService {
         String title = "【" + label + "】" + ticketTitle;
         String content = "工单 " + ticketId + " " + label + "，点击查看详情处理。";
         String actionUrl = "/tickets/" + ticketId;
-        deliver(eventId, receiverId, "INBOX", title, content, actionUrl);
+        deliver(eventId, receiverId, "IN_APP", title, content, actionUrl);
     }
 
     /**
@@ -112,8 +112,8 @@ public class NotificationService {
         n.setActionUrl(actionUrl);
         n.setStatus("PENDING");
         n.setAttempts(0);
-        n.setCreatedAt(LocalDateTime.now());
-        n.setUpdatedAt(LocalDateTime.now());
+        n.setCreatedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
+        n.setUpdatedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         try {
             notificationMapper.insert(n);
         } catch (DuplicateKeyException e) {
@@ -140,7 +140,7 @@ public class NotificationService {
         upd.setStatus(sent ? "SENT" : "FAILED");
         upd.setAttempts(sent ? 1 : MAX_RETRY);
         upd.setLastError(sent ? null : lastError);
-        upd.setUpdatedAt(LocalDateTime.now());
+        upd.setUpdatedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         notificationMapper.updateById(upd);
 
         if (!sent) {

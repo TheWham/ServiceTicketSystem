@@ -22,7 +22,8 @@ public class Assignment {
     private LocalDateTime responseDeadline;
     /** 首次有效响应 */
     private LocalDateTime respondedAt;
-    /** RESPONDED / TIMEOUT_TRANSFER / TRANSFER_APPLY */
+    /** RESPONDED / TIMEOUT / TRANSFERRED / CANCELLED / COMPLETED */
     private String endReason;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

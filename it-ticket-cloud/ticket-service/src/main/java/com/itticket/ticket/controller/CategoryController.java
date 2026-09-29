@@ -27,7 +27,7 @@ public class CategoryController {
     @GetMapping
     public Result<List<Category>> list() {
         List<Category> all = categoryMapper.selectList(new QueryWrapper<Category>()
-                .eq("status", "ACTIVE").orderByAsc("category_id"));
+                .eq("enabled", true).orderByAsc("category_id"));
         return Result.ok(all);
     }
 
@@ -35,7 +35,7 @@ public class CategoryController {
     @GetMapping("/leaf")
     public Result<List<Category>> leaf() {
         List<Category> all = categoryMapper.selectList(new QueryWrapper<Category>()
-                .eq("status", "ACTIVE"));
+                .eq("enabled", true));
         java.util.Set<String> parentIds = all.stream()
                 .map(Category::getParentId)
                 .filter(java.util.Objects::nonNull)

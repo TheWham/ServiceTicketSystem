@@ -11,12 +11,12 @@ import java.time.LocalDateTime;
 @Data
 @TableName("user_role")
 public class UserRoleEntity {
-    @TableId(value = "id", type = IdType.AUTO)
-    private Long id;
     private String userId;
     /** EMPLOYEE / ENGINEER / HUMAN_CS / AI_CS / PLATFORM_ADMIN（§5.1） */
     private String roleCode;
     private String grantedBy;
     private LocalDateTime grantedAt;
     private LocalDateTime revokedAt;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

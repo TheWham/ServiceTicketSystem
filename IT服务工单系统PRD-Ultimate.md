@@ -1,3 +1,5 @@
+> 当前开发与字段契约以 [docs 下的 PRD 2.1](docs/IT服务工单系统PRD-Ultimate.md) 及 [spec 索引](docs/specs/README.md) 为准。以下保留原 main 文档供历史对照。
+
 # IT 服务工单系统产品需求文档（PRD）
 
 | 文档属性   | 内容                         |

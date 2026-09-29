@@ -19,4 +19,6 @@ public class SlaPause {
     private LocalDateTime startedAt;
     private LocalDateTime endedAt;
     private String operatorId;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

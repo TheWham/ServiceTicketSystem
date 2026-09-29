@@ -3,6 +3,7 @@ package com.itticket.ticket.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -17,6 +18,7 @@ public class TicketFlowLog {
     private String fromStatus;
     private String toStatus;
     /** 流转事件（§9.3：SUBMIT/ROUTE/ACCEPT/SUPPLEMENT_REQUEST/...） */
+    @TableField("event_code")
     private String event;
     private String operatorId;
     /** 驳回/撤销/异常关闭必填 */

@@ -23,3 +23,8 @@ spring:
   config:
     import:
       - optional:nacos:${spring.application.name}-${spring.profiles.active}.yaml
+
+# 咨询转单回调与用户接口分别设置超时。
+spring.cloud.openfeign.client.config.consultation-service:
+  connectTimeout: 2000
+  readTimeout: 5000

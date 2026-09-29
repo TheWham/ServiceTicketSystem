@@ -6,6 +6,7 @@ import lombok.Data;
 @Data
 public class ForgotPasswordRequest {
     private String userId;
+    @com.fasterxml.jackson.annotation.JsonAlias("display_name")
     private String name;
     private String employeeNo;
     private String newPassword;

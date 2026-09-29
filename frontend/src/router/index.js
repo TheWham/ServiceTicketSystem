@@ -2,20 +2,23 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '../stores/user.js'
 import { userApi } from '../api/index.js'
 
-// PRD §5.1 角色值域（大写）：EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KB_ADMIN
-// 兼容旧版小写值域（employee/engineer/supervisor/knowledge_admin）
+// PRD §5.1 角色值域（大写）：EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KNOWLEDGE_ADMIN
+// KB_ADMIN 为历史别名；同时兼容旧版小写值域
 const HOME = {
-  EMPLOYEE: '/employee', ENGINEER: '/engineer', PLATFORM_ADMIN: '/supervisor', KB_ADMIN: '/knowledge-admin',
-  employee: '/employee', engineer: '/engineer', supervisor: '/supervisor', knowledge_admin: '/knowledge-admin'
+  EMPLOYEE: '/employee', ENGINEER: '/engineer', PLATFORM_ADMIN: '/supervisor', KNOWLEDGE_ADMIN: '/knowledge',
+  KB_ADMIN: '/knowledge',
+  employee: '/employee', engineer: '/engineer', supervisor: '/supervisor', knowledge_admin: '/knowledge'
 }
 
 const routes = [
   { path: '/login', name: 'Login', component: () => import('../views/LoginView.vue') },
   { path: '/employee', name: 'Employee', component: () => import('../views/EmployeeView.vue'), meta: { role: ['EMPLOYEE', 'employee'] } },
+  { path: '/consultation', name: 'Consultation', component: () => import('../views/ConsultationView.vue'), meta: { role: ['EMPLOYEE', 'employee'] } },
   { path: '/engineer', name: 'Engineer', component: () => import('../views/EngineerView.vue'), meta: { role: ['ENGINEER', 'engineer'] } },
-  { path: '/supervisor', name: 'Supervisor', component: () => import('../views/SupervisorView.vue'), meta: { role: ['PLATFORM_ADMIN', 'KB_ADMIN', 'supervisor'] } },
-  { path: '/knowledge-admin', name: 'KnowledgeAdmin', component: () => import('../views/KnowledgeAdminView.vue'), meta: { role: ['KB_ADMIN', 'knowledge_admin'] } },
-  { path: '/accounts', name: 'Accounts', component: () => import('../views/AccountManageView.vue'), meta: { role: ['PLATFORM_ADMIN', 'KB_ADMIN'] } },
+  { path: '/supervisor', name: 'Supervisor', component: () => import('../views/SupervisorView.vue'), meta: { role: ['PLATFORM_ADMIN', 'supervisor'] } },
+  { path: '/knowledge', name: 'Knowledge', component: () => import('../views/KnowledgeView.vue'), meta: { role: ['KNOWLEDGE_ADMIN', 'KB_ADMIN', 'knowledge_admin'] } },
+  { path: '/knowledge-admin', name: 'KnowledgeAdmin', component: () => import('../views/KnowledgeAdminView.vue'), meta: { role: ['KNOWLEDGE_ADMIN', 'KB_ADMIN', 'knowledge_admin'] } },
+  { path: '/accounts', name: 'Accounts', component: () => import('../views/AccountManageView.vue'), meta: { role: 'PLATFORM_ADMIN' } },
   // 通知跳转：/tickets/:id → 按当前角色重定向到对应工作台并带上 ticket query（工作台自动打开详情）
   { path: '/tickets/:id', redirect: (to) => {
       const userStore = useUserStore()

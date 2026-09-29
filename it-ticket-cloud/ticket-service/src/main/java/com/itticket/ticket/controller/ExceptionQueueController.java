@@ -33,8 +33,9 @@ public class ExceptionQueueController {
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int pageSize) {
-        QueryWrapper<ExceptionQueue> qw = new QueryWrapper<>();
-        if (source != null && !source.isBlank()) qw.eq("source", source);
+        com.itticket.common.web.UserContext.checkRole(com.itticket.common.web.UserContext.get(), "PLATFORM_ADMIN");
+        QueryWrapper<ExceptionQueue> qw = new QueryWrapper<ExceptionQueue>().eq("object_type", "TICKET");
+        if (source != null && !source.isBlank()) qw.eq("reason_code", source);
         if (status != null && !status.isBlank()) qw.eq("status", status);
         qw.orderByAsc("status").orderByDesc("created_at");
         Page<ExceptionQueue> result = exceptionQueueMapper.selectPage(new Page<>(page, pageSize), qw);
@@ -49,8 +50,9 @@ public class ExceptionQueueController {
     /** 未处理异常数量（管理员工作台角标） */
     @GetMapping("/pending-count")
     public Result<Long> pendingCount() {
+        com.itticket.common.web.UserContext.checkRole(com.itticket.common.web.UserContext.get(), "PLATFORM_ADMIN");
         Long cnt = exceptionQueueMapper.selectCount(new QueryWrapper<ExceptionQueue>()
-                .eq("status", "OPEN"));
+                .eq("object_type", "TICKET").eq("status", "OPEN"));
         return Result.ok(cnt == null ? 0 : cnt);
     }
 }

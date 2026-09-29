@@ -7,6 +7,7 @@ import lombok.Data;
 public class CreateUserRequest {
     private String userId;
     private String employeeNo;
+    @com.fasterxml.jackson.annotation.JsonAlias("display_name")
     private String name;
     private String departmentId;
     private String roleCode;

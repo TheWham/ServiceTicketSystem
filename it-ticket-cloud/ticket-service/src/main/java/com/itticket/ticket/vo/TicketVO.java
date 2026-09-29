@@ -19,7 +19,10 @@ import java.util.List;
 public class TicketVO {
     private String ticketId;
     private String creatorId;
+    @com.fasterxml.jackson.annotation.JsonProperty("ticket_nature")
     private String nature;
+    @com.fasterxml.jackson.annotation.JsonProperty("nature")
+    public String legacyNature() { return nature; }
     private String categoryId;
     private String categorySnapshot;
     private String title;
@@ -36,10 +39,13 @@ public class TicketVO {
     private String urgencyLevel;
     private String assigneeId;
     private String sourceSessionId;
+    private String fieldSnapshotJson;
     private Integer autoAccepted;
     private Integer reopenCount;
     private LocalDateTime firstResponseAt;
     private LocalDateTime solvedAt;
+    private LocalDateTime completedAt;
+    private LocalDateTime closedAt;
     private Integer ratingScore;
     private String ratingComment;
     private LocalDateTime ratedAt;
@@ -71,10 +77,13 @@ public class TicketVO {
         vo.setUrgencyLevel(t.getUrgencyLevel());
         vo.setAssigneeId(t.getAssigneeId());
         vo.setSourceSessionId(t.getSourceSessionId());
+        vo.setFieldSnapshotJson(t.getFieldSnapshotJson());
         vo.setAutoAccepted(t.getAutoAccepted());
         vo.setReopenCount(t.getReopenCount());
         vo.setFirstResponseAt(t.getFirstResponseAt());
         vo.setSolvedAt(t.getSolvedAt());
+        vo.setCompletedAt(t.getCompletedAt());
+        vo.setClosedAt(t.getClosedAt());
         vo.setRatingScore(t.getRatingScore());
         vo.setRatingComment(t.getRatingComment());
         vo.setRatedAt(t.getRatedAt());

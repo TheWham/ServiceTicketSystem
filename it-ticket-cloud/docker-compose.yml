@@ -1,5 +1,5 @@
 # IT 工单系统微服务依赖:Nacos(注册+配置) + MySQL 8
-# 注意:数据库已统一连远程库 120.92.138.195:3306(默认密码 clt123456),
+# 注意:数据库已统一连远程库 120.92.138.195:3306（密码由 MYSQL_PASSWORD 注入）,
 #       本 compose 里的 MySQL 仅为「离线/无远程库时的可选本地库」或 CI 用,
 #       日常联调不需要启动它(服务默认连远程)。
 # 用法:
@@ -16,7 +16,7 @@ services:
     image: mysql:8.0
     container_name: it-ticket-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD before starting MySQL}
       TZ: Asia/Shanghai
     ports:
       - "3306:3306"
@@ -27,7 +27,7 @@ services:
     networks:
       - it-ticket-net
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot123"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$MYSQL_ROOT_PASSWORD"]
       interval: 10s
       timeout: 5s
       retries: 5

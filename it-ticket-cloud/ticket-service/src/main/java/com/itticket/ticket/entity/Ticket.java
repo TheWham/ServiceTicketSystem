@@ -3,6 +3,7 @@ package com.itticket.ticket.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.Version;
 import com.itticket.ticket.enums.TicketStatus;
 import lombok.Data;
@@ -22,6 +23,7 @@ public class Ticket {
     /** 创建人 */
     private String creatorId;
     /** 工单性质 INCIDENT/SERVICE_REQUEST */
+    @TableField("ticket_nature")
     private String nature;
     /** 末级分类 id（关联 category，§10.2） */
     private String categoryId;
@@ -55,6 +57,8 @@ public class Ticket {
     private String assigneeId;
     /** 来源咨询会话（咨询转单 §10.2） */
     private String sourceSessionId;
+    /** Immutable JSON snapshot of submitted category/context fields. */
+    private String fieldSnapshotJson;
     /** 48h 自动验收标记 */
     private Integer autoAccepted;
     /** 重新打开次数 */
@@ -63,7 +67,9 @@ public class Ticket {
     private String idempotencyKey;
     /** 乐观锁 */
     @Version
-    private Integer version;
+    private Long version;
+    private LocalDateTime completedAt;
+    private LocalDateTime closedAt;
     /** 首次有效响应时间（响应 SLA §11.2） */
     private LocalDateTime firstResponseAt;
     /** 解决方案提交时间 */
