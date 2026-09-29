@@ -20,7 +20,7 @@ import java.util.Map;
  * 进入即通知平台管理员；处理时限与升级属管理侧配置。
  */
 @RestController
-@RequestMapping("/api/exceptions")
+@RequestMapping("/api/v1/exceptions")
 @RequiredArgsConstructor
 public class ExceptionQueueController {
 

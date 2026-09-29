@@ -17,7 +17,7 @@ import java.util.Map;
  * 「查看≠行动」：通知仅作待办引导，行动通过 action_url 完成，不设已读状态。
  */
 @RestController
-@RequestMapping("/api/notifications")
+@RequestMapping("/api/v1/notifications")
 @RequiredArgsConstructor
 public class NotificationController {
 

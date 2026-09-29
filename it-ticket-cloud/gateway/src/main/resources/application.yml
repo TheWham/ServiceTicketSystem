@@ -29,6 +29,18 @@ spring:
           uri: lb://ticket-service
           predicates:
             - Path=/api/v1/categories/**
+        - id: sla-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/sla/**
+        - id: notification-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/notifications/**
+        - id: exception-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/exceptions/**
 
 itticket:
   jwt:

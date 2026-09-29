@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
-/** 工单全部对外接口 —— 路径与旧版 /api/v1/tickets 完全一致 */
+/** 工单全部对外接口 —— 路径与 /api/v1/tickets 完全一致 */
 @RestController
 @RequestMapping("/api/v1/tickets")
 @RequiredArgsConstructor

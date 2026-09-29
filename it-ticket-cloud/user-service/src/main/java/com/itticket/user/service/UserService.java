@@ -97,7 +97,8 @@ public class UserService {
         UserRoleEntity r = userRoleMapper.selectOne(new QueryWrapper<UserRoleEntity>()
                 .eq("user_id", userId).isNull("revoked_at")
                 .orderByDesc("granted_at").last("LIMIT 1"));
-        return r != null && r.getRoleCode() != null ? r.getRoleCode().toLowerCase() : "employee";
+        // PRD §5.1 角色值域为大写：EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KB_ADMIN
+        return r != null && r.getRoleCode() != null ? r.getRoleCode() : "EMPLOYEE";
     }
 
     private static boolean isBlank(String s) {
