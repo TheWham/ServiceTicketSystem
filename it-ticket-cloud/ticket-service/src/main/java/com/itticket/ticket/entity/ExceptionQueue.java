@@ -3,6 +3,7 @@ package com.itticket.ticket.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -14,10 +15,13 @@ public class ExceptionQueue {
     @TableId(value = "exception_id", type = IdType.INPUT)
     private String exceptionId;
     /** TICKET / CONSULTATION / NOTIFICATION */
+    @TableField("object_type")
     private String bizType;
     /** 关联业务 ID */
+    @TableField("object_id")
     private String bizId;
     /** NO_RESPONSE / ROUTE_FAILED / LONG_PENDING / NOTIFY_FAILED / LIMIT_EXCEEDED */
+    @TableField("reason_code")
     private String exceptionType;
     private String title;
     private String detail;
@@ -26,6 +30,7 @@ public class ExceptionQueue {
     private String status;
     private String resolvedBy;
     private LocalDateTime resolvedAt;
+    @TableField("reason")
     private String resolution;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

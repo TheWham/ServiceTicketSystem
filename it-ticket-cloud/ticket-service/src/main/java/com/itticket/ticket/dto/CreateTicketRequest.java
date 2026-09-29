@@ -1,10 +1,12 @@
 package com.itticket.ticket.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 创建工单请求 —— PRD §10.2 固定字段严格对齐。
@@ -15,6 +17,8 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class CreateTicketRequest {
     /** 工单性质 INCIDENT/SERVICE_REQUEST（必填） */
+    @com.fasterxml.jackson.annotation.JsonProperty("ticket_nature")
+    @JsonAlias("nature")
     private String nature;
     /** 末级分类 id（必填，必须为启用末级分类） */
     private String categoryId;
@@ -38,4 +42,6 @@ public class CreateTicketRequest {
     private String sourceSessionId;
     /** 提单幂等键（§10.4，防重复提交） */
     private String idempotencyKey;
+    /** Consultation/category context captured at submission. */
+    private Map<String, Object> fieldValues;
 }

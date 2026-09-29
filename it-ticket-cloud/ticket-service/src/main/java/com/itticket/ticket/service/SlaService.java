@@ -59,8 +59,9 @@ public class SlaService {
         SlaInstance upd = new SlaInstance();
         upd.setSlaId(sla.getSlaId());
         upd.setPrioritySnapshot(newPriority);
+        upd.setTargetWorkSeconds(targetSeconds(newPriority));
         upd.setTargetAt(workCalendarService.addWorkSeconds(sla.getCreatedAt(), targetSeconds(newPriority)));
-        upd.setUpdatedAt(LocalDateTime.now());
+        upd.setUpdatedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         slaInstanceMapper.updateById(upd);
         log.info("[SLA] 优先级变化重算目标: {} -> {} 目标时刻", ticketId, newPriority, upd.getTargetAt());
     }
@@ -68,7 +69,7 @@ public class SlaService {
     /** 查运行中或暂停中的完成 SLA（优先级重算用） */
     private SlaInstance runningOrPausedCompletionSla(String ticketId) {
         return slaInstanceMapper.selectOne(new QueryWrapper<SlaInstance>()
-                .eq("ticket_id", ticketId).eq("sla_type", "COMPLETION")
+                .eq("biz_type", "TICKET").eq("biz_id", ticketId).eq("sla_type", "TICKET_COMPLETION")
                 .in("status", "RUNNING", "PAUSED").orderByDesc("created_at").last("LIMIT 1"));
     }
 
@@ -78,15 +79,19 @@ public class SlaService {
         SlaInstance sla = new SlaInstance();
         sla.setSlaId("SLA" + UUID.randomUUID().toString().replace("-", "").substring(0, 29));
         sla.setTicketId(ticketId);
-        sla.setSlaType("COMPLETION");
+        sla.setSlaType("TICKET_COMPLETION");
         sla.setPrioritySnapshot(priority);
-        sla.setTargetAt(workCalendarService.addWorkSeconds(createdAt != null ? createdAt : LocalDateTime.now(), targetSeconds(priority)));
+        sla.setTargetWorkSeconds(targetSeconds(priority));
+        sla.setCalendarId(workCalendarService.calendarId());
+        sla.setCalendarVersion(workCalendarService.calendarVersion());
+        sla.setVersion(0L);
+        sla.setTargetAt(workCalendarService.addWorkSeconds(createdAt != null ? createdAt : LocalDateTime.now(java.time.ZoneOffset.UTC), targetSeconds(priority)));
         sla.setElapsedWorkSeconds(0L);
         sla.setPausedSeconds(0L);
         sla.setNearBreachNotified(0);
         sla.setStatus("RUNNING");
-        sla.setCreatedAt(createdAt != null ? createdAt : LocalDateTime.now());
-        sla.setUpdatedAt(LocalDateTime.now());
+        sla.setCreatedAt(createdAt != null ? createdAt : LocalDateTime.now(java.time.ZoneOffset.UTC));
+        sla.setUpdatedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         slaInstanceMapper.insert(sla);
         return sla;
     }
@@ -100,13 +105,15 @@ public class SlaService {
         pause.setPauseId("PS" + UUID.randomUUID().toString().replace("-", "").substring(0, 30));
         pause.setSlaId(sla.getSlaId());
         pause.setReasonType(reasonType);
-        pause.setStartedAt(LocalDateTime.now());
+        pause.setStartedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         pause.setOperatorId(operatorId);
+        pause.setCreatedAt(pause.getStartedAt());
+        pause.setUpdatedAt(pause.getStartedAt());
         slaPauseMapper.insert(pause);
         SlaInstance upd = new SlaInstance();
         upd.setSlaId(sla.getSlaId());
         upd.setStatus("PAUSED");
-        upd.setUpdatedAt(LocalDateTime.now());
+        upd.setUpdatedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         slaInstanceMapper.updateById(upd);
     }
 
@@ -114,20 +121,36 @@ public class SlaService {
     @Transactional
     public void resume(String ticketId, String operatorId) {
         SlaInstance sla = pausedCompletionSla(ticketId);
-        if (sla == null) return;
+        if (sla == null) {
+            sla = slaInstanceMapper.selectOne(new QueryWrapper<SlaInstance>()
+                    .eq("biz_type", "TICKET").eq("biz_id", ticketId).eq("sla_type", "TICKET_COMPLETION")
+                    .eq("status", "MET").last("LIMIT 1"));
+            if (sla == null) return;
+            LocalDateTime now = LocalDateTime.now(java.time.ZoneOffset.UTC);
+            long waiting = workCalendarService.workSecondsBetween(sla.getMetAt(), now);
+            SlaInstance resumed = new SlaInstance();
+            resumed.setSlaId(sla.getSlaId()); resumed.setStatus("RUNNING");
+            resumed.setPausedSeconds((sla.getPausedSeconds() == null ? 0 : sla.getPausedSeconds()) + waiting);
+            resumed.setTargetAt(workCalendarService.addWorkSeconds(sla.getTargetAt(), waiting));
+            resumed.setUpdatedAt(now);
+            slaInstanceMapper.updateById(resumed);
+            return;
+        }
         List<SlaPause> open = slaPauseMapper.selectList(new QueryWrapper<SlaPause>()
                 .eq("sla_id", sla.getSlaId()).isNull("ended_at"));
         long pauseSeconds = 0;
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneOffset.UTC);
         for (SlaPause p : open) {
             p.setEndedAt(now);
+            p.setUpdatedAt(now);
             slaPauseMapper.updateById(p);
-            pauseSeconds += java.time.Duration.between(p.getStartedAt(), now).getSeconds();
+            pauseSeconds += workCalendarService.workSecondsBetween(p.getStartedAt(), now);
         }
         SlaInstance upd = new SlaInstance();
         upd.setSlaId(sla.getSlaId());
         upd.setStatus("RUNNING");
-        upd.setPausedSeconds(sla.getPausedSeconds() + pauseSeconds);
+        upd.setPausedSeconds((sla.getPausedSeconds() == null ? 0 : sla.getPausedSeconds()) + pauseSeconds);
+        upd.setTargetAt(workCalendarService.addWorkSeconds(sla.getTargetAt(), pauseSeconds));
         upd.setUpdatedAt(now);
         slaInstanceMapper.updateById(upd);
     }
@@ -140,28 +163,37 @@ public class SlaService {
         if (sla == null) return;
         SlaInstance upd = new SlaInstance();
         upd.setSlaId(sla.getSlaId());
-        upd.setStatus("STOPPED");
-        upd.setUpdatedAt(LocalDateTime.now());
+        upd.setStatus("MET");
+        upd.setMetAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
+        upd.setUpdatedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         slaInstanceMapper.updateById(upd);
+    }
+
+    @Transactional
+    public void cancel(String ticketId) {
+        slaInstanceMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<SlaInstance>()
+                .eq("biz_type", "TICKET").eq("biz_id", ticketId)
+                .in("sla_type", "TICKET_COMPLETION", "TICKET_RESPONSE")
+                .set("status", "CANCELLED").set("updated_at", LocalDateTime.now(java.time.ZoneOffset.UTC)));
     }
 
     private SlaInstance runningCompletionSla(String ticketId) {
         return slaInstanceMapper.selectOne(new QueryWrapper<SlaInstance>()
-                .eq("ticket_id", ticketId).eq("sla_type", "COMPLETION").eq("status", "RUNNING").last("limit 1"));
+                .eq("biz_type", "TICKET").eq("biz_id", ticketId).eq("sla_type", "TICKET_COMPLETION").eq("status", "RUNNING").last("limit 1"));
     }
 
     private SlaInstance pausedCompletionSla(String ticketId) {
         return slaInstanceMapper.selectOne(new QueryWrapper<SlaInstance>()
-                .eq("ticket_id", ticketId).eq("sla_type", "COMPLETION").eq("status", "PAUSED").last("limit 1"));
+                .eq("biz_type", "TICKET").eq("biz_id", ticketId).eq("sla_type", "TICKET_COMPLETION").eq("status", "PAUSED").last("limit 1"));
     }
 
     /** SLA 扫描（每 1 分钟）：推进计时 → 80% 提醒 → 违约标记+通知+异常队列 */
     @Scheduled(fixedDelay = 60000, initialDelay = 30000)
     public void scan() {
         List<SlaInstance> running = slaInstanceMapper.selectList(new QueryWrapper<SlaInstance>()
-                .eq("sla_type", "COMPLETION").eq("status", "RUNNING"));
+                .eq("biz_type", "TICKET").eq("sla_type", "TICKET_COMPLETION").eq("status", "RUNNING"));
         if (running.isEmpty()) return;
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneOffset.UTC);
         for (SlaInstance sla : running) {
             try {
                 processOne(sla, now);
@@ -178,7 +210,7 @@ public class SlaService {
         if (effective < 0) effective = 0;
         LocalDateTime targetAt = sla.getTargetAt();
         if (targetAt == null) return; // 无目标时刻（历史数据）跳过
-        long target = workCalendarService.workSecondsBetween(sla.getCreatedAt(), targetAt);
+        long target = sla.getTargetWorkSeconds() == null ? workCalendarService.workSecondsBetween(sla.getCreatedAt(), targetAt) : sla.getTargetWorkSeconds();
         double ratio = target > 0 ? (double) effective / target : 0;
 
         // 违约（§11.2）

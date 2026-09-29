@@ -20,24 +20,25 @@ const remaining = ref(0) // 剩余工作秒（服务端基准，本地递减）
 let timer = null
 
 // 仅计时中的工单显示徽章（PRD：SLA 只对工作时长计时，暂停/完成/违约不递减）
-const showBadge = computed(() => sla.value && ['RUNNING', 'PAUSED'].includes(sla.value.status))
+const isBreached = computed(() => !!(sla.value?.breached_at || sla.value?.breach_at) || sla.value?.status === 'BREACHED')
+const showBadge = computed(() => sla.value && (isBreached.value || ['RUNNING', 'PAUSED'].includes(sla.value.status)))
 
 const badgeClass = computed(() => {
   if (!sla.value) return ''
+  if (isBreached.value) return 'breached'
   if (sla.value.status === 'PAUSED') return 'paused'
-  if (sla.value.breach_at) return 'breached'
   // 剩余 < 20% 目标视为临近超时
   return remaining.value < 3600 ? 'near' : 'normal'
 })
 
 const countdownText = computed(() => {
   if (!sla.value) return ''
+  if (isBreached.value) return '已违约'
   if (sla.value.status === 'PAUSED') return '已暂停'
-  if (sla.value.breach_at) return '已违约'
   const s = Math.max(0, remaining.value)
   const h = Math.floor(s / 3600)
   const m = Math.floor((s % 3600) / 60)
-  if (h >= 24) return `剩 ${Math.floor(h / 24)} 工作日`
+  if (h >= 8) return `剩 ${Math.floor(h / 8)} 工作日`
   if (h > 0) return `剩 ${h}h${m}m`
   return `剩 ${m}m`
 })

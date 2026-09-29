@@ -56,19 +56,19 @@ public class InternalUserController {
                 .stream().map(UserRoleEntity::getUserId).toList();
         if (ids.isEmpty()) return Result.ok(List.of());
         List<User> users = userMapper.selectList(new QueryWrapper<User>()
-                .in("user_id", ids).eq("status", "ACTIVE"));
-        return Result.ok(users.stream().map(u -> toInfo(u, "engineer")).toList());
+                .in("user_id", ids).eq("enabled", true));
+        return Result.ok(users.stream().map(u -> toInfo(u, "ENGINEER")).toList());
     }
 
     /** 查询平台管理员列表（路由失败/异常队列通知用：PLATFORM_ADMIN + KB_ADMIN 且未撤销、用户 ACTIVE） */
     @GetMapping("/admins")
     public Result<List<UserInfo>> admins() {
         List<UserRoleEntity> roles = userRoleMapper.selectList(new QueryWrapper<UserRoleEntity>()
-                .in("role_code", "PLATFORM_ADMIN", "KB_ADMIN").isNull("revoked_at"));
+                .eq("role_code", "PLATFORM_ADMIN").isNull("revoked_at"));
         List<String> ids = roles.stream().map(UserRoleEntity::getUserId).distinct().toList();
         if (ids.isEmpty()) return Result.ok(List.of());
         List<User> users = userMapper.selectList(new QueryWrapper<User>()
-                .in("user_id", ids).eq("status", "ACTIVE"));
+                .in("user_id", ids).eq("enabled", true));
         return Result.ok(users.stream().map(this::toInfo).toList());
     }
 
@@ -80,13 +80,17 @@ public class InternalUserController {
     private UserInfo toInfo(User user, String role) {
         String status = user.getStatus();
         return new UserInfo(user.getUserId(), user.getName(), role,
-                user.getDepartmentId(), status == null ? null : status.toLowerCase());
+                user.getDepartmentId(), status);
     }
 
     private String primaryRole(String userId) {
         UserRoleEntity r = userRoleMapper.selectOne(new QueryWrapper<UserRoleEntity>()
                 .eq("user_id", userId).isNull("revoked_at")
                 .orderByDesc("granted_at").last("LIMIT 1"));
-        return r != null && r.getRoleCode() != null ? r.getRoleCode().toLowerCase() : "employee";
+        if (r == null || r.getRoleCode() == null) throw new com.itticket.common.api.BizException(com.itticket.common.api.ErrorCode.FORBIDDEN, "No active role");
+        String role = "KB_ADMIN".equals(r.getRoleCode()) ? "KNOWLEDGE_ADMIN" : r.getRoleCode();
+        if (!java.util.Set.of("EMPLOYEE", "ENGINEER", "PLATFORM_ADMIN", "KNOWLEDGE_ADMIN").contains(role))
+            throw new com.itticket.common.api.BizException(com.itticket.common.api.ErrorCode.FORBIDDEN, "Unknown role");
+        return role;
     }
 }

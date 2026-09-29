@@ -17,9 +17,9 @@
           :class="{ selected: selectedId === user.user_id }"
           @click="selectedId = user.user_id"
         >
-          <el-avatar :size="40" class="avatar">{{ user.name[0] }}</el-avatar>
+          <el-avatar :size="40" class="avatar">{{ (user.display_name || user.name || '?')[0] }}</el-avatar>
           <div class="info">
-            <div class="name">{{ user.name }}</div>
+            <div class="name">{{ user.display_name || user.name }}</div>
             <div class="meta">{{ user.department }} · {{ roleMap[user.role] }}</div>
           </div>
           <el-tag :type="roleTagType(user.role)" size="small" effect="dark">
@@ -79,7 +79,7 @@
           <el-input v-model="forgotForm.userId" placeholder="如 U_EMP01" />
         </el-form-item>
         <el-form-item label="姓名" required>
-          <el-input v-model="forgotForm.name" placeholder="请输入姓名" />
+          <el-input v-model="forgotForm.display_name" placeholder="请输入姓名" />
         </el-form-item>
         <el-form-item label="员工号" required>
           <el-input v-model="forgotForm.employeeNo" placeholder="如 E1001" />
@@ -105,9 +105,9 @@ import { Lock } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user.js'
 import { userApi } from '../api/index.js'
 
-// PRD §5.1 角色值域（大写）：EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KB_ADMIN
-const roleMap = { EMPLOYEE: '员工', ENGINEER: '工程师', PLATFORM_ADMIN: '平台管理员', KB_ADMIN: '知识库管理员' }
-const roleTagType = (role) => ({ EMPLOYEE: 'success', ENGINEER: 'primary', PLATFORM_ADMIN: 'warning', KB_ADMIN: 'danger' }[role] || 'info')
+// PRD §5.1 角色值域（大写）：EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KNOWLEDGE_ADMIN
+const roleMap = { EMPLOYEE: '员工', ENGINEER: '工程师', PLATFORM_ADMIN: '平台管理员', KNOWLEDGE_ADMIN: '知识库管理员' }
+const roleTagType = (role) => ({ EMPLOYEE: 'success', ENGINEER: 'primary', PLATFORM_ADMIN: 'warning', KNOWLEDGE_ADMIN: 'danger' }[role] || 'info')
 
 const users = ref([])
 const selectedId = ref('')
@@ -120,11 +120,11 @@ const userStore = useUserStore()
 // 忘记密码
 const forgotVisible = ref(false)
 const forgotLoading = ref(false)
-const forgotForm = ref({ userId: '', name: '', employeeNo: '', newPassword: '' })
+const forgotForm = ref({ userId: '', display_name: '', employeeNo: '', newPassword: '' })
 
 async function doForgot() {
   const f = forgotForm.value
-  if (!f.userId || !f.name || !f.employeeNo || !f.newPassword) {
+  if (!f.userId || !f.display_name || !f.employeeNo || !f.newPassword) {
     ElMessage.warning('请填写完整的身份验证信息和新密码')
     return
   }
@@ -133,7 +133,7 @@ async function doForgot() {
     await userApi.forgotPassword(f)
     ElMessage.success('密码已重置，请使用新密码登录')
     forgotVisible.value = false
-    forgotForm.value = { userId: '', name: '', employeeNo: '', newPassword: '' }
+    forgotForm.value = { userId: '', display_name: '', employeeNo: '', newPassword: '' }
     password.value = ''
   } catch (e) {
     ElMessage.error(e.message || '重置失败')
@@ -161,9 +161,9 @@ async function doLogin() {
     }
     const res = await userApi.login({ userId: selectedId.value, password: password.value })
     userStore.setLogin(res.data.user, res.data.token)
-    ElMessage.success(`欢迎，${res.data.user.name}`)
-    const roleRoute = { EMPLOYEE: '/employee', ENGINEER: '/engineer', PLATFORM_ADMIN: '/supervisor', KB_ADMIN: '/supervisor' }
-    router.push(roleRoute[res.data.user.role] || '/employee')
+    ElMessage.success(`欢迎，${userStore.currentUser.display_name}`)
+    const roleRoute = { EMPLOYEE: '/employee', ENGINEER: '/engineer', PLATFORM_ADMIN: '/supervisor', KNOWLEDGE_ADMIN: '/knowledge' }
+    router.push(roleRoute[userStore.currentUser.role] || '/employee')
   } catch (e) {
     loginError.value = e.message || '登录失败'
   } finally {

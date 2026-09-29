@@ -65,7 +65,7 @@ public class SlaAutoTransitionService {
         for (Ticket t : pending) {
             LocalDateTime deadline = workCalendarService.addWorkSeconds(
                     t.getUpdatedAt() != null ? t.getUpdatedAt() : t.getCreatedAt(), EXTERNAL_WAIT_SECONDS);
-            if (!LocalDateTime.now().isBefore(deadline)) {
+            if (!LocalDateTime.now(java.time.ZoneOffset.UTC).isBefore(deadline)) {
                 exceptionQueueService.raise("TICKET", t.getTicketId(),
                         ExceptionQueueService.TYPE_LONG_PENDING,
                         "外部等待超时", "外部依赖等待已超过 5 个工作日仍未解决，请人工介入推动",
@@ -81,7 +81,7 @@ public class SlaAutoTransitionService {
         for (Ticket t : pending) {
             LocalDateTime deadline = workCalendarService.addWorkSeconds(
                     t.getUpdatedAt() != null ? t.getUpdatedAt() : t.getCreatedAt(), AUTO_ACCEPT_SECONDS);
-            if (!LocalDateTime.now().isBefore(deadline)) {
+            if (!LocalDateTime.now(java.time.ZoneOffset.UTC).isBefore(deadline)) {
                 autoAccept(t);
             }
         }
@@ -93,11 +93,12 @@ public class SlaAutoTransitionService {
                 .eq(Ticket::getTicketId, t.getTicketId())
                 .eq(Ticket::getStatus, TicketStatus.PENDING_ACCEPTANCE)
                 .set(Ticket::getStatus, TicketStatus.COMPLETED)
-                .set(Ticket::getSolvedAt, LocalDateTime.now())
-                .set(Ticket::getUpdatedAt, LocalDateTime.now()));
+                .set(Ticket::getSolvedAt, LocalDateTime.now(java.time.ZoneOffset.UTC))
+                .set(Ticket::getCompletedAt, LocalDateTime.now(java.time.ZoneOffset.UTC))
+                .set(Ticket::getUpdatedAt, LocalDateTime.now(java.time.ZoneOffset.UTC)));
         if (rows == 0) return;
         slaService.stop(t.getTicketId());
-        insertFlow(t.getTicketId(), TicketStatus.PENDING_ACCEPTANCE, TicketStatus.COMPLETED, "SYSTEM", "48小时未操作自动验收");
+        insertFlow(t.getTicketId(), TicketStatus.PENDING_ACCEPTANCE, TicketStatus.COMPLETED, "TICKET_AUTO_ACCEPT", "SYSTEM", "48小时未操作自动验收");
         notificationService.sendNotification(t.getTicketId(), "AUTO_ACCEPTED", t.getCreatorId());
         log.info("[SLA自动流转] 自动验收: {}", t.getTicketId());
     }
@@ -109,7 +110,7 @@ public class SlaAutoTransitionService {
         for (Ticket t : pending) {
             LocalDateTime deadline = workCalendarService.addWorkSeconds(
                     t.getUpdatedAt() != null ? t.getUpdatedAt() : t.getCreatedAt(), SUPPLEMENT_TIMEOUT_SECONDS);
-            if (!LocalDateTime.now().isBefore(deadline)) {
+            if (!LocalDateTime.now(java.time.ZoneOffset.UTC).isBefore(deadline)) {
                 supplementTimeoutClose(t);
             }
         }
@@ -121,10 +122,11 @@ public class SlaAutoTransitionService {
                 .eq(Ticket::getTicketId, t.getTicketId())
                 .eq(Ticket::getStatus, TicketStatus.PENDING_SUPPLEMENT)
                 .set(Ticket::getStatus, TicketStatus.CLOSED)
-                .set(Ticket::getUpdatedAt, LocalDateTime.now()));
+                .set(Ticket::getClosedAt, LocalDateTime.now(java.time.ZoneOffset.UTC))
+                .set(Ticket::getUpdatedAt, LocalDateTime.now(java.time.ZoneOffset.UTC)));
         if (rows == 0) return;
-        slaService.stop(t.getTicketId());
-        insertFlow(t.getTicketId(), TicketStatus.PENDING_SUPPLEMENT, TicketStatus.CLOSED, "SYSTEM", "72小时未补充自动关闭");
+        slaService.cancel(t.getTicketId());
+        insertFlow(t.getTicketId(), TicketStatus.PENDING_SUPPLEMENT, TicketStatus.CLOSED, "TICKET_AUTO_CLOSE", "SYSTEM", "72小时未补充自动关闭");
         if (t.getCreatorId() != null) {
             notificationService.sendNotification(t.getTicketId(), "SUPPLEMENT_TIMEOUT_CLOSED", t.getCreatorId());
         }
@@ -134,15 +136,15 @@ public class SlaAutoTransitionService {
         log.info("[SLA自动流转] 逾期补充自动关闭: {}", t.getTicketId());
     }
 
-    private void insertFlow(String ticketId, TicketStatus from, TicketStatus to, String operatorId, String remark) {
+    private void insertFlow(String ticketId, TicketStatus from, TicketStatus to, String eventCode, String operatorId, String remark) {
         TicketFlowLog flow = new TicketFlowLog();
         flow.setTicketId(ticketId);
         flow.setFromStatus(from.getValue());
         flow.setToStatus(to.getValue());
-        flow.setEvent(to.getValue().toLowerCase());
+        flow.setEvent(eventCode);
         flow.setOperatorId(operatorId);
         flow.setReason(remark);
-        flow.setOccurredAt(LocalDateTime.now());
+        flow.setOccurredAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         flowLogMapper.insert(flow);
     }
 }

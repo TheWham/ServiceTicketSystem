@@ -37,6 +37,22 @@
         </template>
       </el-alert>
 
+      <el-alert v-if="sourceSession" type="info" :closable="false" class="draft-alert">
+        <template #title>
+          🔗 从咨询 {{ sourceSession }} 转入：表单已按会话内容预填，请检查修改后提交；
+          提交成功后咨询将转为正式工单并关联完整上下文。
+        </template>
+      </el-alert>
+
+      <!-- 本地草稿横幅(PRD 10.4:服务端保存失败时暂存浏览器本地,恢复网络后可恢复) -->
+      <el-alert v-if="localDraftBanner" type="warning" :closable="false" class="draft-alert">
+        <template #title>
+          ⚠️ 检测到网络中断时暂存在本地的草稿，
+          <el-link type="primary" @click="restoreLocalDraft">点击恢复</el-link>
+          <el-link type="info" style="margin-left:12px" @click="clearLocalDraft">忽略</el-link>
+        </template>
+      </el-alert>
+
       <el-form
         ref="formRef"
         :model="form"
@@ -52,7 +68,7 @@
           </template>
           <el-input
             v-model="form.title"
-            maxlength="50"
+            maxlength="100"
             show-word-limit
             placeholder="一句话概括问题，如：市场部打印机无法连接"
             clearable
@@ -73,7 +89,7 @@
           <el-col :span="12">
             <el-form-item prop="category_id" label="问题分类">
               <el-select v-model="form.category_id" placeholder="选择末级分类" style="width:100%" filterable>
-                <el-option v-for="c in filteredCategories" :key="c.categoryId" :value="c.categoryId" :label="c.name" />
+                <el-option v-for="c in filteredCategories" :key="categoryId(c)" :value="categoryId(c)" :label="c.name" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -101,9 +117,9 @@
             <el-form-item prop="impact_description">
               <template #label>
                 影响情况 <span class="required">*</span>
-                <span class="char-count">{{ form.impact_description.length }}/500</span>
+                <span class="char-count">{{ form.impact_description.length }}/2000</span>
               </template>
-              <el-input v-model="form.impact_description" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="影响了哪些人/业务？如：本人无法打印 / 全部门网络中断" />
+              <el-input v-model="form.impact_description" type="textarea" :rows="3" maxlength="2000" show-word-limit placeholder="影响了哪些人/业务？如：本人无法打印 / 全部门网络中断" />
             </el-form-item>
           </el-col>
 
@@ -112,9 +128,9 @@
             <el-form-item prop="urgency_description">
               <template #label>
                 紧急说明 <span class="required">*</span>
-                <span class="char-count">{{ form.urgency_description.length }}/500</span>
+                <span class="char-count">{{ form.urgency_description.length }}/2000</span>
               </template>
-              <el-input v-model="form.urgency_description" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="为什么紧急？如：下午有重要会议需投屏" />
+              <el-input v-model="form.urgency_description" type="textarea" :rows="3" maxlength="2000" show-word-limit placeholder="为什么紧急？如：下午有重要会议需投屏" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -123,13 +139,13 @@
           <!-- 位置（选填） -->
           <el-col :span="8">
             <el-form-item label="位置">
-              <el-input v-model="form.location" maxlength="200" placeholder="如：3号楼 502 室（选填）" />
+              <el-input v-model="form.location" maxlength="255" placeholder="如：3号楼 502 室（选填）" />
             </el-form-item>
           </el-col>
           <!-- 本次联系方式（选填） -->
           <el-col :span="8">
             <el-form-item label="本次联系方式">
-              <el-input v-model="form.contact" maxlength="64" placeholder="手机/座机（选填，不反写档案）" />
+              <el-input v-model="form.contact" maxlength="255" placeholder="手机/座机（选填，不反写档案）" />
             </el-form-item>
           </el-col>
           <!-- 资产编号（选填） -->
@@ -333,22 +349,29 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   EditPen, List, WarningFilled, SuccessFilled, CircleCheck, CircleClose
 } from '@element-plus/icons-vue'
 import { ticketApi, draftApi, categoryApi } from '../api/index.js'
+import { consultationApi } from '../api/consultation.js'
 import { useUserStore } from '../stores/user.js'
 import SlaBadge from '../components/SlaBadge.vue'
 import SlaTimer from '../components/SlaTimer.vue'
 
 const userStore = useUserStore()
+const router = useRouter()
+const sourceSession = ref('')
+const localDraftBanner = ref(false)
+const LOCAL_DRAFT_KEY = `ticket_draft_local:${userStore.userId}`
 const tab = ref('create')
 // 末级分类从后端动态加载（PRD §10.1 分类目录）
 const categories = ref([])
 // 按当前工单性质过滤末级分类（PRD §10.1：分类目录按 nature 分组）
-const filteredCategories = computed(() => categories.value.filter(c => c.ticketNature === form.value.nature))
+const categoryId = c => c.category_id || c.categoryId
+const categoryNature = c => c.nature || c.ticket_nature || c.ticketNature
+const filteredCategories = computed(() => categories.value.filter(c => categoryNature(c) === form.value.nature))
 const natures = [
   { value: 'INCIDENT', label: '故障报修' },
   { value: 'SERVICE_REQUEST', label: '服务申请' }
@@ -380,11 +403,11 @@ const formRules = {
   ],
   impact_description: [
     { required: true, message: '请填写影响情况（接单时供工程师确认优先级）', trigger: 'blur' },
-    { max: 500, message: '影响情况不能超过 500 个字符', trigger: 'blur' }
+    { max: 2000, message: '影响情况不能超过 2000 个字符', trigger: 'blur' }
   ],
   urgency_description: [
     { required: true, message: '请填写紧急说明', trigger: 'blur' },
-    { max: 500, message: '紧急说明不能超过 500 个字符', trigger: 'blur' }
+    { max: 2000, message: '紧急说明不能超过 2000 个字符', trigger: 'blur' }
   ]
 }
 
@@ -488,23 +511,30 @@ async function submitTicket() {
   lastSubmitAt.value = Date.now()
   try {
     await ticketApi.create({
-      nature: form.value.nature,
+      ticket_nature: form.value.nature,
       category_id: form.value.category_id,
       title: form.value.title.trim(),
       description: form.value.description.trim(),
       impact_description: form.value.impact_description.trim(),
       urgency_description: form.value.urgency_description.trim(),
-      location: form.value.location.trim() || null,
-      contact: form.value.contact.trim() || null,
-      asset_id: form.value.asset_id.trim() || null,
-      idempotency_key: formToken.value
-    })
+      location: form.value.location.trim() || undefined,
+      contact: form.value.contact.trim() || undefined,
+      asset_id: form.value.asset_id.trim() || undefined,
+      source_session_id: sourceSession.value || undefined
+    }, { headers: { 'Idempotency-Key': formToken.value } })
     form.value = {
       nature: 'INCIDENT', category_id: '', title: '', description: '',
       impact_description: '', urgency_description: '', location: '', contact: '', asset_id: ''
     }
     formToken.value = genClientToken()
-    await draftApi.delete().catch(() => {})
+    clearTimeout(draftTimer)
+    await draftApi.delete(draftApi.ensureDraftId()).catch(() => {})
+    clearLocalDraft()
+    sourceSession.value = ''
+    if (route.query.session) {
+      const { session, ...query } = route.query
+      router.replace({ query })
+    }
     draftBanner.value = false
     draftSaved.value = false
     ElMessage.success('工单提交成功！')
@@ -518,9 +548,9 @@ async function submitTicket() {
 }
 
 // 草稿
-async function saveDraft() {
-  await draftApi.save({
-    nature: form.value.nature,
+function draftPayload() {
+  return {
+    ticket_nature: form.value.nature,
     category_id: form.value.category_id,
     title: form.value.title,
     description: form.value.description,
@@ -528,31 +558,98 @@ async function saveDraft() {
     urgency_description: form.value.urgency_description,
     location: form.value.location,
     contact: form.value.contact,
-    asset_id: form.value.asset_id
-  })
-  draftSaved.value = true
-  draftTime.value = new Date().toLocaleTimeString('zh-CN')
+    asset_id: form.value.asset_id,
+    source_session_id: sourceSession.value || null
+  }
 }
 
-function restoreDraft() {
-  draftApi.get().then(res => {
-    if (res.data) {
-      form.value = {
-        nature: res.data.nature || 'INCIDENT',
-        category_id: res.data.category_id || '',
-        title: res.data.title || '',
-        description: res.data.description || '',
-        impact_description: res.data.impact_description || '',
-        urgency_description: res.data.urgency_description || '',
-        location: res.data.location || '',
-        contact: res.data.contact || '',
-        asset_id: res.data.asset_id || ''
-      }
-      draftBanner.value = false
-    }
-  })
+async function saveDraft() {
+  try {
+    await draftApi.save(draftApi.ensureDraftId(), { payload: draftPayload() })
+    draftSaved.value = true
+    draftTime.value = new Date().toLocaleTimeString('zh-CN')
+    // 服务端保存成功,本地暂存不再需要
+    clearLocalDraft()
+  } catch (e) {
+    // PRD 10.4:服务端保存失败时暂存浏览器本地,恢复网络后可恢复
+    try {
+      localStorage.setItem(LOCAL_DRAFT_KEY, JSON.stringify(draftPayload()))
+      localDraftBanner.value = true
+    } catch (storageError) { /* 本地存储不可用则放弃 */ }
+  }
 }
-function clearDraft() { draftApi.delete().catch(() => {}); draftBanner.value = false }
+
+/** 把草稿 payload 应用到表单(残缺字段容错)。 */
+function applyDraftPayload(p) {
+  form.value = {
+    nature: ['INCIDENT', 'SERVICE_REQUEST'].includes(p.ticket_nature || p.nature) ? (p.ticket_nature || p.nature) : 'INCIDENT',
+    category_id: categories.value.some(c => categoryId(c) === p.category_id && categoryNature(c) === (p.ticket_nature || p.nature || 'INCIDENT')) ? p.category_id : '',
+    title: p.title || '',
+    description: p.description || '',
+    impact_description: p.impact_description || '',
+    urgency_description: p.urgency_description || '',
+    location: p.location || '',
+    contact: p.contact || userStore.currentUser?.display_name || userStore.currentUser?.name || '',
+    asset_id: p.asset_id || ''
+  }
+  sourceSession.value = p.source_session_id || ''
+}
+
+async function restoreDraft() {
+  try {
+    const body = await draftApi.get(draftApi.ensureDraftId())
+    if (body?.data?.payload) applyDraftPayload(body.data.payload)
+    draftBanner.value = false
+  } catch (e) {
+    ElMessage.error('恢复草稿失败：' + e.message)
+  }
+}
+
+function clearDraft() {
+  draftApi.delete(draftApi.ensureDraftId()).catch(() => {})
+  draftBanner.value = false
+}
+
+// 咨询转工单预填(OpenAPI 05 getTicketDraftFromConsultation)
+async function loadConsultPrefill(sessionId) {
+  try {
+    const draft = await consultationApi.ticketDraft(sessionId)
+    form.value.title = draft.title || ''
+    form.value.description = draft.description || ''
+    form.value.impact_description = draft.summary ? `来自咨询会话摘要：\n${draft.summary}` : ''
+    const category = categories.value.find(c => categoryId(c) === draft.category_id)
+    if (category) form.value.nature = categoryNature(category)
+    form.value.category_id = category ? categoryId(category) : ''
+    sourceSession.value = draft.convert_allowed ? sessionId : ''
+    localDraftBanner.value = false
+    formToken.value = genClientToken()
+    draftBanner.value = false // 咨询预填优先于服务端草稿
+    tab.value = 'create'
+    if (!draft.convert_allowed) {
+      ElMessage.warning('该咨询已结束，仅预填会话内容供参考')
+    }
+  } catch (e) {
+    ElMessage.error('加载咨询预填失败：' + e.message)
+  }
+}
+
+// 本地草稿(PRD 10.4:暂存/恢复)
+function readLocalDraft() {
+  try {
+    return JSON.parse(localStorage.getItem(LOCAL_DRAFT_KEY) || 'null')
+  } catch (e) {
+    return null
+  }
+}
+function restoreLocalDraft() {
+  const d = readLocalDraft()
+  if (d) applyDraftPayload(d)
+  clearLocalDraft()
+}
+function clearLocalDraft() {
+  localStorage.removeItem(LOCAL_DRAFT_KEY)
+  localDraftBanner.value = false
+}
 
 // 加载工单列表
 async function loadTickets() {
@@ -624,8 +721,8 @@ async function submitRating(t) {
 
 // 自动保存草稿：每 30s
 watch(form, () => {
-  if (!form.value.description.trim()) return
   clearTimeout(draftTimer)
+  if (!form.value.description.trim() && !form.value.title.trim()) return
   draftTimer = setTimeout(saveDraft, 30000)
 }, { deep: true })
 
@@ -639,10 +736,23 @@ onMounted(async () => {
     console.error('加载分类失败', e)
     ElMessage.error('分类加载失败，请刷新重试；若持续失败请联系管理员')
   }
-  try {
-    const draft = await draftApi.get()
-    if (draft.data) draftBanner.value = true
-  } catch (e) {}
+  if (route.query.session) {
+    // 咨询转工单:从智能客服/工程师快捷入口跳入,带会话预填
+    await loadConsultPrefill(String(route.query.session))
+  } else {
+    // PRD 10.4:登录过期后重新登录应提示恢复草稿
+    try {
+      const body = await draftApi.get(draftApi.ensureDraftId())
+      if (body?.data?.payload && (body.data.payload.description || body.data.payload.title)) {
+        draftBanner.value = true
+      } else if (readLocalDraft()) {
+        localDraftBanner.value = true
+      }
+    } catch (e) {
+      // 服务端草稿不可用时仍提示本地暂存(PRD 10.4)
+      if (readLocalDraft()) localDraftBanner.value = true
+    }
+  }
   await loadTickets()
   // 通知跳转：URL 带 ?ticket=xxx 时自动打开该工单详情
   if (route.query.ticket) {
@@ -653,6 +763,16 @@ onMounted(async () => {
 // 关键：同页内点击通知只改 query，组件不重挂载、onMounted 不触发——需 watch query 变化
 watch(() => route.query.ticket, (tid) => {
   if (tid) openDetail({ ticket_id: tid })
+})
+
+watch(() => route.query.session, (v) => {
+  if (v && v !== sourceSession.value) loadConsultPrefill(String(v))
+})
+
+watch(() => form.value.nature, () => {
+  if (!filteredCategories.value.some(c => categoryId(c) === form.value.category_id)) {
+    form.value.category_id = ''
+  }
 })
 
 onUnmounted(() => clearTimeout(draftTimer))

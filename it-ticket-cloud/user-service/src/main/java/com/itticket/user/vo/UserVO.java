@@ -15,6 +15,9 @@ public class UserVO {
     /** 主管账号列表才返回：员工号/账号状态 */
     private String employeeNo;
     private String status;
+    @com.fasterxml.jackson.annotation.JsonProperty("display_name")
+    public String displayName() { return name; }
+    public Boolean getEnabled() { return status == null ? true : "ACTIVE".equals(status); }
 
     /** 4 参：登录/派单选择等基础场景 */
     public UserVO(String userId, String name, String role, String department) {

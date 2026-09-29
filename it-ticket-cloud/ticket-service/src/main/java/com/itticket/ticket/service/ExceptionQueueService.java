@@ -37,9 +37,9 @@ public class ExceptionQueueService {
     public boolean raise(String bizType, String bizId, String exceptionType,
                          String title, String detail, String priority) {
         Long exist = exceptionQueueMapper.selectCount(new QueryWrapper<ExceptionQueue>()
-                .eq("biz_type", bizType)
-                .eq("biz_id", bizId)
-                .eq("exception_type", exceptionType)
+                .eq("object_type", bizType)
+                .eq("object_id", bizId)
+                .eq("reason_code", exceptionType)
                 .eq("status", "OPEN"));
         if (exist != null && exist > 0) {
             log.debug("[EXCEPTION] 已存在 OPEN 异常，跳过: {}", bizType, bizId, exceptionType);
@@ -54,8 +54,8 @@ public class ExceptionQueueService {
         e.setDetail(detail);
         e.setPriority(priority);
         e.setStatus("OPEN");
-        e.setCreatedAt(LocalDateTime.now());
-        e.setUpdatedAt(LocalDateTime.now());
+        e.setCreatedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
+        e.setUpdatedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         exceptionQueueMapper.insert(e);
         log.warn("[EXCEPTION] 异常入队: [{}] {} {} - {}", exceptionType, bizType, bizId, title);
         return true;

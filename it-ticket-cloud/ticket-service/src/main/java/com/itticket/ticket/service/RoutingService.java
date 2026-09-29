@@ -7,6 +7,8 @@ import com.itticket.ticket.entity.Assignment;
 import com.itticket.ticket.entity.CategoryRoute;
 import com.itticket.ticket.entity.TeamMember;
 import com.itticket.ticket.entity.Ticket;
+import com.itticket.ticket.entity.TicketFlowLog;
+import com.itticket.ticket.mapper.TicketFlowLogMapper;
 import com.itticket.ticket.feign.UserClient;
 import com.itticket.ticket.mapper.AssignmentMapper;
 import com.itticket.ticket.mapper.CategoryRouteMapper;
@@ -45,6 +47,7 @@ public class RoutingService {
     private final WorkCalendarService workCalendarService;
     private final ExceptionQueueService exceptionQueueService;
     private final NotificationService notificationService;
+    private final TicketFlowLogMapper flowLogMapper;
 
     /** 响应 SLA：10 工作分钟（§12.2） */
     private static final long RESPONSE_DEADLINE_SECONDS = 10 * 60L;
@@ -96,6 +99,8 @@ public class RoutingService {
         List<CategoryRoute> routes = categoryRouteMapper.selectList(
                 new QueryWrapper<CategoryRoute>()
                         .eq("category_id", category)
+                        .le("effective_at", LocalDateTime.now(java.time.ZoneOffset.UTC))
+                        .and(w -> w.isNull("expired_at").or().gt("expired_at", LocalDateTime.now(java.time.ZoneOffset.UTC)))
                         .orderByAsc("route_order"));
         if (routes.isEmpty()) {
             // PRD §9.3：分类无可用候选人 → 保持 NEW 进异常队列，不做兑底分配
@@ -109,7 +114,7 @@ public class RoutingService {
             List<TeamMember> members = teamMemberMapper.selectList(
                     new QueryWrapper<TeamMember>()
                             .eq("team_id", r.getTeamId())
-                            .eq("status", "ACTIVE"));
+                            .eq("enabled", true).isNull("left_at"));
             members.forEach(m -> candidateIds.add(m.getEngineerId()));
         }
         candidateIds.removeAll(exclude);
@@ -161,7 +166,7 @@ public class RoutingService {
      */
     @Transactional
     public void assign(Ticket ticket, String engineerId, String endReason) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneOffset.UTC);
         // 结束上一条未关闭的 assignment（转派时）
         if (endReason != null) {
             Assignment last = assignmentMapper.selectOne(new QueryWrapper<Assignment>()
@@ -174,6 +179,7 @@ public class RoutingService {
                 Assignment close = new Assignment();
                 close.setAssignmentId(last.getAssignmentId());
                 close.setEndReason(endReason);
+                close.setUpdatedAt(now);
                 assignmentMapper.updateById(close);
             }
         }
@@ -186,6 +192,7 @@ public class RoutingService {
         a.setAssignedAt(now);
         a.setResponseDeadline(workCalendarService.addWorkSeconds(now, RESPONSE_DEADLINE_SECONDS));
         a.setCreatedAt(now);
+        a.setUpdatedAt(now);
         assignmentMapper.insert(a);
 
         // 更新工单 assignee
@@ -206,7 +213,7 @@ public class RoutingService {
                 .isNull("responded_at")
                 .isNull("end_reason")
                 .isNotNull("response_deadline")
-                .le("response_deadline", LocalDateTime.now()));
+                .le("response_deadline", LocalDateTime.now(java.time.ZoneOffset.UTC)));
         if (pending.isEmpty()) return;
         for (Assignment a : pending) {
             try {
@@ -220,6 +227,7 @@ public class RoutingService {
     /** 响应超时转派：排除当前工程师，选次优；无候选则入异常队列 */
     @Transactional
     public void transferOnTimeout(Assignment current) {
+        if (!"TICKET".equals(current.getBizType())) return;
         Ticket ticket = ticketMapper.selectById(current.getBizId());
         if (ticket == null) return;
         String next = selectEngineer(ticket.getCategoryId(), Set.of(current.getEngineerId()));
@@ -230,7 +238,16 @@ public class RoutingService {
                     "响应超时且无人可转派", "工程师 " + current.getEngineerId() + " 响应超时，无候选工程师", ticket.getPriority());
             return;
         }
-        assign(ticket, next, "TIMEOUT_TRANSFER");
+        assign(ticket, next, "TIMEOUT");
+        TicketFlowLog flow = new TicketFlowLog();
+        flow.setTicketId(ticket.getTicketId());
+        flow.setFromStatus(ticket.getStatus().getValue());
+        flow.setToStatus(ticket.getStatus().getValue());
+        flow.setEvent("TICKET_TIMEOUT_TRANSFER");
+        flow.setOperatorId("SYSTEM");
+        flow.setReason("Response timeout: " + current.getEngineerId() + " -> " + next);
+        flow.setOccurredAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
+        flowLogMapper.insert(flow);
         log.warn("[路由] 响应超时转派: {} {} -> {}", ticket.getTicketId(), current.getEngineerId(), next);
     }
 
@@ -248,7 +265,9 @@ public class RoutingService {
         if (a != null) {
             Assignment upd = new Assignment();
             upd.setAssignmentId(a.getAssignmentId());
-            upd.setRespondedAt(LocalDateTime.now());
+            upd.setRespondedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
+            upd.setEndReason("RESPONDED");
+            upd.setUpdatedAt(upd.getRespondedAt());
             assignmentMapper.updateById(upd);
         }
     }

@@ -19,7 +19,7 @@ public class Notification {
     /** 领域事件实例 ID（§21.4） */
     private String eventId;
     private String receiverId;
-    /** INBOX / EMAIL */
+    /** IN_APP / EMAIL */
     private String channel;
     /** event_id:receiver:channel（生命周期唯一 §14.3） */
     private String dedupKey;

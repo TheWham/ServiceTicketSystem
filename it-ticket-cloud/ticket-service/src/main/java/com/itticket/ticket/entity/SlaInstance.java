@@ -3,6 +3,7 @@ package com.itticket.ticket.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -13,7 +14,15 @@ import java.time.LocalDateTime;
 public class SlaInstance {
     @TableId(value = "sla_id", type = IdType.INPUT)
     private String slaId;
-    private String ticketId;
+    private String bizType;
+    private String bizId;
+    private Long targetWorkSeconds;
+    private String calendarId;
+    private Long calendarVersion;
+    private Long version;
+    private LocalDateTime metAt;
+    public String getTicketId() { return bizId; }
+    public void setTicketId(String value) { bizId = value; bizType = "TICKET"; }
     /** RESPONSE / COMPLETION */
     private String slaType;
     private String prioritySnapshot;
@@ -25,8 +34,9 @@ public class SlaInstance {
     /** 80% 提醒标记 */
     private Integer nearBreachNotified;
     /** 违约时间（不可删除 §11.2） */
+    @TableField("breached_at")
     private LocalDateTime breachAt;
-    /** RUNNING / PAUSED / STOPPED / BREACHED */
+    /** RUNNING / PAUSED / MET / BREACHED / CANCELLED */
     private String status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

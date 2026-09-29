@@ -28,9 +28,9 @@
           {{ formatDuration(remaining) }}
         </span>
       </div>
-      <div class="sla-row" v-if="sla.breach_at">
+      <div class="sla-row" v-if="breachedAt">
         <span class="sla-label">违约时间</span>
-        <span class="sla-value breach">{{ formatDateTime(sla.breach_at) }}</span>
+        <span class="sla-value breach">{{ formatDateTime(breachedAt) }}</span>
       </div>
 
       <!-- 进度条 -->
@@ -61,19 +61,20 @@ const targetTotal = ref(0)
 let timer = null
 
 const statusLabel = computed(() => ({
-  RUNNING: '计时中', PAUSED: '已暂停', STOPPED: '已停止', BREACHED: '已违约'
+  RUNNING: '计时中', PAUSED: '已暂停', MET: '已达标', CANCELLED: '已取消', STOPPED: '已停止', BREACHED: '已违约'
 }[sla.value?.status] || sla.value?.status || '—'))
 
 const statusTagType = computed(() => ({
-  RUNNING: 'primary', PAUSED: 'info', STOPPED: 'info', BREACHED: 'danger'
+  RUNNING: 'primary', PAUSED: 'info', MET: 'success', CANCELLED: 'info', STOPPED: 'info', BREACHED: 'danger'
 }[sla.value?.status] || 'info'))
 
 const priorityLabel = computed(() => ({
   HIGH: '高（4工作小时）', MEDIUM: '中（1工作日）', LOW: '低（3工作日）'
 }[sla.value?.priority_snapshot] || sla.value?.priority_snapshot || '—'))
 
-const isBreached = computed(() => !!sla.value?.breach_at)
-const isNear = computed(() => !isBreached.value && remaining.value < 3600)
+const breachedAt = computed(() => sla.value?.breached_at || sla.value?.breach_at)
+const isBreached = computed(() => !!breachedAt.value || sla.value?.status === 'BREACHED')
+const isNear = computed(() => !isBreached.value && sla.value?.status === 'RUNNING' && remaining.value < 3600)
 
 const progressPct = computed(() => {
   if (!sla.value || targetTotal.value <= 0) return 0
@@ -89,6 +90,8 @@ const progressStatus = computed(() => {
 const progressTip = computed(() => {
   if (isBreached.value) return '已超出 SLA 完成目标（违约记录保留，PRD §11.2）'
   if (sla.value?.status === 'PAUSED') return '计时已暂停（补充/外部等待期间不计入 SLA）'
+  if (sla.value?.status === 'MET') return '已达到 SLA 完成目标'
+  if (sla.value?.status === 'CANCELLED') return 'SLA 已取消'
   if (sla.value?.status === 'STOPPED') return '工单已终结，SLA 停止计时'
   return `目标 ${formatDuration(targetTotal.value)} 工作时长`
 })

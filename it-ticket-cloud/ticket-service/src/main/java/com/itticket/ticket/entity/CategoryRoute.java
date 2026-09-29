@@ -11,11 +11,11 @@ import java.time.LocalDateTime;
 @Data
 @TableName("category_route")
 public class CategoryRoute {
-    @TableId(value = "id", type = IdType.AUTO)
-    private Long id;
     private String categoryId;
     private String teamId;
     private Integer routeOrder;
     private LocalDateTime effectiveAt;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+    private LocalDateTime expiredAt;
 }

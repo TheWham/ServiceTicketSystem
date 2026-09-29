@@ -11,7 +11,7 @@
 |:---|:---|
 | 前端 | Vue 3 + Vite + Pinia + Vue Router + Element Plus + Axios |
 | 后端 | Java 17 + Spring Boot 3.2.5 + Spring Cloud 2023.0.1 + Spring Cloud Alibaba |
-| 数据库 | MySQL 8(单库 `it_ticket_system`,28 张表,执行顺序 00→10) |
+| 数据库 | MySQL 8（统一单库 `it_ticket_system`；已实现模块按 PRD/spec 对齐，未实现模块保留原字段） |
 | 服务治理 | Nacos(注册中心)+ OpenFeign + Spring Cloud Gateway |
 | 认证 | JWT(HS256,12h)+ BCrypt,网关统一鉴权 |
 | ORM | MyBatis-Plus 3.5.7 |
@@ -24,6 +24,7 @@ it-ticket-system/
 │   ├── gateway/              # 网关 :8080 —— 唯一入口 + JWT 统一鉴权 + 路由
 │   ├── user-service/         # 用户服务 :8101 —— 登录/JWT、用户、草稿
 │   ├── ticket-service/       # 工单服务 :8201 —— 工单全业务、状态机、路由、SLA、通知、异常队列
+│   ├── consultation-service/ # 咨询服务 :8301 —— AI、转人工、咨询与知识检索
 │   ├── common/               # Result/错误码/JWT 工具(纯 Java,gateway 可引用)
 │   ├── common-web/           # 全局异常、UserContext 透传头解析、时间格式
 │   ├── db/init/              # MySQL 建表 + 种子(00-schema.sql → 10-seed.sql)
@@ -46,7 +47,8 @@ it-ticket-system/
 │   ├── tests/                # pytest 测试套件(含 TC-10 注入防护)
 │   ├── scripts/              # 评测执行脚本
 │   └── reports/              # 评测报告输出
-├── IT服务工单系统PRD-Ultimate.md  # 产品需求文档(业务规则唯一依据)
+├── docs/IT服务工单系统PRD-Ultimate.md # 当前产品需求基线（2.1）
+├── docs/specs/               # 数据字段、接口、SQL 和实现差异清单
 └── README.md                 # 本文档
 ```
 
@@ -54,7 +56,7 @@ it-ticket-system/
 
 ### 0. 数据库(统一远程)
 
-数据库**统一连远程库** `120.92.138.195:3306`（默认密码 `clt123456`，库名 `it_ticket_system`），无需本地起 MySQL。仅首次需初始化：
+数据库**统一连远程库** `120.92.138.195:3306`（密码通过 `MYSQL_PASSWORD` 注入，库名 `it_ticket_system`），无需本地起 MySQL。仅首次需初始化：
 
 ```bash
 it-ticket-cloud\scripts\init-db.cmd   # 默认连远程库建表+种子;可用 MYSQL_HOST/MYSQL_PASSWORD 覆盖
@@ -71,13 +73,15 @@ it-ticket-cloud\scripts\start-nacos.cmd  # 无 Docker(Windows standalone,8848/98
 
 ```bash
 cd it-ticket-cloud
-mvn package                                    # 或在 IDE 中分别启动三个 Application
+mvn package                                    # 或在 IDE 中分别启动四个 Application
 java -jar gateway/target/it-ticket-gateway-1.0.0.jar
 java -jar user-service/target/it-ticket-user-service-1.0.0.jar
 java -jar ticket-service/target/it-ticket-ticket-service-1.0.0.jar
+# 咨询服务需在 consultation-service 目录启动，读取同目录的 ai-secrets.yml：
+# java -jar target/it-ticket-consultation-service-1.0.0.jar
 ```
 
-**配置**：默认加载 `application-dev.yml`（本地 profile，连远程库）；生产用 `--spring.profiles.active=prod`（敏感项强制环境变量）。环境变量：`NACOS_ADDR`、`MYSQL_HOST`(默认 120.92.138.195)、`MYSQL_PASSWORD`(默认 clt123456)、`JWT_SECRET`(生产必换)。Nacos 配置中心为可选开关 `NACOS_CONFIG_ENABLED=true`（详见 `nacos-config/配置管理说明.md`）。
+**配置**：默认加载 `application-dev.yml`（本地 profile，连远程库）；生产用 `--spring.profiles.active=prod`（敏感项强制环境变量）。环境变量：`NACOS_ADDR`、`MYSQL_HOST`(默认 120.92.138.195)、`MYSQL_PASSWORD`（必须注入）、`JWT_SECRET`(生产必换)。Nacos 配置中心为可选开关 `NACOS_CONFIG_ENABLED=true`（详见 `nacos-config/配置管理说明.md`）。
 
 ### 3. 起前端
 
@@ -94,7 +98,7 @@ cd frontend && npm install && npm run dev    # 5173,proxy /api → 8080 网关
 | U_EMP01 | 演示员工 | EMPLOYEE |
 | U_ENG01 | 演示工程师 | ENGINEER |
 | U_ADM01 | 平台管理员 | PLATFORM_ADMIN |
-| U_KBA01 | 知识库管理员 | KB_ADMIN |
+| U_KBA01 | 知识库管理员 | KNOWLEDGE_ADMIN |
 
 ## API 一览
 
@@ -108,9 +112,9 @@ cd frontend && npm install && npm run dev    # 5173,proxy /api → 8080 网关
 | POST | /api/v1/users/forgot-password | 忘记密码(工号+姓名+员工号三要素→自助重置) | 免认证 |
 | POST | /api/v1/users/change-password | 修改密码(旧密码校验) | 登录 |
 | GET | /api/v1/users/me | 当前用户 | 登录 |
-| GET | /api/v1/users/accounts | 账号列表(可视化) | PLATFORM_ADMIN/KB_ADMIN |
-| POST | /api/v1/users/accounts | 新建账号(注册仅主管) | PLATFORM_ADMIN/KB_ADMIN |
-| POST | /api/v1/users/accounts/:id/reset-password | 重置他人密码 | PLATFORM_ADMIN/KB_ADMIN |
+| GET | /api/v1/users/accounts | 账号列表(可视化) | PLATFORM_ADMIN/KNOWLEDGE_ADMIN |
+| POST | /api/v1/users/accounts | 新建账号(注册仅主管) | PLATFORM_ADMIN/KNOWLEDGE_ADMIN |
+| POST | /api/v1/users/accounts/:id/reset-password | 重置他人密码 | PLATFORM_ADMIN/KNOWLEDGE_ADMIN |
 | GET | /api/v1/users?role= | 用户列表(派单用) | 登录 |
 | GET/POST/DELETE | /api/v1/users/drafts | 提单草稿(每用户一条) | 登录 |
 | GET | /api/v1/categories/leaf | 叶子分类(提单表单下拉) | 登录 |
@@ -141,7 +145,7 @@ cd frontend && npm install && npm run dev    # 5173,proxy /api → 8080 网关
 **已完成**:
 - **后端微服务化**:登录/JWT、网关鉴权与透传、建单+幂等(idempotency_key)、自动路由(F-06)、SLA 计时与自动流转(F-08)、9 态状态机 guard(F-07)、异常队列、通知事件落库(F-10,生命周期幂等)(详见 [it-ticket-cloud/README.md](it-ticket-cloud/README.md))
 - **认证模块**:BCrypt 登录、忘记密码(三要素自助重置)、修改密码、主管侧账号管理(建号/列表/重置密码),注册仅主管可操作
-- **前端 Element Plus 化**:经典后台布局 + 暗黑模式 + 通知中心(SlaBadge/SlaTimer/NotificationBell) + 账号管理页,角色值域对齐 PRD 大写枚举(EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KB_ADMIN)
+- **前端 Element Plus 化**:经典后台布局 + 暗黑模式 + 通知中心(SlaBadge/SlaTimer/NotificationBell) + 账号管理页,角色值域对齐 PRD 大写枚举(EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KNOWLEDGE_ADMIN)
 - **数据库结构按 PRD 全量对齐**:单库 28 张表(统一连远程库),字段/枚举/优先级矩阵对齐 PRD-Ultimate
 - **配置管理**:Nacos 接入(可选) + 本地 dev/prod 双环境 profile
 - **验收评测**:27 项用例全绿(含 TC-10 注入防护),代码位于 `acceptance/`
@@ -158,3 +162,11 @@ cd frontend && npm install && npm run dev    # 5173,proxy /api → 8080 网关
 
 - **主仓库(GitHub)**:https://github.com/TheWham/ServiceTicketSystem
 - **镜像(Gitee)**:https://gitee.com/early-rise/it-ticket-system
+
+## 单库合并与字段兼容
+
+当前规范以 `docs/IT服务工单系统PRD-Ultimate.md` 和 `docs/specs/01、05、06` 为准。字段差异与本次范围见 [main/spec 对照报告](docs/specs/11-main-schema-alignment.md)。用户、工单、咨询统一通过 `MYSQL_HOST`、`MYSQL_PORT`、`MYSQL_DB=it_ticket_system`、`MYSQL_USERNAME`、`MYSQL_PASSWORD` 连接同一库；持久化时间统一 UTC，HTTP 输出带时区。
+
+`db/init` 仅用于空库。已有 main 数据库请按 `it-ticket-cloud/db/migration` 说明执行备份、停写、暂存转换和校验，再显式切换；不能用空库脚本覆盖现有数据。本次合并不会自动迁移任何现有或远程数据库。未实现的知识审核、附件上传等模块不借本次合并补齐字段或功能。
+
+模型地址与 ID 支持 `AI_BASE_URL`、`AI_MODEL`；密钥使用本地忽略的 `consultation-service/ai-secrets.yml` 或 `AI_API_KEY`。外部文件调整后重启咨询服务即可；服务默认使用同一 `dev/prod` profile，启用 Nacos 时须同步咨询和新草稿路由。

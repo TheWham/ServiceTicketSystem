@@ -51,8 +51,8 @@ public class UserService {
     /** Mock 登录选项:列出所有活跃用户（角色经 user_role 关联） */
     public List<UserVO> loginOptions() {
         return userMapper.selectList(new QueryWrapper<User>()
-                        .select("user_id", "name", "department_id")
-                        .eq("status", "ACTIVE"))
+                        .select("user_id", "display_name", "department_id")
+                        .eq("enabled", true))
                 .stream()
                 .map(u -> new UserVO(u.getUserId(), u.getName(), primaryRole(u.getUserId()), u.getDepartmentId()))
                 // 与旧版 CASE 排序一致:employee→engineer→其余角色,再按姓名
@@ -65,8 +65,8 @@ public class UserService {
     /** 用户列表(供派单选择),按角色过滤（user_role 未撤销记录;入参小写,库值大写） */
     public List<UserVO> listUsers(String role) {
         QueryWrapper<User> uw = new QueryWrapper<User>()
-                .select("user_id", "name", "department_id")
-                .eq("status", "ACTIVE");
+                .select("user_id", "display_name", "department_id")
+                .eq("enabled", true);
         if (role != null && !role.isBlank()) {
             List<String> userIds = userRoleMapper.selectList(new QueryWrapper<UserRoleEntity>()
                             .eq("role_code", role.trim().toUpperCase()).isNull("revoked_at"))
@@ -88,7 +88,7 @@ public class UserService {
             case "EMPLOYEE" -> 1;
             case "ENGINEER" -> 2;
             case "PLATFORM_ADMIN" -> 3;
-            case "KB_ADMIN" -> 4;
+            case "KNOWLEDGE_ADMIN" -> 4;
             default -> 5;
         };
     }
@@ -115,7 +115,8 @@ public class UserService {
         }
         checkPassword(req.getPassword());
         String roleCode = req.getRoleCode().trim().toUpperCase();
-        if (!java.util.Set.of("EMPLOYEE", "ENGINEER", "PLATFORM_ADMIN", "KB_ADMIN").contains(roleCode)) {
+        if ("KB_ADMIN".equals(roleCode)) roleCode = "KNOWLEDGE_ADMIN";
+        if (!java.util.Set.of("EMPLOYEE", "ENGINEER", "PLATFORM_ADMIN", "KNOWLEDGE_ADMIN").contains(roleCode)) {
             throw new BizException(ErrorCode.PARAM_INVALID, "非法角色:" + roleCode);
         }
         String userId = req.getUserId().trim();
@@ -126,19 +127,22 @@ public class UserService {
         u.setUserId(userId);
         u.setEmployeeNo(req.getEmployeeNo().trim());
         u.setName(req.getName().trim());
-        u.setDepartmentId(isBlank(req.getDepartmentId()) ? null : req.getDepartmentId().trim());
+        u.setDepartmentId(isBlank(req.getDepartmentId()) ? "UNASSIGNED" : req.getDepartmentId().trim());
         u.setStatus("ACTIVE");
+        u.setVersion(0L);
         u.setIdentitySource("LOCAL");
         u.setPasswordHash(passwordEncoder.encode(req.getPassword()));
-        u.setCreatedAt(java.time.LocalDateTime.now());
-        u.setUpdatedAt(java.time.LocalDateTime.now());
+        u.setCreatedAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC));
+        u.setUpdatedAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC));
         userMapper.insert(u);
 
         UserRoleEntity ur = new UserRoleEntity();
         ur.setUserId(userId);
         ur.setRoleCode(roleCode);
         ur.setGrantedBy("ADMIN");
-        ur.setGrantedAt(java.time.LocalDateTime.now());
+        ur.setGrantedAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC));
+        ur.setCreatedAt(ur.getGrantedAt());
+        ur.setUpdatedAt(ur.getGrantedAt());
         userRoleMapper.insert(ur);
         return new UserVO(userId, u.getName(), roleCode, u.getDepartmentId());
     }
@@ -157,7 +161,7 @@ public class UserService {
             throw new BizException(ErrorCode.PARAM_INVALID, "新密码不能与旧密码相同");
         }
         u.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
-        u.setUpdatedAt(java.time.LocalDateTime.now());
+        u.setUpdatedAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC));
         userMapper.updateById(u);
     }
 
@@ -177,7 +181,7 @@ public class UserService {
         }
         checkPassword(req.getNewPassword());
         u.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
-        u.setUpdatedAt(java.time.LocalDateTime.now());
+        u.setUpdatedAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC));
         userMapper.updateById(u);
     }
 
@@ -185,7 +189,7 @@ public class UserService {
     public List<UserVO> listAllAccounts(String operatorRole) {
         requireAdmin(operatorRole);
         return userMapper.selectList(new QueryWrapper<User>()
-                        .select("user_id", "employee_no", "name", "department_id", "status"))
+                        .select("user_id", "employee_no", "display_name", "department_id", "enabled"))
                 .stream()
                 .map(u -> new UserVO(u.getUserId(), u.getName(), primaryRole(u.getUserId()), u.getDepartmentId(),
                         u.getEmployeeNo(), u.getStatus()))
@@ -202,13 +206,13 @@ public class UserService {
         }
         checkPassword(req == null ? null : req.getNewPassword());
         u.setPasswordHash(passwordEncoder.encode(req.getNewPassword()));
-        u.setUpdatedAt(java.time.LocalDateTime.now());
+        u.setUpdatedAt(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC));
         userMapper.updateById(u);
     }
 
     /** 仅主管（平台管理员/知识库管理员）可管理账号 */
     private static void requireAdmin(String role) {
-        if (!"PLATFORM_ADMIN".equals(role) && !"KB_ADMIN".equals(role)) {
+        if (!"PLATFORM_ADMIN".equals(role)) {
             throw new BizException(ErrorCode.FORBIDDEN, "仅主管可执行账号管理操作");
         }
     }
@@ -219,7 +223,11 @@ public class UserService {
                 .eq("user_id", userId).isNull("revoked_at")
                 .orderByDesc("granted_at").last("LIMIT 1"));
         // PRD §5.1 角色值域为大写：EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KB_ADMIN
-        return r != null && r.getRoleCode() != null ? r.getRoleCode() : "EMPLOYEE";
+        if (r == null || r.getRoleCode() == null) throw new com.itticket.common.api.BizException(com.itticket.common.api.ErrorCode.FORBIDDEN, "No active role");
+        String role = "KB_ADMIN".equals(r.getRoleCode()) ? "KNOWLEDGE_ADMIN" : r.getRoleCode();
+        if (!java.util.Set.of("EMPLOYEE", "ENGINEER", "PLATFORM_ADMIN", "KNOWLEDGE_ADMIN").contains(role))
+            throw new com.itticket.common.api.BizException(com.itticket.common.api.ErrorCode.FORBIDDEN, "Unknown role");
+        return role;
     }
 
     private static boolean isBlank(String s) {

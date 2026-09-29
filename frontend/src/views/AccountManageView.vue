@@ -11,7 +11,7 @@
       <el-table :data="accounts" v-loading="loading" border stripe>
         <el-table-column prop="user_id" label="用户ID" width="110" />
         <el-table-column prop="employee_no" label="员工号" width="100" />
-        <el-table-column prop="name" label="姓名" width="120" />
+        <el-table-column prop="display_name" label="姓名" width="120" />
         <el-table-column prop="department" label="部门" width="120">
           <template #default="{ row }">{{ row.department || '—' }}</template>
         </el-table-column>
@@ -22,8 +22,8 @@
         </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'" size="small">
-              {{ row.status === 'ACTIVE' ? '正常' : '禁用' }}
+            <el-tag :type="(row.enabled ?? (row.status === 'ACTIVE')) ? 'success' : 'info'" size="small">
+              {{ (row.enabled ?? (row.status === 'ACTIVE')) ? '正常' : '禁用' }}
             </el-tag>
           </template>
         </el-table-column>
@@ -45,7 +45,7 @@
           <el-input v-model="createForm.employeeNo" placeholder="如 E1002" />
         </el-form-item>
         <el-form-item label="姓名" required>
-          <el-input v-model="createForm.name" placeholder="真实姓名" />
+          <el-input v-model="createForm.display_name" placeholder="真实姓名" />
         </el-form-item>
         <el-form-item label="部门">
           <el-input v-model="createForm.departmentId" placeholder="如 D_IT" />
@@ -55,7 +55,7 @@
             <el-option label="员工" value="EMPLOYEE" />
             <el-option label="工程师" value="ENGINEER" />
             <el-option label="平台管理员" value="PLATFORM_ADMIN" />
-            <el-option label="知识库管理员" value="KB_ADMIN" />
+            <el-option label="知识库管理员" value="KNOWLEDGE_ADMIN" />
           </el-select>
         </el-form-item>
         <el-form-item label="初始密码" required>
@@ -69,7 +69,7 @@
     </el-dialog>
 
     <!-- 重置密码弹窗 -->
-    <el-dialog v-model="resetVisible" :title="`重置密码 · ${resetTarget?.name || ''}`" width="400px" :close-on-click-modal="false">
+    <el-dialog v-model="resetVisible" :title="`重置密码 · ${resetTarget?.display_name || ''}`" width="400px" :close-on-click-modal="false">
       <el-form label-width="90px">
         <el-form-item label="新密码" required>
           <el-input v-model="resetPwd" type="password" show-password placeholder="6-32位，含字母和数字" />
@@ -89,15 +89,15 @@ import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { userApi } from '../api/index.js'
 
-const roleMap = { EMPLOYEE: '员工', ENGINEER: '工程师', PLATFORM_ADMIN: '平台管理员', KB_ADMIN: '知识库管理员' }
-const roleTagType = (r) => ({ EMPLOYEE: 'success', ENGINEER: 'primary', PLATFORM_ADMIN: 'warning', KB_ADMIN: 'danger' }[r] || 'info')
+const roleMap = { EMPLOYEE: '员工', ENGINEER: '工程师', PLATFORM_ADMIN: '平台管理员', KNOWLEDGE_ADMIN: '知识库管理员' }
+const roleTagType = (r) => ({ EMPLOYEE: 'success', ENGINEER: 'primary', PLATFORM_ADMIN: 'warning', KNOWLEDGE_ADMIN: 'danger' }[r] || 'info')
 
 const accounts = ref([])
 const loading = ref(false)
 
 const createVisible = ref(false)
 const creating = ref(false)
-const createForm = ref({ userId: '', employeeNo: '', name: '', departmentId: '', roleCode: '', password: '' })
+const createForm = ref({ userId: '', employeeNo: '', display_name: '', departmentId: '', roleCode: '', password: '' })
 
 const resetVisible = ref(false)
 const resetting = ref(false)
@@ -108,7 +108,7 @@ async function load() {
   loading.value = true
   try {
     const res = await userApi.listAccounts()
-    accounts.value = res.data
+    accounts.value = (res.data || []).map(user => ({ ...user, display_name: user.display_name || user.name }))
   } catch (e) {
     ElMessage.error(e.message || '加载失败')
   } finally {
@@ -117,13 +117,13 @@ async function load() {
 }
 
 function openCreate() {
-  createForm.value = { userId: '', employeeNo: '', name: '', departmentId: '', roleCode: '', password: '' }
+  createForm.value = { userId: '', employeeNo: '', display_name: '', departmentId: '', roleCode: '', password: '' }
   createVisible.value = true
 }
 
 async function doCreate() {
   const f = createForm.value
-  if (!f.userId || !f.employeeNo || !f.name || !f.roleCode || !f.password) {
+  if (!f.userId || !f.employeeNo || !f.display_name || !f.roleCode || !f.password) {
     ElMessage.warning('请填写完整的账号信息')
     return
   }

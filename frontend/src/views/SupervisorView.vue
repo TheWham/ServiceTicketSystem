@@ -4,7 +4,7 @@
     <div class="page-head">
       <div>
         <h2 class="page-title">
-          <el-icon><DataAnalysis /></el-icon> 主管看板
+          <el-icon><DataAnalysis /></el-icon> 平台管理看板
         </h2>
         <p class="page-sub">全局工单管理 · 派单 · 催办 · 改派</p>
       </div>
@@ -46,7 +46,7 @@
             style="width: 140px"
             @change="loadTickets"
           >
-            <el-option v-for="c in categories" :key="c.categoryId" :label="c.name" :value="c.categoryId" />
+            <el-option v-for="c in categories" :key="(c.category_id || c.categoryId)" :label="c.name" :value="(c.category_id || c.categoryId)" />
           </el-select>
         </el-form-item>
         <el-form-item label="处理人">
@@ -57,7 +57,7 @@
             style="width: 140px"
             @change="loadTickets"
           >
-            <el-option v-for="e in engineers" :key="e.user_id" :label="e.name" :value="e.user_id" />
+            <el-option v-for="e in engineers" :key="e.user_id" :label="(e.display_name || e.name)" :value="e.user_id" />
           </el-select>
         </el-form-item>
         <el-form-item class="filter-total">
@@ -145,7 +145,7 @@
               <el-option
                 v-for="e in engineers"
                 :key="e.user_id"
-                :label="`${e.name} (${e.department})`"
+                :label="`${(e.display_name || e.name)} (${e.department})`"
                 :value="e.user_id"
               />
             </el-select>
@@ -196,9 +196,9 @@
           <el-descriptions-item label="紧急说明" :span="2">{{ detailTicket.urgency_description }}</el-descriptions-item>
         </el-descriptions>
 
-        <!-- 主管强制恢复 -->
+        <!-- 平台管理员强制恢复 -->
         <el-card v-if="detailTicket.status === 'PENDING_EXTERNAL'" shadow="never" class="action-card">
-          <template #header><span class="action-title">主管操作</span></template>
+          <template #header><span class="action-title">平台管理操作</span></template>
           <el-button type="warning" :icon="RefreshRight" @click="forceResolve(detailTicket)">
             强制恢复处理中
           </el-button>
@@ -365,7 +365,7 @@ async function forceResolve(ticket) {
   } catch { return }
 
   try {
-    await ticketApi.action(ticket.ticket_id, { action: 'external_resolved', remark: '主管强制恢复' })
+    await ticketApi.action(ticket.ticket_id, { action: 'external_resolved', remark: '平台管理员强制恢复' })
     ElMessage.success('已恢复处理中')
     detailVisible.value = false
     loadTickets()

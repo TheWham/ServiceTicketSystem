@@ -11,11 +11,11 @@ import java.time.LocalDateTime;
 @Data
 @TableName("team_member")
 public class TeamMember {
-    @TableId(value = "id", type = IdType.AUTO)
-    private Long id;
     private String teamId;
     private String engineerId;
     private LocalDateTime joinedAt;
-    private String status;
+    private Boolean enabled;
+    private LocalDateTime leftAt;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }
