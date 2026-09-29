@@ -1,9 +1,14 @@
 @echo off
-REM 一次性初始化数据库(需 MySQL 已启动):建库(it_ticket_system)+ 全量表结构 + 种子数据
-REM 结构与远程库/PRD-Ultimate 保持一致;00-schema.sql 由 mysqldump --no-data 导出
-REM 默认 root 密码 root123(本地免安装版),远程库请自行修改 -h/-p
+REM 一次性初始化数据库:建库(it_ticket_system)+ 全量表结构 + 种子数据
+REM 结构与 PRD-Ultimate 保持一致;00-schema.sql 由 mysqldump --no-data 导出
+REM 数据库统一连远程库 120.92.138.195:3306(默认密码 clt123456)
+REM 可用环境变量覆盖:MYSQL_HOST / MYSQL_PORT / MYSQL_USERNAME / MYSQL_PASSWORD
 set MYSQL=C:\Users\Admin\.wpscomate\tools\mysql-8.0.28-winx64\bin\mysql.exe
-set MYSQL_ARGS=-uroot -proot123 --default-character-set=utf8mb4
+if "%MYSQL_HOST%"=="" set MYSQL_HOST=120.92.138.195
+if "%MYSQL_PORT%"=="" set MYSQL_PORT=3306
+if "%MYSQL_USERNAME%"=="" set MYSQL_USERNAME=root
+if "%MYSQL_PASSWORD%"=="" set MYSQL_PASSWORD=clt123456
+set MYSQL_ARGS=-h%MYSQL_HOST% -P%MYSQL_PORT% -u%MYSQL_USERNAME% -p%MYSQL_PASSWORD% --default-character-set=utf8mb4
 set DB=it_ticket_system
 set BASE=%~dp0..\db\init
 
