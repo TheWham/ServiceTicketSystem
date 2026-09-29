@@ -1,0 +1,46 @@
+# ============================================================
+# 测试环境配置（本地开发默认）
+# 与 nacos-config/gateway.yaml + common-config.yaml 内容一致，本地兜底
+# 生产环境用 application-prod.yml，启动时 --spring.profiles.active=prod 切换
+# ============================================================
+
+# JWT 共享密钥（common-config.yaml 的内容；gateway 校验用）
+itticket:
+  jwt:
+    secret: ${JWT_SECRET:it-ticket-dev-jwt-secret-key-32bytes-minimum!!}
+
+spring:
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+            maxAge: 36000
+      routes:
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/users/**
+        - id: ticket-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/tickets/**
+        - id: category-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/categories/**
+        - id: sla-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/sla/**
+        - id: notification-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/notifications/**
+        - id: exception-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/exceptions/**

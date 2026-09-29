@@ -1,0 +1,45 @@
+# ============================================================
+# 生产环境配置
+# 敏感项一律走环境变量，不硬编码；启动：--spring.profiles.active=prod
+# 上服务器后可改由 Nacos 下发（config.import 优先级高于本地）
+# ============================================================
+
+itticket:
+  jwt:
+    secret: ${JWT_SECRET}   # 生产必须注入，无默认值（缺失即启动失败，避免弱密钥上线）
+
+spring:
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "${CORS_ORIGINS:http://localhost:5173}"  # 生产收紧为具体域名
+            allowedMethods: "*"
+            allowedHeaders: "*"
+            maxAge: 36000
+      routes:
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/users/**
+        - id: ticket-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/tickets/**
+        - id: category-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/categories/**
+        - id: sla-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/sla/**
+        - id: notification-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/notifications/**
+        - id: exception-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/exceptions/**
