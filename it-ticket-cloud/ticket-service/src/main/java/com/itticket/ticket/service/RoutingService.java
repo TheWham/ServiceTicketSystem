@@ -114,7 +114,8 @@ public class RoutingService {
             List<TeamMember> members = teamMemberMapper.selectList(
                     new QueryWrapper<TeamMember>()
                             .eq("team_id", r.getTeamId())
-                            .eq("enabled", true).isNull("left_at"));
+                            .eq("status", "ACTIVE").isNull("left_at")
+                            .inSql("team_id", "SELECT team_id FROM support_team WHERE status = 'ACTIVE'"));
             members.forEach(m -> candidateIds.add(m.getEngineerId()));
         }
         candidateIds.removeAll(exclude);
@@ -133,8 +134,8 @@ public class RoutingService {
                 }
             }
         } catch (Exception e) {
-            log.error("[路由] 查询工程师列表失败，降级为不过滤在线状态", e);
-            activeIds.addAll(candidateIds); // 降级：user-service 不可用时不过滤
+            log.warn("[路由] 查询工程师列表失败，无法确认候选人账号状态: {}", e.getMessage());
+            return null;
         }
         List<String> available = candidateIds.stream()
                 .filter(activeIds::contains)

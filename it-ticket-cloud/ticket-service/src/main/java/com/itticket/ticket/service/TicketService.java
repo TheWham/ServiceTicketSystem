@@ -171,7 +171,7 @@ public class TicketService {
     /** 是否末级分类：没有 ACTIVE 子分类即为末级 */
     private boolean isLeafCategory(Category category) {
         Long children = categoryMapper.selectCount(new QueryWrapper<Category>()
-                .eq("parent_id", category.getCategoryId()).eq("enabled", true));
+                .eq("parent_id", category.getCategoryId()).eq("status", "ACTIVE"));
         return children == null || children == 0;
     }
 
@@ -195,7 +195,7 @@ public class TicketService {
         ticket.setPriority(PriorityMatrix.MEDIUM);
         ticket.setAssigneeId(null);
         ticket.setSourceSessionId(req.getSourceSessionId());
-        ticket.setFieldSnapshotJson(serializeFields(req.getFieldValues()));
+        ticket.setFieldDefinitionSnapshot(serializeFields(req.getFieldValues()));
         ticket.setAutoAccepted(0);
         ticket.setReopenCount(0);
         ticket.setIdempotencyKey(req.getIdempotencyKey());

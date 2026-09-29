@@ -23,12 +23,15 @@ public class SlaInstance {
     private String slaId;
     private AssignmentBizType bizType;
     private String bizId;
+    private String ticketId;
     private SlaType slaType;
     private SlaStatus status;
     private Long targetWorkSeconds;
     private Long elapsedWorkSeconds;
     private Long pausedSeconds;
     private LocalDateTime targetAt;
+    @com.baomidou.mybatisplus.annotation.TableField("breach_at")
+    @com.fasterxml.jackson.annotation.JsonProperty("breach_at")
     private LocalDateTime breachedAt;
     private LocalDateTime metAt;
     private String calendarId;

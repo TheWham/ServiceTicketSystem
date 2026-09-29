@@ -17,8 +17,7 @@ import java.util.Map;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class CreateTicketRequest {
     /** 工单性质 INCIDENT/SERVICE_REQUEST（必填） */
-    @com.fasterxml.jackson.annotation.JsonProperty("ticket_nature")
-    @JsonAlias("nature")
+    @JsonAlias("ticket_nature")
     private String nature;
     /** 末级分类 id（必填，必须为启用末级分类） */
     private String categoryId;

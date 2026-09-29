@@ -63,14 +63,14 @@
           <!-- 用户信息 -->
           <el-dropdown @command="onUserCommand">
             <div class="user-entry">
-              <el-avatar :size="32" class="avatar">{{ userStore.currentUser?.display_name?.[0] || '?' }}</el-avatar>
-              <span class="user-name">{{ userStore.currentUser?.display_name }}</span>
+              <el-avatar :size="32" class="avatar">{{ userStore.currentUser?.name?.[0] || '?' }}</el-avatar>
+              <span class="user-name">{{ userStore.currentUser?.name }}</span>
               <el-tag :type="roleTagType" size="small" effect="dark">{{ roleLabel }}</el-tag>
             </div>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item disabled>
-                  <el-icon><User /></el-icon>{{ userStore.currentUser?.department }}
+                  <el-icon><User /></el-icon>{{ userStore.currentUser?.department_id }}
                 </el-dropdown-item>
                 <el-dropdown-item command="changePwd">
                   <el-icon><Lock /></el-icon>修改密码

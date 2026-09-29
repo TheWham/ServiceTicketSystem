@@ -43,8 +43,7 @@ public class TicketDraftService {
         if (draftId == null || draftId.isBlank() || draftId.length() > 64) {
             throw new BizException(ErrorCode.PARAM_INVALID, "草稿编号无效");
         }
-        Map<String, Object> payload = (request == null || request.getPayload() == null)
-                ? Map.of() : request.getPayload();
+        Map<String, Object> payload = canonicalPayload(request == null ? null : request.getPayload());
         LocalDateTime now = LocalDateTime.now(java.time.ZoneOffset.UTC);
         LocalDateTime expiresAt = (request != null && request.getExpiresAt() != null)
                 ? request.getExpiresAt() : now.plusDays(DEFAULT_TTL_DAYS);
@@ -114,12 +113,21 @@ public class TicketDraftService {
     }
 
     private DraftPayload toPayload(TicketDraft draft, Map<String, Object> payload) {
-        return new DraftPayload(draft.getDraftId(), payload, draft.getLastSavedAt() == null ? draft.getUpdatedAt() : draft.getLastSavedAt(), draft.getExpiresAt());
+        return new DraftPayload(draft.getDraftId(), canonicalPayload(payload), draft.getLastSavedAt() == null ? draft.getUpdatedAt() : draft.getLastSavedAt(), draft.getExpiresAt());
+    }
+
+    private Map<String, Object> canonicalPayload(Map<String, Object> source) {
+        Map<String, Object> payload = new LinkedHashMap<>(source == null ? Map.of() : source);
+        if (!payload.containsKey("ticket_nature") && payload.containsKey("nature")) {
+            payload.put("ticket_nature", payload.get("nature"));
+        }
+        payload.remove("nature");
+        return payload;
     }
 
     /** Keep the original /users/me/draft projection in sync with the JSON draft API. */
     private void applyLegacyFields(TicketDraft draft, Map<String, Object> payload) {
-        draft.setNature(text(payload.getOrDefault("nature", payload.get("ticket_nature")), 16));
+        draft.setTicketNature(text(payload.getOrDefault("ticket_nature", payload.get("nature")), 16));
         draft.setCategoryId(text(payload.get("category_id"), 64));
         draft.setTitle(text(payload.get("title"), 100));
         draft.setDescription(text(payload.get("description"), 5000));
@@ -132,7 +140,7 @@ public class TicketDraftService {
 
     private Map<String, Object> legacyPayload(TicketDraft draft) {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("nature", draft.getNature());
+        payload.put("ticket_nature", draft.getTicketNature());
         payload.put("category_id", draft.getCategoryId());
         payload.put("title", draft.getTitle());
         payload.put("description", draft.getDescription());

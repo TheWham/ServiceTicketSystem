@@ -139,7 +139,7 @@ public class ConsultationTransitionService {
         map.put("status", consultation.getStatus() == null ? null : consultation.getStatus().getValue());
         map.put("current_engineer_id", consultation.getCurrentEngineerId());
         map.put("category_id", consultation.getCategoryId());
-        map.put("resolution_type", consultation.getResolutionType() == null
+        map.put("resolved_type", consultation.getResolutionType() == null
                 ? null : consultation.getResolutionType().getValue());
         map.put("converted_ticket_id", consultation.getConvertedTicketId());
         map.put("version", consultation.getVersion());

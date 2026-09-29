@@ -5,7 +5,7 @@
 | 规范编号 | AI |
 | 技术基线 | Java 17、Spring Boot 3.x、OpenAPI 3.1、JSON Schema Draft 2020-12 |
 | 权威范围 | AI/RAG HTTP 接口、AI DTO、请求响应 JSON Schema、引用、拒答、反馈和流式协议 |
-| 业务基线 | [IT服务工单系统PRD-Ultimate.md](../IT服务工单系统PRD-Ultimate.md) 2.1 |
+| 业务基线 | [IT服务工单系统PRD-Ultimate.md](../IT服务工单系统PRD-Ultimate.md) 2.2 |
 
 本规范只定义 AI 与客户端/服务端之间的接口契约。咨询/工单实体字段引用 `DM-*`；咨询、工单和知识状态迁移引用 `SM-*`；超时、重试、幂等和降级引用 `RD-*`。AI 不得直接创建、修改或关闭工单。
 

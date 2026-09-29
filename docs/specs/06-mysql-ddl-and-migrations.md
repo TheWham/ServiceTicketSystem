@@ -75,12 +75,12 @@ Mapper SQL 显式列名、显式 `version` 条件和受控更新字段。状态�
 
 ## SQL-007 可执行基线 DDL
 
-以下片段是 V1_2/V1_3 的最小可执行基线；DM-004 仍是 Java 字段权威，任何增加列必须同时更新 DM 和迁移版本。
+以下片段是 V1_2/V1_3 的最小可执行基线；PRD 第 20 节定义业务字段，DM-004 补充 Java 强类型与技术字段，任何增加列必须同时更新 DM 和迁移版本。
 
 ~~~sql
 CREATE TABLE ticket (
   ticket_id VARCHAR(32) PRIMARY KEY, creator_id VARCHAR(64) NOT NULL,
-  ticket_nature VARCHAR(32) NOT NULL, category_id VARCHAR(64) NOT NULL,
+  nature VARCHAR(32) NOT NULL, category_id VARCHAR(64) NOT NULL,
   title VARCHAR(100) NOT NULL, description TEXT NOT NULL,
   impact_description TEXT NOT NULL, urgency_description TEXT NOT NULL,
   location VARCHAR(255), contact VARCHAR(255), asset_id VARCHAR(64),
@@ -96,7 +96,7 @@ CREATE TABLE ticket (
 
 CREATE TABLE ticket_field_value (
   ticket_id VARCHAR(32) NOT NULL, field_definition_id VARCHAR(64) NOT NULL,
-  field_key VARCHAR(128) NOT NULL, value_json JSON NOT NULL,
+  field_key VARCHAR(128) NOT NULL, field_definition_snapshot JSON NOT NULL, field_value JSON NOT NULL,
   definition_version VARCHAR(64) NOT NULL, created_at DATETIME(6) NOT NULL,
   PRIMARY KEY (ticket_id,field_definition_id),
   KEY idx_field_lookup (field_definition_id,field_key)
@@ -105,7 +105,7 @@ CREATE TABLE ticket_field_value (
 CREATE TABLE ticket_transition (
   transition_id VARCHAR(64) PRIMARY KEY, ticket_id VARCHAR(32) NOT NULL,
   from_status VARCHAR(32), to_status VARCHAR(32) NOT NULL,
-  event_code VARCHAR(64) NOT NULL, operator_id VARCHAR(64) NOT NULL,
+  event VARCHAR(64) NOT NULL, operator_id VARCHAR(64) NOT NULL,
   reason TEXT, occurred_at DATETIME(6) NOT NULL,
   UNIQUE KEY uk_transition_order (ticket_id,occurred_at,transition_id),
   KEY idx_transition_ticket (ticket_id,occurred_at)
@@ -181,7 +181,7 @@ CREATE TABLE migration_id_map (
 
 ## SQL-009 完整表清单的版本门禁
 
-空库发布脚本必须为下列每张事实表提供显式 `CREATE TABLE`，缺任一表则 Flyway 校验失败：
+完整功能发布的空库脚本必须为下列每张事实表提供显式 `CREATE TABLE`。当前仅发布已实现模块，范围门禁见 SQL-011 与 spec11：34 张运行表，不以这份未来 41 表模板扩建未开发模块。
 
 `user,user_role,support_team,team_member,engineer_runtime_state,engineer_category_capability,category,category_route,field_definition,consultation,consultation_message,ticket,ticket_field_value,ticket_transition,ticket_message,ticket_draft,supplement_request,external_wait,ticket_resolution,ticket_acceptance,attachment,assignment,sla_instance,sla_pause,service_calendar,calendar_holiday,exception_queue,notification,audit_log,idempotency_record,outbox_event,outbox_delivery,ticket_duplicate,attachment_access,case_candidate,knowledge_article,knowledge_version,knowledge_cluster,ai_interaction,ai_provider_config,rag_index_pointer`。
 
@@ -271,7 +271,7 @@ CREATE TABLE field_definition (
 CREATE TABLE consultation (
  session_id VARCHAR(32) PRIMARY KEY, creator_id VARCHAR(64) NOT NULL,
  category_id VARCHAR(64), status VARCHAR(32) NOT NULL, current_engineer_id VARCHAR(64),
- source VARCHAR(32) NOT NULL, resolution_type VARCHAR(32), converted_ticket_id VARCHAR(32),
+ source VARCHAR(32) NOT NULL, resolved_type VARCHAR(32), converted_ticket_id VARCHAR(32),
  closed_at DATETIME(6), version BIGINT NOT NULL DEFAULT 0,
  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL,
  KEY idx_consult_creator(creator_id,status,created_at),
@@ -342,11 +342,11 @@ CREATE TABLE ticket_acceptance (
 CREATE TABLE attachment (
  attachment_id VARCHAR(64) PRIMARY KEY, biz_type VARCHAR(32) NOT NULL,
  biz_id VARCHAR(64) NOT NULL, uploader_id VARCHAR(64) NOT NULL,
- object_key VARCHAR(512) NOT NULL, original_name VARCHAR(255) NOT NULL,
- size_bytes BIGINT NOT NULL, sha256 CHAR(64) NOT NULL, content_type VARCHAR(255) NOT NULL,
+ object_key VARCHAR(512) NOT NULL, file_name VARCHAR(255) NOT NULL,
+ size BIGINT NOT NULL, hash CHAR(64) NOT NULL, content_type VARCHAR(255) NOT NULL,
  scan_status VARCHAR(32) NOT NULL, uploaded_at DATETIME(6) NOT NULL,
  withdrawn_at DATETIME(6), created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL,
- UNIQUE KEY uk_attachment_hash(biz_type,biz_id,sha256), UNIQUE KEY uk_object_key(object_key)
+ UNIQUE KEY uk_attachment_hash(biz_type,biz_id,hash), UNIQUE KEY uk_object_key(object_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE assignment (
@@ -360,15 +360,16 @@ CREATE TABLE assignment (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE sla_instance (
- sla_id VARCHAR(64) PRIMARY KEY, biz_type VARCHAR(32) NOT NULL,
+ sla_id VARCHAR(64) PRIMARY KEY, ticket_id VARCHAR(32), biz_type VARCHAR(32) NOT NULL,
  biz_id VARCHAR(64) NOT NULL, sla_type VARCHAR(32) NOT NULL, status VARCHAR(32) NOT NULL,
  target_work_seconds BIGINT NOT NULL, elapsed_work_seconds BIGINT NOT NULL DEFAULT 0,
  paused_seconds BIGINT NOT NULL DEFAULT 0, target_at DATETIME(6),
- breached_at DATETIME(6), met_at DATETIME(6), calendar_id VARCHAR(64) NOT NULL,
+ breach_at DATETIME(6), met_at DATETIME(6), calendar_id VARCHAR(64) NOT NULL,
  calendar_version BIGINT NOT NULL, version BIGINT NOT NULL DEFAULT 0,
  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL,
  UNIQUE KEY uk_sla_business(biz_type,biz_id,sla_type),
- KEY idx_sla_due(status,target_at)
+ KEY idx_sla_due(status,target_at),
+ KEY idx_sla_ticket(ticket_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE sla_pause (
@@ -391,7 +392,7 @@ CREATE TABLE notification (
 CREATE TABLE audit_log (
  audit_id VARCHAR(64) PRIMARY KEY, actor_id VARCHAR(64), action VARCHAR(128) NOT NULL,
  object_type VARCHAR(64) NOT NULL, object_id VARCHAR(64) NOT NULL,
- before_json JSON, after_json JSON, reason VARCHAR(2000), request_id VARCHAR(128) NOT NULL,
+ before_value JSON, after_value JSON, reason VARCHAR(2000), request_id VARCHAR(128) NOT NULL,
  occurred_at DATETIME(6) NOT NULL, created_at DATETIME(6) NOT NULL,
  updated_at DATETIME(6) NOT NULL,
  KEY idx_audit_object(object_type,object_id,occurred_at),
@@ -422,7 +423,7 @@ CREATE TABLE outbox_event (
 
 CREATE TABLE case_candidate (
  case_id VARCHAR(64) PRIMARY KEY, source_type VARCHAR(32) NOT NULL,
- source_id VARCHAR(64) NOT NULL, structured_content_json JSON NOT NULL,
+ source_id VARCHAR(64) NOT NULL, structured_content JSON NOT NULL,
  masking_status VARCHAR(32) NOT NULL, reusable_flag TINYINT(1) NOT NULL,
  status VARCHAR(32) NOT NULL, created_at DATETIME(6) NOT NULL,
  updated_at DATETIME(6) NOT NULL, UNIQUE KEY uk_case_source(source_type,source_id)
@@ -438,7 +439,7 @@ CREATE TABLE knowledge_article (
 
 CREATE TABLE knowledge_version (
  version_id VARCHAR(64) PRIMARY KEY, article_id VARCHAR(64) NOT NULL,
- version_no INT NOT NULL, content_json JSON NOT NULL, author_id VARCHAR(64) NOT NULL,
+ version_no INT NOT NULL, content JSON NOT NULL, author_id VARCHAR(64) NOT NULL,
  reviewer_id VARCHAR(64), published_at DATETIME(6), change_note VARCHAR(2000),
  platform_reviewer_id VARCHAR(64), platform_reviewed_at DATETIME(6),
  platform_review_decision VARCHAR(32),
@@ -454,8 +455,8 @@ CREATE TABLE knowledge_cluster (
 
 CREATE TABLE ai_interaction (
  interaction_id VARCHAR(64) PRIMARY KEY, session_id VARCHAR(32) NOT NULL,
- model_version VARCHAR(128) NOT NULL, retrieved_versions_json JSON NOT NULL,
- confidence DECIMAL(8,4), feedback VARCHAR(32), latency_ms BIGINT NOT NULL,
+ model_version VARCHAR(128) NOT NULL, retrieved_versions JSON NOT NULL,
+ confidence DECIMAL(8,4), feedback VARCHAR(32), latency BIGINT NOT NULL,
  occurred_at DATETIME(6) NOT NULL, created_at DATETIME(6) NOT NULL,
  updated_at DATETIME(6) NOT NULL, KEY idx_ai_session(session_id,occurred_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -486,3 +487,14 @@ CREATE TABLE rag_index_pointer (
 ~~~
 
 V1 执行顺序固定为：identity/config（含 ai_provider_config）→ consultation → SQL-007 ticket/auxiliary → runtime → knowledge/AI（含 rag_index_pointer）。任一步失败由 Flyway 终止版本，不继续后续脚本。
+
+
+## SQL-011 PRD 业务字段与已实现模块发布范围
+
+PRD 第 20 节定义业务字段名称；DM/SQL 补充强类型、技术关联与索引。`ticket.nature`、`category.ticket_nature`、`ticket_draft.ticket_nature` 分别对应各自业务字典；不能用全局同名替换改变含义。`ticket_transition.event` 存领域动作码，历史无法还原的状态投影保留 `LEGACY_` 前缀。
+
+`sla_instance.ticket_id` 是可空工单关联：`biz_type=TICKET` 时必须等于 `biz_id`；`biz_type=CONSULTATION` 时为 NULL。`biz_type/biz_id` 是通用技术关联，服务写入与升级均遵守这项一致性要求。时间事实继续统一 UTC/DATETIME(6)。JSON 业务字段为 `knowledge_version.content`、`ai_interaction.retrieved_versions`、`audit_log.before_value/after_value`；`search_text` 仅是从知识内容重建的全文搜索投影。
+
+SQL-009/010 的 41 表是完整目标模板。当前可执行发布范围仍以 `11-main-schema-alignment.md` 为准：26 张已实现模块表对齐，8 张未开发 main 表保留原结构，共 34 表。附件/案例/工单动态字段等未来模板采用 PRD 名称与 JSON 类型，不代表本次改动它们的运行表。
+
+已发布 `V2_0/V2_1` 保持原字节和 470ce57 目标；388f51d 安装依序执行 `V2_0 → V2_1 → V2_2`，470ce57 安装仅执行新增 `V2_2`。空库直接使用当前 `db/init`；不得重放旧版本或以新规范重新解释已执行迁移。

@@ -7,7 +7,7 @@
 | 事件语义 | 事件码引用 `SM-EVENT-001` 与 PRD 21.4 |
 | 故障语义 | `RD-002`、`RD-008`、`RD-014` |
 
-本规范中的 `event_type` 是已发生业务事实，统一使用 `SCREAMING_SNAKE_CASE`；`ticket_transition.event_code` 是触发迁移的 `DOMAIN_ACTION` 动作码。即使一次动作产生同名近似事实，两者仍按字段和语义严格区分。
+本规范中的 `event_type` 是已发生业务事实，统一使用 `SCREAMING_SNAKE_CASE`；`ticket_transition.event` 是触发迁移的 `DOMAIN_ACTION` 动作码。即使一次动作产生同名近似事实，两者仍按字段和语义严格区分。
 
 ## EV-001 Envelope
 
@@ -90,18 +90,18 @@ Redis 不可用时 publisher 保留 Outbox PENDING/FAILED，由 MySQL 扫描补�
 |---|---|---|---|---|
 | TICKET_CREATED | TicketService | Assignment/SLA/Notification | ticket_id | ticket_id, status, source_session_id |
 | TICKET_ASSIGNED | AssignmentService | Notification/SLA | ticket_id | ticket_id, assignment_id, engineer_id |
-| TICKET_STATUS_CHANGED | StateMachine | SLA/Notification/Audit | ticket_id | ticket_id, from_status, to_status, event_code |
+| TICKET_STATUS_CHANGED | StateMachine | SLA/Notification/Audit | ticket_id | ticket_id, from_status, to_status, event |
 | TICKET_TRANSFERRED | AssignmentService | Notification/Audit | ticket_id | ticket_id, old_engineer_id, new_engineer_id |
 | TICKET_REOPENED | StateMachine | Assignment/SLA/Notification | ticket_id | ticket_id, reopen_reason |
 | TICKET_RESPONDED | TicketService | SLA/Notification | ticket_id | ticket_id, message_id |
 | TICKET_PRIORITY_CHANGED | TicketService | SLA/Notification/Audit | ticket_id | ticket_id, old_priority, new_priority, reason |
 | CONSULTATION_TRANSFERRED | ConsultationService | Assignment/Notification | session_id | session_id, category_id, assignment_id |
 | CONSULTATION_RESPONDED | ConsultationService | SLA/Notification | session_id | session_id, message_id |
-| CONSULTATION_RESOLVED | ConsultationService | CaseCandidate/Notification | session_id | session_id, resolution_type |
+| CONSULTATION_RESOLVED | ConsultationService | CaseCandidate/Notification | session_id | session_id, resolved_type |
 | CONSULTATION_REOPENED | ConsultationService | Assignment/Notification | session_id | session_id, reopen_reason |
 | CONSULTATION_CONVERTED | ConsultationService | TicketService/Notification | session_id | session_id, ticket_id |
 | SLA_NEAR_BREACH | SlaScheduler | Notification | aggregate_id | sla_id, aggregate_id, threshold_percent |
-| SLA_BREACHED | SlaScheduler | ExceptionQueue/Notification | aggregate_id | sla_id, aggregate_id, breached_at |
+| SLA_BREACHED | SlaScheduler | ExceptionQueue/Notification | aggregate_id | sla_id, aggregate_id, breach_at |
 | KNOWLEDGE_PUBLISHED | KnowledgeService | Index/Notification | article_id | article_id, version_id |
 | KNOWLEDGE_SUBMITTED | KnowledgeService | ReviewQueue/Notification | article_id | article_id, version_id, author_id |
 | KNOWLEDGE_OFFLINE | KnowledgeService | Index/Notification | article_id | article_id, version_id |
@@ -143,17 +143,17 @@ Key 统一为 its:{env}:{purpose}:{object-type}:{object-id}；Stream 示例为 i
     "reason":{"type":"string","minLength":1,"maxLength":2000},
     "ticketCreated":{"type":"object","additionalProperties":false,"required":["ticket_id","status"],"properties":{"ticket_id":{"$ref":"#/$defs/id"},"status":{"const":"NEW"},"source_session_id":{"type":["string","null"],"maxLength":32}}},
     "ticketAssigned":{"type":"object","additionalProperties":false,"required":["ticket_id","assignment_id","engineer_id"],"properties":{"ticket_id":{"$ref":"#/$defs/id"},"assignment_id":{"$ref":"#/$defs/id"},"engineer_id":{"$ref":"#/$defs/id"}}},
-    "ticketStatusChanged":{"type":"object","additionalProperties":false,"required":["ticket_id","from_status","to_status","event_code"],"properties":{"ticket_id":{"$ref":"#/$defs/id"},"from_status":{"type":["string","null"],"maxLength":32},"to_status":{"type":"string","maxLength":32},"event_code":{"type":"string","maxLength":64}}},
+    "ticketStatusChanged":{"type":"object","additionalProperties":false,"required":["ticket_id","from_status","to_status","event"],"properties":{"ticket_id":{"$ref":"#/$defs/id"},"from_status":{"type":["string","null"],"maxLength":32},"to_status":{"type":"string","maxLength":32},"event":{"type":"string","maxLength":64}}},
     "ticketTransferred":{"type":"object","additionalProperties":false,"required":["ticket_id","old_engineer_id","new_engineer_id"],"properties":{"ticket_id":{"$ref":"#/$defs/id"},"old_engineer_id":{"$ref":"#/$defs/id"},"new_engineer_id":{"$ref":"#/$defs/id"}}},
     "ticketReopened":{"type":"object","additionalProperties":false,"required":["ticket_id","reopen_reason"],"properties":{"ticket_id":{"$ref":"#/$defs/id"},"reopen_reason":{"$ref":"#/$defs/reason"}}},
     "ticketResponded":{"type":"object","additionalProperties":false,"required":["ticket_id","message_id"],"properties":{"ticket_id":{"$ref":"#/$defs/id"},"message_id":{"$ref":"#/$defs/id"}}},
     "ticketPriorityChanged":{"type":"object","additionalProperties":false,"required":["ticket_id","old_priority","new_priority","reason"],"properties":{"ticket_id":{"$ref":"#/$defs/id"},"old_priority":{"enum":["HIGH","MEDIUM","LOW"]},"new_priority":{"enum":["HIGH","MEDIUM","LOW"]},"reason":{"$ref":"#/$defs/reason"}}},
     "consultationTransferred":{"type":"object","additionalProperties":false,"required":["session_id","category_id","assignment_id"],"properties":{"session_id":{"$ref":"#/$defs/id"},"category_id":{"$ref":"#/$defs/id"},"assignment_id":{"$ref":"#/$defs/id"}}},
     "consultationResponded":{"type":"object","additionalProperties":false,"required":["session_id","message_id"],"properties":{"session_id":{"$ref":"#/$defs/id"},"message_id":{"$ref":"#/$defs/id"}}},
-    "consultationResolved":{"type":"object","additionalProperties":false,"required":["session_id","resolution_type"],"properties":{"session_id":{"$ref":"#/$defs/id"},"resolution_type":{"enum":["EMPLOYEE_CONFIRMED","AUTO_RESOLVED"]}}},
+    "consultationResolved":{"type":"object","additionalProperties":false,"required":["session_id","resolved_type"],"properties":{"session_id":{"$ref":"#/$defs/id"},"resolved_type":{"enum":["EMPLOYEE_CONFIRMED","AUTO_RESOLVED"]}}},
     "consultationReopened":{"type":"object","additionalProperties":false,"required":["session_id","reopen_reason"],"properties":{"session_id":{"$ref":"#/$defs/id"},"reopen_reason":{"$ref":"#/$defs/reason"}}},
     "consultationConverted":{"type":"object","additionalProperties":false,"required":["session_id","ticket_id"],"properties":{"session_id":{"$ref":"#/$defs/id"},"ticket_id":{"$ref":"#/$defs/id"}}},
-    "slaSignal":{"type":"object","additionalProperties":false,"required":["sla_id","aggregate_id"],"properties":{"sla_id":{"$ref":"#/$defs/id"},"aggregate_id":{"$ref":"#/$defs/id"},"threshold_percent":{"type":"integer","minimum":1,"maximum":100},"breached_at":{"type":"string","format":"date-time"}}},
+    "slaSignal":{"type":"object","additionalProperties":false,"required":["sla_id","aggregate_id"],"properties":{"sla_id":{"$ref":"#/$defs/id"},"aggregate_id":{"$ref":"#/$defs/id"},"threshold_percent":{"type":"integer","minimum":1,"maximum":100},"breach_at":{"type":"string","format":"date-time"}}},
     "knowledgeVersion":{"type":"object","additionalProperties":false,"required":["article_id","version_id"],"properties":{"article_id":{"$ref":"#/$defs/id"},"version_id":{"$ref":"#/$defs/id"},"author_id":{"$ref":"#/$defs/id"},"index_version":{"type":"string","minLength":1,"maxLength":128}}},
     "notificationRequested":{"type":"object","additionalProperties":false,"required":["receiver_id","channel","dedup_key"],"properties":{"receiver_id":{"$ref":"#/$defs/id"},"channel":{"enum":["IN_APP","EMAIL"]},"dedup_key":{"type":"string","minLength":1,"maxLength":255}}}
   }

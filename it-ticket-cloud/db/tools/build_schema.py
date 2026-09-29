@@ -11,7 +11,7 @@ DB = ROOT / 'it-ticket-cloud/db'
 
 # User scope: align implemented modules only. An entity/mapper or live service query
 # exists for every table here. Attachment is list-only and retains its old schema.
-IMPLEMENTED = set('user_account user_role support_team team_member engineer_runtime_state engineer_category_capability category category_route consultation consultation_message ticket ticket_transition ticket_draft assignment sla_instance sla_pause service_calendar calendar_holiday exception_queue notification audit_log idempotency_record outbox_event knowledge_article knowledge_version ai_interaction'.split())
+IMPLEMENTED = set('user user_role support_team team_member engineer_runtime_state engineer_category_capability category category_route consultation consultation_message ticket ticket_transition ticket_draft assignment sla_instance sla_pause service_calendar calendar_holiday exception_queue notification audit_log idempotency_record outbox_event knowledge_article knowledge_version ai_interaction'.split())
 
 
 def tables(sql):
@@ -45,7 +45,7 @@ def columns(ddl):
 
 
 EXTRAS = {
-    'user_account': ["password_hash VARCHAR(100) COMMENT 'Compatibility: local BCrypt authentication; remove after SSO rollout'"],
+    'user': ["password_hash VARCHAR(100) COMMENT 'Compatibility: local BCrypt authentication; remove after SSO rollout'"],
     'ticket': [
         'category_snapshot VARCHAR(500)', 'asset_check_status VARCHAR(32)',
         'impact_scope VARCHAR(32)', 'urgency_level VARCHAR(32)',
@@ -60,7 +60,7 @@ EXTRAS = {
     'sla_instance': ['priority_snapshot VARCHAR(32)', 'near_breach_notified TINYINT(1) NOT NULL DEFAULT 0'],
     'notification': ['title VARCHAR(100)', 'content VARCHAR(500)', 'action_url VARCHAR(200)'],
     'exception_queue': ['title VARCHAR(100)', 'detail VARCHAR(1000)', 'priority VARCHAR(32)'],
-    'knowledge_version': ["search_text TEXT GENERATED ALWAYS AS (CONCAT_WS(' ', JSON_UNQUOTE(JSON_EXTRACT(content_json, '$.title')), JSON_UNQUOTE(JSON_EXTRACT(content_json, '$.summary')), JSON_UNQUOTE(JSON_EXTRACT(content_json, '$.keywords')), JSON_UNQUOTE(JSON_EXTRACT(content_json, '$.body')))) STORED", 'FULLTEXT KEY ft_knowledge_search(search_text) WITH PARSER ngram'],
+    'knowledge_version': ["search_text TEXT GENERATED ALWAYS AS (CONCAT_WS(' ', JSON_UNQUOTE(JSON_EXTRACT(content, '$.title')), JSON_UNQUOTE(JSON_EXTRACT(content, '$.summary')), JSON_UNQUOTE(JSON_EXTRACT(content, '$.keywords')), JSON_UNQUOTE(JSON_EXTRACT(content, '$.body')))) STORED", 'FULLTEXT KEY ft_knowledge_search(search_text) WITH PARSER ngram'],
 }
 
 

@@ -239,7 +239,7 @@ function applicantLabel(session) {
   const user = applicants.value[id]
   const roles = { employee: '员工', engineer: '工程师', platform_admin: '平台管理员', knowledge_admin: '知识库管理员', kb_admin: '知识库管理员' }
   const role = roles[user?.role?.toLowerCase()] || user?.role || '员工'
-  return [user?.display_name || user?.name, role, id].filter(Boolean).join(' · ')
+  return [user?.name, role, id].filter(Boolean).join(' · ')
 }
 
 function updateSelected(detail) {

@@ -18,7 +18,11 @@ public class AuditLog {
     private String action;
     private String objectType;
     private String objectId;
+    @com.baomidou.mybatisplus.annotation.TableField("before_value")
+    @com.fasterxml.jackson.annotation.JsonProperty("before_value")
     private String beforeJson;
+    @com.baomidou.mybatisplus.annotation.TableField("after_value")
+    @com.fasterxml.jackson.annotation.JsonProperty("after_value")
     private String afterJson;
     private String reason;
     private String requestId;

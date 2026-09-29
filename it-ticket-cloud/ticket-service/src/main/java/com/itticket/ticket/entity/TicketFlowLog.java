@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 /** 工单流转日志（ticket_transition，只追加不覆盖 §2.2；PRD-Ultimate §20） */
 @Data
 @TableName("ticket_transition")
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class TicketFlowLog {
     @TableId(value = "transition_id", type = IdType.ASSIGN_ID)
     private String transitionId;
@@ -18,7 +19,7 @@ public class TicketFlowLog {
     private String fromStatus;
     private String toStatus;
     /** 流转事件（§9.3：SUBMIT/ROUTE/ACCEPT/SUPPLEMENT_REQUEST/...） */
-    @TableField("event_code")
+    @TableField("event")
     private String event;
     private String operatorId;
     /** 驳回/撤销/异常关闭必填 */

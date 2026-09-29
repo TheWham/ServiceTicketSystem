@@ -79,6 +79,8 @@ public class SlaService {
         SlaInstance sla = new SlaInstance();
         sla.setSlaId("SLA" + UUID.randomUUID().toString().replace("-", "").substring(0, 29));
         sla.setTicketId(ticketId);
+        sla.setBizType("TICKET");
+        sla.setBizId(ticketId);
         sla.setSlaType("TICKET_COMPLETION");
         sla.setPrioritySnapshot(priority);
         sla.setTargetWorkSeconds(targetSeconds(priority));

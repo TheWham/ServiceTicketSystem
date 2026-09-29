@@ -57,7 +57,7 @@
             style="width: 140px"
             @change="loadTickets"
           >
-            <el-option v-for="e in engineers" :key="e.user_id" :label="(e.display_name || e.name)" :value="e.user_id" />
+            <el-option v-for="e in engineers" :key="e.user_id" :label="(e.name)" :value="e.user_id" />
           </el-select>
         </el-form-item>
         <el-form-item class="filter-total">
@@ -145,7 +145,7 @@
               <el-option
                 v-for="e in engineers"
                 :key="e.user_id"
-                :label="`${(e.display_name || e.name)} (${e.department})`"
+                :label="`${(e.name)} (${e.department_id})`"
                 :value="e.user_id"
               />
             </el-select>

@@ -23,9 +23,13 @@ public class AiInteraction {
     private String sessionId;
     private String modelVersion;
     /** 命中的 knowledge_version.version_id 列表 JSON,索引版本可追溯(DM-004)。 */
+    @com.baomidou.mybatisplus.annotation.TableField("retrieved_versions")
+    @com.fasterxml.jackson.annotation.JsonProperty("retrieved_versions")
     private String retrievedVersionsJson;
     private BigDecimal confidence;
     private AiFeedbackType feedback;
+    @com.baomidou.mybatisplus.annotation.TableField("latency")
+    @com.fasterxml.jackson.annotation.JsonProperty("latency")
     private Long latencyMs;
     private LocalDateTime occurredAt;
     private LocalDateTime createdAt;

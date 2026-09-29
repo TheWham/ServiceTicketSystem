@@ -109,7 +109,7 @@
 | SLA | `SLA_NEAR_BREACH`、`SLA_BREACHED` |
 | 知识 | `KNOWLEDGE_SUBMITTED`、`KNOWLEDGE_PUBLISHED`、`KNOWLEDGE_OFFLINE`、`KNOWLEDGE_INDEX_REFRESH_REQUESTED` |
 
-领域事实事件的 `event_type` 统一使用 `SCREAMING_SNAKE_CASE`；状态迁移记录的 `eventCode` 是 `DOMAIN_ACTION` 业务动作码。事件载荷只携带对象 ID、领域事实事件类型、版本、操作者和发生时间；字段详情和持久化结构由 `DM-*` 负责，投递失败由 `RD-*` 负责。
+领域事实事件的 `event_type` 统一使用 `SCREAMING_SNAKE_CASE`；状态迁移记录的 `event` 是 `DOMAIN_ACTION` 业务动作码。事件载荷只携带对象 ID、领域事实事件类型、版本、操作者和发生时间；字段详情和持久化结构由 `DM-*` 负责，投递失败由 `RD-*` 负责。
 
 ## SM-ROLE-001 角色动作边界
 

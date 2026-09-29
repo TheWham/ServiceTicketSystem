@@ -47,7 +47,6 @@ public class SlaController {
         data.put("elapsed_work_seconds", sla.getElapsedWorkSeconds());
         data.put("paused_seconds", sla.getPausedSeconds());
         data.put("breach_at", sla.getBreachAt());
-        data.put("breached_at", sla.getBreachAt());
         data.put("status", sla.getStatus());
         // 服务端基准剩余工作秒（前端以此为起点本地倒计时，避免时钟漂移）
         LocalDateTime now = LocalDateTime.now(java.time.ZoneOffset.UTC);

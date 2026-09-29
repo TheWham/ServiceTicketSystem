@@ -20,11 +20,11 @@ public class UserController {
 
     private final UserService userService;
 
-    /** 对应旧版 getMe:返回 req.currentUser 的四个字段 */
+    /** 从身份记录读取当前用户的完整 PRD 投影。 */
     @GetMapping("/me")
     public Result<UserVO> me() {
         UserContext.CurrentUser user = UserContext.get();
-        return Result.ok(new UserVO(user.getUserId(), user.getName(), user.getRole(), user.getDepartment()));
+        return Result.ok(userService.currentUser(user.getUserId()));
     }
 
     @GetMapping

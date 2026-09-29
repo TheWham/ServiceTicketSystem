@@ -23,7 +23,7 @@ public class Ticket {
     /** 创建人 */
     private String creatorId;
     /** 工单性质 INCIDENT/SERVICE_REQUEST */
-    @TableField("ticket_nature")
+    @TableField("nature")
     private String nature;
     /** 末级分类 id（关联 category，§10.2） */
     private String categoryId;
@@ -58,7 +58,7 @@ public class Ticket {
     /** 来源咨询会话（咨询转单 §10.2） */
     private String sourceSessionId;
     /** Immutable JSON snapshot of submitted category/context fields. */
-    private String fieldSnapshotJson;
+    private String fieldDefinitionSnapshot;
     /** 48h 自动验收标记 */
     private Integer autoAccepted;
     /** 重新打开次数 */

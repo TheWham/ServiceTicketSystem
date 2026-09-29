@@ -56,7 +56,7 @@ public class InternalUserController {
                 .stream().map(UserRoleEntity::getUserId).toList();
         if (ids.isEmpty()) return Result.ok(List.of());
         List<User> users = userMapper.selectList(new QueryWrapper<User>()
-                .in("user_id", ids).eq("enabled", true));
+                .in("user_id", ids).eq("status", "ACTIVE"));
         return Result.ok(users.stream().map(u -> toInfo(u, "ENGINEER")).toList());
     }
 
@@ -68,7 +68,7 @@ public class InternalUserController {
         List<String> ids = roles.stream().map(UserRoleEntity::getUserId).distinct().toList();
         if (ids.isEmpty()) return Result.ok(List.of());
         List<User> users = userMapper.selectList(new QueryWrapper<User>()
-                .in("user_id", ids).eq("enabled", true));
+                .in("user_id", ids).eq("status", "ACTIVE"));
         return Result.ok(users.stream().map(this::toInfo).toList());
     }
 
@@ -79,8 +79,11 @@ public class InternalUserController {
     /** role/status 出口统一小写,与 ticket-service、网关的比较口径一致 */
     private UserInfo toInfo(User user, String role) {
         String status = user.getStatus();
-        return new UserInfo(user.getUserId(), user.getName(), role,
+        UserInfo info = new UserInfo(user.getUserId(), user.getName(), role,
                 user.getDepartmentId(), status);
+        info.setEmployeeNo(user.getEmployeeNo());
+        info.setIdentitySource(user.getIdentitySource());
+        return info;
     }
 
     private String primaryRole(String userId) {

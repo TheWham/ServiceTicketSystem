@@ -45,16 +45,16 @@ public class UserService {
         String role = primaryRole(user.getUserId());
         String token = JwtUtil.sign(jwtProperties.getSecret(), user.getUserId(), user.getName(),
                 role, user.getDepartmentId(), jwtProperties.getTtlHours() * 3600_000L);
-        return new LoginResponse(token, new UserVO(user.getUserId(), user.getName(), role, user.getDepartmentId()));
+        return new LoginResponse(token, UserVO.from(user, role));
     }
 
     /** Mock 登录选项:列出所有活跃用户（角色经 user_role 关联） */
     public List<UserVO> loginOptions() {
         return userMapper.selectList(new QueryWrapper<User>()
-                        .select("user_id", "display_name", "department_id")
-                        .eq("enabled", true))
+                        .select("user_id", "employee_no", "name", "department_id", "status", "identity_source")
+                        .eq("status", "ACTIVE"))
                 .stream()
-                .map(u -> new UserVO(u.getUserId(), u.getName(), primaryRole(u.getUserId()), u.getDepartmentId()))
+                .map(u -> UserVO.from(u, primaryRole(u.getUserId())))
                 // 与旧版 CASE 排序一致:employee→engineer→其余角色,再按姓名
                 .sorted(Comparator
                         .comparingInt((UserVO v) -> roleOrder(v.getRole()))
@@ -65,8 +65,8 @@ public class UserService {
     /** 用户列表(供派单选择),按角色过滤（user_role 未撤销记录;入参小写,库值大写） */
     public List<UserVO> listUsers(String role) {
         QueryWrapper<User> uw = new QueryWrapper<User>()
-                .select("user_id", "display_name", "department_id")
-                .eq("enabled", true);
+                .select("user_id", "employee_no", "name", "department_id", "status", "identity_source")
+                .eq("status", "ACTIVE");
         if (role != null && !role.isBlank()) {
             List<String> userIds = userRoleMapper.selectList(new QueryWrapper<UserRoleEntity>()
                             .eq("role_code", role.trim().toUpperCase()).isNull("revoked_at"))
@@ -75,7 +75,7 @@ public class UserService {
             uw.in("user_id", userIds);
         }
         return userMapper.selectList(uw).stream()
-                .map(u -> new UserVO(u.getUserId(), u.getName(), primaryRole(u.getUserId()), u.getDepartmentId()))
+                .map(u -> UserVO.from(u, primaryRole(u.getUserId())))
                 .sorted(Comparator
                         .comparingInt((UserVO v) -> roleOrder(v.getRole()))
                         .thenComparing(UserVO::getName))
@@ -144,7 +144,7 @@ public class UserService {
         ur.setCreatedAt(ur.getGrantedAt());
         ur.setUpdatedAt(ur.getGrantedAt());
         userRoleMapper.insert(ur);
-        return new UserVO(userId, u.getName(), roleCode, u.getDepartmentId());
+        return UserVO.from(u, roleCode);
     }
 
     /** 修改密码（登录用户）：旧密码校验 → 新密码 BCrypt 落库 */
@@ -189,10 +189,9 @@ public class UserService {
     public List<UserVO> listAllAccounts(String operatorRole) {
         requireAdmin(operatorRole);
         return userMapper.selectList(new QueryWrapper<User>()
-                        .select("user_id", "employee_no", "display_name", "department_id", "enabled"))
+                        .select("user_id", "employee_no", "name", "department_id", "status", "identity_source"))
                 .stream()
-                .map(u -> new UserVO(u.getUserId(), u.getName(), primaryRole(u.getUserId()), u.getDepartmentId(),
-                        u.getEmployeeNo(), u.getStatus()))
+                .map(u -> UserVO.from(u, primaryRole(u.getUserId())))
                 .sorted(Comparator.comparingInt((UserVO v) -> roleOrder(v.getRole())).thenComparing(UserVO::getUserId))
                 .toList();
     }
@@ -222,12 +221,20 @@ public class UserService {
         UserRoleEntity r = userRoleMapper.selectOne(new QueryWrapper<UserRoleEntity>()
                 .eq("user_id", userId).isNull("revoked_at")
                 .orderByDesc("granted_at").last("LIMIT 1"));
-        // PRD §5.1 角色值域为大写：EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KB_ADMIN
+        // PRD §5.1 角色值域为大写：EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KNOWLEDGE_ADMIN
         if (r == null || r.getRoleCode() == null) throw new com.itticket.common.api.BizException(com.itticket.common.api.ErrorCode.FORBIDDEN, "No active role");
         String role = "KB_ADMIN".equals(r.getRoleCode()) ? "KNOWLEDGE_ADMIN" : r.getRoleCode();
         if (!java.util.Set.of("EMPLOYEE", "ENGINEER", "PLATFORM_ADMIN", "KNOWLEDGE_ADMIN").contains(role))
             throw new com.itticket.common.api.BizException(com.itticket.common.api.ErrorCode.FORBIDDEN, "Unknown role");
         return role;
+    }
+
+    public UserVO currentUser(String userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null || !"ACTIVE".equals(user.getStatus())) {
+            throw new BizException(ErrorCode.USER_INVALID, "User is unavailable");
+        }
+        return UserVO.from(user, primaryRole(userId));
     }
 
     private static boolean isBlank(String s) {

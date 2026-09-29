@@ -106,10 +106,7 @@ public class AssignmentService {
 
     /** PRD 12.1 第 2~4 步。 */
     private Optional<String> pickFromTeam(String teamId, String categoryId, Set<String> tried, LocalDateTime now) {
-        List<TeamMember> members = teamMemberMapper.selectList(Wrappers.<TeamMember>lambdaQuery()
-                .eq(TeamMember::getTeamId, teamId)
-                .eq(TeamMember::getEnabled, true)
-                .isNull(TeamMember::getLeftAt));
+        List<TeamMember> members = activeMembers(teamId);
         if (members.isEmpty()) {
             return Optional.empty();
         }
@@ -118,7 +115,7 @@ public class AssignmentService {
         List<Candidate> candidates = new ArrayList<>();
         for (TeamMember member : members) {
             String engineerId = member.getEngineerId();
-            if (tried.contains(engineerId)) {
+            if (tried.contains(engineerId) || teamMemberMapper.countActiveEngineer(engineerId) == 0) {
                 continue;
             }
             // capable 为 null 表示该团队未做分类细分,团队路由本身即代表可接该分类。
@@ -141,6 +138,14 @@ public class AssignmentService {
                 .thenComparing(Candidate::lastAssignedAt, Comparator.nullsFirst(Comparator.naturalOrder()))
                 .thenComparing(Candidate::engineerId));
         return Optional.of(candidates.get(0).engineerId());
+    }
+
+    private List<TeamMember> activeMembers(String teamId) {
+        return teamMemberMapper.selectList(Wrappers.<TeamMember>lambdaQuery()
+                .eq(TeamMember::getTeamId, teamId)
+                .eq(TeamMember::getStatus, "ACTIVE")
+                .inSql(TeamMember::getTeamId, "SELECT team_id FROM support_team WHERE status = 'ACTIVE'")
+                .isNull(TeamMember::getLeftAt));
     }
 
     /** 返回该团队在该分类下配置的可接人员;未配置任何能力行时返回 null 表示不做细分过滤。 */
@@ -219,17 +224,31 @@ public class AssignmentService {
 
     /**
      * 指定工程师分配,用于 PRD 8.3"恢复咨询优先分配原工程师"。
-     * 该工程师不可用(非 AVAILABLE、已超时失败过)时返回空,由调用方回退到正常路由。
+     * 账号、角色、当前分类路由、团队成员、能力和在线状态均需仍有效，否则回退正常路由。
      */
     public Optional<Assignment> assignPreferred(String sessionId, String engineerId, LocalDateTime now) {
-        if (engineerId == null || triedEngineers(sessionId).contains(engineerId)) {
+        if (engineerId == null || triedEngineers(sessionId).contains(engineerId)
+                || teamMemberMapper.countActiveEngineer(engineerId) == 0) {
             return Optional.empty();
         }
         EngineerRuntimeState state = engineerStateMapper.selectById(engineerId);
         if (state == null || state.getPresence() != EngineerPresence.AVAILABLE) {
             return Optional.empty();
         }
-        return Optional.of(createAssignment(sessionId, engineerId, now));
+        Consultation consultation = consultationMapper.selectById(sessionId);
+        if (consultation == null || consultation.getCategoryId() == null) {
+            return Optional.empty();
+        }
+        for (String teamId : orderedTeams(consultation.getCategoryId(), now)) {
+            boolean member = activeMembers(teamId).stream()
+                    .anyMatch(row -> engineerId.equals(row.getEngineerId()));
+            if (!member) continue;
+            Set<String> capable = capableEngineers(teamId, consultation.getCategoryId(), now);
+            if (capable == null || capable.contains(engineerId)) {
+                return Optional.of(createAssignment(sessionId, engineerId, now));
+            }
+        }
+        return Optional.empty();
     }
 
     public Optional<Assignment> activeAssignment(String sessionId) {

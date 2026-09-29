@@ -4,6 +4,10 @@
 
 字段对齐规则：PRD 中列出的业务实体、字段标识和业务语义优先；spec 可以增加 `created_at`、`updated_at`、`version`、同步时间、幂等和审计等持久化元数据，但必须明确这些是实现字段，不得替换或改写 PRD 业务字段。Java 属性使用 camelCase 仅作为语言映射，数据库列名和 HTTP 字段仍使用 PRD 的 snake_case 标识。用户实体统一称为 `user`，姓名字段为 `name`，状态字段为 `status`；`user_account`、`display_name`、`enabled` 不再作为用户实体字段使用。
 
+2026-09-29 后续强对齐修订以 PRD 2.2 第20/20.1节为准：工单 `nature` 与分类/草稿 `ticket_nature` 分属不同对象；咨询 `resolved_type`、流转 `event`、SLA `breach_at`、知识 `content`、AI `retrieved_versions/latency`、审计 `before_value/after_value` 在 DM、SQL、HTTP 和事件载荷中保持一致。曾发布的迁移脚本和历史版本记录保留原字段，不视为当前契约。
+
+文档门禁：`python -m unittest discover -s docs/tests -p 'test_*.py'`。检查 PRD 业务字段在 SQL 契约中的覆盖、关键 HTTP 字段和 JSON 示例；数据库独立门禁继续区分已实现模块与暂缓模块。文档检查不能替代完整业务验收。
+
 | 契约 | 文件 | 唯一负责 | 不负责 |
 |---|---|---|---|
 | DM | `01-data-model-strong-types.md` | Java 值对象、枚举、实体、关系、字段约束、索引、快照、事务投影 | 合法状态迁移、HTTP JSON、重试和降级 |
@@ -25,7 +29,7 @@
 - `RD-*` 只描述异常路径和恢复动作；正常成功路径分别由 `DM-*`、`AI-*`、`SM-*` 定义。
 - PRD 中未定义的一期角色、状态、终态恢复窗口或知识可见范围不得通过实现“顺便增加”。
 - `HTTP/SQL/EV/AX/TR` 负责把前四份领域契约落实为可开发边界，不得覆盖 `DM/AI/SM/RD` 的权威定义。
-- 领域事实事件 `event_type` 只使用 `SCREAMING_SNAKE_CASE`；状态迁移动作 `eventCode` 只使用 `DOMAIN_ACTION`，两类代码不得混用。
+- 领域事实事件 `event_type` 只使用 `SCREAMING_SNAKE_CASE`；状态迁移动作字段 `event` 只使用 `DOMAIN_ACTION`，两类代码不得混用。
 
 ## 评审顺序
 
