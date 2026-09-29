@@ -29,7 +29,7 @@
 
 | 表组 | 表名 | 验收重点 |
 |---|---|---|
-| 身份 | `user_account`, `user_role`, `support_team`, `team_member` | 员工号唯一、禁用账号不可登录、角色撤销可追溯 |
+| 身份 | `user`, `user_role`, `support_team`, `team_member` | 员工号唯一、`status` 不允许登录的用户不可登录、角色撤销可追溯 |
 | 配置 | `category`, `category_route`, `field_definition` | 末级路由唯一、定义版本可快照 |
 | 咨询 | `consultation`, `consultation_message` | 状态/责任人投影和消息追加写 |
 | 工单 | `ticket`, `ticket_transition`, `ticket_message`, `ticket_draft`, `supplement_request`, `external_wait`, `ticket_resolution`, `ticket_acceptance`, `attachment` | 状态与历史分离；私密正文不可物理删除 |
@@ -86,7 +86,7 @@ CREATE TABLE ticket (
   location VARCHAR(255), contact VARCHAR(255), asset_id VARCHAR(64),
   status VARCHAR(32) NOT NULL, priority VARCHAR(32) NOT NULL,
   assignee_id VARCHAR(64), source_session_id VARCHAR(32),
-  field_snapshot_json JSON, version BIGINT NOT NULL DEFAULT 0,
+  field_definition_snapshot JSON, version BIGINT NOT NULL DEFAULT 0,
   created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL,
   completed_at DATETIME(6), closed_at DATETIME(6),
   KEY idx_ticket_creator_status (creator_id,status),
@@ -183,7 +183,7 @@ CREATE TABLE migration_id_map (
 
 空库发布脚本必须为下列每张事实表提供显式 `CREATE TABLE`，缺任一表则 Flyway 校验失败：
 
-`user_account,user_role,support_team,team_member,engineer_runtime_state,engineer_category_capability,category,category_route,field_definition,consultation,consultation_message,ticket,ticket_field_value,ticket_transition,ticket_message,ticket_draft,supplement_request,external_wait,ticket_resolution,ticket_acceptance,attachment,assignment,sla_instance,sla_pause,service_calendar,calendar_holiday,exception_queue,notification,audit_log,idempotency_record,outbox_event,outbox_delivery,ticket_duplicate,attachment_access,case_candidate,knowledge_article,knowledge_version,knowledge_cluster,ai_interaction,ai_provider_config,rag_index_pointer`。
+`user,user_role,support_team,team_member,engineer_runtime_state,engineer_category_capability,category,category_route,field_definition,consultation,consultation_message,ticket,ticket_field_value,ticket_transition,ticket_message,ticket_draft,supplement_request,external_wait,ticket_resolution,ticket_acceptance,attachment,assignment,sla_instance,sla_pause,service_calendar,calendar_holiday,exception_queue,notification,audit_log,idempotency_record,outbox_event,outbox_delivery,ticket_duplicate,attachment_access,case_candidate,knowledge_article,knowledge_version,knowledge_cluster,ai_interaction,ai_provider_config,rag_index_pointer`。
 
 其中 `ticket_field_value`、`ticket_duplicate`、`attachment_access`、`service_calendar`、`calendar_holiday`、`exception_queue`、`outbox_delivery` 是本规范定义的持久化辅助实体；其列定义以 SQL-007 为权威，不能在 MyBatis Entity 中自行增删。其余表的列定义以 DM-004 为权威，迁移生成器逐字段展开 Java/MySQL 映射，不允许 `CREATE TABLE ... LIKE`、ORM auto-DDL 或未声明列。
 
@@ -196,14 +196,14 @@ CREATE TABLE migration_id_map (
 本节与 SQL-007 合并构成 V1 空库脚本：先执行本节 identity/config/consultation 组，再执行 SQL-007 的 ticket 与辅助表，再执行本节 runtime/knowledge 组。MySQL 8.x 使用 CHECK 约束；部署采用逻辑外键，跨表引用由事务服务校验，避免迁移锁放大。
 
 ~~~sql
-CREATE TABLE user_account (
+CREATE TABLE `user` (
  user_id VARCHAR(64) PRIMARY KEY, employee_no VARCHAR(64) NOT NULL,
- display_name VARCHAR(255) NOT NULL, department_id VARCHAR(64) NOT NULL,
- identity_source VARCHAR(64) NOT NULL, enabled TINYINT(1) NOT NULL,
+ name VARCHAR(255) NOT NULL, department_id VARCHAR(64) NOT NULL,
+ status VARCHAR(32) NOT NULL, identity_source VARCHAR(64) NOT NULL,
  last_identity_sync_at DATETIME(6), version BIGINT NOT NULL DEFAULT 0,
  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL,
  UNIQUE KEY uk_user_employee_no(employee_no), KEY idx_user_department(department_id),
- KEY idx_user_enabled(enabled)
+ KEY idx_user_status(status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE user_role (
@@ -214,16 +214,16 @@ CREATE TABLE user_role (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE support_team (
- team_id VARCHAR(64) PRIMARY KEY, name VARCHAR(255) NOT NULL, enabled TINYINT(1) NOT NULL,
+ team_id VARCHAR(64) PRIMARY KEY, name VARCHAR(255) NOT NULL, status VARCHAR(32) NOT NULL,
  version BIGINT NOT NULL DEFAULT 0, created_at DATETIME(6) NOT NULL,
- updated_at DATETIME(6) NOT NULL, UNIQUE KEY uk_team_name(name)
+ updated_at DATETIME(6) NOT NULL, UNIQUE KEY uk_team_name(name), KEY idx_team_status(status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE team_member (
  team_id VARCHAR(64) NOT NULL, engineer_id VARCHAR(64) NOT NULL,
- joined_at DATETIME(6) NOT NULL, left_at DATETIME(6), enabled TINYINT(1) NOT NULL,
+ joined_at DATETIME(6) NOT NULL, left_at DATETIME(6), status VARCHAR(32) NOT NULL,
  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL,
- PRIMARY KEY(team_id,engineer_id), KEY idx_member_engineer(engineer_id,enabled)
+ PRIMARY KEY(team_id,engineer_id), KEY idx_member_engineer(engineer_id,status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE engineer_runtime_state (
@@ -244,10 +244,10 @@ CREATE TABLE engineer_category_capability (
 
 CREATE TABLE category (
  category_id VARCHAR(64) PRIMARY KEY, parent_id VARCHAR(64),
- nature VARCHAR(32) NOT NULL, name VARCHAR(255) NOT NULL, level SMALLINT NOT NULL,
- definition_version VARCHAR(64) NOT NULL, enabled TINYINT(1) NOT NULL,
+ ticket_nature VARCHAR(32) NOT NULL, name VARCHAR(255) NOT NULL, level SMALLINT NOT NULL,
+ definition_version VARCHAR(64) NOT NULL, status VARCHAR(32) NOT NULL,
  version BIGINT NOT NULL DEFAULT 0, created_at DATETIME(6) NOT NULL,
- updated_at DATETIME(6) NOT NULL, KEY idx_category_parent(parent_id,level,enabled)
+ updated_at DATETIME(6) NOT NULL, KEY idx_category_parent(parent_id,level,status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE category_route (
@@ -300,8 +300,8 @@ CREATE TABLE ticket_message (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE ticket_draft (
- draft_id VARCHAR(64) PRIMARY KEY, creator_id VARCHAR(64) NOT NULL,
- nature VARCHAR(32), category_id VARCHAR(64), payload_json JSON NOT NULL,
+  draft_id VARCHAR(64) PRIMARY KEY, creator_id VARCHAR(64) NOT NULL,
+  ticket_nature VARCHAR(32), category_id VARCHAR(64), payload_json JSON NOT NULL,
  last_saved_at DATETIME(6) NOT NULL, expires_at DATETIME(6) NOT NULL,
  version BIGINT NOT NULL DEFAULT 0, created_at DATETIME(6) NOT NULL,
  updated_at DATETIME(6) NOT NULL, UNIQUE KEY uk_active_draft(creator_id)

@@ -106,17 +106,17 @@ public enum IdempotencyStatus { IN_PROGRESS, SUCCEEDED, FAILED }
 ### 用户与组织
 
 ```java
-class UserAccount {
-   String userId; String employeeNo; String displayName;
-  String departmentId; String identitySource; boolean enabled;
+class User {
+   String userId; String employeeNo; String name;
+  String departmentId; String status; String identitySource;
   Instant lastIdentitySyncAt;  Long version;
 }
 class UserRole {
-   UserRoleId id; String grantedBy; Instant grantedAt; Instant revokedAt;
+   String userId; RoleCode roleCode; String grantedBy; Instant grantedAt; Instant revokedAt;
 }
-class SupportTeam {  String teamId; String name; boolean enabled;  Long version; }
+class SupportTeam {  String teamId; String name; String status;  Long version; }
 class TeamMember {
-   TeamMemberId id; Instant joinedAt; Instant leftAt; boolean enabled;
+   String teamId; String engineerId; Instant joinedAt; Instant leftAt; String status;
 }
 class EngineerRuntimeState {
    String engineerId; EngineerPresence presence; Instant lastActivityAt;
@@ -128,7 +128,7 @@ class EngineerCategoryCapability {
 }
 ```
 
-MySQL：`user_account(user_id PK, employee_no UNIQUE, department_id INDEX, enabled)`；`user_role(user_id, role_code PK, revoked_at INDEX)`；`support_team(team_id PK)`；`team_member(team_id, engineer_id PK, enabled INDEX)`；`engineer_runtime_state(engineer_id PK, presence, last_activity_at)`；`engineer_category_capability(engineer_id, category_id, team_id, effective_at UNIQUE)`。
+MySQL：`user(user_id PK, employee_no UNIQUE, department_id INDEX, status)`；`user_role(user_id, role_code PK, revoked_at INDEX)`；`support_team(team_id PK)`；`team_member(team_id, engineer_id PK, status INDEX)`；`engineer_runtime_state(engineer_id PK, presence, last_activity_at)`；`engineer_category_capability(engineer_id, category_id, team_id, effective_at UNIQUE)`。`last_identity_sync_at`、`version`、`created_at` 和 `updated_at` 是身份同步和持久化元数据，不替代 PRD 用户业务字段。
 
 加权负载不作为权限或状态事实持久化：分配器在同一 MySQL 一致性快照内，按当前未结束 `Assignment`、活跃咨询/工单和 PRD 默认权重实时聚合；允许建立可重建的负载投影缓存，但命中前必须校验投影版本，Redis 丢失时回源聚合。
 
@@ -136,11 +136,11 @@ MySQL：`user_account(user_id PK, employee_no UNIQUE, department_id INDEX, enabl
 
 ```java
 class Category {
-   String categoryId; String parentId; TicketNature nature;
-  String name; short level; String definitionVersion; boolean enabled;  Long version;
+   String categoryId; String parentId; TicketNature ticketNature;
+  String name; short level; String status; String definitionVersion; Long version;
 }
 class CategoryRoute {
-   CategoryRouteId id; int routeOrder; Instant effectiveAt; Instant expiredAt;
+   String categoryId; String teamId; int routeOrder; Instant effectiveAt; Instant expiredAt;
 }
 class FieldDefinition {
    String fieldDefinitionId; String categoryId; String fieldKey;
@@ -148,7 +148,7 @@ class FieldDefinition {
 }
 ```
 
-`category(parent_id, level, enabled)` 建索引；`category_route(category_id, route_order)` 唯一；`field_definition(category_id, field_key, definition_version)` 唯一。提交工单必须保存 `field_definition_snapshot JSON`，分类配置更新不得改变历史值。
+`category(parent_id, level, status)` 建索引；`category_route(category_id, route_order)` 唯一；`field_definition(category_id, field_key, definition_version)` 唯一。提交工单必须保存 `field_definition_snapshot JSON`，分类配置更新不得改变历史值。
 
 ### 咨询与消息
 
@@ -174,10 +174,10 @@ AI 消息的 `citation_json` 兼容原引用数组，并支持 `schemaVersion=1`
 
 ```java
 class Ticket {
-   String ticketId; String creatorId; TicketNature nature; String categoryId;
+   String ticketId; String creatorId; TicketNature ticketNature; String categoryId;
   String title; String description; String impactDescription; String urgencyDescription;
   String location; String contact; String assetId; TicketStatus status; Priority priority;
-  String assigneeId; String sourceSessionId; String fieldSnapshotJson;
+  String assigneeId; String sourceSessionId; String fieldDefinitionSnapshot;
   Instant createdAt; Instant completedAt; Instant closedAt;  Long version;
 }
 class TicketTransition {
@@ -189,7 +189,7 @@ class TicketMessage {
   String clientMessageId; String content; Instant sentAt; Instant withdrawnAt; String withdrawReason;
 }
 class TicketDraft {
-   String draftId; String creatorId; TicketNature nature; String categoryId;
+   String draftId; String creatorId; TicketNature ticketNature; String categoryId;
   String payloadJson; Instant lastSavedAt; Instant expiresAt;  Long version;
 }
 class SupplementRequest {
