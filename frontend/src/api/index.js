@@ -31,7 +31,14 @@ export const userApi = {
   login: (data) => api.post('/users/login', data),
   loginOptions: () => api.get('/users/login-options'),
   getMe: () => api.get('/users/me'),
-  listUsers: (params) => api.get('/users', { params })
+  listUsers: (params) => api.get('/users', { params }),
+  // 认证模块：忘记密码(免登录)/修改密码
+  forgotPassword: (data) => api.post('/users/forgot-password', data),
+  changePassword: (data) => api.post('/users/change-password', data),
+  // 主管账号管理
+  listAccounts: () => api.get('/users/accounts'),
+  createAccount: (data) => api.post('/users/accounts', data),
+  resetPassword: (userId, data) => api.post(`/users/accounts/${userId}/reset-password`, data)
 }
 
 // ---- 工单 API ----
@@ -40,9 +47,24 @@ export const ticketApi = {
   list: (params) => api.get('/tickets', { params }),
   detail: (id) => api.get(`/tickets/${id}`),
   assign: (id, data) => api.post(`/tickets/${id}/assign`, data),
-  claim: (id) => api.post(`/tickets/${id}/claim`),
+  claim: (id, data) => api.post(`/tickets/${id}/claim`, data),
   action: (id, data) => api.post(`/tickets/${id}/actions`, data),
   rating: (id, data) => api.post(`/tickets/${id}/rating`, data)
+}
+
+export const categoryApi = {
+  leaf: () => api.get('/categories/leaf')
+}
+
+// ---- 通知中心 API ----
+export const notificationApi = {
+  list: (params) => api.get('/notifications', { params }),
+  pendingCount: () => api.get('/notifications/pending-count')
+}
+
+// ---- SLA 计时 API ----
+export const slaApi = {
+  byTicket: (ticketId) => api.get(`/sla/${ticketId}`)
 }
 
 // ---- 草稿 API ----

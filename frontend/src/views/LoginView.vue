@@ -63,7 +63,37 @@
       >
         {{ loading ? '登录中...' : '进入系统' }}
       </el-button>
+
+      <!-- 忘记密码入口 -->
+      <div class="forgot-link">
+        <el-link type="primary" :underline="false" @click="forgotVisible = true">忘记密码？</el-link>
+      </div>
     </el-card>
+
+    <!-- 忘记密码弹窗：工号+姓名+员工号验证后重置 -->
+    <el-dialog v-model="forgotVisible" title="忘记密码 · 身份验证" width="420px" :close-on-click-modal="false">
+      <el-alert type="info" :closable="false" class="forgot-tip"
+        title="请输入账号信息进行身份验证，验证通过后可设置新密码" />
+      <el-form :model="forgotForm" label-width="90px" class="forgot-form">
+        <el-form-item label="用户ID" required>
+          <el-input v-model="forgotForm.userId" placeholder="如 U_EMP01" />
+        </el-form-item>
+        <el-form-item label="姓名" required>
+          <el-input v-model="forgotForm.name" placeholder="请输入姓名" />
+        </el-form-item>
+        <el-form-item label="员工号" required>
+          <el-input v-model="forgotForm.employeeNo" placeholder="如 E1001" />
+        </el-form-item>
+        <el-form-item label="新密码" required>
+          <el-input v-model="forgotForm.newPassword" type="password" show-password
+            placeholder="6-32位，含字母和数字" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="forgotVisible = false">取消</el-button>
+        <el-button type="primary" :loading="forgotLoading" @click="doForgot">重置密码</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -75,6 +105,7 @@ import { Lock } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user.js'
 import { userApi } from '../api/index.js'
 
+// PRD §5.1 角色值域（大写）：EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KB_ADMIN；同时兼容旧版小写值域
 const roleMap = {
   EMPLOYEE: '员工',
   ENGINEER: '工程师',
@@ -126,6 +157,31 @@ const loading = ref(false)
 const loginError = ref('')
 const router = useRouter()
 const userStore = useUserStore()
+
+// 忘记密码
+const forgotVisible = ref(false)
+const forgotLoading = ref(false)
+const forgotForm = ref({ userId: '', name: '', employeeNo: '', newPassword: '' })
+
+async function doForgot() {
+  const f = forgotForm.value
+  if (!f.userId || !f.name || !f.employeeNo || !f.newPassword) {
+    ElMessage.warning('请填写完整的身份验证信息和新密码')
+    return
+  }
+  forgotLoading.value = true
+  try {
+    await userApi.forgotPassword(f)
+    ElMessage.success('密码已重置，请使用新密码登录')
+    forgotVisible.value = false
+    forgotForm.value = { userId: '', name: '', employeeNo: '', newPassword: '' }
+    password.value = ''
+  } catch (e) {
+    ElMessage.error(e.message || '重置失败')
+  } finally {
+    forgotLoading.value = false
+  }
+}
 
 onMounted(async () => {
   try {
@@ -285,4 +341,12 @@ html.dark .user-item.selected {
   width: 100%;
   letter-spacing: 4px;
 }
+
+.forgot-link {
+  margin-top: 14px;
+  text-align: center;
+}
+
+.forgot-tip { margin-bottom: 16px; }
+.forgot-form :deep(.el-form-item) { margin-bottom: 18px; }
 </style>

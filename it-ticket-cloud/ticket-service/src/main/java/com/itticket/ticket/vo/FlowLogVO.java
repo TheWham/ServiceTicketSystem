@@ -7,28 +7,30 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
-/** 流转日志响应(含 operator_name,与旧版 JOIN user 的行结构一致) */
+/** 流转日志响应（ticket_transition 行结构，PRD-Ultimate §20） */
 @Data
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class FlowLogVO {
-    private Long logId;
+    private String transitionId;
     private String ticketId;
     private String fromStatus;
     private String toStatus;
+    private String event;
     private String operatorId;
-    private String remark;
-    private LocalDateTime createdAt;
+    private String reason;
+    private LocalDateTime occurredAt;
     private String operatorName;
 
     public static FlowLogVO from(TicketFlowLog f) {
         FlowLogVO vo = new FlowLogVO();
-        vo.setLogId(f.getLogId());
+        vo.setTransitionId(f.getTransitionId());
         vo.setTicketId(f.getTicketId());
         vo.setFromStatus(f.getFromStatus());
         vo.setToStatus(f.getToStatus());
+        vo.setEvent(f.getEvent());
         vo.setOperatorId(f.getOperatorId());
-        vo.setRemark(f.getRemark());
-        vo.setCreatedAt(f.getCreatedAt());
+        vo.setReason(f.getReason());
+        vo.setOccurredAt(f.getOccurredAt());
         return vo;
     }
 }

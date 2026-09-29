@@ -60,27 +60,21 @@
         </el-form-item>
 
         <el-row :gutter="16">
-          <!-- 分类 -->
+          <!-- 工单性质 -->
           <el-col :span="12">
-            <el-form-item prop="category" label="问题分类">
-              <el-radio-group v-model="form.category">
-                <el-radio-button v-for="c in categories" :key="c" :value="c">{{ c }}</el-radio-button>
+            <el-form-item prop="nature" label="工单性质">
+              <el-radio-group v-model="form.nature">
+                <el-radio-button v-for="n in natures" :key="n.value" :value="n.value">{{ n.label }}</el-radio-button>
               </el-radio-group>
             </el-form-item>
           </el-col>
 
-          <!-- 优先级 -->
+          <!-- 末级分类 -->
           <el-col :span="12">
-            <el-form-item prop="priority" label="优先级">
-              <el-radio-group v-model="form.priority">
-                <el-radio-button value="高">高</el-radio-button>
-                <el-radio-button value="中">中</el-radio-button>
-                <el-radio-button value="低">低</el-radio-button>
-              </el-radio-group>
-              <div v-if="form.priority === '高'" class="priority-hint">
-                <el-icon><WarningFilled /></el-icon>
-                高优先级将同步短信通知，请确认确为紧急故障
-              </div>
+            <el-form-item prop="category_id" label="问题分类">
+              <el-select v-model="form.category_id" placeholder="选择末级分类" style="width:100%" filterable>
+                <el-option v-for="c in filteredCategories" :key="c.categoryId" :value="c.categoryId" :label="c.name" />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
@@ -89,31 +83,59 @@
         <el-form-item prop="description">
           <template #label>
             问题描述 <span class="required">*</span>
-            <span class="char-count">{{ form.description.length }}/500</span>
+            <span class="char-count">{{ form.description.length }}/5000</span>
           </template>
           <el-input
             v-model="form.description"
             type="textarea"
-            :rows="5"
-            maxlength="500"
+            :rows="4"
+            maxlength="5000"
             show-word-limit
             placeholder="请详细描述问题：何时开始、报错原文、已尝试的操作..."
           />
         </el-form-item>
 
         <el-row :gutter="16">
-          <!-- 期望完成时间 -->
+          <!-- 影响情况 -->
           <el-col :span="12">
-            <el-form-item label="期望完成时间">
-              <el-date-picker
-                v-model="form.expected_finish_time"
-                type="datetime"
-                placeholder="选择期望完成时间（可选）"
-                :disabled-date="disablePastDate"
-                format="YYYY-MM-DD HH:mm"
-                value-format="YYYY-MM-DDTHH:mm"
-                style="width: 100%"
-              />
+            <el-form-item prop="impact_description">
+              <template #label>
+                影响情况 <span class="required">*</span>
+                <span class="char-count">{{ form.impact_description.length }}/500</span>
+              </template>
+              <el-input v-model="form.impact_description" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="影响了哪些人/业务？如：本人无法打印 / 全部门网络中断" />
+            </el-form-item>
+          </el-col>
+
+          <!-- 紧急说明 -->
+          <el-col :span="12">
+            <el-form-item prop="urgency_description">
+              <template #label>
+                紧急说明 <span class="required">*</span>
+                <span class="char-count">{{ form.urgency_description.length }}/500</span>
+              </template>
+              <el-input v-model="form.urgency_description" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="为什么紧急？如：下午有重要会议需投屏" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="16">
+          <!-- 位置（选填） -->
+          <el-col :span="8">
+            <el-form-item label="位置">
+              <el-input v-model="form.location" maxlength="200" placeholder="如：3号楼 502 室（选填）" />
+            </el-form-item>
+          </el-col>
+          <!-- 本次联系方式（选填） -->
+          <el-col :span="8">
+            <el-form-item label="本次联系方式">
+              <el-input v-model="form.contact" maxlength="64" placeholder="手机/座机（选填，不反写档案）" />
+            </el-form-item>
+          </el-col>
+          <!-- 资产编号（选填） -->
+          <el-col :span="8">
+            <el-form-item label="资产编号">
+              <el-input v-model="form.asset_id" maxlength="64" placeholder="如 PC-2024-001（选填）" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -169,14 +191,15 @@
         >
           <div class="ticket-header">
             <span class="ticket-id">{{ t.ticket_id }}</span>
-            <el-tag :type="statusTagType(t.status)" size="small">{{ t.status }}</el-tag>
-            <el-tag :type="priorityTagType(t.priority)" size="small" effect="plain">{{ t.priority }}</el-tag>
+            <el-tag :type="statusTagType(t.status)" size="small">{{ statusLabel(t.status) }}</el-tag>
+            <el-tag :type="priorityTagType(t.priority)" size="small" effect="plain">{{ priorityLabel(t.priority) }}</el-tag>
           </div>
           <div class="ticket-title">{{ t.title }}</div>
           <div class="ticket-meta">
-            <el-tag size="small" type="info" effect="plain">{{ t.category }}</el-tag>
+            <el-tag size="small" type="info" effect="plain">{{ t.category_snapshot }}</el-tag>
             <span v-if="t.assignee_name">处理人：{{ t.assignee_name }}</span>
             <span>{{ formatTime(t.created_at) }}</span>
+            <SlaBadge :ticket-id="t.ticket_id" mode="card" />
           </div>
         </el-card>
       </div>
@@ -203,24 +226,27 @@
       <template v-if="detailTicket">
         <el-descriptions :column="2" border class="detail-desc">
           <el-descriptions-item label="标题" :span="2">{{ detailTicket.title }}</el-descriptions-item>
-          <el-descriptions-item label="分类">{{ detailTicket.category }}</el-descriptions-item>
+          <el-descriptions-item label="分类">{{ detailTicket.category_snapshot }}</el-descriptions-item>
           <el-descriptions-item label="优先级">
-            <el-tag :type="priorityTagType(detailTicket.priority)" size="small">{{ detailTicket.priority }}</el-tag>
+            <el-tag :type="priorityTagType(detailTicket.priority)" size="small">{{ priorityLabel(detailTicket.priority) }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="状态">
-            <el-tag :type="statusTagType(detailTicket.status)" size="small">{{ detailTicket.status }}</el-tag>
+            <el-tag :type="statusTagType(detailTicket.status)" size="small">{{ statusLabel(detailTicket.status) }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="提单人">{{ detailTicket.creator_name }}</el-descriptions-item>
           <el-descriptions-item label="处理人">{{ detailTicket.assignee_name || '未分配' }}</el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ formatTime(detailTicket.created_at) }}</el-descriptions-item>
-          <el-descriptions-item v-if="detailTicket.expected_finish_time" label="期望完成" :span="2">
-            {{ formatTime(detailTicket.expected_finish_time) }}
-          </el-descriptions-item>
+          <el-descriptions-item v-if="detailTicket.location" label="位置">{{ detailTicket.location }}</el-descriptions-item>
           <el-descriptions-item label="问题描述" :span="2">{{ detailTicket.description }}</el-descriptions-item>
+          <el-descriptions-item label="影响情况" :span="2">{{ detailTicket.impact_description }}</el-descriptions-item>
+          <el-descriptions-item label="紧急说明" :span="2">{{ detailTicket.urgency_description }}</el-descriptions-item>
         </el-descriptions>
 
+        <!-- SLA 计时 -->
+        <SlaTimer :ticket-id="detailTicket.ticket_id" />
+
         <!-- 验收操作 -->
-        <el-card v-if="detailTicket.status === '待验收'" shadow="never" class="action-card">
+        <el-card v-if="detailTicket.status === 'PENDING_ACCEPTANCE'" shadow="never" class="action-card">
           <template #header><span class="action-title">验收工单</span></template>
           <el-space>
             <el-button type="success" :icon="CircleCheck" @click="acceptTicket(detailTicket)">
@@ -244,7 +270,7 @@
 
         <!-- 满意度评价 -->
         <el-card
-          v-if="detailTicket.status === '已完成' && !detailTicket.rating_score"
+          v-if="detailTicket.status === 'COMPLETED' && !detailTicket.rating_score"
           shadow="never"
           class="action-card"
         >
@@ -293,7 +319,7 @@
               :type="flowTimelineType(f.to_status)"
             >
               <div class="flow-content">
-                <el-tag size="small" effect="plain">{{ f.to_status || f.from_status }}</el-tag>
+                <el-tag size="small" effect="plain">{{ statusLabel(f.to_status || f.from_status) }}</el-tag>
                 <span class="flow-operator">{{ f.operator_name }}</span>
                 <span class="flow-remark">{{ f.remark }}</span>
               </div>
@@ -307,19 +333,31 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   EditPen, List, WarningFilled, SuccessFilled, CircleCheck, CircleClose
 } from '@element-plus/icons-vue'
-import { ticketApi, draftApi } from '../api/index.js'
+import { ticketApi, draftApi, categoryApi } from '../api/index.js'
 import { useUserStore } from '../stores/user.js'
+import SlaBadge from '../components/SlaBadge.vue'
+import SlaTimer from '../components/SlaTimer.vue'
 
 const userStore = useUserStore()
 const tab = ref('create')
-const categories = ['硬件', '软件', '网络', '账号', '其他']
-const statuses = ['待处理', '处理中', '待补充', '待外部', '待验收', '已完成', '已取消']
+// 末级分类从后端动态加载（PRD §10.1 分类目录）
+const categories = ref([])
+// 按当前工单性质过滤末级分类（PRD §10.1：分类目录按 nature 分组）
+const filteredCategories = computed(() => categories.value.filter(c => c.ticketNature === form.value.nature))
+const natures = [
+  { value: 'INCIDENT', label: '故障报修' },
+  { value: 'SERVICE_REQUEST', label: '服务申请' }
+]
 
-const form = ref({ title: '', category: '', description: '', priority: '中', expected_finish_time: '' })
+const form = ref({
+  nature: 'INCIDENT', category_id: '', title: '', description: '',
+  impact_description: '', urgency_description: '', location: '', contact: '', asset_id: ''
+})
 const formRef = ref(null)
 const submitting = ref(false)
 const draftBanner = ref(false)
@@ -329,15 +367,24 @@ let draftTimer = null
 
 // Element Plus 表单校验规则（保留原有校验语义）
 const formRules = {
+  nature: [{ required: true, message: '请选择工单性质', trigger: 'change' }],
+  category_id: [{ required: true, message: '请选择问题分类', trigger: 'change' }],
   title: [
     { required: true, message: '请填写工单标题', trigger: 'blur' },
-    { max: 50, message: '工单标题不能超过 50 个字符', trigger: 'blur' }
+    { min: 1, max: 100, message: '工单标题 1~100 个字符', trigger: 'blur' }
   ],
-  category: [{ required: true, message: '请选择问题分类', trigger: 'change' }],
   description: [
     { required: true, message: '请填写问题描述', trigger: 'blur' },
     { min: 10, message: '请至少填写 10 个字，说明何时开始、报错原文、已尝试的操作', trigger: 'blur' },
-    { max: 500, message: '问题描述不能超过 500 个字符', trigger: 'blur' }
+    { max: 5000, message: '问题描述不能超过 5000 个字符', trigger: 'blur' }
+  ],
+  impact_description: [
+    { required: true, message: '请填写影响情况（接单时供工程师确认优先级）', trigger: 'blur' },
+    { max: 500, message: '影响情况不能超过 500 个字符', trigger: 'blur' }
+  ],
+  urgency_description: [
+    { required: true, message: '请填写紧急说明', trigger: 'blur' },
+    { max: 500, message: '紧急说明不能超过 500 个字符', trigger: 'blur' }
   ]
 }
 
@@ -361,23 +408,32 @@ function formatTime(t) { return t ? new Date(t).toLocaleString('zh-CN') : '' }
 
 function disablePastDate(time) { return time.getTime() < Date.now() - 86400000 }
 
-function statusTagType(s) {
-  const map = {
-    '待处理': 'warning', '处理中': 'primary', '待补充': 'info',
-    '待外部': 'info', '待验收': 'primary', '已完成': 'success', '已取消': 'info'
-  }
-  return map[s] || 'info'
+// 状态英文枚举 → 中文标签 + 颜色（PRD §9.2 九态）
+const STATUS_LABEL = {
+  NEW: '新建', ASSIGNED: '已分配', IN_PROGRESS: '处理中',
+  PENDING_SUPPLEMENT: '待补充', PENDING_EXTERNAL: '外部等待',
+  PENDING_ACCEPTANCE: '待验收', COMPLETED: '已完成',
+  CANCELLED: '已取消', CLOSED: '已关闭'
 }
+const STATUS_TYPE = {
+  NEW: 'warning', ASSIGNED: 'primary', IN_PROGRESS: 'primary',
+  PENDING_SUPPLEMENT: 'info', PENDING_EXTERNAL: 'info',
+  PENDING_ACCEPTANCE: 'primary', COMPLETED: 'success',
+  CANCELLED: 'info', CLOSED: 'info'
+}
+function statusLabel(s) { return STATUS_LABEL[s] || s }
+function statusTagType(s) { return STATUS_TYPE[s] || 'info' }
 
-function priorityTagType(p) {
-  const map = { '高': 'danger', '中': 'warning', '低': 'info' }
-  return map[p] || 'info'
-}
+// 优先级英文 → 中文 + 颜色
+const PRIORITY_LABEL = { HIGH: '高', MEDIUM: '中', LOW: '低' }
+const PRIORITY_TYPE = { HIGH: 'danger', MEDIUM: 'warning', LOW: 'info' }
+function priorityLabel(p) { return PRIORITY_LABEL[p] || p }
+function priorityTagType(p) { return PRIORITY_TYPE[p] || 'info' }
 
 function flowTimelineType(status) {
   const map = {
-    '已完成': 'success', '待验收': 'primary', '处理中': 'primary',
-    '待处理': 'warning', '已取消': 'info'
+    COMPLETED: 'success', PENDING_ACCEPTANCE: 'primary', IN_PROGRESS: 'primary',
+    NEW: 'warning', ASSIGNED: 'primary', CANCELLED: 'info', CLOSED: 'info'
   }
   return map[status] || 'primary'
 }
@@ -386,13 +442,14 @@ function flowTimelineType(status) {
 const submitHint = computed(() => {
   if (submitting.value) return ''
   const missing = []
+  if (!form.value.category_id) missing.push('问题分类')
   const tLen = form.value.title.trim().length
   if (tLen === 0) missing.push('工单标题')
-  else if (tLen > 50) missing.push('标题需在 50 字以内')
-  if (!form.value.category) missing.push('问题分类')
+  else if (tLen > 100) missing.push('标题需在 100 字以内')
   const dLen = form.value.description.trim().length
   if (dLen < 10) missing.push(`问题描述（还需 ${10 - dLen} 字）`)
-  else if (dLen > 500) missing.push('问题描述需在 500 字以内')
+  if (!form.value.impact_description.trim()) missing.push('影响情况')
+  if (!form.value.urgency_description.trim()) missing.push('紧急说明')
   if (!missing.length) return ''
   return '还差：' + missing.join('、')
 })
@@ -431,14 +488,21 @@ async function submitTicket() {
   lastSubmitAt.value = Date.now()
   try {
     await ticketApi.create({
+      nature: form.value.nature,
+      category_id: form.value.category_id,
       title: form.value.title.trim(),
-      category: form.value.category,
       description: form.value.description.trim(),
-      priority: form.value.priority,
-      expected_finish_time: form.value.expected_finish_time || null,
-      client_token: formToken.value
+      impact_description: form.value.impact_description.trim(),
+      urgency_description: form.value.urgency_description.trim(),
+      location: form.value.location.trim() || null,
+      contact: form.value.contact.trim() || null,
+      asset_id: form.value.asset_id.trim() || null,
+      idempotency_key: formToken.value
     })
-    form.value = { title: '', category: '', description: '', priority: '中', expected_finish_time: '' }
+    form.value = {
+      nature: 'INCIDENT', category_id: '', title: '', description: '',
+      impact_description: '', urgency_description: '', location: '', contact: '', asset_id: ''
+    }
     formToken.value = genClientToken()
     await draftApi.delete().catch(() => {})
     draftBanner.value = false
@@ -456,11 +520,15 @@ async function submitTicket() {
 // 草稿
 async function saveDraft() {
   await draftApi.save({
+    nature: form.value.nature,
+    category_id: form.value.category_id,
     title: form.value.title,
-    category: form.value.category,
     description: form.value.description,
-    priority: form.value.priority,
-    expected_finish_time: form.value.expected_finish_time || null
+    impact_description: form.value.impact_description,
+    urgency_description: form.value.urgency_description,
+    location: form.value.location,
+    contact: form.value.contact,
+    asset_id: form.value.asset_id
   })
   draftSaved.value = true
   draftTime.value = new Date().toLocaleTimeString('zh-CN')
@@ -470,11 +538,15 @@ function restoreDraft() {
   draftApi.get().then(res => {
     if (res.data) {
       form.value = {
+        nature: res.data.nature || 'INCIDENT',
+        category_id: res.data.category_id || '',
         title: res.data.title || '',
-        category: res.data.category || '',
         description: res.data.description || '',
-        priority: res.data.priority || '中',
-        expected_finish_time: res.data.expected_finish_time ? res.data.expected_finish_time.slice(0, 16) : ''
+        impact_description: res.data.impact_description || '',
+        urgency_description: res.data.urgency_description || '',
+        location: res.data.location || '',
+        contact: res.data.contact || '',
+        asset_id: res.data.asset_id || ''
       }
       draftBanner.value = false
     }
@@ -557,12 +629,30 @@ watch(form, () => {
   draftTimer = setTimeout(saveDraft, 30000)
 }, { deep: true })
 
+const route = useRoute()
+
 onMounted(async () => {
+  try {
+    const res = await categoryApi.leaf()
+    categories.value = res.data || []
+  } catch (e) {
+    console.error('加载分类失败', e)
+    ElMessage.error('分类加载失败，请刷新重试；若持续失败请联系管理员')
+  }
   try {
     const draft = await draftApi.get()
     if (draft.data) draftBanner.value = true
   } catch (e) {}
-  loadTickets()
+  await loadTickets()
+  // 通知跳转：URL 带 ?ticket=xxx 时自动打开该工单详情
+  if (route.query.ticket) {
+    openDetail({ ticket_id: route.query.ticket })
+  }
+})
+
+// 关键：同页内点击通知只改 query，组件不重挂载、onMounted 不触发——需 watch query 变化
+watch(() => route.query.ticket, (tid) => {
+  if (tid) openDetail({ ticket_id: tid })
 })
 
 onUnmounted(() => clearTimeout(draftTimer))

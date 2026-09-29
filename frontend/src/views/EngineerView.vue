@@ -29,27 +29,30 @@
             :key="t.ticket_id"
             shadow="hover"
             class="kanban-card"
-            :class="{ high: t.priority === '高' }"
+            :class="{ high: t.priority === 'HIGH' }"
             @click="openDetail(t)"
           >
             <div class="card-top">
               <span class="card-id">{{ t.ticket_id }}</span>
-              <el-tag :type="priorityTagType(t.priority)" size="small" effect="plain">{{ t.priority }}</el-tag>
+              <el-tag :type="priorityTagType(t.priority)" size="small" effect="plain">{{ priorityLabel(t.priority) }}</el-tag>
             </div>
             <div class="card-title">{{ t.title }}</div>
             <div class="card-meta">
-              <el-tag size="small" type="info" effect="plain">{{ t.category }}</el-tag>
+              <el-tag size="small" type="info" effect="plain">{{ t.category_snapshot }}</el-tag>
               <span>{{ t.creator_name }}</span>
             </div>
-            <div class="card-time">{{ formatTime(t.created_at) }}</div>
+            <div class="card-time">
+              <span>{{ formatTime(t.created_at) }}</span>
+              <SlaBadge :ticket-id="t.ticket_id" mode="card" />
+            </div>
             <el-button
-              v-if="t.status === '待处理' && !t.assignee_id"
+              v-if="t.status === 'ASSIGNED'"
               type="success"
               size="small"
               class="claim-btn"
               :icon="Pointer"
-              @click.stop="claimTicket(t)"
-            >领取</el-button>
+              @click.stop="openClaimDialog(t)"
+            >接单</el-button>
           </el-card>
         </el-scrollbar>
       </div>
@@ -66,33 +69,36 @@
       <template v-if="detail">
         <el-descriptions :column="2" border class="detail-desc">
           <el-descriptions-item label="标题" :span="2">{{ detail.title }}</el-descriptions-item>
-          <el-descriptions-item label="分类">{{ detail.category }}</el-descriptions-item>
+          <el-descriptions-item label="分类">{{ detail.category_snapshot }}</el-descriptions-item>
           <el-descriptions-item label="优先级">
-            <el-tag :type="priorityTagType(detail.priority)" size="small">{{ detail.priority }}</el-tag>
+            <el-tag :type="priorityTagType(detail.priority)" size="small">{{ priorityLabel(detail.priority) }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="状态">
-            <el-tag :type="statusTagType(detail.status)" size="small">{{ detail.status }}</el-tag>
+            <el-tag :type="statusTagType(detail.status)" size="small">{{ statusLabel(detail.status) }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="提单人">{{ detail.creator_name }}</el-descriptions-item>
-          <el-descriptions-item v-if="detail.expected_finish_time" label="期望完成" :span="2">
-            {{ formatTime(detail.expected_finish_time) }}
-          </el-descriptions-item>
+          <el-descriptions-item v-if="detail.location" label="位置">{{ detail.location }}</el-descriptions-item>
           <el-descriptions-item label="创建时间" :span="2">{{ formatTime(detail.created_at) }}</el-descriptions-item>
           <el-descriptions-item label="问题描述" :span="2">{{ detail.description }}</el-descriptions-item>
+          <el-descriptions-item label="影响情况" :span="2">{{ detail.impact_description }}</el-descriptions-item>
+          <el-descriptions-item label="紧急说明" :span="2">{{ detail.urgency_description }}</el-descriptions-item>
         </el-descriptions>
+
+        <!-- SLA 计时 -->
+        <SlaTimer :ticket-id="detail.ticket_id" />
 
         <!-- 状态操作 -->
         <el-card shadow="never" class="action-card">
           <template #header><span class="action-title">工单操作</span></template>
 
-          <!-- 待处理（未领取）→ 领取 -->
-          <div v-if="detail.status === '待处理'" class="action-row">
-            <el-button type="success" :icon="Pointer" @click="claimCurrent">领取该工单</el-button>
-            <el-text type="info" size="small">领取后即可开始处理</el-text>
+          <!-- 已分配（待接单）→ 接单 -->
+          <div v-if="detail.status === 'ASSIGNED'" class="action-row">
+            <el-button type="success" :icon="Pointer" @click="openClaimDialog(detail)">接单</el-button>
+            <el-text type="info" size="small">接单需确认影响范围与紧急程度（确定优先级）</el-text>
           </div>
 
           <!-- 处理中 → 记录进展 -->
-          <div v-if="detail.status === '处理中'" class="action-row">
+          <div v-if="detail.status === 'IN_PROGRESS'" class="action-row">
             <el-input
               v-model="progressRemark"
               placeholder="请输入说明（记录进展 ≥5 字；转外部支持 ≥10 字）"
@@ -108,12 +114,12 @@
           </div>
 
           <!-- 待补充 → 等待员工 -->
-          <el-alert v-if="detail.status === '待补充'" type="info" :closable="false">
+          <el-alert v-if="detail.status === 'PENDING_SUPPLEMENT'" type="info" :closable="false">
             <template #title>等待员工补充信息中...</template>
           </el-alert>
 
-          <!-- 待外部 → 外部解除 -->
-          <div v-if="detail.status === '待外部'" class="action-row">
+          <!-- 外部等待 → 外部解除 -->
+          <div v-if="detail.status === 'PENDING_EXTERNAL'" class="action-row">
             <el-text type="info" size="small">等待外部支持中...</el-text>
             <el-button type="success" :icon="CircleCheck" @click="doAction('external_resolved')">
               外部已解除
@@ -121,7 +127,7 @@
           </div>
 
           <!-- 处理中 → 提交方案 -->
-          <div v-if="detail.status === '处理中'" class="action-row submit-row">
+          <div v-if="detail.status === 'IN_PROGRESS'" class="action-row submit-row">
             <el-button
               type="success"
               size="large"
@@ -137,8 +143,8 @@
           </div>
 
           <!-- 待验收 -->
-          <el-alert v-if="detail.status === '待验收'" type="warning" :closable="false">
-            <template #title>⏳ 已提交方案，等待员工验收...</template>
+          <el-alert v-if="detail.status === 'PENDING_ACCEPTANCE'" type="warning" :closable="false">
+            <template #title>⏳ 已提交方案，等待员工验收（48h 未操作自动验收）...</template>
           </el-alert>
 
           <el-text v-if="actionError" type="danger" size="small" class="action-error">
@@ -158,7 +164,7 @@
               :type="flowTimelineType(f.to_status)"
             >
               <div class="flow-content">
-                <el-tag size="small" effect="plain">{{ f.to_status || f.from_status }}</el-tag>
+                <el-tag size="small" effect="plain">{{ statusLabel(f.to_status || f.from_status) }}</el-tag>
                 <span class="flow-operator">{{ f.operator_name }}</span>
                 <span class="flow-remark">{{ f.remark }}</span>
               </div>
@@ -167,17 +173,64 @@
         </el-card>
       </template>
     </el-dialog>
+
+    <!-- ===== 接单确认（影响×紧急矩阵）弹窗 ===== -->
+    <el-dialog
+      v-model="claimDialogVisible"
+      title="接单确认 · 优先级矩阵"
+      width="520px"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <el-alert type="info" :closable="false" style="margin-bottom:16px">
+        <template #title>接单需确认「影响范围 × 紧急程度」，系统按矩阵计算正式优先级（PRD §11.4）</template>
+      </el-alert>
+      <el-form label-position="top">
+        <el-form-item label="影响范围" required>
+          <el-radio-group v-model="claimForm.impact_scope">
+            <el-radio-button value="SINGLE">单人</el-radio-button>
+            <el-radio-button value="DEPARTMENT">部门</el-radio-button>
+            <el-radio-button value="CROSS_DEPT">跨部门</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="紧急程度" required>
+          <el-radio-group v-model="claimForm.urgency_level">
+            <el-radio-button value="LOW">低</el-radio-button>
+            <el-radio-button value="MEDIUM">中</el-radio-button>
+            <el-radio-button value="HIGH">高</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item>
+          <div class="matrix-preview">
+            计算优先级：
+            <el-tag v-if="claimPriority" :type="priorityTagType(claimPriority)" size="large">
+              {{ priorityLabel(claimPriority) }}
+            </el-tag>
+            <el-text v-else type="info">请选择影响范围与紧急程度</el-text>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="claimDialogVisible = false">取消</el-button>
+        <el-button type="primary" :disabled="!claimPriority" :loading="claiming" @click="confirmClaim">
+          确认接单
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   Tools, Refresh, Pointer, CircleCheck, Promotion
 } from '@element-plus/icons-vue'
 import { ticketApi } from '../api/index.js'
 import { useUserStore } from '../stores/user.js'
+import SlaBadge from '../components/SlaBadge.vue'
+import SlaTimer from '../components/SlaTimer.vue'
 
 const userStore = useUserStore()
 const allTickets = ref([])
@@ -190,13 +243,14 @@ let pollTimer = null
 
 const columns = computed(() => {
   const statusMap = {
-    '待处理':   { label: '待处理 / 待领取', color: 'yellow', badgeType: 'warning' },
-    '处理中':   { label: '处理中', color: 'blue', badgeType: 'primary' },
-    '待补充':   { label: '待补充', color: 'purple', badgeType: 'info' },
-    '待外部':   { label: '待外部', color: 'orange', badgeType: 'warning' },
-    '待验收':   { label: '待验收', color: 'cyan', badgeType: 'primary' },
-    '已完成':   { label: '已完成', color: 'green', badgeType: 'success' },
-    '已取消':   { label: '已取消', color: 'gray', badgeType: 'info' }
+    'ASSIGNED':           { label: '已分配 / 待接单', color: 'yellow', badgeType: 'warning' },
+    'IN_PROGRESS':        { label: '处理中', color: 'blue', badgeType: 'primary' },
+    'PENDING_SUPPLEMENT': { label: '待补充', color: 'purple', badgeType: 'info' },
+    'PENDING_EXTERNAL':   { label: '外部等待', color: 'orange', badgeType: 'warning' },
+    'PENDING_ACCEPTANCE': { label: '待验收', color: 'cyan', badgeType: 'primary' },
+    'COMPLETED':          { label: '已完成', color: 'green', badgeType: 'success' },
+    'CANCELLED':          { label: '已取消', color: 'gray', badgeType: 'info' },
+    'CLOSED':             { label: '已关闭', color: 'gray', badgeType: 'info' }
   }
   const result = Object.keys(statusMap).map(s => ({ status: s, ...statusMap[s], tickets: [] }))
   allTickets.value.forEach(t => {
@@ -206,27 +260,36 @@ const columns = computed(() => {
   return result
 })
 
+// 状态/优先级映射（PRD §9.2 九态 + HIGH/MEDIUM/LOW）
+const STATUS_LABEL = {
+  NEW: '新建', ASSIGNED: '已分配', IN_PROGRESS: '处理中',
+  PENDING_SUPPLEMENT: '待补充', PENDING_EXTERNAL: '外部等待',
+  PENDING_ACCEPTANCE: '待验收', COMPLETED: '已完成',
+  CANCELLED: '已取消', CLOSED: '已关闭'
+}
+const STATUS_TYPE = {
+  NEW: 'warning', ASSIGNED: 'primary', IN_PROGRESS: 'primary',
+  PENDING_SUPPLEMENT: 'info', PENDING_EXTERNAL: 'info',
+  PENDING_ACCEPTANCE: 'primary', COMPLETED: 'success',
+  CANCELLED: 'info', CLOSED: 'info'
+}
+function statusLabel(s) { return STATUS_LABEL[s] || s }
+const PRIORITY_LABEL = { HIGH: '高', MEDIUM: '中', LOW: '低' }
+const PRIORITY_TYPE = { HIGH: 'danger', MEDIUM: 'warning', LOW: 'info' }
+function priorityLabel(p) { return PRIORITY_LABEL[p] || p }
+
 const canDone = computed(() => {
   return detailFlows.value.some(f => f.remark && f.remark !== '提交工单' && f.operator_id === userStore.userId)
 })
 
-function statusTagType(s) {
-  const map = {
-    '待处理': 'warning', '处理中': 'primary', '待补充': 'info',
-    '待外部': 'info', '待验收': 'primary', '已完成': 'success', '已取消': 'info'
-  }
-  return map[s] || 'info'
-}
+function statusTagType(s) { return STATUS_TYPE[s] || 'info' }
 
-function priorityTagType(p) {
-  const map = { '高': 'danger', '中': 'warning', '低': 'info' }
-  return map[p] || 'info'
-}
+function priorityTagType(p) { return PRIORITY_TYPE[p] || 'info' }
 
 function flowTimelineType(status) {
   const map = {
-    '已完成': 'success', '待验收': 'primary', '处理中': 'primary',
-    '待处理': 'warning', '已取消': 'info'
+    COMPLETED: 'success', PENDING_ACCEPTANCE: 'primary', IN_PROGRESS: 'primary',
+    NEW: 'warning', ASSIGNED: 'primary', CANCELLED: 'info', CLOSED: 'info'
   }
   return map[status] || 'primary'
 }
@@ -240,28 +303,44 @@ async function loadTickets() {
   } catch (e) { console.error(e) }
 }
 
-async function claimTicket(t) {
-  try {
-    await ticketApi.claim(t.ticket_id)
-    ElMessage.success('领取成功')
-    await loadTickets()
-  } catch (e) {
-    ElMessage.error('领取失败：' + e.message)
-    loadTickets()
-  }
+// 接单矩阵确认弹窗
+const claimDialogVisible = ref(false)
+const claiming = ref(false)
+const claimTarget = ref(null)
+const claimForm = ref({ impact_scope: '', urgency_level: '' })
+
+// 影响×紧急矩阵 → 优先级（与后端 PriorityMatrix 一致，仅作预览）
+const claimPriority = computed(() => {
+  const s = claimForm.value.impact_scope, u = claimForm.value.urgency_level
+  if (!s || !u) return ''
+  const score = { SINGLE: 1, DEPARTMENT: 2, CROSS_DEPT: 3 }[s] + { LOW: 1, MEDIUM: 2, HIGH: 3 }[u]
+  return score >= 5 ? 'HIGH' : score >= 4 ? 'MEDIUM' : 'LOW'
+})
+
+function openClaimDialog(t) {
+  claimTarget.value = t
+  claimForm.value = { impact_scope: '', urgency_level: '' }
+  claimDialogVisible.value = true
 }
 
-async function claimCurrent() {
-  actionError.value = ''
-  const id = detail.value.ticket_id
+async function confirmClaim() {
+  if (!claimTarget.value) return
+  claiming.value = true
   try {
-    await ticketApi.claim(id)
-    ElMessage.success('领取成功')
+    await ticketApi.claim(claimTarget.value.ticket_id, {
+      impact_scope: claimForm.value.impact_scope,
+      urgency_level: claimForm.value.urgency_level
+    })
+    ElMessage.success(`接单成功，优先级：${priorityLabel(claimPriority.value)}`)
+    claimDialogVisible.value = false
     await loadTickets()
-    await openDetail({ ticket_id: id })
+    if (detailVisible.value && detail.value?.ticket_id === claimTarget.value.ticket_id) {
+      await openDetail({ ticket_id: claimTarget.value.ticket_id })
+    }
   } catch (e) {
-    actionError.value = e.message
-    loadTickets()
+    ElMessage.error('接单失败：' + e.message)
+  } finally {
+    claiming.value = false
   }
 }
 
@@ -312,11 +391,22 @@ async function doAction(action) {
   } catch (e) { actionError.value = e.message }
 }
 
-onMounted(() => {
-  loadTickets()
+const route = useRoute()
+
+onMounted(async () => {
+  await loadTickets()
+  // 通知跳转：URL 带 ?ticket=xxx 时自动打开该工单详情
+  if (route.query.ticket) {
+    openDetail({ ticket_id: route.query.ticket })
+  }
   pollTimer = setInterval(loadTickets, 15000)
 })
 onUnmounted(() => clearInterval(pollTimer))
+
+// 同页点击通知只改 query，组件不重挂载——watch query 变化自动打开详情
+watch(() => route.query.ticket, (tid) => {
+  if (tid) openDetail({ ticket_id: tid })
+})
 
 watch(() => userStore.userId, (id) => {
   allTickets.value = []
