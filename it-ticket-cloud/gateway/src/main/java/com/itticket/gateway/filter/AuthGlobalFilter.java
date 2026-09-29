@@ -79,7 +79,7 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
                     if (userInfo == null) {
                         return writeError(exchange, 40101, "用户不存在或已禁用");
                     }
-                    if (!"active".equals(userInfo.getStatus())) {
+                    if (!"ACTIVE".equals(userInfo.getStatus())) {
                         return writeError(exchange, 40101, "用户不存在或已禁用");
                     }
                     // 剥离客户端可能伪造的 X-User-* 头,再注入网关解析出的身份

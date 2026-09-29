@@ -70,7 +70,7 @@ class TicketMergeIntegrationTest {
         assertEquals("CS001", saved.getSourceSessionId());
         assertEquals("key-1", saved.getIdempotencyKey());
         assertEquals("Network", saved.getCategorySnapshot());
-        assertEquals("Connection failed", json.readTree(saved.getFieldSnapshotJson()).get("ai_summary").asText());
+        assertEquals("Connection failed", json.readTree(saved.getFieldDefinitionSnapshot()).get("ai_summary").asText());
         assertNull(saved.getFirstResponseAt());
         assertFalse(outcome.duplicated());
         when(tickets.selectById("TK001")).thenReturn(saved);

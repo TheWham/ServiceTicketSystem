@@ -14,7 +14,7 @@ public class TeamMember {
     private String teamId;
     private String engineerId;
     private LocalDateTime joinedAt;
-    private Boolean enabled;
+    private String status;
     private LocalDateTime leftAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

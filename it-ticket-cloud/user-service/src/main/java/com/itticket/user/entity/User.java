@@ -10,22 +10,20 @@ import java.time.LocalDateTime;
 
 /** 用户表（PRD-Ultimate §20：user_id, employee_no, name, department_id, status, identity_source） */
 @Data
-@TableName("user_account")
+@TableName("`user`")
 public class User {
     @TableId(value = "user_id", type = IdType.INPUT)
     private String userId;
     /** 工号 */
     private String employeeNo;
-    @TableField("display_name")
+    @TableField("name")
     private String name;
     /** 部门 ID */
     private String departmentId;
     /** ACTIVE / DISABLED */
-    private Boolean enabled;
+    private String status;
     private LocalDateTime lastIdentitySyncAt;
     private Long version;
-    public String getStatus() { return Boolean.TRUE.equals(enabled) ? "ACTIVE" : "DISABLED"; }
-    public void setStatus(String status) { enabled = "ACTIVE".equals(status); }
     /** SSO / LOCAL */
     private String identitySource;
     /** BCrypt 哈希（登录过渡用，非 PRD 字段；F-01 企业 SSO 上线后移除） */

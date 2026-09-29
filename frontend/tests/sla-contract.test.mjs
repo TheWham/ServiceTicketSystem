@@ -29,9 +29,10 @@ test('SLA detail recognizes canonical MET and CANCELLED states', async () => {
 })
 
 test('canonical breach timestamps remain visible even after SLA completion', async () => {
-  const c = component('SlaTimer', { status: 'MET', breached_at: '2026-09-29T01:00:00Z' })
+  const c = component('SlaTimer', { status: 'MET', breach_at: '2026-09-29T01:00:00Z', breached_at: '2026-09-28T01:00:00Z' })
   await c.load()
   assert.equal(c.isBreached.value, true)
+  assert.equal(c.breachedAt.value, '2026-09-29T01:00:00Z')
 })
 
 test('breached SLA is visible on the ticket card', async () => {
@@ -45,4 +46,19 @@ test('ticket-card countdown uses the eight-hour service workday', async () => {
   const c = component('SlaBadge', { status: 'RUNNING', remaining_work_seconds: 86400 })
   await c.load()
   assert.equal(c.countdownText.value, '剩 3 工作日')
+})
+
+test('canonical null breach_at overrides stale legacy timestamps in both SLA displays', async () => {
+  for (const name of ['SlaTimer', 'SlaBadge']) {
+    const c = component(name, { status: 'MET', breach_at: null, breached_at: '2026-09-28T01:00:00Z' })
+    await c.load()
+    assert.equal(c.isBreached.value, false, name)
+  }
+})
+
+test('legacy SLA timestamps remain readable when breach_at is absent', async () => {
+  const c = component('SlaTimer', { status: 'MET', breached_at: '2026-09-28T01:00:00Z' })
+  await c.load()
+  assert.equal(c.breachedAt.value, '2026-09-28T01:00:00Z')
+  assert.equal(c.isBreached.value, true)
 })

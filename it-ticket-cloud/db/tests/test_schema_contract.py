@@ -1,3 +1,4 @@
+import hashlib
 import sys
 from pathlib import Path
 import unittest
@@ -10,6 +11,34 @@ class SchemaContractTest(unittest.TestCase):
     def test_baseline_covers_all_canonical_columns_and_indexes(self):
         self.assertEqual(len(validate()),34)
 
+    def test_latest_identity_status_and_snapshot_contract(self):
+        from build_schema import tables, columns
+        actual = tables((DB/'init/00-schema.sql').read_text(encoding='utf-8'))
+        self.assertIn('user', actual)
+        self.assertNotIn('user_account', actual)
+        for table in ('user', 'support_team', 'team_member', 'category'):
+            self.assertIn('status', columns(actual[table]))
+            self.assertNotIn('enabled', columns(actual[table]))
+        self.assertIn('name', columns(actual['user']))
+        for table in ('category', 'ticket_draft'):
+            self.assertIn('ticket_nature', columns(actual[table]))
+        self.assertIn('field_definition_snapshot', columns(actual['ticket']))
+
+    def test_prd_business_field_names(self):
+        from build_schema import tables, columns
+        actual = tables((DB/'init/00-schema.sql').read_text(encoding='utf-8'))
+        for table, names in {'ticket':['nature'], 'consultation':['resolved_type'],
+                'ticket_transition':['event'], 'sla_instance':['ticket_id','breach_at'],
+                'knowledge_version':['content'], 'ai_interaction':['retrieved_versions','latency'],
+                'audit_log':['before_value','after_value']}.items():
+            for name in names:
+                self.assertIn(name, columns(actual[table]), f'{table}.{name}')
+
+    def test_published_migrations_remain_immutable(self):
+        expected = {'V2_0__stage_main_canonical.sql': '879ec56a246664d373808d9286e0550bfb28a2641856705a39243da5f3c70848', 'V2_1__cutover_main_canonical.sql': '59a2dc7690f507ab9a1ad1746bbb00d2044e8fcbf65047537d4c3bd429bfe308'}
+        for name, digest in expected.items():
+            self.assertEqual(hashlib.sha256((DB/'migration'/name).read_bytes()).hexdigest(), digest, name)
+
     def test_gate_rejects_missing_table(self):
         sql = (DB/'init/00-schema.sql').read_text(encoding='utf-8')
         with self.assertRaises(AssertionError):
@@ -18,7 +47,7 @@ class SchemaContractTest(unittest.TestCase):
     def test_gate_rejects_old_ticket_field(self):
         sql = (DB/'init/00-schema.sql').read_text(encoding='utf-8')
         with self.assertRaises(AssertionError):
-            validate(sql.replace('ticket_nature VARCHAR(32)','nature VARCHAR(32)'))
+            validate(sql.replace('nature VARCHAR(32) NOT NULL, category_id','ticket_nature VARCHAR(32) NOT NULL, category_id'))
 
     def test_gate_rejects_lost_draft_unique_key(self):
         sql = (DB/'init/00-schema.sql').read_text(encoding='utf-8')

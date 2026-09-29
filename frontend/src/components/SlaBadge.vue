@@ -20,7 +20,8 @@ const remaining = ref(0) // 剩余工作秒（服务端基准，本地递减）
 let timer = null
 
 // 仅计时中的工单显示徽章（PRD：SLA 只对工作时长计时，暂停/完成/违约不递减）
-const isBreached = computed(() => !!(sla.value?.breached_at || sla.value?.breach_at) || sla.value?.status === 'BREACHED')
+const breachedAt = computed(() => sla.value?.breach_at !== undefined ? sla.value.breach_at : sla.value?.breached_at)
+const isBreached = computed(() => !!breachedAt.value || sla.value?.status === 'BREACHED')
 const showBadge = computed(() => sla.value && (isBreached.value || ['RUNNING', 'PAUSED'].includes(sla.value.status)))
 
 const badgeClass = computed(() => {

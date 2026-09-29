@@ -369,8 +369,8 @@ const tab = ref('create')
 // 末级分类从后端动态加载（PRD §10.1 分类目录）
 const categories = ref([])
 // 按当前工单性质过滤末级分类（PRD §10.1：分类目录按 nature 分组）
-const categoryId = c => c.category_id || c.categoryId
-const categoryNature = c => c.nature || c.ticket_nature || c.ticketNature
+const categoryId = c => c.category_id
+const categoryNature = c => c.ticket_nature
 const filteredCategories = computed(() => categories.value.filter(c => categoryNature(c) === form.value.nature))
 const natures = [
   { value: 'INCIDENT', label: '故障报修' },
@@ -511,7 +511,7 @@ async function submitTicket() {
   lastSubmitAt.value = Date.now()
   try {
     await ticketApi.create({
-      ticket_nature: form.value.nature,
+      nature: form.value.nature,
       category_id: form.value.category_id,
       title: form.value.title.trim(),
       description: form.value.description.trim(),
@@ -589,7 +589,7 @@ function applyDraftPayload(p) {
     impact_description: p.impact_description || '',
     urgency_description: p.urgency_description || '',
     location: p.location || '',
-    contact: p.contact || userStore.currentUser?.display_name || userStore.currentUser?.name || '',
+    contact: p.contact || userStore.currentUser?.name || '',
     asset_id: p.asset_id || ''
   }
   sourceSession.value = p.source_session_id || ''

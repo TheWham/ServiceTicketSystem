@@ -27,11 +27,11 @@ public class KnowledgeHit {
     private String articleId;
     /** knowledge_version.version_id,恒等于文章的 current_version_id */
     private String versionId;
-    /** content_json.$.title */
+    /** content.$.title */
     private String title;
-    /** content_json.$.summary */
+    /** content.$.summary */
     private String summary;
-    /** content_json.$.body */
+    /** content.$.body */
     private String body;
     /** knowledge_article.category_id */
     private String categoryId;

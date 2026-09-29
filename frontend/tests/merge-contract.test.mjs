@@ -43,7 +43,7 @@ test('consultation prefill uses the main category catalog and its ticket nature'
   const { state: c } = employee({ consultationApi: { ticketDraft: async () => ({
     title: 'New account', description: 'Please create an account', category_id: 'C_ACC', convert_allowed: true
   }) } })
-  c.categories.value = [{ categoryId: 'C_ACC', ticketNature: 'SERVICE_REQUEST' }]
+  c.categories.value = [{ category_id: 'C_ACC', ticket_nature: 'SERVICE_REQUEST', status: 'ACTIVE' }]
   await c.loadConsultPrefill('S1')
   assert.equal(c.form.value.category_id, 'C_ACC')
   assert.equal(c.form.value.nature, 'SERVICE_REQUEST')
@@ -61,7 +61,7 @@ test('closed consultation reference is not sent as a new conversion', async () =
 
 test('restoring drafts accepts legacy nature while saving the main contract and source session', () => {
   const { state: c } = employee()
-  c.categories.value = [{ categoryId: 'C_ACC', ticketNature: 'SERVICE_REQUEST' }]
+  c.categories.value = [{ category_id: 'C_ACC', ticket_nature: 'SERVICE_REQUEST', status: 'ACTIVE' }]
   c.applyDraftPayload({ ticket_nature: 'SERVICE_REQUEST', category_id: 'C_ACC', source_session_id: 'S1' })
   assert.equal(c.form.value.nature, 'SERVICE_REQUEST')
   assert.equal(c.draftPayload().ticket_nature, 'SERVICE_REQUEST')
@@ -71,18 +71,21 @@ test('restoring drafts accepts legacy nature while saving the main contract and 
   assert.equal(c.sourceSession.value, '')
 })
 
-test('ticket creation uses the canonical nature and sends idempotency only in headers', async () => {
+test('ticket creation maps draft ticket_nature to ticket nature and keeps idempotency in headers', async () => {
   const { state: c, created, route } = employee()
   c.formRef.value = { validate: async () => true }
-  Object.assign(c.form.value, { nature: 'INCIDENT', category_id: 'C_NET', title: 'Offline',
+  c.applyDraftPayload({ ticket_nature: 'INCIDENT', nature: 'SERVICE_REQUEST' })
+  assert.equal(c.draftPayload().ticket_nature, 'INCIDENT')
+  assert.equal(c.draftPayload().nature, undefined)
+  Object.assign(c.form.value, { category_id: 'C_NET', title: 'Offline',
     description: 'Network is unavailable', impact_description: 'One user', urgency_description: 'Meeting soon' })
   c.sourceSession.value = 'S1'
   c.formToken.value = 'stable-key'
   await c.submitTicket()
   assert.equal(created.length, 1)
   const [body, config] = created[0]
-  assert.equal(body.ticket_nature, 'INCIDENT')
-  assert.equal(body.nature, undefined)
+  assert.equal(body.nature, 'INCIDENT')
+  assert.equal(body.ticket_nature, undefined)
   assert.equal(body.source_session_id, 'S1')
   assert.equal(body.idempotency_key, undefined)
   assert.equal(config.headers['Idempotency-Key'], 'stable-key')
@@ -93,7 +96,7 @@ test('canonical category fields populate consultation conversion', async () => {
   const { state: c } = employee({ consultationApi: { ticketDraft: async () => ({
     category_id: 'C_ACC', convert_allowed: true
   }) } })
-  c.categories.value = [{ category_id: 'C_ACC', nature: 'SERVICE_REQUEST', enabled: true }]
+  c.categories.value = [{ category_id: 'C_ACC', ticket_nature: 'SERVICE_REQUEST', status: 'ACTIVE', nature: 'INCIDENT', enabled: false }]
   await c.loadConsultPrefill('S1')
   assert.equal(c.form.value.category_id, 'C_ACC')
   assert.equal(c.form.value.nature, 'SERVICE_REQUEST')

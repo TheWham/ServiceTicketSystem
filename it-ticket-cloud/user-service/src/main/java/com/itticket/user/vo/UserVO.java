@@ -2,35 +2,30 @@ package com.itticket.user.vo;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import com.itticket.user.entity.User;
 import lombok.Data;
 
-/** 对外输出的用户信息(snake_case,与旧版 SQLite 行字段一致) */
+/** PRD identity projection plus the role used by the current login client. */
 @Data
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class UserVO {
     private String userId;
-    private String name;
-    private String role;
-    private String department;
-    /** 主管账号列表才返回：员工号/账号状态 */
     private String employeeNo;
+    private String name;
+    private String departmentId;
     private String status;
-    @com.fasterxml.jackson.annotation.JsonProperty("display_name")
-    public String displayName() { return name; }
-    public Boolean getEnabled() { return status == null ? true : "ACTIVE".equals(status); }
+    private String identitySource;
+    private String role;
 
-    /** 4 参：登录/派单选择等基础场景 */
-    public UserVO(String userId, String name, String role, String department) {
-        this.userId = userId;
-        this.name = name;
-        this.role = role;
-        this.department = department;
-    }
-
-    /** 6 参：主管账号列表（含员工号/状态） */
-    public UserVO(String userId, String name, String role, String department, String employeeNo, String status) {
-        this(userId, name, role, department);
-        this.employeeNo = employeeNo;
-        this.status = status;
+    public static UserVO from(User user, String role) {
+        UserVO value = new UserVO();
+        value.setUserId(user.getUserId());
+        value.setEmployeeNo(user.getEmployeeNo());
+        value.setName(user.getName());
+        value.setDepartmentId(user.getDepartmentId());
+        value.setStatus(user.getStatus());
+        value.setIdentitySource(user.getIdentitySource());
+        value.setRole(role);
+        return value;
     }
 }

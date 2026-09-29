@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
  */
 @Data
 @TableName("consultation")
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class Consultation {
 
     @TableId(value = "session_id", type = IdType.INPUT)
@@ -25,6 +26,8 @@ public class Consultation {
     private ConsultationStatus status;
     private String currentEngineerId;
     private ConsultationSource source;
+    @com.baomidou.mybatisplus.annotation.TableField("resolved_type")
+    @com.fasterxml.jackson.annotation.JsonProperty("resolved_type")
     private ConsultationResolutionType resolutionType;
     private String convertedTicketId;
     private LocalDateTime closedAt;

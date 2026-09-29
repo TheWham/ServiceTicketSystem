@@ -5,7 +5,7 @@
 | 规范编号 | DM |
 | 技术基线 | Java 17、Spring Boot 3.x、MyBatis/MyBatis-Plus、MySQL 8.x；Redis 仅作队列、序列和缓存 |
 | 权威范围 | Java 领域类型、MyBatis 映射、MySQL 表/约束/事务和版本快照 |
-| 上游需求 | [IT服务工单系统PRD-Ultimate.md](../IT服务工单系统PRD-Ultimate.md) 2.1 |
+| 上游需求 | [IT服务工单系统PRD-Ultimate.md](../IT服务工单系统PRD-Ultimate.md) 2.2 |
 
 本规范是字段、枚举、关系、索引和持久化约束的唯一来源。业务迁移规则见 `SM-*`；AI HTTP DTO 和 JSON Schema 见 `AI-*`；重试、超时和降级见 `RD-*`。其他规范不得复制本规范的字段表或实体定义。
 
@@ -148,7 +148,7 @@ class FieldDefinition {
 }
 ```
 
-`category(parent_id, level, status)` 建索引；`category_route(category_id, route_order)` 唯一；`field_definition(category_id, field_key, definition_version)` 唯一。提交工单必须保存 `field_definition_snapshot JSON`，分类配置更新不得改变历史值。
+`category(parent_id, level, status)` 建索引；`category_route(category_id, route_order,effective_at)` 唯一；`field_definition(category_id, field_key,definition_version)` 唯一。提交工单必须保存 `field_definition_snapshot JSON`，分类配置更新不得改变历史值。
 
 ### 咨询与消息
 
@@ -156,7 +156,7 @@ class FieldDefinition {
 class Consultation {
    String sessionId; String creatorId; String categoryId;
   ConsultationStatus status; String currentEngineerId; ConsultationSource source;
-  ConsultationResolutionType resolutionType; String convertedTicketId;
+  ConsultationResolutionType resolvedType; String convertedTicketId;
   Instant createdAt; Instant closedAt;  Long version;
 }
 class ConsultationMessage {
@@ -174,7 +174,7 @@ AI 消息的 `citation_json` 兼容原引用数组，并支持 `schemaVersion=1`
 
 ```java
 class Ticket {
-   String ticketId; String creatorId; TicketNature ticketNature; String categoryId;
+   String ticketId; String creatorId; TicketNature nature; String categoryId;
   String title; String description; String impactDescription; String urgencyDescription;
   String location; String contact; String assetId; TicketStatus status; Priority priority;
   String assigneeId; String sourceSessionId; String fieldDefinitionSnapshot;
@@ -182,7 +182,11 @@ class Ticket {
 }
 class TicketTransition {
    String transitionId; String ticketId; TicketStatus fromStatus; TicketStatus toStatus;
-  String eventCode; String operatorId; String reason; Instant occurredAt;
+  String event; String operatorId; String reason; Instant occurredAt;
+}
+class TicketFieldValue {
+   String ticketId; String fieldDefinitionId; String fieldKey;
+  String fieldDefinitionSnapshot; String fieldValue; String definitionVersion; Instant createdAt;
 }
 class TicketMessage {
    String messageId; String ticketId; String senderId; MessageSenderType senderType;
@@ -211,7 +215,7 @@ class TicketAcceptance {
 }
 class Attachment {
    String attachmentId; AttachmentBizType bizType; String bizId; String uploaderId;
-  String objectKey; String originalName; long sizeBytes; String sha256;
+  String objectKey; String fileName; long size; String hash;
   String contentType; AttachmentScanStatus scanStatus; Instant uploadedAt; Instant withdrawnAt;
 }
 class AttachmentAccess {
@@ -220,7 +224,7 @@ class AttachmentAccess {
 }
 ```
 
-约束：`ticket(title, category_id, created_at)`、`ticket(creator_id, status)`、`ticket(assignee_id, status)`、`ticket(priority, status)` 建索引；`ticket_transition(ticket_id, occurred_at, transition_id)` 唯一排序；消息按业务对象与 `client_message_id` 唯一；`attachment(biz_type, biz_id, sha256)` 唯一；`attachment_access(attachment_id, subject_id, expires_at)` 建索引并追加记录每次访问结果。
+约束：`ticket(title, category_id, created_at)`、`ticket(creator_id, status)`、`ticket(assignee_id, status)`、`ticket(priority, status)` 建索引；`ticket_transition(ticket_id, occurred_at, transition_id)` 唯一排序；消息按业务对象与 `client_message_id` 唯一；`attachment(biz_type, biz_id, hash)` 唯一；`attachment_access(attachment_id, subject_id, expires_at)` 建索引并追加记录每次访问结果。
 
 ### 分配、SLA、通知和审计
 
@@ -230,9 +234,9 @@ class Assignment {
   Instant assignedAt; Instant responseDeadline; Instant respondedAt; AssignmentEndReason endReason;
 }
 class SlaInstance {
-   String slaId; AssignmentBizType bizType; String bizId; SlaType slaType; SlaStatus status;
+   String slaId; String ticketId; AssignmentBizType bizType; String bizId; SlaType slaType; SlaStatus status;
   long targetWorkSeconds; long elapsedWorkSeconds; long pausedSeconds;
-  Instant targetAt; Instant breachedAt; Instant metAt; String calendarId; long calendarVersion;
+  Instant targetAt; Instant breachAt; Instant metAt; String calendarId; long calendarVersion;
 }
 class SlaPause {  String pauseId; String slaId; SlaPauseReason reasonType; Instant startedAt; Instant endedAt; String operatorId; }
 class Notification {
@@ -242,19 +246,21 @@ class Notification {
 }
 class AuditLog {
    String auditId; String actorId; String action; String objectType; String objectId;
-  String beforeJson; String afterJson; String reason; String requestId; Instant occurredAt;
+  String beforeValue; String afterValue; String reason; String requestId; Instant occurredAt;
 }
 ```
 
 `assignment(biz_type, biz_id, engineer_id, assigned_at)`、`sla_instance(biz_type, biz_id, sla_type)` 唯一；`sla_pause(sla_id, started_at)`；`notification(dedup_key)` 唯一；`audit_log(object_type, object_id, occurred_at)` 和 `audit_log(actor_id, occurred_at)` 建索引。审计表只允许追加。
 
-`ticket_draft(creator_id)` 唯一保证每位员工只有一个活动草稿；`supplement_request(ticket_id, sequence_no)` 唯一；`external_wait(ticket_id, started_at)`；`ticket_resolution(ticket_id, submitted_at)`；`ticket_acceptance(ticket_id, occurred_at)`；`idempotency_record(owner_id, operation, key)` 唯一；`outbox_event(status, next_attempt_at)` 建索引。草稿可更新，补充、等待、解决方案和验收记录只追加。
+字段语义对齐 PRD20.1：`SlaInstance.ticketId` 仅工单实例非空并等于 `bizId`，咨询实例为空；`bizType/bizId` 保持共享表隔离。`KnowledgeVersion.content`、`CaseCandidate.structuredContent`、`AiInteraction.retrievedVersions`、`AuditLog.beforeValue/afterValue` 和工单字段快照/值采用 JSON 持久化；示意代码的 String 只是传输表示，不能把业务列改名为 `_json`。`AiInteraction.latency` 单位毫秒。技术元数据不替代 PRD 字段。
+
+`ticket_draft(creator_id)` 唯一保证每位员工只有一个活动草稿；`supplement_request(ticket_id, sequence_no)` 唯一；`external_wait(ticket_id, started_at)`；`ticket_resolution(ticket_id, submitted_at)`；`ticket_acceptance(ticket_id, occurred_at)`；`idempotency_record(owner_id, operation, idempotency_key)` 唯一；`outbox_event(status, next_attempt_at)` 建索引。草稿可更新，补充、等待、解决方案和验收记录只追加。
 
 ### 案例、知识和 AI 持久化对象
 
 ```java
 class CaseCandidate {
-   String caseId; CaseSourceType sourceType; String sourceId; String structuredContentJson;
+   String caseId; CaseSourceType sourceType; String sourceId; String structuredContent;
   MaskingStatus maskingStatus; boolean reusableFlag; CaseStatus status; Instant createdAt;
 }
 class KnowledgeArticle {
@@ -262,14 +268,14 @@ class KnowledgeArticle {
   KnowledgeRiskLevel riskLevel;  Long version;
 }
 class KnowledgeVersion {
-   String versionId; String articleId; int versionNo; String contentJson;
+   String versionId; String articleId; int versionNo; String content;
   String authorId; String reviewerId; Instant publishedAt; String changeNote;
   String platformReviewerId; Instant platformReviewedAt; String platformReviewDecision;
 }
 class KnowledgeCluster {  String clusterId; String similarityBasis; KnowledgeClusterStatus status; }
 class AiInteraction {
-   String interactionId; String sessionId; String modelVersion; String retrievedVersionsJson;
-  BigDecimal confidence; AiFeedbackType feedback; long latencyMs; Instant occurredAt;
+   String interactionId; String sessionId; String modelVersion; String retrievedVersions;
+  BigDecimal confidence; AiFeedbackType feedback; long latency; Instant occurredAt;
 }
 class AiProviderConfig {
    String providerConfigId; String providerId; long configVersion; String status;
@@ -283,7 +289,7 @@ class RagIndexPointer {
   String status; long version; Instant activatedAt; Instant offlinedAt;
 }
 class IdempotencyRecord {
-   String recordId; String ownerId; String operation; String key;
+   String recordId; String ownerId; String operation; String idempotencyKey;
   String requestHash; IdempotencyStatus status; String resultJson;
   Instant createdAt; Instant expiresAt;
 }
@@ -293,7 +299,7 @@ class OutboxEvent {
 }
 ```
 
-`TicketTransition.eventCode` 保存 `DOMAIN_ACTION` 业务动作码（例如 `TICKET_ACCEPT`）；`OutboxEvent.eventType` 保存 `SCREAMING_SNAKE_CASE` 领域事实事件类型（例如 `TICKET_RESPONDED`）。禁止把动作码写入 `event_type`，也禁止用领域事实事件类型替代流转动作码。
+`TicketTransition.event` 保存 `DOMAIN_ACTION` 业务动作码（例如 `TICKET_ACCEPT`）；`OutboxEvent.eventType` 保存 `SCREAMING_SNAKE_CASE` 领域事实事件类型（例如 `TICKET_RESPONDED`）。禁止把动作码写入 `event_type`，也禁止用领域事实事件类型替代流转动作码。
 
 知识版本使用 `(article_id, version_no)` 唯一；`PUBLISHED` 只能有一个当前版本；RAG 索引版本必须可追溯到 `knowledge_version.version_id`。`AiInteraction` 只保存审计、反馈和引用元数据，不作为训练语料自动发布。`ai_provider_config(provider_id, config_version)` 唯一且同一 provider 只允许一个 ACTIVE 版本；`rag_index_pointer(knowledge_version_id)` 唯一，且按 `article_id` 通过 active 指针唯一索引保证同一文章只有一个 ACTIVE，切换使用 version 乐观锁。Secret 只保存引用。
 

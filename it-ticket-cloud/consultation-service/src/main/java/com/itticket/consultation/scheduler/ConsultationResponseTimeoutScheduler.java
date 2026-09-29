@@ -127,7 +127,7 @@ public class ConsultationResponseTimeoutScheduler {
                 sla.getVersion() + 1,
                 Map.of("sla_id", sla.getSlaId(),
                         "aggregate_id", sessionId,
-                        "breached_at", Times.iso(now)),
+                        "breach_at", Times.iso(now)),
                 "SYSTEM", "SYSTEM");
     }
 

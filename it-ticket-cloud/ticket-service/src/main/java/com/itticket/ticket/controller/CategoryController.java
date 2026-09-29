@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 工单分类查询 —— PRD §10.1 分类目录；提单仅允许选择末级（enabled 且无子节点）。
+ * 工单分类查询 —— PRD §10.1 分类目录；提单仅允许选择末级（ACTIVE 且无子节点）。
  */
 @RestController
 @RequestMapping("/api/v1/categories")
@@ -27,7 +27,7 @@ public class CategoryController {
     @GetMapping
     public Result<List<Category>> list() {
         List<Category> all = categoryMapper.selectList(new QueryWrapper<Category>()
-                .eq("enabled", true).orderByAsc("category_id"));
+                .eq("status", "ACTIVE").orderByAsc("category_id"));
         return Result.ok(all);
     }
 
@@ -35,7 +35,7 @@ public class CategoryController {
     @GetMapping("/leaf")
     public Result<List<Category>> leaf() {
         List<Category> all = categoryMapper.selectList(new QueryWrapper<Category>()
-                .eq("enabled", true));
+                .eq("status", "ACTIVE"));
         java.util.Set<String> parentIds = all.stream()
                 .map(Category::getParentId)
                 .filter(java.util.Objects::nonNull)

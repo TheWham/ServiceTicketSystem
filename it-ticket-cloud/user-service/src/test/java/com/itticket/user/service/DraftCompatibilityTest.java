@@ -18,7 +18,7 @@ class DraftCompatibilityTest {
         existing.setDraftId("draft-1"); existing.setUserId("U_EMP01");
         existing.setPayloadJson("{\"source_session_id\":\"CS001\",\"field_values\":{\"summary\":\"AI summary\"},\"title\":\"old\"}");
         when(mapper.selectOne(any())).thenReturn(existing);
-        DraftRequest req = new DraftRequest(); req.setTitle("Updated"); req.setNature("INCIDENT");
+        DraftRequest req = new DraftRequest(); req.setTitle("Updated"); req.setTicketNature("INCIDENT");
         service.saveDraft("U_EMP01", req);
         var payload = json.readTree(existing.getPayloadJson());
         assertEquals("CS001", payload.get("source_session_id").asText());

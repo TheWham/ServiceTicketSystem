@@ -21,8 +21,7 @@ public class SlaInstance {
     private Long calendarVersion;
     private Long version;
     private LocalDateTime metAt;
-    public String getTicketId() { return bizId; }
-    public void setTicketId(String value) { bizId = value; bizType = "TICKET"; }
+    private String ticketId;
     /** RESPONSE / COMPLETION */
     private String slaType;
     private String prioritySnapshot;
@@ -34,7 +33,7 @@ public class SlaInstance {
     /** 80% 提醒标记 */
     private Integer nearBreachNotified;
     /** 违约时间（不可删除 §11.2） */
-    @TableField("breached_at")
+    @TableField("breach_at")
     private LocalDateTime breachAt;
     /** RUNNING / PAUSED / MET / BREACHED / CANCELLED */
     private String status;

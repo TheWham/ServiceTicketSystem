@@ -20,14 +20,14 @@ class TicketDraftCompatibilityTest {
     private TicketDraft draft() {
         TicketDraft draft = new TicketDraft();
         draft.setDraftId("old-draft"); draft.setCreatorId(user.getUserId());
-        draft.setNature("INCIDENT"); draft.setTitle("Original title");
+        draft.setTicketNature("INCIDENT"); draft.setTitle("Original title");
         return draft;
     }
 
     @Test void loadsColumnBasedDraftFromMainWithoutLosingFields() {
         when(mapper.selectById("old-draft")).thenReturn(draft());
         var loaded = service.load(user, "old-draft");
-        assertEquals("INCIDENT", loaded.payload().get("nature"));
+        assertEquals("INCIDENT", loaded.payload().get("ticket_nature"));
         assertEquals("Original title", loaded.payload().get("title"));
     }
 
@@ -51,5 +51,23 @@ class TicketDraftCompatibilityTest {
         assertNull(service.load(user, "old-draft"));
         service.delete(user, "old-draft");
         verify(mapper, never()).deleteById(anyString());
+    }
+
+    @Test void canonicalDraftNatureWinsAndLegacyPayloadIsNormalized() {
+        TicketDraft existing = draft();
+        when(mapper.selectOne(any())).thenReturn(existing);
+        SaveDraftRequest request = new SaveDraftRequest();
+        request.setPayload(Map.of("ticket_nature", "SERVICE_REQUEST", "nature", "INCIDENT", "title", "Updated"));
+        var saved = service.save(user, "old-draft", request);
+        assertEquals("SERVICE_REQUEST", existing.getTicketNature());
+        assertEquals("SERVICE_REQUEST", saved.payload().get("ticket_nature"));
+        assertFalse(saved.payload().containsKey("nature"));
+
+        existing.setPayloadJson("{\"nature\":\"INCIDENT\",\"source_session_id\":\"CS001\"}");
+        when(mapper.selectById("old-draft")).thenReturn(existing);
+        var loaded = service.load(user, "old-draft");
+        assertEquals("INCIDENT", loaded.payload().get("ticket_nature"));
+        assertEquals("CS001", loaded.payload().get("source_session_id"));
+        assertFalse(loaded.payload().containsKey("nature"));
     }
 }

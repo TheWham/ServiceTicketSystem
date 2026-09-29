@@ -17,10 +17,10 @@
           :class="{ selected: selectedId === user.user_id }"
           @click="selectedId = user.user_id"
         >
-          <el-avatar :size="40" class="avatar">{{ (user.display_name || user.name || '?')[0] }}</el-avatar>
+          <el-avatar :size="40" class="avatar">{{ (user.name || '?')[0] }}</el-avatar>
           <div class="info">
-            <div class="name">{{ user.display_name || user.name }}</div>
-            <div class="meta">{{ user.department }} · {{ roleMap[user.role] }}</div>
+            <div class="name">{{ user.name }}</div>
+            <div class="meta">{{ user.department_id }} · {{ roleMap[user.role] }}</div>
           </div>
           <el-tag :type="roleTagType(user.role)" size="small" effect="dark">
             {{ roleMap[user.role] }}
@@ -76,16 +76,16 @@
         title="请输入账号信息进行身份验证，验证通过后可设置新密码" />
       <el-form :model="forgotForm" label-width="90px" class="forgot-form">
         <el-form-item label="用户ID" required>
-          <el-input v-model="forgotForm.userId" placeholder="如 U_EMP01" />
+          <el-input v-model="forgotForm.user_id" placeholder="如 U_EMP01" />
         </el-form-item>
         <el-form-item label="姓名" required>
-          <el-input v-model="forgotForm.display_name" placeholder="请输入姓名" />
+          <el-input v-model="forgotForm.name" placeholder="请输入姓名" />
         </el-form-item>
         <el-form-item label="员工号" required>
-          <el-input v-model="forgotForm.employeeNo" placeholder="如 E1001" />
+          <el-input v-model="forgotForm.employee_no" placeholder="如 E1001" />
         </el-form-item>
         <el-form-item label="新密码" required>
-          <el-input v-model="forgotForm.newPassword" type="password" show-password
+          <el-input v-model="forgotForm.new_password" type="password" show-password
             placeholder="6-32位，含字母和数字" />
         </el-form-item>
       </el-form>
@@ -120,11 +120,11 @@ const userStore = useUserStore()
 // 忘记密码
 const forgotVisible = ref(false)
 const forgotLoading = ref(false)
-const forgotForm = ref({ userId: '', display_name: '', employeeNo: '', newPassword: '' })
+const forgotForm = ref({ user_id: '', name: '', employee_no: '', new_password: '' })
 
 async function doForgot() {
   const f = forgotForm.value
-  if (!f.userId || !f.display_name || !f.employeeNo || !f.newPassword) {
+  if (!f.user_id || !f.name || !f.employee_no || !f.new_password) {
     ElMessage.warning('请填写完整的身份验证信息和新密码')
     return
   }
@@ -133,7 +133,7 @@ async function doForgot() {
     await userApi.forgotPassword(f)
     ElMessage.success('密码已重置，请使用新密码登录')
     forgotVisible.value = false
-    forgotForm.value = { userId: '', display_name: '', employeeNo: '', newPassword: '' }
+    forgotForm.value = { user_id: '', name: '', employee_no: '', new_password: '' }
     password.value = ''
   } catch (e) {
     ElMessage.error(e.message || '重置失败')
@@ -159,9 +159,9 @@ async function doLogin() {
       loginError.value = '请选择登录身份'
       return
     }
-    const res = await userApi.login({ userId: selectedId.value, password: password.value })
+    const res = await userApi.login({ user_id: selectedId.value, password: password.value })
     userStore.setLogin(res.data.user, res.data.token)
-    ElMessage.success(`欢迎，${userStore.currentUser.display_name}`)
+    ElMessage.success(`欢迎，${userStore.currentUser.name}`)
     const roleRoute = { EMPLOYEE: '/employee', ENGINEER: '/engineer', PLATFORM_ADMIN: '/supervisor', KNOWLEDGE_ADMIN: '/knowledge' }
     router.push(roleRoute[userStore.currentUser.role] || '/employee')
   } catch (e) {

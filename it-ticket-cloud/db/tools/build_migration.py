@@ -2,12 +2,14 @@
 
 This generator is offline. It neither discovers database servers nor executes SQL.
 """
-from build_schema import DB, tables, columns, canonical, IMPLEMENTED
+from build_schema import DB, tables, columns
 import hashlib
 import re
 
 OLD = tables((DB / 'tests/fixtures/main-388f51d-schema.sql').read_text(encoding='utf-8'))
-NEW = {name:ddl for name,ddl in canonical().items() if name in IMPLEMENTED}
+# Published V2_0/V2_1 target is frozen at 470ce57, never current specs.
+DEFERRED = set('attachment case_candidate category_field_def engineer_status_log knowledge_cluster ticket_field_value ticket_message work_calendar'.split())
+NEW = {name: ddl for name, ddl in tables((DB/'tests/fixtures/canonical-470ce57-schema.sql').read_text(encoding='utf-8')).items() if name not in DEFERRED}
 SOURCE = {name: name for name in NEW if name in OLD}
 SOURCE.update(user_account='user')
 Q = lambda name: '`' + name + '`'

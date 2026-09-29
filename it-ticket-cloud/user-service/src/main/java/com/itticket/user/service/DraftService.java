@@ -35,7 +35,7 @@ public class DraftService {
         DraftVO vo = new DraftVO();
         vo.setDraftId(draft.getDraftId());
         vo.setUserId(draft.getUserId());
-        vo.setNature(draft.getNature());
+        vo.setTicketNature(draft.getTicketNature());
         vo.setCategoryId(draft.getCategoryId());
         vo.setTitle(draft.getTitle());
         vo.setDescription(draft.getDescription());
@@ -70,7 +70,7 @@ public class DraftService {
     }
 
     private void applyFields(TicketDraft draft, DraftRequest req) {
-        draft.setNature(req.getNature());
+        draft.setTicketNature(req.getTicketNature());
         draft.setCategoryId(req.getCategoryId());
         draft.setTitle(req.getTitle());
         draft.setDescription(req.getDescription());
@@ -83,8 +83,8 @@ public class DraftService {
         try {
             payload = draft.getPayloadJson() == null ? new LinkedHashMap<>()
                     : objectMapper.readValue(draft.getPayloadJson(), new TypeReference<Map<String, Object>>() {});
-            payload.put("nature", req.getNature());
-            payload.remove("ticket_nature");
+            payload.put("ticket_nature", req.getTicketNature());
+            payload.remove("nature");
             payload.put("category_id", req.getCategoryId());
             payload.put("title", req.getTitle());
             payload.put("description", req.getDescription());

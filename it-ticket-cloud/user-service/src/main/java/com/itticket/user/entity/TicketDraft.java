@@ -19,7 +19,7 @@ public class TicketDraft {
     private String userId;
     /** INCIDENT / REQUEST */
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
-    private String nature;
+    private String ticketNature;
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String categoryId;
     @TableField(updateStrategy = FieldStrategy.ALWAYS)

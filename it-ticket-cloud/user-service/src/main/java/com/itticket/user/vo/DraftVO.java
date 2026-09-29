@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 public class DraftVO {
     private String draftId;
     private String userId;
-    private String nature;
+    private String ticketNature;
     private String categoryId;
     private String title;
     private String description;

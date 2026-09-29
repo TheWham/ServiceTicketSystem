@@ -13,11 +13,11 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 class CanonicalUserTest {
  @Test void canonicalUserAndDraftMappingPreserveLegacyDisplay() throws Exception {
-  assertEquals("user_account",User.class.getAnnotation(TableName.class).value());
-  assertEquals("display_name",User.class.getDeclaredField("name").getAnnotation(TableField.class).value());
+  assertEquals("`user`",User.class.getAnnotation(TableName.class).value());
+  assertEquals("name",User.class.getDeclaredField("name").getAnnotation(TableField.class).value());
   assertEquals("creator_id",TicketDraft.class.getDeclaredField("userId").getAnnotation(TableField.class).value());
-  User user=new User();user.setEnabled(true); assertEquals("ACTIVE",user.getStatus());
-  user.setStatus("DISABLED");assertFalse(user.getEnabled());
+  User user=new User();user.setStatus("ACTIVE"); assertEquals("ACTIVE",user.getStatus());
+  user.setStatus("DISABLED");assertEquals("DISABLED",user.getStatus());
  }
  @Test void knowledgeAdministratorCannotManageAccounts() {
   UserService service=new UserService(mock(UserMapper.class),mock(UserRoleMapper.class),mock(BCryptPasswordEncoder.class),new JwtProperties());
@@ -26,7 +26,7 @@ class CanonicalUserTest {
  }
  @Test void unknownStoredRoleCannotAuthenticateAsEmployee() {
   UserMapper users=mock(UserMapper.class);UserRoleMapper roles=mock(UserRoleMapper.class);BCryptPasswordEncoder passwords=mock(BCryptPasswordEncoder.class);
-  User user=new User();user.setUserId("U01");user.setEnabled(true);user.setPasswordHash("hash");
+  User user=new User();user.setUserId("U01");user.setStatus("ACTIVE");user.setPasswordHash("hash");
   UserRoleEntity role=new UserRoleEntity();role.setRoleCode("UNKNOWN");
   when(users.selectById("U01")).thenReturn(user);when(roles.selectOne(any())).thenReturn(role);when(passwords.matches("secret","hash")).thenReturn(true);
   LoginRequest request=new LoginRequest();request.setUserId("U01");request.setPassword("secret");

@@ -47,7 +47,7 @@ it-ticket-system/
 │   ├── tests/                # pytest 测试套件(含 TC-10 注入防护)
 │   ├── scripts/              # 评测执行脚本
 │   └── reports/              # 评测报告输出
-├── docs/IT服务工单系统PRD-Ultimate.md # 当前产品需求基线（2.1）
+├── docs/IT服务工单系统PRD-Ultimate.md # 当前产品需求基线（2.2）
 ├── docs/specs/               # 数据字段、接口、SQL 和实现差异清单
 └── README.md                 # 本文档
 ```

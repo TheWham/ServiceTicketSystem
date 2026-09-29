@@ -1,4 +1,54 @@
-# main 与规范字段差异及本次单库对齐范围
+# main 与 PRD 字段对齐及单库升级范围
+
+## 当前裁定：PRD 2.2 业务名称优先，规范补充类型和技术字段
+
+本节替代下方 470ce57 历史记录中的字段裁定。用户在 a99ab6a 更新规范后，进一步要求整套 PRD/spec 强对齐；不能继续把旧 SQL 名称当作业务命名权威。已实现模块按 PRD 第 20 节业务字典同步运行 DDL、Java、查询、DTO 与 OpenAPI。技术字段、UTC/DATETIME(6)、强类型、版本与索引继续由 DM/SQL 补充。
+
+当前运行表仍为 **34 张：26 张已实现模块表 + 8 张未开发 main 原表**。身份表现在是 `user`，没有新增身份实体；本次没有把 SQL-009 的完整 41 表模板全部发布。
+
+本轮最终应用验证：后端 **221** 项、前端 **41** 项、文档一致性 **5** 项、SQL静态 **10** 项测试通过，后端打包/前端构建通过。三个业务服务与网关在独立本机端口连接临时库，验证完整用户投影、禁用账号、分类、草稿互通、工单幂等与转单回调、SLA、通知、知识JSON检索、AI审计和咨询结果。禁用工程师即使保留 AVAILABLE 在线状态，也不能被普通分配或恢复咨询选中；用户服务失败时工单路由不放行未知状态候选。该验证不代表现有业务数据库已执行升级。
+
+运行范围依据当前父 POM、网关路由和前端路由确定。`60be231` 合入的独立 `ai-service`、`AiChatPanel.vue`、`AgentWorkbenchView.vue` 尚未接入当前 reactor/主路由；本轮保留这些业务代码，不自动启用第二套聊天或知识表。唯一配置清理是移除此前提交中两处明文 API key 默认值，保留原环境变量名；历史泄露凭据需另外撤销更换，不能仅靠改文件消除历史。当前运行的 AI/人工咨询仍由 `consultation-service` 承担。
+
+| 对象 | 470ce57 已发布字段 | 当前 PRD/规范与 V2_2 处理 |
+|---|---|---|
+| 身份 | `user_account.display_name/enabled` | `user.name/status`；1→ACTIVE、0→DISABLED；保留 ID、密码哈希、版本与时间 |
+| 支持组与成员 | `enabled` | `status VARCHAR(32)`；1→ACTIVE、0→DISABLED |
+| 分类 | `nature/enabled` | `ticket_nature/status`；能力表的 `enabled` 保持技术布尔字段 |
+| 工单 | `ticket_nature/field_snapshot_json` | `nature/field_definition_snapshot JSON` |
+| 草稿 | `nature` | `ticket_nature`；JSON 载荷与兼容投影保持 |
+| 咨询 | `resolution_type` | `resolved_type`；已规范化的枚举值不变 |
+| 工单流转 | `event_code` | `event`；仍保存领域动作码，历史 `LEGACY_` 不伪装成新动作 |
+| SLA | `breached_at`、仅通用业务关联 | `breach_at`；新增可空 `ticket_id`，TICKET 时等于 biz_id，CONSULTATION 时为空；通用 biz_type/biz_id 保留 |
+| 知识版本 | `content_json` | `content JSON`；search_text 从该列重新生成，保留 ngram 全文索引 |
+| AI 审计 | `retrieved_versions_json/latency_ms` | `retrieved_versions JSON/latency BIGINT`；引用数组、反馈、置信度与耗时值保留 |
+| 业务审计 | `before_json/after_json` | `before_value/after_value JSON`；保持 JSON 原值 |
+
+未开发运行表 `attachment,case_candidate,category_field_def,engineer_status_log,knowledge_cluster,ticket_field_value,ticket_message,work_calendar` 的 DDL 逐字保持 main-388f51d 快照。spec06 中附件 `file_name/size/hash`、案例 `structured_content JSON`、动态字段 `field_definition_snapshot/field_value JSON` 是未来模板；本次不改这些运行表的列、类型、枚举或数据。
+
+## 新增升级版本及历史不可变性
+
+- 空库直接执行当前 `db/init`，不执行历史升级。
+- 388f51d 安装：按顺序执行冻结的 `V2_0 → V2_1` 到 470ce57，再执行新增 `V2_2__align_prd_field_names.sql`。
+- 已部署 470ce57 安装：仅执行 V2_2，不重跑 V2_0/1，不重新初始化或 seed。
+- V2_0/V2_1 生成器只读取冻结的 `tests/fixtures/canonical-470ce57-schema.sql`，不再读取当前可变 spec。原 main schema/seed 与 470 schema/seed 均保留测试快照。
+- V2_2 要求停写、实名操作人和显式 `@canonical_source_revision='470ce57'`。它检查源列和状态值，将 12 张变更表复制到独立 staging，校验行数后一次原子换名；源表保留为 `legacy_v2_*`，其余表完全不替换。未知 enabled 值或非法 SLA 关联阻断，不猜测、不丢数据、不再次转换 UTC。
+- 切换 DDL 与审计插入并非同一事务；若切换后断连，先核对当前/legacy 表及审计再恢复，不能直接重放。失败时保留诊断和 staging，在恢复副本审核后处理。
+
+历史文件 SHA-256（契约测试强制验证，禁止无声重写）：
+
+| 文件 | SHA-256 |
+|---|---|
+| V2_0__stage_main_canonical.sql | `879ec56a246664d373808d9286e0550bfb28a2641856705a39243da5f3c70848` |
+| V2_1__cutover_main_canonical.sql | `59a2dc7690f507ab9a1ad1746bbb00d2044e8fcbf65047537d4c3bd429bfe308` |
+
+验证命令及恢复边界见 `it-ticket-cloud/db/README.md`。验证只使用本机隔离 MySQL 8.0.43 的新 `schema_test_*` 库；运行测试不意味着真实业务数据库已经执行升级。
+
+2026-09-29 本轮验证：静态契约 **10/10** 通过，重新生成 V2_0/1 后历史 SHA-256 不变；独立 MySQL **11 组**通过。覆盖当前 34 表/seed/元数据/全文搜索、388 完整升级链、470 直接升级、12 张源表保留、UTC 微秒与版本、ACTIVE/DISABLED、SLA 双业务关联、业务动作/咨询结果/AI 反馈枚举、知识/AI/审计 JSON，以及缺时区、未知枚举、缺 SLA 依据、行数漂移和成功版本重放阻断。未开发 8 表在离线 DDL 和真实 MySQL SHOW CREATE TABLE 两层均验证保持不变。
+
+## 历史记录：470ce57 裁定与当时的验证
+
+以下保留上一轮合并的差异证据与验证事实；其中 `user_account/enabled/content_json` 等字段描述仅适用于 470ce57 中间版本，当前命名以上方新裁定为准。它们仍是冻结 V2_0/1 的合法目标，不应为迎合新规范改写历史迁移。
 
 对比基线：`origin/main` 提交 `388f51d`；功能分支 `feature-aicutomer` 提交 `6b14efb`。最终运行数据库为项目现有 SQL 名 `it_ticket_system`。本记录服从用户最后追加要求：**还没写的功能模块的字段暂时先不动**。
 

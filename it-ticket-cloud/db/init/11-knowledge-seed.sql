@@ -11,7 +11,7 @@ VALUES
   ('KA-OLD-MAIL',        'OFFLINE',   'KV-OLD-MAIL-1',        'C_ACC', 'NORMAL', 1, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6));
 
 INSERT INTO knowledge_version
-  (version_id, article_id, version_no, content_json, author_id, reviewer_id, published_at, change_note, created_at, updated_at)
+  (version_id, article_id, version_no, content, author_id, reviewer_id, published_at, change_note, created_at, updated_at)
 VALUES
   ('KV-PRINTER-OFFLINE-1', 'KA-PRINTER-OFFLINE', 1,
    JSON_OBJECT(

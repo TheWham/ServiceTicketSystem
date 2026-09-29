@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 
 /**
  * 知识版本(DM-004)。[LOCAL] 本服务只读。
- * searchText 是 content_json 的数据库生成列,只作检索投影,不参与写入。
+ * searchText 是 content 的数据库生成列,只作检索投影,不参与写入。
  */
 @Data
 @TableName("knowledge_version")
@@ -21,6 +21,8 @@ public class KnowledgeVersion {
     private String articleId;
     private Integer versionNo;
     /** {"title","summary","body","keywords"} */
+    @com.baomidou.mybatisplus.annotation.TableField("content")
+    @com.fasterxml.jackson.annotation.JsonProperty("content")
     private String contentJson;
     /** 数据库生成列,只供全文检索使用;select=false 避免每次读实体都把全文拉回堆内存。 */
     @TableField(select = false,

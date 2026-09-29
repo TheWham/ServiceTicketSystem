@@ -5,14 +5,14 @@ USE it_ticket_system;
 SET NAMES utf8mb4;
 SET time_zone = '+00:00';
 
-CREATE TABLE user_account (
+CREATE TABLE `user` (
  user_id VARCHAR(64) PRIMARY KEY, employee_no VARCHAR(64) NOT NULL,
- display_name VARCHAR(255) NOT NULL, department_id VARCHAR(64) NOT NULL,
- identity_source VARCHAR(64) NOT NULL, enabled TINYINT(1) NOT NULL,
+ name VARCHAR(255) NOT NULL, department_id VARCHAR(64) NOT NULL,
+ status VARCHAR(32) NOT NULL, identity_source VARCHAR(64) NOT NULL,
  last_identity_sync_at DATETIME(6), version BIGINT NOT NULL DEFAULT 0,
  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL,
  UNIQUE KEY uk_user_employee_no(employee_no), KEY idx_user_department(department_id),
- KEY idx_user_enabled(enabled),
+ KEY idx_user_status(status),
   password_hash VARCHAR(100) COMMENT 'Compatibility: local BCrypt authentication; remove after SSO rollout'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -24,16 +24,16 @@ CREATE TABLE user_role (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE support_team (
- team_id VARCHAR(64) PRIMARY KEY, name VARCHAR(255) NOT NULL, enabled TINYINT(1) NOT NULL,
+ team_id VARCHAR(64) PRIMARY KEY, name VARCHAR(255) NOT NULL, status VARCHAR(32) NOT NULL,
  version BIGINT NOT NULL DEFAULT 0, created_at DATETIME(6) NOT NULL,
- updated_at DATETIME(6) NOT NULL, UNIQUE KEY uk_team_name(name)
+ updated_at DATETIME(6) NOT NULL, UNIQUE KEY uk_team_name(name), KEY idx_team_status(status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE team_member (
  team_id VARCHAR(64) NOT NULL, engineer_id VARCHAR(64) NOT NULL,
- joined_at DATETIME(6) NOT NULL, left_at DATETIME(6), enabled TINYINT(1) NOT NULL,
+ joined_at DATETIME(6) NOT NULL, left_at DATETIME(6), status VARCHAR(32) NOT NULL,
  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL,
- PRIMARY KEY(team_id,engineer_id), KEY idx_member_engineer(engineer_id,enabled)
+ PRIMARY KEY(team_id,engineer_id), KEY idx_member_engineer(engineer_id,status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE engineer_runtime_state (
@@ -54,10 +54,10 @@ CREATE TABLE engineer_category_capability (
 
 CREATE TABLE category (
  category_id VARCHAR(64) PRIMARY KEY, parent_id VARCHAR(64),
- nature VARCHAR(32) NOT NULL, name VARCHAR(255) NOT NULL, level SMALLINT NOT NULL,
- definition_version VARCHAR(64) NOT NULL, enabled TINYINT(1) NOT NULL,
+ ticket_nature VARCHAR(32) NOT NULL, name VARCHAR(255) NOT NULL, level SMALLINT NOT NULL,
+ definition_version VARCHAR(64) NOT NULL, status VARCHAR(32) NOT NULL,
  version BIGINT NOT NULL DEFAULT 0, created_at DATETIME(6) NOT NULL,
- updated_at DATETIME(6) NOT NULL, KEY idx_category_parent(parent_id,level,enabled)
+ updated_at DATETIME(6) NOT NULL, KEY idx_category_parent(parent_id,level,status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE category_route (
@@ -71,7 +71,7 @@ CREATE TABLE category_route (
 CREATE TABLE consultation (
  session_id VARCHAR(32) PRIMARY KEY, creator_id VARCHAR(64) NOT NULL,
  category_id VARCHAR(64), status VARCHAR(32) NOT NULL, current_engineer_id VARCHAR(64),
- source VARCHAR(32) NOT NULL, resolution_type VARCHAR(32), converted_ticket_id VARCHAR(32),
+ source VARCHAR(32) NOT NULL, resolved_type VARCHAR(32), converted_ticket_id VARCHAR(32),
  closed_at DATETIME(6), version BIGINT NOT NULL DEFAULT 0,
  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL,
  KEY idx_consult_creator(creator_id,status,created_at),
@@ -90,8 +90,8 @@ CREATE TABLE consultation_message (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE ticket_draft (
- draft_id VARCHAR(64) PRIMARY KEY, creator_id VARCHAR(64) NOT NULL,
- nature VARCHAR(32), category_id VARCHAR(64), payload_json JSON NOT NULL,
+  draft_id VARCHAR(64) PRIMARY KEY, creator_id VARCHAR(64) NOT NULL,
+  ticket_nature VARCHAR(32), category_id VARCHAR(64), payload_json JSON NOT NULL,
  last_saved_at DATETIME(6) NOT NULL, expires_at DATETIME(6) NOT NULL,
  version BIGINT NOT NULL DEFAULT 0, created_at DATETIME(6) NOT NULL,
  updated_at DATETIME(6) NOT NULL, UNIQUE KEY uk_active_draft(creator_id),
@@ -115,15 +115,16 @@ CREATE TABLE assignment (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE sla_instance (
- sla_id VARCHAR(64) PRIMARY KEY, biz_type VARCHAR(32) NOT NULL,
+ sla_id VARCHAR(64) PRIMARY KEY, ticket_id VARCHAR(32), biz_type VARCHAR(32) NOT NULL,
  biz_id VARCHAR(64) NOT NULL, sla_type VARCHAR(32) NOT NULL, status VARCHAR(32) NOT NULL,
  target_work_seconds BIGINT NOT NULL, elapsed_work_seconds BIGINT NOT NULL DEFAULT 0,
  paused_seconds BIGINT NOT NULL DEFAULT 0, target_at DATETIME(6),
- breached_at DATETIME(6), met_at DATETIME(6), calendar_id VARCHAR(64) NOT NULL,
+ breach_at DATETIME(6), met_at DATETIME(6), calendar_id VARCHAR(64) NOT NULL,
  calendar_version BIGINT NOT NULL, version BIGINT NOT NULL DEFAULT 0,
  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL,
  UNIQUE KEY uk_sla_business(biz_type,biz_id,sla_type),
  KEY idx_sla_due(status,target_at),
+ KEY idx_sla_ticket(ticket_id),
   priority_snapshot VARCHAR(32),
  near_breach_notified TINYINT(1) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -151,7 +152,7 @@ CREATE TABLE notification (
 CREATE TABLE audit_log (
  audit_id VARCHAR(64) PRIMARY KEY, actor_id VARCHAR(64), action VARCHAR(128) NOT NULL,
  object_type VARCHAR(64) NOT NULL, object_id VARCHAR(64) NOT NULL,
- before_json JSON, after_json JSON, reason VARCHAR(2000), request_id VARCHAR(128) NOT NULL,
+ before_value JSON, after_value JSON, reason VARCHAR(2000), request_id VARCHAR(128) NOT NULL,
  occurred_at DATETIME(6) NOT NULL, created_at DATETIME(6) NOT NULL,
  updated_at DATETIME(6) NOT NULL,
  KEY idx_audit_object(object_type,object_id,occurred_at),
@@ -190,33 +191,33 @@ CREATE TABLE knowledge_article (
 
 CREATE TABLE knowledge_version (
  version_id VARCHAR(64) PRIMARY KEY, article_id VARCHAR(64) NOT NULL,
- version_no INT NOT NULL, content_json JSON NOT NULL, author_id VARCHAR(64) NOT NULL,
+ version_no INT NOT NULL, content JSON NOT NULL, author_id VARCHAR(64) NOT NULL,
  reviewer_id VARCHAR(64), published_at DATETIME(6), change_note VARCHAR(2000),
  platform_reviewer_id VARCHAR(64), platform_reviewed_at DATETIME(6),
  platform_review_decision VARCHAR(32),
  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL,
  UNIQUE KEY uk_knowledge_version(article_id,version_no),
-  search_text TEXT GENERATED ALWAYS AS (CONCAT_WS(' ', JSON_UNQUOTE(JSON_EXTRACT(content_json, '$.title')), JSON_UNQUOTE(JSON_EXTRACT(content_json, '$.summary')), JSON_UNQUOTE(JSON_EXTRACT(content_json, '$.keywords')), JSON_UNQUOTE(JSON_EXTRACT(content_json, '$.body')))) STORED,
+  search_text TEXT GENERATED ALWAYS AS (CONCAT_WS(' ', JSON_UNQUOTE(JSON_EXTRACT(content, '$.title')), JSON_UNQUOTE(JSON_EXTRACT(content, '$.summary')), JSON_UNQUOTE(JSON_EXTRACT(content, '$.keywords')), JSON_UNQUOTE(JSON_EXTRACT(content, '$.body')))) STORED,
  FULLTEXT KEY ft_knowledge_search(search_text) WITH PARSER ngram
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE ai_interaction (
  interaction_id VARCHAR(64) PRIMARY KEY, session_id VARCHAR(32) NOT NULL,
- model_version VARCHAR(128) NOT NULL, retrieved_versions_json JSON NOT NULL,
- confidence DECIMAL(8,4), feedback VARCHAR(32), latency_ms BIGINT NOT NULL,
+ model_version VARCHAR(128) NOT NULL, retrieved_versions JSON NOT NULL,
+ confidence DECIMAL(8,4), feedback VARCHAR(32), latency BIGINT NOT NULL,
  occurred_at DATETIME(6) NOT NULL, created_at DATETIME(6) NOT NULL,
  updated_at DATETIME(6) NOT NULL, KEY idx_ai_session(session_id,occurred_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE ticket (
   ticket_id VARCHAR(32) PRIMARY KEY, creator_id VARCHAR(64) NOT NULL,
-  ticket_nature VARCHAR(32) NOT NULL, category_id VARCHAR(64) NOT NULL,
+  nature VARCHAR(32) NOT NULL, category_id VARCHAR(64) NOT NULL,
   title VARCHAR(100) NOT NULL, description TEXT NOT NULL,
   impact_description TEXT NOT NULL, urgency_description TEXT NOT NULL,
   location VARCHAR(255), contact VARCHAR(255), asset_id VARCHAR(64),
   status VARCHAR(32) NOT NULL, priority VARCHAR(32) NOT NULL,
   assignee_id VARCHAR(64), source_session_id VARCHAR(32),
-  field_snapshot_json JSON, version BIGINT NOT NULL DEFAULT 0,
+  field_definition_snapshot JSON, version BIGINT NOT NULL DEFAULT 0,
   created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL,
   completed_at DATETIME(6), closed_at DATETIME(6),
   KEY idx_ticket_creator_status (creator_id,status),
@@ -241,7 +242,7 @@ CREATE TABLE ticket (
 CREATE TABLE ticket_transition (
   transition_id VARCHAR(64) PRIMARY KEY, ticket_id VARCHAR(32) NOT NULL,
   from_status VARCHAR(32), to_status VARCHAR(32) NOT NULL,
-  event_code VARCHAR(64) NOT NULL, operator_id VARCHAR(64) NOT NULL,
+  event VARCHAR(64) NOT NULL, operator_id VARCHAR(64) NOT NULL,
   reason TEXT, occurred_at DATETIME(6) NOT NULL,
   UNIQUE KEY uk_transition_order (ticket_id,occurred_at,transition_id),
   KEY idx_transition_ticket (ticket_id,occurred_at)

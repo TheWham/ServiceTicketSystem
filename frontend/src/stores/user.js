@@ -8,10 +8,14 @@ const TOKEN_KEY = 'auth_token'
 // Canonical account projection, with compatibility for saved pre-migration sessions.
 function normalizeUser(user) {
   if (!user) return null
+  const { display_name, enabled, department, ...canonical } = user
   return {
-    ...user,
-    display_name: user.display_name || user.name || '',
-    enabled: user.enabled ?? (user.status ? user.status === 'ACTIVE' : true),
+    ...canonical,
+    name: user.name ?? display_name ?? '',
+    status: user.status ?? (enabled === false ? 'DISABLED' : 'ACTIVE'),
+    employee_no: user.employee_no ?? '',
+    department_id: user.department_id ?? department ?? '',
+    identity_source: user.identity_source ?? '',
     role: user.role === 'KB_ADMIN' ? 'KNOWLEDGE_ADMIN' : user.role
   }
 }

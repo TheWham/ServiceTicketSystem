@@ -19,10 +19,7 @@ import java.util.List;
 public class TicketVO {
     private String ticketId;
     private String creatorId;
-    @com.fasterxml.jackson.annotation.JsonProperty("ticket_nature")
     private String nature;
-    @com.fasterxml.jackson.annotation.JsonProperty("nature")
-    public String legacyNature() { return nature; }
     private String categoryId;
     private String categorySnapshot;
     private String title;
@@ -39,7 +36,7 @@ public class TicketVO {
     private String urgencyLevel;
     private String assigneeId;
     private String sourceSessionId;
-    private String fieldSnapshotJson;
+    private String fieldDefinitionSnapshot;
     private Integer autoAccepted;
     private Integer reopenCount;
     private LocalDateTime firstResponseAt;
@@ -77,7 +74,7 @@ public class TicketVO {
         vo.setUrgencyLevel(t.getUrgencyLevel());
         vo.setAssigneeId(t.getAssigneeId());
         vo.setSourceSessionId(t.getSourceSessionId());
-        vo.setFieldSnapshotJson(t.getFieldSnapshotJson());
+        vo.setFieldDefinitionSnapshot(t.getFieldDefinitionSnapshot());
         vo.setAutoAccepted(t.getAutoAccepted());
         vo.setReopenCount(t.getReopenCount());
         vo.setFirstResponseAt(t.getFirstResponseAt());

@@ -8,7 +8,8 @@ import lombok.Data;
 @Data
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class DraftRequest {
-    private String nature;
+    @com.fasterxml.jackson.annotation.JsonAlias("nature")
+    private String ticketNature;
     private String categoryId;
     private String title;
     private String description;

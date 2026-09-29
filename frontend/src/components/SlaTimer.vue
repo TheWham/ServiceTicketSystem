@@ -72,7 +72,7 @@ const priorityLabel = computed(() => ({
   HIGH: '高（4工作小时）', MEDIUM: '中（1工作日）', LOW: '低（3工作日）'
 }[sla.value?.priority_snapshot] || sla.value?.priority_snapshot || '—'))
 
-const breachedAt = computed(() => sla.value?.breached_at || sla.value?.breach_at)
+const breachedAt = computed(() => sla.value?.breach_at !== undefined ? sla.value.breach_at : sla.value?.breached_at)
 const isBreached = computed(() => !!breachedAt.value || sla.value?.status === 'BREACHED')
 const isNear = computed(() => !isBreached.value && sla.value?.status === 'RUNNING' && remaining.value < 3600)
 

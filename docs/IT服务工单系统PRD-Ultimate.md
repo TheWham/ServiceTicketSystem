@@ -2,7 +2,7 @@
 
 | 文档属性   | 内容                         |
 | ------ | -------------------------- |
-| 文档版本   | 2.1（办公 IT 冷启动回答策略修订） |
+| 文档版本   | 2.2（业务字段与 spec 强对齐） |
 | 文档状态   | 已确认，作为一期产品、设计、开发、测试和验收基线   |
 | 更新日期   | 2026-09-29                 |
 | 适用范围   | 单企业、多部门、多 IT 处理团队          |
@@ -688,6 +688,25 @@
 | 审计日志 `audit_log`            | `audit_id, actor_id, action, object_type, object_id, before_value, after_value, reason, occurred_at`                           |
 
 所有业务表须具备创建时间、更新时间和必要的版本字段。历史、审计和知识版本不得依靠覆盖更新保存。
+
+### 20.1 字段一致性与实现补充
+
+第20节表中的业务标识是 SQL 和 HTTP 字段命名依据；字段类型、长度、空值和索引由 DM/SQL 补充，不能通过加 `_json`、改名或布尔替换改变业务标识。Java 可使用 camelCase 或显式列映射；旧版本别名只用于兼容读取，不作为新响应或新表的正式字段。
+
+| 对象 | 统一口径 |
+|---|---|
+| 用户、团队、成员、分类 | `status` 表示业务状态；只有 `ACTIVE` 可用于当前登录/路由，其他或未知值不自动视为启用。用户姓名为 `name`，表为 `user`。工程师能力配置独立的技术开关 `enabled` 保留。 |
+| 工单、分类、草稿 | 工单性质为 `ticket.nature`；分类和草稿的对应字段为 `ticket_nature`。接口转换必须明确区分，不对不同对象全局替换。 |
+| 咨询解决方式 | `resolved_type`；取值 `EMPLOYEE_CONFIRMED/AUTO_RESOLVED`。`converted_ticket_id`、`closed_at`、`version` 是转单与状态迁移所需的补充字段。 |
+| 工单流转 | `event` 保存明确业务动作码，例如 `TICKET_ACCEPT`；不以目标状态替代动作。领域事实事件另用 `event_type`，不能混用。 |
+| SLA | 保留 `ticket_id`、`breach_at`。共享 SLA 表增加 `biz_type/biz_id`：工单实例的 `ticket_id=biz_id`；咨询实例 `ticket_id=NULL`、`biz_id=session_id`。目标工作秒、日历 ID/版本、达成时间和乐观锁为计时元数据。 |
+| 知识、AI、审计 | `content`、`retrieved_versions`、`before_value/after_value` 可用 JSON 类型；类型不改变字段名。`latency` 单位明确为毫秒。 |
+| 工单字段快照 | `field_definition_snapshot` 保存提交时的定义/字段上下文快照；`ticket_field_value.field_value` 保存扩展字段值。已有工单主表快照为提交时投影，不替代尚未开发的动态字段管理。 |
+| 附件、案例 | 规范字段保持 `file_name/size/hash`、`structured_content`。未实现模块本次只统一文档，已有运行表不会仅因文档补充而自动迁移。 |
+
+草稿、幂等、Outbox、服务日历等实现辅助对象由 spec 明确列出；这些元数据允许增加，但须记录用途。单库名称固定 `it_ticket_system`，时间存储 UTC，传输 ISO8601 带时区。
+
+完整字段规范不等于所有模块均已实现。当前实现范围及保留旧表清单见 spec 11；未开发模块使用未来完整契约规划，不能在本轮借字段对齐新建功能或补齐全部运行表。
 
 ## 21. API 与事件约定
 

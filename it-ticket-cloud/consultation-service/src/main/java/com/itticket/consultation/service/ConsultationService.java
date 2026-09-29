@@ -301,7 +301,7 @@ public class ConsultationService {
                 .closedAt(now)
                 .eventPayload(Map.of(
                         "session_id", current.getSessionId(),
-                        "resolution_type", resolutionType.getValue()))
+                        "resolved_type", resolutionType.getValue()))
                 .build());
         slaService.cancel(current.getSessionId());
         return after;

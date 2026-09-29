@@ -35,9 +35,9 @@ public interface KnowledgeQueryMapper {
             <script>
             SELECT a.article_id                                            AS articleId,
                    v.version_id                                            AS versionId,
-                   JSON_UNQUOTE(JSON_EXTRACT(v.content_json, '$.title'))   AS title,
-                   JSON_UNQUOTE(JSON_EXTRACT(v.content_json, '$.summary')) AS summary,
-                   JSON_UNQUOTE(JSON_EXTRACT(v.content_json, '$.body'))    AS body,
+                   JSON_UNQUOTE(JSON_EXTRACT(v.content, '$.title'))   AS title,
+                   JSON_UNQUOTE(JSON_EXTRACT(v.content, '$.summary')) AS summary,
+                   JSON_UNQUOTE(JSON_EXTRACT(v.content, '$.body'))    AS body,
                    a.category_id                                           AS categoryId,
                    MATCH(v.search_text) AGAINST(#{keyword} IN NATURAL LANGUAGE MODE) AS score
               FROM knowledge_article a
@@ -74,9 +74,9 @@ public interface KnowledgeQueryMapper {
             <script>
             SELECT a.article_id                                            AS articleId,
                    v.version_id                                            AS versionId,
-                   JSON_UNQUOTE(JSON_EXTRACT(v.content_json, '$.title'))   AS title,
-                   JSON_UNQUOTE(JSON_EXTRACT(v.content_json, '$.summary')) AS summary,
-                   JSON_UNQUOTE(JSON_EXTRACT(v.content_json, '$.body'))    AS body,
+                   JSON_UNQUOTE(JSON_EXTRACT(v.content, '$.title'))   AS title,
+                   JSON_UNQUOTE(JSON_EXTRACT(v.content, '$.summary')) AS summary,
+                   JSON_UNQUOTE(JSON_EXTRACT(v.content, '$.body'))    AS body,
                    a.category_id                                           AS categoryId,
                    1.0 / ROW_NUMBER() OVER (ORDER BY v.published_at DESC, v.version_id ASC) AS score
               FROM knowledge_article a
@@ -113,8 +113,8 @@ public interface KnowledgeQueryMapper {
             <script>
             SELECT a.article_id                                            AS articleId,
                    v.version_id                                            AS versionId,
-                   JSON_UNQUOTE(JSON_EXTRACT(v.content_json, '$.title'))   AS title,
-                   JSON_UNQUOTE(JSON_EXTRACT(v.content_json, '$.summary')) AS summary,
+                   JSON_UNQUOTE(JSON_EXTRACT(v.content, '$.title'))   AS title,
+                   JSON_UNQUOTE(JSON_EXTRACT(v.content, '$.summary')) AS summary,
                    a.category_id                                           AS categoryId,
             <choose>
               <when test="keyword != null and keyword != ''">

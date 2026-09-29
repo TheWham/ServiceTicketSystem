@@ -8,7 +8,7 @@ const terminal = ['RESOLVED', 'CONVERTED_TO_TICKET', 'CLOSED']
 
 test('consultation applicant labels prefer canonical names and knowledge-admin roles', async () => {
   const { state: c } = component('EngineerConsultation', {}, [{
-    user_id: 'K1', display_name: 'Canonical Name', name: 'Legacy Name', role: 'KNOWLEDGE_ADMIN'
+    user_id: 'K1', name: 'Canonical Name', display_name: 'Legacy Name', role: 'KNOWLEDGE_ADMIN'
   }])
   await c.loadApplicants()
   assert.equal(c.applicantLabel({ creator_id: 'K1' }), 'Canonical Name · 知识库管理员 · K1')

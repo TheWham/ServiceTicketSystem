@@ -42,12 +42,12 @@ itticket:
 # 不配置 api-key 时系统仍可运行:chat 未配置 → 回复提示语;embedding 未配置 → 跳过知识库检索
 ai:
   chat:
-    api-key: ${AI_CHAT_API_KEY:sk-019ebde4f86145dabc77c1ed9a6750bb}
+    api-key: ${AI_CHAT_API_KEY:}
     # DeepSeek 官方 OpenAI 兼容端点;换供应商时整段替换 URL 即可
     url: ${AI_CHAT_URL:https://api.deepseek.com/chat/completions}
     model: ${AI_CHAT_MODEL:deepseek-chat}
   embedding:
-    api-key: ${AI_EMBEDDING_API_KEY:sk-jpwtltusviexhctvelhqywcmlmcaimgjealjbiebhgsqtjjs}
+    api-key: ${AI_EMBEDDING_API_KEY:}
     # 硅基流动 OpenAI 兼容端点,BGE-M3 中文效果好且有免费额度(1024 维)
     url: ${AI_EMBEDDING_URL:https://api.siliconflow.cn/v1/embeddings}
     model: ${AI_EMBEDDING_MODEL:BAAI/bge-m3}

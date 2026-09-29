@@ -42,7 +42,7 @@ public class ApiExceptionHandler {
             case PARAM_INVALID, ASSIGNEE_INVALID -> ApiCode.VALIDATION_ERROR;
             case IDEMPOTENT_CONFLICT -> ApiCode.IDEMPOTENCY_CONFLICT;
             case ILLEGAL_TRANSITION, NOT_CLAIMABLE, ALREADY_CLAIMED -> ApiCode.ILLEGAL_STATE_TRANSITION;
-            case TICKET_NOT_FOUND -> ApiCode.OBJECT_NOT_FOUND;
+            case TICKET_NOT_FOUND, SESSION_NOT_FOUND -> ApiCode.OBJECT_NOT_FOUND;
             case SYSTEM_ERROR -> ApiCode.INTERNAL_ERROR;
         };
         return build(code, code.getDefaultMessage(), null, null);

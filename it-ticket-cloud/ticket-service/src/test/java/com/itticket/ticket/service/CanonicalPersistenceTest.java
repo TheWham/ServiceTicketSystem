@@ -12,9 +12,10 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 class CanonicalPersistenceTest {
  @Test void canonicalColumnsAreExplicitlyMapped() throws Exception {
-  assertEquals("ticket_nature", Ticket.class.getDeclaredField("nature").getAnnotation(TableField.class).value());
-  assertEquals("event_code", TicketFlowLog.class.getDeclaredField("event").getAnnotation(TableField.class).value());
-  assertEquals("breached_at", SlaInstance.class.getDeclaredField("breachAt").getAnnotation(TableField.class).value());
+  assertEquals("nature", Ticket.class.getDeclaredField("nature").getAnnotation(TableField.class).value());
+  assertEquals("event", TicketFlowLog.class.getDeclaredField("event").getAnnotation(TableField.class).value());
+  assertEquals("breach_at", SlaInstance.class.getDeclaredField("breachAt").getAnnotation(TableField.class).value());
+  assertNotNull(SlaInstance.class.getDeclaredField("ticketId"));
  }
  @Test void completionScannerOnlyQueriesTicketSlaInstances() {
   SlaInstanceMapper mapper=mock(SlaInstanceMapper.class);
@@ -34,6 +35,7 @@ class CanonicalPersistenceTest {
   SlaService service=new SlaService(mapper,mock(SlaPauseMapper.class),mock(TicketMapper.class),calendar,mock(NotificationService.class),mock(ExceptionQueueService.class));
   SlaInstance sla=service.startCompletionSla("TK01","MEDIUM",LocalDateTime.of(2026,9,29,1,0));
   assertEquals("TICKET",sla.getBizType()); assertEquals("TK01",sla.getBizId()); assertEquals("TICKET_COMPLETION",sla.getSlaType());
+  assertEquals("TK01",sla.getTicketId());
   assertEquals(28800L,sla.getTargetWorkSeconds()); assertEquals("DEFAULT",sla.getCalendarId()); assertEquals(1L,sla.getCalendarVersion());
  }
 }

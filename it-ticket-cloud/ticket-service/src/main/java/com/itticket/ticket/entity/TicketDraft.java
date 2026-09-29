@@ -19,7 +19,7 @@ public class TicketDraft {
     /** 残缺字段也允许保存(PRD 10.4),payload 的 JSON 序列化 */
     private String payloadJson;
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
-    private String nature;
+    private String ticketNature;
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String categoryId;
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
