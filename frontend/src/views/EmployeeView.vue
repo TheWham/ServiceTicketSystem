@@ -37,6 +37,23 @@
         </template>
       </el-alert>
 
+      <!-- 咨询转工单预填横幅(PRD 9.1:预填标题/分类/描述/会话摘要,员工确认后提交) -->
+      <el-alert v-if="sourceSession" type="info" :closable="false" class="draft-alert">
+        <template #title>
+          🔗 从咨询 {{ sourceSession }} 转入：表单已按会话内容预填，请检查修改后提交；
+          提交成功后咨询将转为正式工单并关联完整上下文。
+        </template>
+      </el-alert>
+
+      <!-- 本地草稿横幅(PRD 10.4:服务端保存失败时暂存浏览器本地,恢复网络后可恢复) -->
+      <el-alert v-if="localDraftBanner" type="warning" :closable="false" class="draft-alert">
+        <template #title>
+          ⚠️ 检测到网络中断时暂存在本地的草稿，
+          <el-link type="primary" @click="restoreLocalDraft">点击恢复</el-link>
+          <el-link type="info" style="margin-left:12px" @click="clearLocalDraft">忽略</el-link>
+        </template>
+      </el-alert>
+
       <el-form
         ref="formRef"
         :model="form"
@@ -48,7 +65,7 @@
         <el-form-item prop="title">
           <template #label>
             工单标题 <span class="required">*</span>
-            <span class="char-count">{{ form.title.length }}/50</span>
+            <span class="char-count">{{ form.title.length }}/100</span>
           </template>
           <el-input
             v-model="form.title"
@@ -60,27 +77,22 @@
         </el-form-item>
 
         <el-row :gutter="16">
-          <!-- 分类 -->
+          <!-- 工单性质(PRD 10.2 必填:INCIDENT/SERVICE_REQUEST) -->
           <el-col :span="12">
-            <el-form-item prop="category" label="问题分类">
-              <el-radio-group v-model="form.category">
-                <el-radio-button v-for="c in categories" :key="c" :value="c">{{ c }}</el-radio-button>
+            <el-form-item prop="ticket_nature" label="工单性质">
+              <el-radio-group v-model="form.ticket_nature">
+                <el-radio-button value="INCIDENT">故障报修</el-radio-button>
+                <el-radio-button value="SERVICE_REQUEST">服务申请</el-radio-button>
               </el-radio-group>
             </el-form-item>
           </el-col>
 
-          <!-- 优先级 -->
+          <!-- 末级分类(PRD 10.1:仅末级可提交工单) -->
           <el-col :span="12">
-            <el-form-item prop="priority" label="优先级">
-              <el-radio-group v-model="form.priority">
-                <el-radio-button value="高">高</el-radio-button>
-                <el-radio-button value="中">中</el-radio-button>
-                <el-radio-button value="低">低</el-radio-button>
-              </el-radio-group>
-              <div v-if="form.priority === '高'" class="priority-hint">
-                <el-icon><WarningFilled /></el-icon>
-                高优先级将同步短信通知，请确认确为紧急故障
-              </div>
+            <el-form-item prop="category_id" label="问题分类">
+              <el-select v-model="form.category_id" placeholder="请选择分类" style="width:100%">
+                <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
@@ -89,34 +101,77 @@
         <el-form-item prop="description">
           <template #label>
             问题描述 <span class="required">*</span>
-            <span class="char-count">{{ form.description.length }}/500</span>
+            <span class="char-count">{{ form.description.length }}/5000</span>
           </template>
           <el-input
             v-model="form.description"
             type="textarea"
             :rows="5"
-            maxlength="500"
+            maxlength="5000"
             show-word-limit
             placeholder="请详细描述问题：何时开始、报错原文、已尝试的操作..."
           />
         </el-form-item>
 
+        <!-- 影响情况(PRD 10.2 必填,供工程师确认影响范围) -->
+        <el-form-item prop="impact_description">
+          <template #label>
+            影响情况 <span class="required">*</span>
+            <span class="char-count">{{ form.impact_description.length }}/2000</span>
+          </template>
+          <el-input
+            v-model="form.impact_description"
+            type="textarea"
+            :rows="2"
+            maxlength="2000"
+            show-word-limit
+            placeholder="影响多少人/哪个部门、是否阻塞业务、有无替代方案..."
+          />
+        </el-form-item>
+
+        <!-- 紧急说明(PRD 10.2 必填,供工程师确认紧急程度) -->
+        <el-form-item prop="urgency_description">
+          <template #label>
+            紧急说明 <span class="required">*</span>
+            <span class="char-count">{{ form.urgency_description.length }}/2000</span>
+          </template>
+          <el-input
+            v-model="form.urgency_description"
+            type="textarea"
+            :rows="2"
+            maxlength="2000"
+            show-word-limit
+            placeholder="为什么紧急、期望何时处理、是否涉及安全或数据风险..."
+          />
+        </el-form-item>
+
         <el-row :gutter="16">
-          <!-- 期望完成时间 -->
-          <el-col :span="12">
-            <el-form-item label="期望完成时间">
-              <el-date-picker
-                v-model="form.expected_finish_time"
-                type="datetime"
-                placeholder="选择期望完成时间（可选）"
-                :disabled-date="disablePastDate"
-                format="YYYY-MM-DD HH:mm"
-                value-format="YYYY-MM-DDTHH:mm"
-                style="width: 100%"
-              />
+          <!-- 办公地点(硬件现场服务建议填写) -->
+          <el-col :span="8">
+            <el-form-item label="办公地点">
+              <el-input v-model="form.location" maxlength="255" placeholder="如：3 号楼 402（选填）" clearable />
+            </el-form-item>
+          </el-col>
+          <!-- 本次联系方式(默认来自身份源) -->
+          <el-col :span="8">
+            <el-form-item label="本次联系方式">
+              <el-input v-model="form.contact" maxlength="255" placeholder="默认取你的姓名，可修改" clearable />
+            </el-form-item>
+          </el-col>
+          <!-- 资产编号(硬件分类建议填写) -->
+          <el-col :span="8">
+            <el-form-item label="资产编号">
+              <el-input v-model="form.asset_id" maxlength="64" placeholder="如：PC-00381（选填）" clearable />
             </el-form-item>
           </el-col>
         </el-row>
+
+        <el-alert type="info" :closable="false" class="priority-note">
+          <template #title>
+            优先级由系统按影响情况和紧急程度矩阵确认（新工单暂按中优先级计时，工程师接单时核定），
+            无需你手动选择。
+          </template>
+        </el-alert>
 
         <!-- 提交区 -->
         <el-form-item>
@@ -307,19 +362,51 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   EditPen, List, WarningFilled, SuccessFilled, CircleCheck, CircleClose
 } from '@element-plus/icons-vue'
 import { ticketApi, draftApi } from '../api/index.js'
+import { consultationApi } from '../api/consultation.js'
 import { useUserStore } from '../stores/user.js'
 
 const userStore = useUserStore()
+const route = useRoute()
+const router = useRouter()
 const tab = ref('create')
-const categories = ['硬件', '软件', '网络', '账号', '其他']
+// 末级分类(it_ticket.ticket_category 种子,PRD 10.1)
+const categories = [
+  { id: 'CAT-HW', name: '硬件' },
+  { id: 'CAT-SW', name: '软件' },
+  { id: 'CAT-NW', name: '网络' },
+  { id: 'CAT-ACCT', name: '账号权限' },
+  { id: 'CAT-OTH', name: '其他' }
+]
 const statuses = ['待处理', '处理中', '待补充', '待外部', '待验收', '已完成', '已取消']
 
-const form = ref({ title: '', category: '', description: '', priority: '中', expected_finish_time: '' })
+// 咨询分类 → 工单末级分类(咨询转工单预填)
+const CONSULT_CATEGORY_MAP = {
+  'CAT-IT-DEVICE': 'CAT-HW',
+  'CAT-IT-NETWORK': 'CAT-NW',
+  'CAT-IT-ACCOUNT': 'CAT-ACCT'
+}
+
+function emptyForm() {
+  return {
+    ticket_nature: 'INCIDENT',
+    category_id: '',
+    title: '',
+    description: '',
+    impact_description: '',
+    urgency_description: '',
+    location: '',
+    contact: userStore.currentUser?.name || '',
+    asset_id: ''
+  }
+}
+
+const form = ref(emptyForm())
 const formRef = ref(null)
 const submitting = ref(false)
 const draftBanner = ref(false)
@@ -327,17 +414,32 @@ const draftSaved = ref(false)
 const draftTime = ref('')
 let draftTimer = null
 
-// Element Plus 表单校验规则（保留原有校验语义）
+// 咨询转工单:来源会话(PRD 9.1,提交时写入 source_session_id)
+const sourceSession = ref('')
+// 本地草稿横幅(PRD 10.4:服务端保存失败时暂存浏览器本地)
+const localDraftBanner = ref(false)
+const LOCAL_DRAFT_KEY = 'ticket_draft_local'
+
+// Element Plus 表单校验规则(spec 05 TicketCreate:必填六项 + 长度约束)
 const formRules = {
+  ticket_nature: [{ required: true, message: '请选择工单性质', trigger: 'change' }],
+  category_id: [{ required: true, message: '请选择问题分类', trigger: 'change' }],
   title: [
     { required: true, message: '请填写工单标题', trigger: 'blur' },
-    { max: 50, message: '工单标题不能超过 50 个字符', trigger: 'blur' }
+    { max: 100, message: '工单标题不能超过 100 个字符', trigger: 'blur' }
   ],
-  category: [{ required: true, message: '请选择问题分类', trigger: 'change' }],
   description: [
     { required: true, message: '请填写问题描述', trigger: 'blur' },
     { min: 10, message: '请至少填写 10 个字，说明何时开始、报错原文、已尝试的操作', trigger: 'blur' },
-    { max: 500, message: '问题描述不能超过 500 个字符', trigger: 'blur' }
+    { max: 5000, message: '问题描述不能超过 5000 个字符', trigger: 'blur' }
+  ],
+  impact_description: [
+    { required: true, message: '请填写影响情况（影响范围、有无替代方案）', trigger: 'blur' },
+    { max: 2000, message: '影响情况不能超过 2000 个字符', trigger: 'blur' }
+  ],
+  urgency_description: [
+    { required: true, message: '请填写紧急说明（为什么紧急、期望何时处理）', trigger: 'blur' },
+    { max: 2000, message: '紧急说明不能超过 2000 个字符', trigger: 'blur' }
   ]
 }
 
@@ -358,8 +460,6 @@ const ratingScore = ref(0)
 const ratingComment = ref('')
 
 function formatTime(t) { return t ? new Date(t).toLocaleString('zh-CN') : '' }
-
-function disablePastDate(time) { return time.getTime() < Date.now() - 86400000 }
 
 function statusTagType(s) {
   const map = {
@@ -382,17 +482,21 @@ function flowTimelineType(status) {
   return map[status] || 'primary'
 }
 
-// 未满足条件时的实时提示
+// 未满足条件时的实时提示(spec 05 TicketCreate 必填六项)
 const submitHint = computed(() => {
   if (submitting.value) return ''
   const missing = []
+  if (!form.value.ticket_nature) missing.push('工单性质')
+  if (!form.value.category_id) missing.push('问题分类')
   const tLen = form.value.title.trim().length
   if (tLen === 0) missing.push('工单标题')
-  else if (tLen > 50) missing.push('标题需在 50 字以内')
-  if (!form.value.category) missing.push('问题分类')
+  else if (tLen > 100) missing.push('标题需在 100 字以内')
   const dLen = form.value.description.trim().length
-  if (dLen < 10) missing.push(`问题描述（还需 ${10 - dLen} 字）`)
-  else if (dLen > 500) missing.push('问题描述需在 500 字以内')
+  if (dLen === 0) missing.push('问题描述')
+  else if (dLen < 10) missing.push(`问题描述（还需 ${10 - dLen} 字）`)
+  else if (dLen > 5000) missing.push('问题描述需在 5000 字以内')
+  if (!form.value.impact_description.trim()) missing.push('影响情况')
+  if (!form.value.urgency_description.trim()) missing.push('紧急说明')
   if (!missing.length) return ''
   return '还差：' + missing.join('、')
 })
@@ -430,20 +534,34 @@ async function submitTicket() {
   submitting.value = true
   lastSubmitAt.value = Date.now()
   try {
+    // spec 05 TicketCreate:必填六项 + 选填;幂等键走 Idempotency-Key 头(RD-002/AC-07)
     await ticketApi.create({
+      ticket_nature: form.value.ticket_nature,
+      category_id: form.value.category_id,
       title: form.value.title.trim(),
-      category: form.value.category,
       description: form.value.description.trim(),
-      priority: form.value.priority,
-      expected_finish_time: form.value.expected_finish_time || null,
-      client_token: formToken.value
-    })
-    form.value = { title: '', category: '', description: '', priority: '中', expected_finish_time: '' }
+      impact_description: form.value.impact_description.trim(),
+      urgency_description: form.value.urgency_description.trim(),
+      location: form.value.location.trim() || null,
+      contact: form.value.contact.trim() || null,
+      asset_id: form.value.asset_id.trim() || null,
+      // 咨询转工单:来源咨询会话,后端建单成功后回调咨询侧转 CONVERTED_TO_TICKET
+      source_session_id: sourceSession.value || null
+    }, { headers: { 'Idempotency-Key': formToken.value } })
+    form.value = emptyForm()
     formToken.value = genClientToken()
-    await draftApi.delete().catch(() => {})
+    draftApi.delete(draftApi.ensureDraftId()).catch(() => {})
+    clearLocalDraft()
     draftBanner.value = false
     draftSaved.value = false
-    ElMessage.success('工单提交成功！')
+    if (sourceSession.value) {
+      // 咨询转单:工单侧回调成功后咨询转 CONVERTED_TO_TICKET(终态,不可恢复)
+      sourceSession.value = ''
+      router.replace({ query: {} })
+      ElMessage.success('工单提交成功，原咨询已转为正式工单！')
+    } else {
+      ElMessage.success('工单提交成功！')
+    }
     tab.value = 'list'
     loadTickets()
   } catch (e) {
@@ -453,34 +571,105 @@ async function submitTicket() {
   }
 }
 
-// 草稿
-async function saveDraft() {
-  await draftApi.save({
+// 草稿(spec 05 saveTicketDraft:PUT /ticket-drafts/{id},残缺字段也允许保存)
+function draftPayload() {
+  return {
+    ticket_nature: form.value.ticket_nature,
+    category_id: form.value.category_id,
     title: form.value.title,
-    category: form.value.category,
     description: form.value.description,
-    priority: form.value.priority,
-    expected_finish_time: form.value.expected_finish_time || null
-  })
-  draftSaved.value = true
-  draftTime.value = new Date().toLocaleTimeString('zh-CN')
+    impact_description: form.value.impact_description,
+    urgency_description: form.value.urgency_description,
+    location: form.value.location,
+    contact: form.value.contact,
+    asset_id: form.value.asset_id,
+    source_session_id: sourceSession.value || null
+  }
 }
 
-function restoreDraft() {
-  draftApi.get().then(res => {
-    if (res.data) {
-      form.value = {
-        title: res.data.title || '',
-        category: res.data.category || '',
-        description: res.data.description || '',
-        priority: res.data.priority || '中',
-        expected_finish_time: res.data.expected_finish_time ? res.data.expected_finish_time.slice(0, 16) : ''
-      }
-      draftBanner.value = false
-    }
-  })
+async function saveDraft() {
+  try {
+    await draftApi.save(draftApi.ensureDraftId(), { payload: draftPayload() })
+    draftSaved.value = true
+    draftTime.value = new Date().toLocaleTimeString('zh-CN')
+    // 服务端保存成功,本地暂存不再需要
+    localStorage.removeItem(LOCAL_DRAFT_KEY)
+  } catch (e) {
+    // PRD 10.4:服务端保存失败时暂存浏览器本地,恢复网络后可恢复
+    try {
+      localStorage.setItem(LOCAL_DRAFT_KEY, JSON.stringify(draftPayload()))
+      localDraftBanner.value = true
+    } catch (storageError) { /* 本地存储不可用则放弃 */ }
+  }
 }
-function clearDraft() { draftApi.delete().catch(() => {}); draftBanner.value = false }
+
+/** 把草稿 payload 应用到表单(残缺字段容错)。 */
+function applyDraftPayload(p) {
+  form.value = {
+    ticket_nature: ['INCIDENT', 'SERVICE_REQUEST'].includes(p.ticket_nature) ? p.ticket_nature : 'INCIDENT',
+    category_id: categories.some(c => c.id === p.category_id) ? p.category_id : '',
+    title: p.title || '',
+    description: p.description || '',
+    impact_description: p.impact_description || '',
+    urgency_description: p.urgency_description || '',
+    location: p.location || '',
+    contact: p.contact || userStore.currentUser?.name || '',
+    asset_id: p.asset_id || ''
+  }
+  if (p.source_session_id) sourceSession.value = p.source_session_id
+}
+
+async function restoreDraft() {
+  try {
+    const body = await draftApi.get(draftApi.ensureDraftId())
+    if (body?.data?.payload) applyDraftPayload(body.data.payload)
+    draftBanner.value = false
+  } catch (e) {
+    ElMessage.error('恢复草稿失败：' + e.message)
+  }
+}
+
+function clearDraft() {
+  draftApi.delete(draftApi.ensureDraftId()).catch(() => {})
+  draftBanner.value = false
+}
+
+// 咨询转工单预填(OpenAPI 05 getTicketDraftFromConsultation)
+async function loadConsultPrefill(sessionId) {
+  try {
+    const draft = await consultationApi.ticketDraft(sessionId)
+    form.value.title = draft.title || ''
+    form.value.description = draft.description || ''
+    form.value.impact_description = draft.summary ? `来自咨询会话摘要：\n${draft.summary}` : ''
+    form.value.category_id = CONSULT_CATEGORY_MAP[draft.category_id] || ''
+    sourceSession.value = sessionId
+    draftBanner.value = false // 咨询预填优先于服务端草稿
+    tab.value = 'create'
+    if (!draft.convert_allowed) {
+      ElMessage.warning('该咨询已结束，仅预填会话内容供参考')
+    }
+  } catch (e) {
+    ElMessage.error('加载咨询预填失败：' + e.message)
+  }
+}
+
+// 本地草稿(PRD 10.4:暂存/恢复)
+function readLocalDraft() {
+  try {
+    return JSON.parse(localStorage.getItem(LOCAL_DRAFT_KEY) || 'null')
+  } catch (e) {
+    return null
+  }
+}
+function restoreLocalDraft() {
+  const d = readLocalDraft()
+  if (d) applyDraftPayload(d)
+  clearLocalDraft()
+}
+function clearLocalDraft() {
+  localStorage.removeItem(LOCAL_DRAFT_KEY)
+  localDraftBanner.value = false
+}
 
 // 加载工单列表
 async function loadTickets() {
@@ -558,11 +747,29 @@ watch(form, () => {
 }, { deep: true })
 
 onMounted(async () => {
-  try {
-    const draft = await draftApi.get()
-    if (draft.data) draftBanner.value = true
-  } catch (e) {}
+  if (route.query.session) {
+    // 咨询转工单:从智能客服/工程师快捷入口跳入,带会话预填
+    await loadConsultPrefill(String(route.query.session))
+  } else {
+    // PRD 10.4:登录过期后重新登录应提示恢复草稿
+    try {
+      const body = await draftApi.get(draftApi.ensureDraftId())
+      if (body?.data?.payload && (body.data.payload.description || body.data.payload.title)) {
+        draftBanner.value = true
+      } else if (readLocalDraft()) {
+        localDraftBanner.value = true
+      }
+    } catch (e) {
+      // 服务端草稿不可用时仍提示本地暂存(PRD 10.4)
+      if (readLocalDraft()) localDraftBanner.value = true
+    }
+  }
   loadTickets()
+})
+
+// 悬浮客服对话框在 /employee 页面内再次点击提单入口时,仅 query 变化
+watch(() => route.query.session, (v) => {
+  if (v && v !== sourceSession.value) loadConsultPrefill(String(v))
 })
 
 onUnmounted(() => clearTimeout(draftTimer))
@@ -589,15 +796,7 @@ onUnmounted(() => clearTimeout(draftTimer))
 
 .required { color: var(--el-color-danger); }
 .char-count { float: right; font-weight: 400; color: var(--el-text-color-secondary); font-size: 12px; }
-
-.priority-hint {
-  color: var(--el-color-warning);
-  font-size: 12px;
-  margin-top: 6px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
+.priority-note { margin-bottom: 8px; }
 
 /* 列表 */
 .ticket-list { display: flex; flex-direction: column; gap: 10px; }

@@ -24,6 +24,7 @@ it-ticket-system/
 │   ├── gateway/              # 网关 :8080 —— 唯一入口 + JWT 统一鉴权 + 路由
 │   ├── user-service/         # 用户服务 :8101 —— 登录/JWT、用户、草稿(库 it_user)
 │   ├── ticket-service/       # 工单服务 :8201 —— 工单全业务、状态机、通知(库 it_ticket)
+│   ├── consultation-service/ # 咨询服务 :8301 —— 智能客服、转人工、咨询状态机(库 it_consultation)
 │   ├── common/               # Result/错误码/JWT 工具(纯 Java,gateway 可引用)
 │   ├── common-web/           # 全局异常、UserContext 透传头解析、时间格式
 │   ├── db/init/              # MySQL 建库 + 建表 + 种子(执行顺序 00→21)
@@ -74,6 +75,7 @@ mvn package                                    # 或在 IDE 中分别启动三�
 java -jar gateway/target/it-ticket-gateway-1.0.0.jar
 java -jar user-service/target/it-ticket-user-service-1.0.0.jar
 java -jar ticket-service/target/it-ticket-ticket-service-1.0.0.jar
+java -jar consultation-service/target/it-ticket-consultation-service-1.0.0.jar
 ```
 
 环境变量(均有默认值):`NACOS_ADDR=127.0.0.1:8848`、`MYSQL_PASSWORD=root123`、`JWT_SECRET`(生产必换)。

@@ -1,0 +1,128 @@
+server:
+  port: 8301
+
+spring:
+  application:
+    name: consultation-service
+  config:
+    # 模型凭据从工作目录下的 ai-secrets.yml 读取(已 gitignore,不打进 jar)。
+    # 文件不存在时静默跳过,此时 api-key 为空,AI 回答降级为 NOT_CONFIGURED,
+    # 但知识搜索、人工咨询与转人工不受影响(RD-013 主链路不可阻断)。
+    import: optional:file:./ai-secrets.yml
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/it_consultation?useSSL=false&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:root123}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+  jackson:
+    deserialization:
+      # AI-002「未知字段默认拒绝」+ AI-004/OpenAPI 05 全部 Schema 的 additionalProperties=false。
+      # Spring Boot 默认把该特性关掉,必须显式打开,否则约束形同虚设。
+      fail-on-unknown-properties: true
+  autoconfigure:
+    exclude:
+      # 本服务按 PRD 21.1 使用 {code,message,request_id,data} 包络,
+      # 与 common-web 的旧版 {code,msg,data} 处理器互斥。
+      - com.itticket.common.web.GlobalExceptionHandler
+      # 该配置把全局 LocalDateTime 序列化成无时区的 "yyyy-MM-dd HH:mm:ss",
+      # 与 PRD 21.1 / AI-002 要求的 ISO 8601 带时区冲突。
+      - com.itticket.common.web.JacksonTimeConfig
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    # DM-001:枚举显式映射为 VARCHAR,禁止按序号持久化。不依赖版本默认值。
+    default-enum-type-handler: com.baomidou.mybatisplus.core.handlers.MybatisEnumTypeHandler
+  global-config:
+    db-config:
+      id-type: input
+
+itticket:
+  auth:
+    exclude-paths:
+      - /api/health
+      - /error
+  consultation:
+    # 旧角色值(gateway 透传 X-User-Role)到 DM-002 RoleCode 的映射。
+    # AX-005 列为未决项,此处给出一期默认值,平台管理员确认后可覆盖。
+    role-mapping:
+      employee: EMPLOYEE
+      engineer: ENGINEER
+      supervisor: PLATFORM_ADMIN
+    idempotency-ttl-hours: 24
+    sla:
+      calendar-id: DEFAULT
+      # PRD 11.2 人工咨询响应目标:10 个工作分钟
+      response-target-work-seconds: 600
+      # PRD 11.3 响应 SLA 在第 8 个工作分钟提醒
+      near-breach-work-seconds: 480
+    transfer:
+      # RD-005 候选人耗尽进异常队列,不无限循环
+      max-candidates: 8
+      # PRD 12.2 活跃人工咨询权重
+      consultation-load-weight: 2
+    lifecycle:
+      # SM-CONSULT-001 RESOLVED 24 小时恢复窗口
+      reopen-window-hours: 24
+      # PRD 8.3 员工断开且 10 分钟未回复
+      auto-resolve-idle-minutes: 10
+    ai:
+      # PRD 17.3 评测未达上线门槛时置 false,只关闭 AI 综合回答
+      answer-enabled: true
+
+      # 生成侧供应商:openai-compatible 走外部模型,local 只按检索结果拼装(不调外部依赖)
+      provider: ${AI_PROVIDER:openai-compatible}
+      base-url: ${AI_BASE_URL:https://ws-klculckg6dog3won.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
+      # AX-007:凭据必须从加密配置读取。此处只留占位,真实值放 application-local.yml(已 gitignore)
+      # 或环境变量 AI_API_KEY / Nacos 配置中心,不得提交到仓库。
+      api-key: ${AI_API_KEY:}
+      model: ${AI_MODEL:qwen3-vl-32b-thinking}
+      # thinking 模型的推理 token 也计入该上限,给小了会出现推理占满、content 为空
+      max-output-tokens: 8192
+      # 受约束问答不发散,固定 0 保证同一问题可复现(AI 评测要求可重复)
+      temperature: 0.0
+
+      model-version: local-rag-1.0
+      top-k: 3
+      min-confidence: 0.60
+      suggest-transfer-below-confidence: 0.75
+      # RD-003 规定 AI/RAG 首段 5 秒、完整 15 秒。
+      # ⚠ 当前有意偏离:qwen3-vl-32b-thinking 实测单次小规模问答约 14 秒,topK 增大后会更久,
+      # 按 15 秒会几乎每次都降级成 MODEL_UNAVAILABLE。这里放宽到 120 秒以保证功能可用,
+      # 属于已知的性能契约偏离,上线前必须二选一:换更快的模型,或走变更流程修订 RD-003。
+      first-token-timeout-ms: 5000
+      request-timeout-ms: ${AI_REQUEST_TIMEOUT_MS:120000}
+      # RD-003 同一请求最多重试 1 次
+      max-attempts: 2
+      # RD-007 独立并发上限,队列满立即降级
+      max-concurrency: 8
+      circuit-failure-threshold: 5
+      circuit-open-millis: 30000
+      circuit-half-open-success-threshold: 3
+      # AI-001 高风险主题必须拒答并给出转人工/提单入口
+      high-risk-keywords:
+        - 密码
+        - 账号权限
+        - 提权
+        - 越权
+        - 数据泄露
+        - 数据丢失
+        - 删库
+        - 格式化
+        - rm -rf
+        - 病毒
+        - 勒索
+        - 拆机
+        - 更换主板
+        - 硬盘拆
+
+logging:
+  level:
+    root: info
+    # RD-009/AX-003 脱敏日志:MyBatis DEBUG 会打印完整 SQL 与绑定参数,
+    # 其中包含 consultation_message.content 等原始对话,默认不得开启。
+    com.itticket.consultation.mapper: info

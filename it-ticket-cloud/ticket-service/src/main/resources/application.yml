@@ -24,6 +24,9 @@ spring.cloud.openfeign:
       user-service:
         connectTimeout: 2000
         readTimeout: 3000
+      consultation-service:
+        connectTimeout: 2000
+        readTimeout: 5000
 
 itticket:
   auth:

@@ -7,6 +7,8 @@ const HOME = { employee: '/employee', engineer: '/engineer', supervisor: '/super
 const routes = [
   { path: '/login', name: 'Login', component: () => import('../views/LoginView.vue') },
   { path: '/employee', name: 'Employee', component: () => import('../views/EmployeeView.vue'), meta: { role: 'employee' } },
+  // 智能客服与转人工(PRD F-02/F-03),员工端入口
+  { path: '/consultation', name: 'Consultation', component: () => import('../views/ConsultationView.vue'), meta: { role: 'employee' } },
   { path: '/engineer', name: 'Engineer', component: () => import('../views/EngineerView.vue'), meta: { role: 'engineer' } },
   { path: '/supervisor', name: 'Supervisor', component: () => import('../views/SupervisorView.vue'), meta: { role: 'supervisor' } },
   { path: '/:pathMatch(.*)*', redirect: '/login' }

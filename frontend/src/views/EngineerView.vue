@@ -8,7 +8,15 @@
         </h2>
         <p class="page-sub">我负责的工单 + 待领取工单 · 看板视图（每 15 秒自动刷新）</p>
       </div>
-      <el-button :icon="Refresh" circle @click="loadTickets" />
+      <div class="head-actions">
+        <!-- 当前咨询入口(PRD 19.2 工程师页面:当前咨询) -->
+        <el-badge :value="consultCount" :hidden="!consultCount" :max="99" class="consult-badge">
+          <el-button type="primary" plain :icon="ChatDotRound" @click="consultVisible = true">
+            当前咨询
+          </el-button>
+        </el-badge>
+        <el-button :icon="Refresh" circle @click="loadTickets" />
+      </div>
     </div>
 
     <!-- 看板 -->
@@ -167,6 +175,9 @@
         </el-card>
       </template>
     </el-dialog>
+
+    <!-- ===== 当前咨询对话窗(转人工会话) ===== -->
+    <EngineerConsultation v-model:visible="consultVisible" @count-change="consultCount = $event" />
   </div>
 </template>
 
@@ -174,10 +185,11 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  Tools, Refresh, Pointer, CircleCheck, Promotion
+  Tools, Refresh, Pointer, CircleCheck, Promotion, ChatDotRound
 } from '@element-plus/icons-vue'
 import { ticketApi } from '../api/index.js'
 import { useUserStore } from '../stores/user.js'
+import EngineerConsultation from '../components/EngineerConsultation.vue'
 
 const userStore = useUserStore()
 const allTickets = ref([])
@@ -186,6 +198,8 @@ const detailFlows = ref([])
 const detailVisible = ref(false)
 const progressRemark = ref('')
 const actionError = ref('')
+const consultVisible = ref(false)
+const consultCount = ref(0)
 let pollTimer = null
 
 const columns = computed(() => {
@@ -325,6 +339,8 @@ watch(() => userStore.userId, (id) => {
   detailVisible.value = false
   progressRemark.value = ''
   actionError.value = ''
+  consultVisible.value = false
+  consultCount.value = 0
   if (id) loadTickets()
 })
 </script>
@@ -336,6 +352,8 @@ watch(() => userStore.userId, (id) => {
   justify-content: space-between;
   margin-bottom: 20px;
 }
+.head-actions { display: flex; align-items: center; gap: 14px; }
+.consult-badge { margin-top: 2px; }
 .page-title {
   font-size: 20px;
   font-weight: 700;

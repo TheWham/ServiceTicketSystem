@@ -12,10 +12,12 @@ import com.itticket.ticket.dto.AssignRequest;
 import com.itticket.ticket.dto.CreateTicketRequest;
 import com.itticket.ticket.dto.RatingRequest;
 import com.itticket.ticket.entity.Ticket;
+import com.itticket.ticket.entity.TicketCategory;
 import com.itticket.ticket.entity.TicketFlowLog;
 import com.itticket.ticket.enums.TicketStatus;
 import com.itticket.ticket.feign.IdsRequest;
 import com.itticket.ticket.feign.UserClient;
+import com.itticket.ticket.mapper.TicketCategoryMapper;
 import com.itticket.ticket.mapper.TicketFlowLogMapper;
 import com.itticket.ticket.mapper.TicketMapper;
 import com.itticket.ticket.statemachine.TicketStateMachine;
@@ -48,50 +50,76 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class TicketService {
 
-    private static final List<String> CATEGORIES = List.of("硬件", "软件", "网络", "账号", "其他");
-    private static final List<String> PRIORITIES = List.of("高", "中", "低");
+    private static final List<String> NATURES = List.of("INCIDENT", "SERVICE_REQUEST");
 
     private final TicketMapper ticketMapper;
     private final TicketFlowLogMapper flowLogMapper;
+    private final TicketCategoryMapper categoryMapper;
     private final TicketNoGenerator noGenerator;
     private final NotificationService notificationService;
+    private final ConsultationConvertNotifier convertNotifier;
     private final UserClient userClient;
     private final ObjectMapper objectMapper;
 
-    // ---------------- 创建工单 ----------------
+    // ---------------- 创建工单(spec 05 createTicket / TicketCreate) ----------------
 
-    public record CreateOutcome(boolean duplicated, String ticketId, String title) {
+    public record CreateOutcome(boolean duplicated, Ticket ticket) {
     }
 
+    /**
+     * 新契约建单(PRD 10.2 固定字段、SM-TICKET-001 起点)。
+     *
+     * <p>与旧版的差异:必填六项(性质/末级分类/标题/描述/影响/紧急),优先级不再由
+     * 员工选择——PRD 11.4 新工单暂按中优先级,工程师接单时按矩阵确认正式优先级;
+     * contact 缺省取身份源姓名;幂等键走 Idempotency-Key 头(存 client_token 列,
+     * RD-002/AC-07:相同键重复请求返回原工单,不产生重复主记录或流转)。
+     */
     @Transactional
-    public CreateOutcome create(UserContext.CurrentUser creator, CreateTicketRequest req) {
-        // 参数校验(与旧版逐字一致,错误用全角分号连接)
+    public CreateOutcome create(UserContext.CurrentUser creator, CreateTicketRequest req, String idempotencyKey) {
         List<String> errors = new ArrayList<>();
-        String finalTitle = firstNonBlank(req.getTitle()) != null
-                ? req.getTitle().trim()
-                : (req.getDescription() != null && req.getDescription().trim().length() > 0
-                        ? truncate(req.getDescription().trim(), 50) : "");
-        if (finalTitle.isEmpty()) errors.add("工单标题不能为空");
-        if (finalTitle.length() > 50) errors.add("工单标题不能超过50个字符");
-        if (req.getCategory() == null || !CATEGORIES.contains(req.getCategory())) errors.add("问题分类无效");
-        if (req.getDescription() == null || req.getDescription().trim().length() < 10) errors.add("问题描述至少10个字符");
-        if (req.getDescription() != null && req.getDescription().trim().length() > 500) errors.add("问题描述不能超过500字符");
-        String priority = req.getPriority() == null ? "中" : req.getPriority();
-        if (!PRIORITIES.contains(priority)) errors.add("优先级无效");
-        if (req.getAttachmentUrls() != null && req.getAttachmentUrls().size() > 3) errors.add("截图附件最多3张");
-        if (req.getExpectedFinishTime() != null && req.getExpectedFinishTime().isBefore(LocalDateTime.now())) {
-            errors.add("期望完成时间不能早于当前时间");
+        String nature = trim(req.getTicketNature());
+        if (nature == null || !NATURES.contains(nature)) {
+            errors.add("工单性质无效(INCIDENT 故障报修 / SERVICE_REQUEST 服务申请)");
+        }
+        String title = trim(req.getTitle());
+        if (title == null) errors.add("工单标题不能为空");
+        else if (title.length() > 100) errors.add("工单标题不能超过100个字符");
+        String description = trim(req.getDescription());
+        if (description == null || description.length() < 10) errors.add("问题描述至少10个字符");
+        else if (description.length() > 5000) errors.add("问题描述不能超过5000字符");
+        String impact = trim(req.getImpactDescription());
+        if (impact == null) errors.add("影响情况不能为空");
+        else if (impact.length() > 2000) errors.add("影响情况不能超过2000字符");
+        String urgency = trim(req.getUrgencyDescription());
+        if (urgency == null) errors.add("紧急说明不能为空");
+        else if (urgency.length() > 2000) errors.add("紧急说明不能超过2000字符");
+        if (len(req.getLocation()) > 255) errors.add("办公地点不能超过255个字符");
+        if (len(req.getContact()) > 255) errors.add("联系方式不能超过255个字符");
+        if (len(req.getAssetId()) > 64) errors.add("资产编号不能超过64个字符");
+        if (len(req.getSourceSessionId()) > 32) errors.add("来源咨询编号无效");
+        if (idempotencyKey == null || idempotencyKey.isBlank()) errors.add("缺少幂等键");
+        else if (idempotencyKey.length() > 128) errors.add("幂等键不能超过128个字符");
+
+        // 末级分类:必须存在且启用(PRD 10.2);名称写入 legacy 展示列
+        TicketCategory category = null;
+        String categoryId = trim(req.getCategoryId());
+        if (categoryId != null) {
+            category = categoryMapper.selectById(categoryId);
+            if (category == null || category.getEnabled() == null || category.getEnabled() != 1) {
+                errors.add("问题分类无效或已停用");
+                category = null;
+            }
+        } else {
+            errors.add("请选择问题分类");
         }
         if (!errors.isEmpty()) {
             throw new BizException(ErrorCode.PARAM_INVALID, String.join("；", errors));
         }
 
-        // 幂等检查
-        if (req.getClientToken() != null && !req.getClientToken().isBlank()) {
-            Ticket existing = selectByClientToken(req.getClientToken());
-            if (existing != null) {
-                return new CreateOutcome(true, existing.getTicketId(), finalTitle);
-            }
+        // 幂等:相同员工、相同键的重复请求返回原工单(AC-07)
+        Ticket existing = selectByClientToken(idempotencyKey);
+        if (existing != null) {
+            return new CreateOutcome(true, existing);
         }
 
         // 生成工单号并插入:并发「查最大号 + 自增」存在撞号可能,命中主键冲突时重试(与旧版一致,最多 5 次)
@@ -100,14 +128,14 @@ public class TicketService {
             String candidate = noGenerator.generate();
             try {
                 ticketId = candidate;
-                insertTicket(candidate, finalTitle, req, priority, creator);
+                insertTicket(candidate, title, description, impact, urgency, req, category, creator, idempotencyKey);
                 break;
             } catch (DuplicateKeyException e) {
                 if (attempt == 4) throw e;
-                Ticket byToken = req.getClientToken() == null ? null : selectByClientToken(req.getClientToken());
+                Ticket byToken = selectByClientToken(idempotencyKey);
                 if (byToken != null) {
-                    // 并发窗口内同 client_token 已落库 → 幂等返回
-                    return new CreateOutcome(true, byToken.getTicketId(), finalTitle);
+                    // 并发窗口内同幂等键已落库 → 幂等返回
+                    return new CreateOutcome(true, byToken);
                 }
                 // 工单号撞号 → 换号重试
             }
@@ -119,26 +147,68 @@ public class TicketService {
         // 异步通知(事务提交后,不阻塞响应)
         afterCommit(() -> notificationService.sendNotification(finalTicketId, "SUBMIT_SUCCESS", creator.getUserId()));
 
-        return new CreateOutcome(false, finalTicketId, finalTitle);
+        // 咨询转单:通知咨询侧迁移到 CONVERTED_TO_TICKET(事务提交后异步;RD-013 失败不阻塞建单)
+        String sourceSessionId = normalizeSourceSession(req);
+        if (sourceSessionId != null) {
+            afterCommit(() -> convertNotifier.notifyConverted(sourceSessionId, finalTicketId, creator));
+        }
+
+        Ticket created = ticketMapper.selectById(finalTicketId);
+        return new CreateOutcome(false, created);
     }
 
-    private void insertTicket(String ticketId, String title, CreateTicketRequest req, String priority, UserContext.CurrentUser creator) {
+    private void insertTicket(String ticketId, String title, String description, String impact, String urgency,
+                              CreateTicketRequest req, TicketCategory category, UserContext.CurrentUser creator,
+                              String idempotencyKey) {
         Ticket ticket = new Ticket();
         ticket.setTicketId(ticketId);
         ticket.setTitle(title);
-        ticket.setDescription(req.getDescription().trim());
-        ticket.setCategory(req.getCategory());
-        ticket.setPriority(priority);
+        ticket.setDescription(description);
+        ticket.setCategory(category.getName());
+        ticket.setCategoryId(category.getCategoryId());
+        ticket.setTicketNature(trim(req.getTicketNature()));
+        ticket.setImpactDescription(impact);
+        ticket.setUrgencyDescription(urgency);
+        ticket.setLocation(trim(req.getLocation()));
+        // PRD 10.2:联系方式默认来自身份源,可为本次业务修改
+        ticket.setContact(trim(req.getContact()) != null ? trim(req.getContact()) : creator.getName());
+        // PRD 11.4:新工单暂按中优先级,工程师接单时按矩阵确认正式优先级
+        ticket.setPriority("中");
         ticket.setStatus(TicketStatus.PENDING);
         ticket.setCreatorId(creator.getUserId());
-        ticket.setAssetId(req.getAssetId());
-        ticket.setExpectedFinishTime(req.getExpectedFinishTime());
-        ticket.setAttachmentUrls(toJson(req.getAttachmentUrls()));
-        ticket.setClientToken(req.getClientToken());
+        ticket.setAssetId(trim(req.getAssetId()));
+        // 附件走 F-09 附件域(AttachmentBizType=TICKET),TicketCreate 契约不含附件字段
+        ticket.setClientToken(idempotencyKey);
+        ticket.setSourceSessionId(normalizeSourceSession(req));
+        ticket.setFieldSnapshotJson(toJson(req.getFieldValues()));
+        ticket.setVersion(0L);
         ticket.setFirstResponseAt(LocalDateTime.now());
         ticket.setCreatedAt(LocalDateTime.now());
         ticket.setUpdatedAt(LocalDateTime.now());
         ticketMapper.insert(ticket);
+    }
+
+    private String normalizeSourceSession(CreateTicketRequest req) {
+        return trim(req.getSourceSessionId());
+    }
+
+    private static String trim(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
+    }
+
+    private static int len(String s) {
+        return s == null ? 0 : s.trim().length();
+    }
+
+    /** 分类扩展字段快照(Map → JSON,null 安全)。 */
+    private String toJson(Map<String, Object> fieldValues) {
+        if (fieldValues == null || fieldValues.isEmpty()) return null;
+        try {
+            return objectMapper.writeValueAsString(fieldValues);
+        } catch (Exception e) {
+            log.error("[TICKET] 序列化扩展字段失败: {}", e.getMessage());
+            return null;
+        }
     }
 
     // ---------------- 工单列表 ----------------
@@ -450,24 +520,6 @@ public class TicketService {
             });
         } else {
             task.run();
-        }
-    }
-
-    private String firstNonBlank(String s) {
-        return (s != null && !s.trim().isEmpty()) ? s.trim() : null;
-    }
-
-    private String truncate(String s, int max) {
-        return s.length() <= max ? s : s.substring(0, max);
-    }
-
-    private String toJson(List<String> urls) {
-        if (urls == null) return null;
-        try {
-            return objectMapper.writeValueAsString(urls);
-        } catch (Exception e) {
-            log.error("[TICKET] 序列化附件失败: {}", e.getMessage());
-            return null;
         }
     }
 

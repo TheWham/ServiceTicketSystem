@@ -59,7 +59,16 @@
 
 - **来源**:📄 图 3-6「智能客服(员工先让 AI 试着解决问题,AI 无法解决,再提交成工单)」
 - **业务流程**:员工发起 → AI 客服对话排查 → 解决关单 / 未解决降级 → 人工客服兜底 → 创建工单 → 工程师处理
-- **现状**:❌ 完全未实现。无对话界面、无 NLU、无对话状态机、无降级路径
+- **现状**:✅ 后端已实现(`it-ticket-cloud/consultation-service`,库 `it_consultation`)。
+  按 PRD-v2 与 `docs/specs/` 重做,而非本条目原先设想的 `/api/chat/*` 形态:
+  接口取 AI-005(`POST /api/v1/consultations`、`/ai-messages`、`/feedback`、`/transfer`)
+  与 OpenAPI 05 的 `/consultations` 系列;状态机为 SM-CONSULT-001 的 7 态;
+  已含引用校验、结构化拒答、高风险拦截、断路器降级、转人工自动分配、响应 SLA 与超时转派。
+  生成侧已接入 OpenAI 兼容端点(`qwen3-vl-32b-thinking`),检索仍在本地只读 PUBLISHED 知识,
+  引用由服务端按检索结果重建、模型无法编造。
+  **剩余**:前端对话面板未做;召回层仍是 MySQL 全文索引,无向量检索与 Rerank;
+  所选 thinking 模型单次约 14 秒,已知偏离 RD-003 的 15 秒上限;
+  遗留契约缺口见 `consultation-service/README.md` 第 4 节
 - **建议路径**:
   1. 前端新增对话面板(独立于提单页)
   2. 后端新增 `ChatController`:

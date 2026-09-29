@@ -3,7 +3,8 @@
   <router-view v-if="isLoginPage" />
 
   <!-- 已登录：经典后台布局 -->
-  <el-container v-else class="app-layout">
+  <div v-else class="app-shell">
+  <el-container class="app-layout">
     <!-- ===== 侧边栏 ===== -->
     <el-aside :width="collapse ? '64px' : '220px'" class="app-aside">
       <div class="logo-area">
@@ -22,6 +23,11 @@
         <el-menu-item index="home">
           <el-icon><Monitor /></el-icon>
           <template #title>工作台</template>
+        </el-menu-item>
+        <!-- 智能客服与转人工(PRD F-02/F-03),仅员工可见 -->
+        <el-menu-item v-if="userStore.isEmployee" index="consultation">
+          <el-icon><ChatDotRound /></el-icon>
+          <template #title>智能客服</template>
         </el-menu-item>
       </el-menu>
 
@@ -77,14 +83,32 @@
       </el-main>
     </el-container>
   </el-container>
+
+    <!-- ===== 智能客服对话框入口(PRD F-02/F-03,仅员工) ===== -->
+    <template v-if="userStore.isEmployee">
+      <transition name="fade">
+        <button v-show="!isLoginPage" class="chat-fab" title="智能客服 / 转人工"
+                @click="consultOpen = true">
+          <el-icon :size="22"><ChatDotRound /></el-icon>
+        </button>
+      </transition>
+
+      <el-drawer v-model="consultOpen" title="智能客服" size="540px"
+                 :append-to-body="true" :close-on-click-modal="false"
+                 destroy-on-close class="consult-drawer">
+        <ConsultationChat @navigate="consultOpen = false" />
+      </el-drawer>
+    </template>
+  </div>
 </template>
 
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from './stores/user.js'
+import ConsultationChat from './components/ConsultationChat.vue'
 import {
-  Monitor, Expand, Fold, Sunny, Moon, User, SwitchButton
+  Monitor, Expand, Fold, Sunny, Moon, User, SwitchButton, ChatDotRound
 } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
@@ -93,6 +117,8 @@ const route = useRoute()
 
 const collapse = ref(false)
 const isDark = ref(localStorage.getItem('app_theme') === 'dark')
+/** 智能客服对话框(转人工入口不再整页跳转) */
+const consultOpen = ref(false)
 
 // 初始化主题
 watch(isDark, (val) => {
@@ -102,10 +128,10 @@ watch(isDark, (val) => {
 
 const isLoginPage = computed(() => route.path === '/login')
 
-const activeMenu = computed(() => 'home')
+const activeMenu = computed(() => (route.path === '/consultation' ? 'consultation' : 'home'))
 
 const breadcrumb = computed(() => {
-  const map = { '/employee': '员工工作台', '/engineer': '工程师工作台', '/supervisor': '主管看板' }
+  const map = { '/employee': '员工工作台', '/engineer': '工程师工作台', '/supervisor': '主管看板', '/consultation': '智能客服' }
   return map[route.path] || '工作台'
 })
 
@@ -121,7 +147,15 @@ const roleTagType = computed(() => {
 
 function toggleDark() { isDark.value = !isDark.value }
 
-function onMenuSelect() { /* 单页应用，无需跳转 */ }
+function onMenuSelect(index) {
+  // 智能客服入口是对话框(抽屉),不再整页跳转
+  if (index === 'consultation') {
+    consultOpen.value = true
+    return
+  }
+  const target = { employee: '/employee', engineer: '/engineer', supervisor: '/supervisor' }[userStore.currentUser?.role]
+  if (target && route.path !== target) router.push(target)
+}
 
 function onUserCommand(cmd) {
   if (cmd === 'logout') {
@@ -132,6 +166,7 @@ function onUserCommand(cmd) {
 </script>
 
 <style scoped>
+.app-shell { height: 100vh; overflow: hidden; }
 .app-layout { height: 100vh; overflow: hidden; }
 
 /* ===== 侧边栏 ===== */
@@ -197,6 +232,21 @@ function onUserCommand(cmd) {
   overflow-y: auto;
   padding: 20px;
   background: var(--el-bg-color-page);
+}
+
+/* ===== 智能客服悬浮入口 ===== */
+.chat-fab {
+  position: fixed; right: 28px; bottom: 32px; z-index: 100;
+  width: 52px; height: 52px; border-radius: 50%;
+  border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--el-color-primary); color: #fff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .22);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.chat-fab:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .28);
 }
 
 /* ===== 动画 ===== */

@@ -1,4 +1,4 @@
-# IT 工单系统微服务本地依赖:Nacos(注册+配置) + MySQL 8(双库)
+# IT 工单系统微服务本地依赖:Nacos(注册+配置) + MySQL 8(三库:it_user / it_ticket / it_consultation)
 # 用法:docker compose up -d
 # MySQL 初始化自动执行 db/init/ 下的建库与种子脚本
 services:

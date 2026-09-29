@@ -4,8 +4,10 @@ import com.itticket.common.api.Result;
 import com.itticket.common.web.UserContext;
 import com.itticket.ticket.dto.ActionRequest;
 import com.itticket.ticket.dto.AssignRequest;
+import com.itticket.ticket.dto.ContractEnvelope;
 import com.itticket.ticket.dto.CreateTicketRequest;
 import com.itticket.ticket.dto.RatingRequest;
+import com.itticket.ticket.dto.TicketProjection;
 import com.itticket.ticket.enums.TicketStatus;
 import com.itticket.ticket.service.TicketService;
 import com.itticket.ticket.vo.TicketListVO;
@@ -17,13 +19,14 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
-/** 工单全部对外接口 —— 路径与旧版 /api/v1/tickets 完全一致 */
+/** 工单全部对外接口 —— /api/v1/tickets。建单走 spec 05 新契约,其余 legacy 端点保持旧包络 */
 @RestController
 @RequestMapping("/api/v1/tickets")
 @RequiredArgsConstructor
@@ -31,19 +34,23 @@ public class TicketController {
 
     private final TicketService ticketService;
 
+    /**
+     * spec 05 createTicket(PRD 21.1 新包络 {code,message,request_id,data})。
+     * 幂等:Idempotency-Key 头必填(RD-002);重复键返回原工单,HTTP 200。
+     */
     @PostMapping
-    public ResponseEntity<Result<Map<String, Object>>> create(@RequestBody CreateTicketRequest request) {
+    public ResponseEntity<ContractEnvelope<TicketProjection>> create(
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
+            @RequestBody CreateTicketRequest request) {
         UserContext.CurrentUser user = UserContext.get();
-        TicketService.CreateOutcome outcome = ticketService.create(user, request);
+        TicketService.CreateOutcome outcome = ticketService.create(user, request, idempotencyKey);
         if (outcome.duplicated()) {
-            // 幂等命中:HTTP 200,与旧版一致
-            return ResponseEntity.ok(Result.ok("重复提交(幂等)", Map.of("ticket_id", outcome.ticketId())));
+            return ResponseEntity.ok(ContractEnvelope.ok(requestId, "重复提交(幂等)",
+                    TicketProjection.of(outcome.ticket())));
         }
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(Result.ok("创建成功", Map.of(
-                        "ticket_id", outcome.ticketId(),
-                        "status", TicketStatus.PENDING.getValue(),
-                        "title", outcome.title())));
+                .body(ContractEnvelope.ok(requestId, "创建成功", TicketProjection.of(outcome.ticket())));
     }
 
     @GetMapping
