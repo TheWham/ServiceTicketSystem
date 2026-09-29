@@ -59,7 +59,10 @@ public class EsQueryDslTest {
 
         Assertions.assertTrue(body.contains("\"article_id\":\"art-1\""), body);
         Assertions.assertTrue(body.contains("ctx._source.status = params.status"), body);
-        Assertions.assertTrue(body.contains("\"params\":{\"status\":\"OFFLINE\"}"), body);
+        Assertions.assertTrue(body.contains("\"status\":\"OFFLINE\""), body);
+        // MR-011：置 OFFLINE 时同时记录 offline_at
+        Assertions.assertTrue(body.contains("ctx._source.offline_at = params.now"), body);
+        Assertions.assertTrue(body.contains("\"now\":\""), body);
     }
 
     @Test

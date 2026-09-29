@@ -6,7 +6,9 @@ import com.itticket.rag.config.RagRetrievalProperties;
 import com.itticket.rag.dto.ai.KnowledgeCitation;
 import com.itticket.rag.entity.KnowledgeArticle;
 import com.itticket.rag.enums.AiRefusalReason;
+import com.itticket.rag.enums.AiReplyType;
 import com.itticket.rag.enums.KnowledgeStatus;
+import com.itticket.rag.enums.OfficeDomain;
 import com.itticket.rag.mapper.KnowledgeArticleMapper;
 import com.itticket.rag.vo.ChunkHit;
 import com.itticket.rag.vo.RagRetrievalResponse;
@@ -31,15 +33,14 @@ import java.util.Set;
  *
  * 【职责边界】：
  * 本服务负责「把问题变成已发布知识的可靠依据」，不负责生成回答：
- * 1. 问题向量化（复用 Embedding 客户端，1024 维）；
- * 2. ES 混合检索（向量 kNN + BM25 全文，RRF 融合），强制 status=PUBLISHED；
- * 3. 策略判定：高风险词表拦截（HIGH_RISK_TOPIC）、相似度阈值分档（NO_RELIABLE_KNOWLEDGE / LOW_CONFIDENCE）；
- * 4. 引用组装与校验（AI-008：引用必须指向仍然 PUBLISHED 的知识版本）。
+ * 1. 领域判定（MR-004：OFFICE_IT / OFF_TOPIC / HIGH_RISK / UNCERTAIN，独立于检索结果）；
+ * 2. 问题向量化（复用 Embedding 客户端，1024 维）；
+ * 3. ES 混合检索（向量 kNN + BM25 全文，RRF 融合），强制 status=PUBLISHED；
+ * 4. 阈值分档与引用校验（AI-008：引用必须指向仍然 PUBLISHED 的知识版本）。
  *
- * <p>大模型生成与对话状态由 AI 客服服务负责，本服务通过 /api/v1/rag/retrievals 与
- * /api/v1/consultations/{id}/ai-messages 两个出口把上述结果交给对接方。</p>
- *
- * 【契约依据】AI-001（能力边界与拒答）、AI-008（输出校验）、RD-006（依赖降级）、AC-27（下线不返回）。
+ * <p>大模型生成与对话状态由 AI 客服服务负责，本服务通过 /api/v1/rag/retrievals 交付
+ * 检索依据与领域判定。领域外/高风险不做检索，办公 IT 的无命中/不相关命中不强制拒答
+ * （允许空引用通用回答），置信度不足与知识冲突仍拒答（AI-001 冷启动修订）。</p>
  *
  * @author IT工单系统研发组 - RAG专项
  */
@@ -50,38 +51,48 @@ public class RagRetrievalService {
 
     private final EmbeddingClientService embeddingService;
     private final ElasticsearchIndexService indexService;
-    private final HighRiskGuardrail guardrail;
+    private final DomainClassifier domainClassifier;
     private final RagRetrievalProperties properties;
     private final KnowledgeArticleMapper articleMapper;
 
     /**
      * 检索与策略判定结果。
      *
-     * @param highRiskBlocked        是否命中高风险主题（命中则不检索、不建议生成）
-     * @param matchedKeyword         命中的高风险关键词
-     * @param dependencyUnavailable 向量或检索依赖不可用（RD-006：不得用常识补写）
-     * @param failureReason         依赖不可用原因（不含内部堆栈）
-     * @param hits                  融合后的 Top-K 切片
-     * @param topSimilarity         命中的最高余弦相似度
-     * @param suggestedRefusalReason 建议拒答原因；为 null 表示达到可靠命中阈值
+     * @param domain                 MR-004 领域判定（独立于生成结果）
+     * @param dependencyUnavailable  向量或检索依赖不可用（RD-006：不得用常识补写）
+     * @param failureReason          依赖不可用原因（不含内部堆栈）
+     * @param hits                   融合后的 Top-K 切片
+     * @param topScore               命中最高余弦相似度
+     * @param suggestedRefusalReason 建议拒答原因；为 null 表示不拒答
+     * @param reliable               是否达到可靠命中阈值（可据此生成带引用的回答）
      */
     public record RetrievalOutcome(
-            boolean highRiskBlocked,
-            String matchedKeyword,
+            OfficeDomain domain,
             boolean dependencyUnavailable,
             String failureReason,
             List<ChunkHit> hits,
-            BigDecimal topSimilarity,
-            AiRefusalReason suggestedRefusalReason) {
+            BigDecimal topScore,
+            AiRefusalReason suggestedRefusalReason,
+            boolean reliable) {
 
-        /** 是否可作为生成回答的依据 */
-        public boolean reliable() {
-            return !highRiskBlocked && !dependencyUnavailable && suggestedRefusalReason == null;
+        /** 命中领域外（必须拒答） */
+        public boolean isOffTopic() {
+            return domain == OfficeDomain.OFF_TOPIC;
+        }
+
+        /** 命中高风险主题（必须拒答并提供人工入口） */
+        public boolean isHighRisk() {
+            return domain == OfficeDomain.HIGH_RISK;
+        }
+
+        /** 语义不明确（应追问澄清，不生成回答） */
+        public boolean isUncertain() {
+            return domain == OfficeDomain.UNCERTAIN;
         }
     }
 
     /**
-     * 执行检索与策略判定。
+     * 执行领域判定 + 检索 + 阈值分档。
      *
      * @param question   用户问题
      * @param categoryId 可选分类过滤
@@ -93,11 +104,20 @@ public class RagRetrievalService {
         }
         String trimmed = question.trim();
 
-        // 1) 高风险主题：直接拦截，不检索（AI-001）
-        HighRiskGuardrail.HighRiskVerdict verdict = guardrail.inspect(trimmed);
-        if (verdict.blocked()) {
-            return new RetrievalOutcome(true, verdict.matchedKeyword(), false, null, List.of(),
-                    BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP), AiRefusalReason.HIGH_RISK_TOPIC);
+        // 1) 领域判定（MR-004：独立于生成与检索结果，领域外/高风险不做检索）
+        DomainClassifier.Verdict verdict = domainClassifier.classify(trimmed);
+        OfficeDomain domain = verdict.domain();
+        if (domain == OfficeDomain.OFF_TOPIC) {
+            log.info("问题判定为领域外，拒绝检索与回答: rule={}", verdict.matchedRule());
+            return outcome(domain, false, null, List.of(), zero(), AiRefusalReason.OFF_TOPIC, false);
+        }
+        if (domain == OfficeDomain.HIGH_RISK) {
+            log.info("问题命中高风险主题，拒绝检索与回答: rule={}", verdict.matchedRule());
+            return outcome(domain, false, null, List.of(), zero(), AiRefusalReason.HIGH_RISK_TOPIC, false);
+        }
+        if (domain == OfficeDomain.UNCERTAIN) {
+            // 语义不清：上层应 CLARIFY，不做检索与回答
+            return outcome(domain, false, null, List.of(), zero(), null, false);
         }
 
         // 2) 问题向量化；失败按依赖不可用降级，不退化到无依据回答（RD-006）
@@ -110,37 +130,35 @@ public class RagRetrievalService {
             vector = embedding.getVectors().get(0);
         } catch (Exception e) {
             log.warn("RAG 向量化失败，按依赖不可用降级: {}", e.getMessage());
-            return new RetrievalOutcome(false, null, true, "向量服务不可用", List.of(),
-                    BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP), AiRefusalReason.MODEL_UNAVAILABLE);
+            return outcome(domain, true, "向量服务不可用", List.of(), zero(), AiRefusalReason.MODEL_UNAVAILABLE, false);
         }
 
-        // 3) 混合检索（强制 PUBLISHED 过滤）
+        // 3) 混合检索（强制 PUBLISHED 过滤，AC-27）
         List<ChunkHit> hits;
         try {
             hits = indexService.searchTopKChunks(vector, trimmed, categoryId, resolveTopK(topK));
         } catch (Exception e) {
             log.warn("RAG 检索失败，按依赖不可用降级: {}", e.getMessage());
-            return new RetrievalOutcome(false, null, true, "检索服务不可用", List.of(),
-                    BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP), AiRefusalReason.MODEL_UNAVAILABLE);
+            return outcome(domain, true, "检索服务不可用", List.of(), zero(), AiRefusalReason.MODEL_UNAVAILABLE, false);
         }
 
-        BigDecimal topSimilarity = maxSimilarity(hits);
-        return new RetrievalOutcome(false, null, false, null, hits, topSimilarity,
-                judge(topSimilarity, hits.isEmpty()));
-    }
-
-    /** 阈值分档：无命中或低于下限 → 无可靠知识；介于下限与生成阈值之间 → 置信度不足 */
-    private AiRefusalReason judge(BigDecimal topSimilarity, boolean empty) {
-        if (empty) {
-            return AiRefusalReason.NO_RELIABLE_KNOWLEDGE;
+        // 4) 阈值分档（AI-001：无命中/不相关不强制拒答；置信度不足仍拒答）
+        BigDecimal topScore = maxSimilarity(hits);
+        boolean reliable;
+        AiRefusalReason reason;
+        if (hits.isEmpty() || topScore.compareTo(properties.getLowConfidenceThreshold()) < 0) {
+            // 无命中或不相关命中：不强制拒答，允许上层给出空引用的通用回答
+            reliable = false;
+            reason = null;
+        } else if (topScore.compareTo(properties.getConfidenceThreshold()) < 0) {
+            // 介于下限与阈值之间：置信度不足，仍拒答
+            reliable = false;
+            reason = AiRefusalReason.LOW_CONFIDENCE;
+        } else {
+            reliable = true;
+            reason = null;
         }
-        if (topSimilarity == null || topSimilarity.compareTo(properties.getLowConfidenceThreshold()) < 0) {
-            return AiRefusalReason.NO_RELIABLE_KNOWLEDGE;
-        }
-        if (topSimilarity.compareTo(properties.getConfidenceThreshold()) < 0) {
-            return AiRefusalReason.LOW_CONFIDENCE;
-        }
-        return null;
+        return outcome(domain, false, null, hits, topScore, reason, reliable);
     }
 
     /**
@@ -159,7 +177,7 @@ public class RagRetrievalService {
                 continue;
             }
             ChunkHit current = bestPerArticle.get(hit.articleId());
-            if (current == null || similarityOf(hit).compareTo(similarityOf(current)) > 0) {
+            if (current == null || scoreOf(hit).compareTo(scoreOf(current)) > 0) {
                 bestPerArticle.put(hit.articleId(), hit);
             }
         }
@@ -186,13 +204,13 @@ public class RagRetrievalService {
                     hit.articleId(),
                     hit.versionId(),
                     titleOf(hit),
-                    similarityOf(hit),
+                    scoreOf(hit),
                     snippetOf(hit)));
         }
         return citations;
     }
 
-    /** 转为对外检索响应 */
+    /** 转为对外检索响应（MR-004：只返回 PUBLISHED 版本，携带 score 与 indexVersion） */
     public RagRetrievalResponse toResponse(RetrievalOutcome outcome) {
         List<RetrievedChunk> items = outcome.hits() == null ? List.of() : outcome.hits().stream()
                 .map(hit -> new RetrievedChunk(
@@ -203,16 +221,39 @@ public class RagRetrievalService {
                         snippetOf(hit),
                         hit.content(),
                         hit.categoryId(),
-                        hit.cosineSimilarity()))
+                        hit.cosineSimilarity(),
+                        hit.indexVersion()))
                 .toList();
         return new RagRetrievalResponse(
                 items,
-                outcome.topSimilarity(),
-                outcome.reliable(),
-                outcome.highRiskBlocked(),
-                outcome.matchedKeyword(),
+                outcome.domain(),
+                suggestedReplyType(outcome),
                 outcome.suggestedRefusalReason(),
+                outcome.topScore(),
+                outcome.reliable(),
                 true);
+    }
+
+    /** 建议的回答类型（供 AI 客服服务参考，最终决定权在上层） */
+    private AiReplyType suggestedReplyType(RetrievalOutcome outcome) {
+        return switch (outcome.domain()) {
+            case OFF_TOPIC, HIGH_RISK -> AiReplyType.REFUSE;
+            case UNCERTAIN -> AiReplyType.CLARIFY;
+            case OFFICE_IT -> {
+                if (outcome.dependencyUnavailable() || outcome.suggestedRefusalReason() != null) {
+                    yield AiReplyType.REFUSE;
+                }
+                // 可靠命中带引用；无命中/不相关也可通用回答（空引用）
+                yield AiReplyType.ANSWER;
+            }
+        };
+    }
+
+    private RetrievalOutcome outcome(OfficeDomain domain, boolean dependencyUnavailable, String failureReason,
+                                     List<ChunkHit> hits, BigDecimal topScore,
+                                     AiRefusalReason refusalReason, boolean reliable) {
+        return new RetrievalOutcome(domain, dependencyUnavailable, failureReason,
+                hits, topScore, refusalReason, reliable);
     }
 
     private int resolveTopK(Integer requested) {
@@ -225,19 +266,23 @@ public class RagRetrievalService {
     private BigDecimal maxSimilarity(List<ChunkHit> hits) {
         BigDecimal max = null;
         for (ChunkHit hit : hits) {
-            BigDecimal similarity = hit.cosineSimilarity();
-            if (similarity != null && (max == null || similarity.compareTo(max) > 0)) {
-                max = similarity;
+            BigDecimal score = hit.cosineSimilarity();
+            if (score != null && (max == null || score.compareTo(max) > 0)) {
+                max = score;
             }
         }
-        return max == null ? BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP) : max;
+        return max == null ? zero() : max;
     }
 
-    private BigDecimal similarityOf(ChunkHit hit) {
-        return hit.cosineSimilarity() == null ? BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP) : hit.cosineSimilarity();
+    private BigDecimal scoreOf(ChunkHit hit) {
+        return hit.cosineSimilarity() == null ? zero() : hit.cosineSimilarity();
     }
 
-    /** 标题非空（契约 citation.title.minLength=1）；缺失时退化为正文前 30 字 */
+    private static BigDecimal zero() {
+        return BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP);
+    }
+
+    /** 标题非空（契约 citation.title.minLength=1）；缺失时退化为正文片段 */
     private String titleOf(ChunkHit hit) {
         String title = hit.title();
         if (title != null && !title.isBlank()) {

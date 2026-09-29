@@ -104,26 +104,32 @@ public class ElasticsearchIndexService {
     }
 
     /**
-     * 将切片列表批量持久化到 Elasticsearch 索引（默认按已发布状态入库）。
+     * 将切片列表批量持久化到 Elasticsearch 索引（默认按已发布状态入库，发布时间取当前）。
      */
     public IndexResult indexChunks(String articleId, String versionId, String categoryId, List<KnowledgeChunkVO> chunks) {
         return indexChunks(articleId, versionId, categoryId, KnowledgeRiskLevel.NORMAL,
-                EsQueryDsl.STATUS_PUBLISHED, chunks);
+                EsQueryDsl.STATUS_PUBLISHED, LocalDateTime.now(), chunks);
     }
 
     /**
-     * 将切片列表批量持久化到 Elasticsearch 索引
+     * 将切片列表批量持久化到 Elasticsearch 索引。
      *
-     * @param articleId  所属知识文章业务 ID
-     * @param versionId  所属知识版本业务 ID
-     * @param categoryId 知识分类编码（如 C_NET）
-     * @param riskLevel  知识风险等级，归一为 NORMAL / HIGH 后落库
-     * @param status     切片状态标记；检索侧强制过滤 status=PUBLISHED，下线后置为 OFFLINE（AC-27）
-     * @param chunks     待入库的切片列表
+     * <p>索引文档字段遵循 MR-011：articleId、versionId、chunkId、embedding、contentHash、
+     * indexVersion、publishedAt、offlineAt。索引存储是可重建投影，不是事实源；
+     * indexVersion 直接取知识版本 ID，保证可追溯到 knowledge_version.version_id（DM-004）。</p>
+     *
+     * @param articleId   所属知识文章业务 ID
+     * @param versionId   所属知识版本业务 ID（同时作为 index_version 写入）
+     * @param categoryId  知识分类编码（如 C_NET）
+     * @param riskLevel   知识风险等级，归一为 NORMAL / HIGH 后落库
+     * @param status      切片状态标记；检索侧强制过滤 status=PUBLISHED，下线后置为 OFFLINE（AC-27）
+     * @param publishedAt 该知识版本的发布生效时间；草稿不入库（null 时不写该字段）
+     * @param chunks      待入库的切片列表
      * @return IndexResult 索引执行度量结果
      */
     public IndexResult indexChunks(String articleId, String versionId, String categoryId,
-                                   KnowledgeRiskLevel riskLevel, String status, List<KnowledgeChunkVO> chunks) {
+                                   KnowledgeRiskLevel riskLevel, String status,
+                                   LocalDateTime publishedAt, List<KnowledgeChunkVO> chunks) {
         String baseUri = String.format("%s://%s:%d", esScheme, esHost, esPort);
         List<String> docIds = new ArrayList<>();
         Map<String, Object> details = new HashMap<>();
@@ -180,6 +186,12 @@ public class ElasticsearchIndexService {
                 // 状态标记：检索侧强制过滤 PUBLISHED；下线时改为 OFFLINE（AI-001 / AC-27）
                 doc.put("status", status);
                 doc.put("risk_level", KnowledgeRiskLevel.normalize(riskLevel).getValue());
+                // MR-011 索引生命周期字段：内容指纹 + 索引版本 + 发布时间（offline_at 在下线时写入）
+                doc.put("content_hash", sha256(chunk.getContent()));
+                doc.put("index_version", versionId);
+                if (publishedAt != null) {
+                    doc.put("published_at", publishedAt.toString());
+                }
                 doc.put("title", chunk.getTitle());
                 doc.put("content", chunk.getContent());
                 doc.put("chunk_index", chunk.getChunkIndex());
@@ -279,10 +291,14 @@ public class ElasticsearchIndexService {
                           "category_id": { "type": "keyword" },
                           "status": { "type": "keyword" },
                           "risk_level": { "type": "keyword" },
+                          "content_hash": { "type": "keyword" },
+                          "index_version": { "type": "keyword" },
                           "title": { "type": "text", "analyzer": "standard" },
                           "content": { "type": "text", "analyzer": "standard" },
                           "chunk_index": { "type": "integer" },
                           "char_count": { "type": "integer" },
+                          "published_at": { "type": "date" },
+                          "offline_at": { "type": "date" },
                           "created_at": { "type": "date" },
                           "vector": {
                             "type": "dense_vector",
@@ -323,6 +339,10 @@ public class ElasticsearchIndexService {
                       "properties": {
                         "status": { "type": "keyword" },
                         "risk_level": { "type": "keyword" },
+                        "content_hash": { "type": "keyword" },
+                        "index_version": { "type": "keyword" },
+                        "published_at": { "type": "date" },
+                        "offline_at": { "type": "date" },
                         "vector": {
                           "type": "dense_vector",
                           "dims": 1024,
@@ -567,6 +587,7 @@ public class ElasticsearchIndexService {
                     chunkId,
                     textOrNull(source, "article_id"),
                     textOrNull(source, "version_id"),
+                    textOrNull(source, "index_version"),
                     source.path("title").asText(""),
                     source.path("content").asText(""),
                     textOrNull(source, "category_id"),
@@ -587,6 +608,24 @@ public class ElasticsearchIndexService {
     private String textOrNull(JsonNode node, String field) {
         JsonNode value = node.path(field);
         return value.isMissingNode() || value.isNull() ? null : value.asText();
+    }
+
+    /** 切片内容的 SHA-256 指纹（MR-011：索引生命周期追踪与内容变更识别） */
+    private String sha256(String text) {
+        if (text == null) {
+            return "";
+        }
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            return "";
+        }
     }
 
     /**

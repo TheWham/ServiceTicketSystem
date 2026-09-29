@@ -18,9 +18,9 @@ public class RankFusionTest {
 
     @Test
     public void chunkPresentInBothListsRanksFirst() {
-        ChunkHit both = ChunkHit.raw("c1", "a1", "v1", "标题1", "内容1", "C_NET", COS_MID);
-        ChunkHit knnOnly = ChunkHit.raw("c2", "a1", "v1", "标题2", "内容2", "C_NET", COS_HIGH);
-        ChunkHit textOnly = ChunkHit.raw("c3", "a2", "v2", "标题3", "内容3", "C_NET", null);
+        ChunkHit both = ChunkHit.raw("c1", "a1", "v1", "v1", "标题1", "内容1", "C_NET", COS_MID);
+        ChunkHit knnOnly = ChunkHit.raw("c2", "a1", "v1", "v1", "标题2", "内容2", "C_NET", COS_HIGH);
+        ChunkHit textOnly = ChunkHit.raw("c3", "a2", "v2", "v2", "标题3", "内容3", "C_NET", null);
 
         List<ChunkHit> fused = RankFusion.fuse(List.of(knnOnly, both), List.of(textOnly, both), 10);
 
@@ -34,9 +34,9 @@ public class RankFusionTest {
     @Test
     public void topKLimitsResultSize() {
         List<ChunkHit> knn = List.of(
-                ChunkHit.raw("c1", "a1", "v1", "t", "x", "C_NET", COS_HIGH),
-                ChunkHit.raw("c2", "a1", "v1", "t", "y", "C_NET", COS_MID),
-                ChunkHit.raw("c3", "a2", "v2", "t", "z", "C_NET", COS_MID));
+                ChunkHit.raw("c1", "a1", "v1", "v1", "t", "x", "C_NET", COS_HIGH),
+                ChunkHit.raw("c2", "a1", "v1", "v1", "t", "y", "C_NET", COS_MID),
+                ChunkHit.raw("c3", "a2", "v2", "v2", "t", "z", "C_NET", COS_MID));
 
         List<ChunkHit> fused = RankFusion.fuse(knn, List.of(), 2);
 
@@ -46,7 +46,7 @@ public class RankFusionTest {
 
     @Test
     public void cosineSimilarityIsCarriedThroughUnchanged() {
-        ChunkHit hit = ChunkHit.raw("c1", "a1", "v1", "t", "x", "C_NET", COS_HIGH);
+        ChunkHit hit = ChunkHit.raw("c1", "a1", "v1", "v1", "t", "x", "C_NET", COS_HIGH);
 
         List<ChunkHit> fused = RankFusion.fuse(List.of(hit), List.of(), 5);
 
@@ -55,7 +55,7 @@ public class RankFusionTest {
 
     @Test
     public void textOnlyHitKeepsNullCosine() {
-        ChunkHit textOnly = ChunkHit.raw("c1", "a1", "v1", "t", "x", "C_NET", null);
+        ChunkHit textOnly = ChunkHit.raw("c1", "a1", "v1", "v1", "t", "x", "C_NET", null);
 
         List<ChunkHit> fused = RankFusion.fuse(List.of(), List.of(textOnly), 5);
 

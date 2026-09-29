@@ -51,7 +51,7 @@ public class KnowledgeStoreTest {
         version.setVersionId("ver-1");
         version.setArticleId("art-1");
         version.setVersionNo(1);
-        version.setContentJson(KnowledgeContent.build("网络排查指南", "摘要", null, "正文"));
+        version.setContent(KnowledgeContent.build("网络排查指南", "摘要", null, "正文"));
         version.setAuthorId(AUTHOR);
         Mockito.when(versionMapper.selectById("ver-1")).thenReturn(version);
         return article;

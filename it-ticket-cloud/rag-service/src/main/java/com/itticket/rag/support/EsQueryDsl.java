@@ -114,7 +114,7 @@ public final class EsQueryDsl {
         return write(root);
     }
 
-    /** 按 article_id 批量更新切片状态（下线联动，_update_by_query） */
+    /** 按 article_id 批量更新切片状态（下线联动，AC-27）；置 OFFLINE 时同时记录 offline_at（MR-011） */
     public static String updateStatusByArticleBody(String articleId, String newStatus) {
         ObjectNode root = MAPPER.createObjectNode();
         ObjectNode term = root.putObject("query").putObject("term");
@@ -122,8 +122,12 @@ public final class EsQueryDsl {
 
         ObjectNode script = root.putObject("script");
         script.put("lang", "painless");
-        script.put("source", "ctx._source.status = params.status");
-        script.putObject("params").put("status", newStatus);
+        script.put("source",
+                "ctx._source.status = params.status; "
+                        + "if (params.status == 'OFFLINE') { ctx._source.offline_at = params.now; }");
+        ObjectNode params = script.putObject("params");
+        params.put("status", newStatus);
+        params.put("now", java.time.LocalDateTime.now().toString());
         return write(root);
     }
 
@@ -186,13 +190,16 @@ public final class EsQueryDsl {
             source.add("title");
             source.add("category_id");
             source.add("content");
+            source.add("published_at");
         } else {
             source.add("chunk_id");
             source.add("article_id");
             source.add("version_id");
+            source.add("index_version");
             source.add("title");
             source.add("content");
             source.add("category_id");
+            source.add("published_at");
         }
         return source;
     }

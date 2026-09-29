@@ -67,7 +67,7 @@ public final class RankFusion {
                 break;
             }
             ChunkHit h = fused.hit;
-            result.add(new ChunkHit(h.chunkId(), h.articleId(), h.versionId(), h.title(), h.content(),
+            result.add(new ChunkHit(h.chunkId(), h.articleId(), h.versionId(), h.indexVersion(), h.title(), h.content(),
                     h.categoryId(), h.cosineSimilarity(), fused.knnRank, fused.textRank, fused.rrf));
         }
         return result;

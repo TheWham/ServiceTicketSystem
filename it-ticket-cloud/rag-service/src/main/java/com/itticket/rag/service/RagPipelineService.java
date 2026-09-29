@@ -227,9 +227,11 @@ public class RagPipelineService {
                 if (summary.length() > 200) {
                     summary = summary.substring(0, 200);
                 }
-                version.setContentJson(KnowledgeContent.build(
+                version.setContent(KnowledgeContent.build(
                         docTitle != null && !docTitle.isBlank() ? docTitle : "未命名文档",
                         summary, null, body));
+                version.setCreatedAt(LocalDateTime.now());
+                version.setUpdatedAt(LocalDateTime.now());
 
                 articleMapper.insert(article);
                 versionMapper.insert(version);
@@ -242,7 +244,7 @@ public class RagPipelineService {
             ElasticsearchIndexService.IndexResult esResult;
             if (publishNow) {
                 esResult = indexService.indexChunks(articleId, versionId, article.getCategoryId(),
-                        article.getRiskLevel(), EsQueryDsl.STATUS_PUBLISHED, chunks);
+                        article.getRiskLevel(), EsQueryDsl.STATUS_PUBLISHED, version.getPublishedAt(), chunks);
             } else {
                 // AI-001：未发布内容不得进入检索索引，草稿只落库不写 ES
                 esResult = indexService.skippedResult("草稿态未写入 ES，待审核发布后由发布流程建立索引");
@@ -428,6 +430,7 @@ public class RagPipelineService {
                 article.getCategoryId(),
                 article.getRiskLevel(),
                 EsQueryDsl.STATUS_PUBLISHED,
+                version.getPublishedAt(),
                 embedResult.chunks());
     }
 
