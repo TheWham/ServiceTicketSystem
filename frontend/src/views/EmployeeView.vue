@@ -333,6 +333,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   EditPen, List, WarningFilled, SuccessFilled, CircleCheck, CircleClose
@@ -628,6 +629,8 @@ watch(form, () => {
   draftTimer = setTimeout(saveDraft, 30000)
 }, { deep: true })
 
+const route = useRoute()
+
 onMounted(async () => {
   try {
     const res = await categoryApi.leaf()
@@ -640,7 +643,16 @@ onMounted(async () => {
     const draft = await draftApi.get()
     if (draft.data) draftBanner.value = true
   } catch (e) {}
-  loadTickets()
+  await loadTickets()
+  // 通知跳转：URL 带 ?ticket=xxx 时自动打开该工单详情
+  if (route.query.ticket) {
+    openDetail({ ticket_id: route.query.ticket })
+  }
+})
+
+// 关键：同页内点击通知只改 query，组件不重挂载、onMounted 不触发——需 watch query 变化
+watch(() => route.query.ticket, (tid) => {
+  if (tid) openDetail({ ticket_id: tid })
 })
 
 onUnmounted(() => clearTimeout(draftTimer))

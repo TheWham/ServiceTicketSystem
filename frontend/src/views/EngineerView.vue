@@ -222,6 +222,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   Tools, Refresh, Pointer, CircleCheck, Promotion
@@ -390,11 +391,22 @@ async function doAction(action) {
   } catch (e) { actionError.value = e.message }
 }
 
-onMounted(() => {
-  loadTickets()
+const route = useRoute()
+
+onMounted(async () => {
+  await loadTickets()
+  // 通知跳转：URL 带 ?ticket=xxx 时自动打开该工单详情
+  if (route.query.ticket) {
+    openDetail({ ticket_id: route.query.ticket })
+  }
   pollTimer = setInterval(loadTickets, 15000)
 })
 onUnmounted(() => clearInterval(pollTimer))
+
+// 同页点击通知只改 query，组件不重挂载——watch query 变化自动打开详情
+watch(() => route.query.ticket, (tid) => {
+  if (tid) openDetail({ ticket_id: tid })
+})
 
 watch(() => userStore.userId, (id) => {
   allTickets.value = []

@@ -229,7 +229,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   DataAnalysis, Refresh, RefreshRight,
@@ -371,13 +372,24 @@ async function forceResolve(ticket) {
   } catch (e) { ElMessage.error(e.message) }
 }
 
+const route = useRoute()
+
 onMounted(async () => {
   loadEngineers()
   try {
     const res = await categoryApi.leaf()
     categories.value = res.data || []
   } catch (e) { console.error('加载分类失败', e) }
-  loadTickets()
+  await loadTickets()
+  // 通知跳转：URL 带 ?ticket=xxx 时自动打开该工单详情
+  if (route.query.ticket) {
+    openDetail({ ticket_id: route.query.ticket })
+  }
+})
+
+// 同页点击通知只改 query，组件不重挂载——watch query 变化自动打开详情
+watch(() => route.query.ticket, (tid) => {
+  if (tid) openDetail({ ticket_id: tid })
 })
 </script>
 

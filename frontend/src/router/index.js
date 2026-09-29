@@ -9,6 +9,14 @@ const routes = [
   { path: '/employee', name: 'Employee', component: () => import('../views/EmployeeView.vue'), meta: { role: 'EMPLOYEE' } },
   { path: '/engineer', name: 'Engineer', component: () => import('../views/EngineerView.vue'), meta: { role: 'ENGINEER' } },
   { path: '/supervisor', name: 'Supervisor', component: () => import('../views/SupervisorView.vue'), meta: { role: ['PLATFORM_ADMIN', 'KB_ADMIN'] } },
+  { path: '/accounts', name: 'Accounts', component: () => import('../views/AccountManageView.vue'), meta: { role: ['PLATFORM_ADMIN', 'KB_ADMIN'] } },
+  // 通知跳转：/tickets/:id → 按当前角色重定向到对应工作台并带上 ticket query（工作台自动打开详情）
+  { path: '/tickets/:id', redirect: (to) => {
+      const userStore = useUserStore()
+      const home = HOME[userStore.currentUser?.role] || '/login'
+      return { path: home, query: { ticket: to.params.id } }
+    }
+  },
   { path: '/:pathMatch(.*)*', redirect: '/login' }
 ]
 

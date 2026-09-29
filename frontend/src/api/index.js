@@ -31,7 +31,14 @@ export const userApi = {
   login: (data) => api.post('/users/login', data),
   loginOptions: () => api.get('/users/login-options'),
   getMe: () => api.get('/users/me'),
-  listUsers: (params) => api.get('/users', { params })
+  listUsers: (params) => api.get('/users', { params }),
+  // 认证模块：忘记密码(免登录)/修改密码
+  forgotPassword: (data) => api.post('/users/forgot-password', data),
+  changePassword: (data) => api.post('/users/change-password', data),
+  // 主管账号管理
+  listAccounts: () => api.get('/users/accounts'),
+  createAccount: (data) => api.post('/users/accounts', data),
+  resetPassword: (userId, data) => api.post(`/users/accounts/${userId}/reset-password`, data)
 }
 
 // ---- 工单 API ----
