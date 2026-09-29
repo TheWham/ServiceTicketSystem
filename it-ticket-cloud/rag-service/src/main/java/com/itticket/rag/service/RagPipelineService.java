@@ -11,6 +11,7 @@ import com.itticket.rag.enums.KnowledgeRiskLevel;
 import com.itticket.rag.enums.KnowledgeStatus;
 import com.itticket.rag.mapper.KnowledgeArticleMapper;
 import com.itticket.rag.mapper.KnowledgeVersionMapper;
+import com.itticket.rag.support.EsQueryDsl;
 import com.itticket.rag.vo.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -190,12 +191,16 @@ public class RagPipelineService {
             long s4StartMs = System.currentTimeMillis();
 
             // 4.1 持久化到 MySQL (知识库文章表与版本表)
+            // publishNow=false 时按标准生命周期落 DRAFT，等待提审与发布（SM-KNOWLEDGE-001）
+            boolean publishNow = request.isPublishNow();
+            KnowledgeStatus initialStatus = publishNow ? KnowledgeStatus.PUBLISHED : KnowledgeStatus.DRAFT;
+
             KnowledgeArticle article = new KnowledgeArticle();
             article.setArticleId(articleId);
-            article.setStatus(KnowledgeStatus.PUBLISHED);
+            article.setStatus(initialStatus);
             article.setCurrentVersionId(versionId);
             article.setCategoryId(request.getCategoryId() != null ? request.getCategoryId() : "C_NET");
-            article.setRiskLevel(request.getRiskLevel() != null ? request.getRiskLevel() : KnowledgeRiskLevel.NORMAL);
+            article.setRiskLevel(KnowledgeRiskLevel.normalize(request.getRiskLevel()));
             article.setCreatedAt(LocalDateTime.now());
             article.setUpdatedAt(LocalDateTime.now());
 
@@ -210,8 +215,11 @@ public class RagPipelineService {
             version.setTitle(docTitle != null && !docTitle.isBlank() ? docTitle : "未命名文档");
             version.setContent(parsedDoc.getFullContent());
             version.setAuthorId(request.getAuthorId() != null ? request.getAuthorId() : "kb_admin");
-            version.setChangeNote("初始文档上传、智能切片与 1024 维向量化");
-            version.setPublishedAt(LocalDateTime.now());
+            version.setChangeNote(publishNow
+                    ? "初始文档上传、智能切片与 1024 维向量化"
+                    : "初始文档上传并落为草稿，待提审发布");
+            // 仅正式发布才记录生效时间；草稿态 publishedAt 保持空（PRD §16.3）
+            version.setPublishedAt(publishNow ? LocalDateTime.now() : null);
             version.setCreatedAt(LocalDateTime.now());
 
             try {
@@ -232,9 +240,15 @@ public class RagPipelineService {
             }
 
             // 4.2 批量存入 Elasticsearch (包含 content、title、dense_vector 向量)
-            ElasticsearchIndexService.IndexResult esResult = indexService.indexChunks(
-                    articleId, versionId, article.getCategoryId(), chunks
-            );
+            ElasticsearchIndexService.IndexResult esResult;
+            if (publishNow) {
+                esResult = indexService.indexChunks(articleId, versionId, article.getCategoryId(),
+                        article.getRiskLevel(), EsQueryDsl.STATUS_PUBLISHED, chunks);
+            } else {
+                // AI-001：未发布内容不得进入检索索引，草稿只落库不写 ES
+                esResult = indexService.skippedResult("草稿态未写入 ES，待审核发布后由发布流程建立索引");
+                log.info("Draft article {} kept out of ES index (publishNow=false)", articleId);
+            }
 
             long s4EndMs = System.currentTimeMillis();
             Map<String, Object> s4Metrics = new HashMap<>();
@@ -248,7 +262,7 @@ public class RagPipelineService {
                     .stageCode("ES_INDEXING")
                     .stageName("Elasticsearch 向量索引与持久化")
                     .description("将切片文本及其 1024 维 Dense Vector 写入 Elasticsearch 索引")
-                    .status(esResult.isSuccess() ? "SUCCESS" : "WARNING")
+                    .status(publishNow ? (esResult.isSuccess() ? "SUCCESS" : "WARNING") : "SKIPPED")
                     .startTime(s4Start)
                     .endTime(LocalDateTime.now())
                     .durationMs(s4EndMs - s4StartMs)
@@ -272,8 +286,11 @@ public class RagPipelineService {
                     .startTime(overallStart)
                     .endTime(overallEnd)
                     .totalDurationMs(totalDuration)
-                    .summary(String.format("处理成功: 共解析 %d 字符, 生成 %d 块切片与 1024 维向量, 成功入库 ES 索引",
-                            parsedDoc.getCharacterCount(), chunks.size()))
+                    .summary(publishNow
+                            ? String.format("处理成功: 共解析 %d 字符, 生成 %d 块切片与 1024 维向量, 成功入库 ES 索引",
+                                    parsedDoc.getCharacterCount(), chunks.size())
+                            : String.format("处理成功: 共解析 %d 字符, 生成 %d 块切片与 1024 维向量, 已落为草稿(DRAFT)待提审发布",
+                                    parsedDoc.getCharacterCount(), chunks.size()))
                     .stages(stages)
                     .chunks(chunks)
                     .build();
@@ -336,6 +353,83 @@ public class RagPipelineService {
             traceStore.put(traceId, failedTrace);
             throw new BizException(ErrorCode.SYSTEM_ERROR, "文档切片入库链路执行异常: " + e.getMessage());
         }
+    }
+
+    /**
+     * 切片 + 向量化结果（上传通道与发布通道共用）
+     *
+     * @param chunks              已带向量的切片列表
+     * @param model               实际调用的向量模型
+     * @param dimensions          向量维度
+     * @param totalTokens         向量化消耗 Token 总数
+     * @param batchCount          批处理调用次数
+     * @param embeddingDurationMs 向量化耗时
+     */
+    public record ChunkEmbedResult(
+            List<KnowledgeChunkVO> chunks,
+            String model,
+            int dimensions,
+            int totalTokens,
+            int batchCount,
+            long embeddingDurationMs) {
+    }
+
+    /**
+     * 文本切片 + 向量嵌入（上传通道与知识发布通道共用的核心能力）。
+     *
+     * <p>发布通道（PENDING_REVIEW ➔ PUBLISHED）复用本方法，保证草稿上传与正式发布
+     * 走同一套切片/向量逻辑，避免两处实现漂移。</p>
+     *
+     * @param title   文档标题（用于切片继承的章节标题）
+     * @param content 文档正文
+     * @param config  切片配置
+     */
+    public ChunkEmbedResult chunkAndEmbed(String title, String content, ChunkConfigDTO config) {
+        List<KnowledgeChunkVO> chunks = chunkerService.chunkDocument(content, title, config);
+
+        long startMs = System.currentTimeMillis();
+        List<String> chunkTexts = chunks.stream().map(KnowledgeChunkVO::getContent).toList();
+        EmbeddingClientService.EmbeddingResult embeddingRes = embeddingService.generateEmbeddings(chunkTexts);
+        long durationMs = System.currentTimeMillis() - startMs;
+
+        List<List<Float>> vectors = embeddingRes.getVectors();
+        for (int i = 0; i < chunks.size(); i++) {
+            if (i < vectors.size()) {
+                chunks.get(i).setVector(vectors.get(i));
+                chunks.get(i).setHasVector(true);
+                chunks.get(i).setVectorDimensions(embeddingRes.getDimensions());
+                chunks.get(i).setStatus("EMBEDDED");
+            }
+        }
+
+        return new ChunkEmbedResult(chunks, embeddingRes.getModel(), embeddingRes.getDimensions(),
+                embeddingRes.getTotalTokens(), embeddingRes.getBatchCount(), durationMs);
+    }
+
+    /**
+     * 按知识版本正文重建检索索引（发布、以及 ES 侧补偿重建时调用）。
+     *
+     * @param article   知识文章
+     * @param version   待索引版本
+     * @param chunkSize 目标切片字符数
+     * @return ES 索引执行结果
+     */
+    public ElasticsearchIndexService.IndexResult indexVersion(KnowledgeArticle article, KnowledgeVersion version,
+                                                             int chunkSize) {
+        ChunkConfigDTO config = new ChunkConfigDTO();
+        if (chunkSize > 0) {
+            config.setChunkSize(chunkSize);
+        }
+        ChunkEmbedResult embedResult = chunkAndEmbed(version.getTitle(), version.getContent(), config);
+        log.info("Rebuilt {} chunks for article {} version {} before ES indexing",
+                embedResult.chunks().size(), article.getArticleId(), version.getVersionId());
+        return indexService.indexChunks(
+                article.getArticleId(),
+                version.getVersionId(),
+                article.getCategoryId(),
+                article.getRiskLevel(),
+                EsQueryDsl.STATUS_PUBLISHED,
+                embedResult.chunks());
     }
 
     /**

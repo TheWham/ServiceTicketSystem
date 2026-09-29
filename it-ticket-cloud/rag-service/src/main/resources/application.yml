@@ -37,6 +37,10 @@ elasticsearch:
   index-name: ${ES_KNOWLEDGE_INDEX:knowledge_chunk}
   connect-timeout-ms: 3000
   socket-timeout-ms: 5000
+  # 检索类请求超时（RD-003：AI/RAG 完整 15 秒内返回）
+  search-timeout-ms: 5000
+  # 批量操作（下线状态同步、存量回填）超时
+  bulk-timeout-ms: 60000
 
 rag:
   embedding:
@@ -46,6 +50,14 @@ rag:
     dimensions: ${EMBEDDING_DIMENSIONS:1024}
     batch-size: 16
     timeout-seconds: 15
+  # RAG 检索与知识策略（本模块不做模型生成；对话与生成由 AI 客服服务负责）
+  retrieval:
+    top-k: ${RAG_TOP_K:5}
+    max-top-k: 20
+    # 相似度 >= 0.65 视为可靠命中；0.45~0.65 判定 LOW_CONFIDENCE；< 0.45 或无命中判定 NO_RELIABLE_KNOWLEDGE
+    confidence-threshold: ${RAG_CONFIDENCE_THRESHOLD:0.65}
+    low-confidence-threshold: ${RAG_LOW_CONFIDENCE_THRESHOLD:0.45}
+    snippet-length: 1000
 
 logging:
   level:

@@ -1,8 +1,9 @@
 package com.itticket.rag.entity;
 
-import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.Version;
 import com.itticket.rag.enums.KnowledgeRiskLevel;
 import com.itticket.rag.enums.KnowledgeStatus;
 import lombok.Data;
@@ -14,10 +15,11 @@ import java.time.LocalDateTime;
  * 知识库文章实体 (KnowledgeArticle) - 对应数据库表 `knowledge_article`
  * ============================================================================
  *
- * 【契约规范说明 (DM-003 / DM 契约)】：
+ * 【契约规范说明 (SM-KNOWLEDGE-001 / DM-004)】：
  * 1. 业务主键：不可变字符串业务 ID（如 "art-1718000000000"）。
- * 2. 状态生命周期：DRAFT (草稿) -> SUBMITTED (提交) -> REVIEWED (已审) -> PUBLISHED (已发布) -> ARCHIVED (已归档)。
- * 3. 映射 MySQL 物理字段：article_id, category_id, status, current_version_id, risk_level, created_at, updated_at。
+ * 2. 状态生命周期（PRD §16.3）：DRAFT ➔ PENDING_REVIEW ➔ PUBLISHED ➔ OFFLINE。
+ * 3. 映射 MySQL 物理字段：article_id, category_id, status, current_version_id, risk_level, version, created_at, updated_at。
+ * 4. 已发布知识不得物理删除，只允许下线、发布新版本或回滚（PRD §16.4）。
  *
  * @author IT工单系统研发组 - RAG专项
  */
@@ -46,7 +48,7 @@ public class KnowledgeArticle {
     /** 更新时间 */
     private LocalDateTime updatedAt;
 
-    /** 乐观锁/逻辑版本标记 (非数据库物理字段，避免 SQL 语法异常) */
-    @TableField(exist = false)
+    /** 乐观锁版本号：每次状态迁移递增，WHERE 条件携带旧值以保证并发安全（SM-001） */
+    @Version
     private Long version;
 }
