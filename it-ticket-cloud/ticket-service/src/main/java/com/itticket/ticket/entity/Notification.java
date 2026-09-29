@@ -3,6 +3,8 @@ package com.itticket.ticket.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -10,6 +12,7 @@ import java.time.LocalDateTime;
 /** 通知（PRD §14：幂等键生命周期唯一；最终失败入管理员异常记录） */
 @Data
 @TableName("notification")
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class Notification {
     @TableId(value = "notification_id", type = IdType.INPUT)
     private String notificationId;

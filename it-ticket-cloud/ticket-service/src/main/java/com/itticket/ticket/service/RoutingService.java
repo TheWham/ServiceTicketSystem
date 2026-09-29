@@ -44,6 +44,7 @@ public class RoutingService {
     private final UserClient userClient;
     private final WorkCalendarService workCalendarService;
     private final ExceptionQueueService exceptionQueueService;
+    private final NotificationService notificationService;
 
     /** 响应 SLA：10 工作分钟（§12.2） */
     private static final long RESPONSE_DEADLINE_SECONDS = 10 * 60L;
@@ -59,11 +60,29 @@ public class RoutingService {
             exceptionQueueService.raise("TICKET", ticket.getTicketId(),
                     ExceptionQueueService.TYPE_ROUTE_FAILED,
                     "自动路由失败", "分类【" + ticket.getCategoryId() + "】无可分配工程师", ticket.getPriority());
+            // PRD §9.3：路由失败保持 NEW，通知平台管理员
+            notifyAdminsRouteFailed(ticket);
             return null;
         }
         assign(ticket, engineerId, null);
         log.info("[路由] 已分配: {} -> {}", ticket.getTicketId(), engineerId);
         return engineerId;
+    }
+
+    /** 路由失败时通知所有平台管理员（PRD §9.3）。失败不阻断主流程。 */
+    private void notifyAdminsRouteFailed(Ticket ticket) {
+        try {
+            Result<List<UserInfo>> res = userClient.admins();
+            List<UserInfo> admins = (res != null && res.getData() != null) ? res.getData() : List.of();
+            for (UserInfo admin : admins) {
+                notificationService.sendNotification(ticket.getTicketId(), "ROUTE_FAILED", admin.getUserId());
+            }
+            if (admins.isEmpty()) {
+                log.warn("[路由] 路由失败但无可用平台管理员可通知: {}", ticket.getTicketId());
+            }
+        } catch (Exception e) {
+            log.error("[路由] 通知平台管理员失败（不阻断）: {}", e.getMessage());
+        }
     }
 
     /**
@@ -79,6 +98,7 @@ public class RoutingService {
                         .eq("category_id", category)
                         .orderByAsc("route_order"));
         if (routes.isEmpty()) {
+            // PRD §9.3：分类无可用候选人 → 保持 NEW 进异常队列，不做兑底分配
             log.warn("[路由] 分类无路由配置: {}", category);
             return null;
         }
@@ -132,7 +152,7 @@ public class RoutingService {
                 best = engId;
             }
         }
-        log.info("[路由] 加权负载选择: {} (负载 {})", best, bestLoad);
+        log.info("[路由] 加权负载选择: (负载 {})", best, bestLoad);
         return best;
     }
 

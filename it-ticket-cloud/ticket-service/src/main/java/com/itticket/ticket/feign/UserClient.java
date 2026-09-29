@@ -22,4 +22,7 @@ public interface UserClient {
 
     @GetMapping("/api/internal/users/engineers")
     Result<List<UserInfo>> engineers();
+
+    @GetMapping("/api/internal/users/admins")
+    Result<List<UserInfo>> admins();
 }

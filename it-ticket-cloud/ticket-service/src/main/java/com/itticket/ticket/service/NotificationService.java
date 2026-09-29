@@ -26,8 +26,31 @@ public class NotificationService {
 
     private final NotificationMapper notificationMapper;
     private final ExceptionQueueService exceptionQueueService;
+    private final com.itticket.ticket.mapper.TicketMapper ticketMapper;
 
     private static final int MAX_RETRY = 3;
+
+    /** 事件码 → 中文动作文案（§14.2 行动导向，面向用户可读） */
+    private static final java.util.Map<String, String> EVENT_LABEL = java.util.Map.ofEntries(
+            java.util.Map.entry("SUBMIT_SUCCESS", "工单已提交"),
+            java.util.Map.entry("ASSIGNED", "新工单待接单"),
+            java.util.Map.entry("ACCEPTED", "工程师已接单"),
+            java.util.Map.entry("REQUEST_SUPPLEMENT", "请补充工单信息"),
+            java.util.Map.entry("SUPPLEMENTED", "已补充信息"),
+            java.util.Map.entry("EXTERNAL_WAIT", "工单转入外部等待"),
+            java.util.Map.entry("EXTERNAL_RESUMED", "外部等待已恢复"),
+            java.util.Map.entry("SUBMIT_RESOLUTION", "解决方案待验收"),
+            java.util.Map.entry("ACCEPT_APPROVED", "验收已通过"),
+            java.util.Map.entry("ACCEPT_REJECTED", "验收被驳回"),
+            java.util.Map.entry("AUTO_ACCEPTED", "工单已自动验收"),
+            java.util.Map.entry("CANCELLED", "工单已撤销"),
+            java.util.Map.entry("CLOSED", "工单已关闭"),
+            java.util.Map.entry("REOPENED", "工单已重新打开"),
+            java.util.Map.entry("SUPPLEMENT_TIMEOUT_CLOSED", "逾期未补充,工单已关闭"),
+            java.util.Map.entry("SLA_NEAR", "SLA 即将超时"),
+            java.util.Map.entry("SLA_BREACHED", "SLA 已违约"),
+            java.util.Map.entry("ROUTE_FAILED", "工单路由失败，待管理员分配")
+    );
 
     /**
      * 发送通知（站内）。在事务提交后异步调用。
@@ -49,11 +72,25 @@ public class NotificationService {
         deliver(eventId, receiverId, "EMAIL", title, content, null);
     }
 
-    /** 便捷：仅站内（向后兼容旧调用签名：ticketId+eventType+receiverId） */
+    /** 便捷：仅站内。自动生成中文文案 + 待办跳转（§14.2 查看≠行动，必须可点进待办）。 */
     @Async("notifyExecutor")
     public void sendNotification(String ticketId, String eventType, String receiverId) {
         String eventId = eventType + ":" + ticketId;
-        deliver(eventId, receiverId, "INBOX", eventType, ticketId, null);
+        // 查工单标题（失败降级为单号，不阻塞通知）
+        String ticketTitle = ticketId;
+        try {
+            com.itticket.ticket.entity.Ticket t = ticketMapper.selectById(ticketId);
+            if (t != null && t.getTitle() != null && !t.getTitle().isBlank()) {
+                ticketTitle = t.getTitle();
+            }
+        } catch (Exception e) {
+            log.warn("[通知] 查询工单标题失败,降级为单号: {}", ticketId);
+        }
+        String label = EVENT_LABEL.getOrDefault(eventType, eventType);
+        String title = "【" + label + "】" + ticketTitle;
+        String content = "工单 " + ticketId + " " + label + "，点击查看详情处理。";
+        String actionUrl = "/tickets/" + ticketId;
+        deliver(eventId, receiverId, "INBOX", title, content, actionUrl);
     }
 
     /**
