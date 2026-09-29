@@ -1,0 +1,67 @@
+server:
+  # 8301 已由 consultation-service 占用（其 README 约定），rag-service 使用 8302
+  port: ${RAG_SERVER_PORT:8302}
+
+spring:
+  application:
+    name: rag-service
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:120.92.138.195}:${MYSQL_PORT:3306}/it_ticket_system?useSSL=false&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    # 与 main 侧一致：口令仅由环境变量注入，不内置默认值
+    password: ${MYSQL_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+itticket:
+  jwt:
+    secret: ${JWT_SECRET:it-ticket-dev-jwt-secret-key-32bytes-minimum!!}
+  auth:
+    exclude-paths:
+      - /api/health
+      - /error
+
+elasticsearch:
+  host: ${ES_HOST:localhost}
+  port: ${ES_PORT:9200}
+  scheme: ${ES_SCHEME:http}
+  index-name: ${ES_KNOWLEDGE_INDEX:knowledge_chunk}
+  connect-timeout-ms: 3000
+  socket-timeout-ms: 5000
+  # 检索类请求超时（RD-003：AI/RAG 完整 15 秒内返回）
+  search-timeout-ms: 5000
+  # 批量操作（下线状态同步、存量回填）超时
+  bulk-timeout-ms: 60000
+
+rag:
+  embedding:
+    base-url: ${EMBEDDING_BASE_URL:https://ws-klculckg6dog3won.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
+    # 不再内置明文默认值：由 EMBEDDING_API_KEY 环境变量注入，未注入时向量化按依赖不可用降级（RD-006）
+    model: ${EMBEDDING_MODEL:qwen3.7-text-embedding}
+    dimensions: ${EMBEDDING_DIMENSIONS:1024}
+    batch-size: 16
+    timeout-seconds: 15
+  # RAG 检索与知识策略（本模块不做模型生成；对话与生成由 AI 客服服务负责）
+  retrieval:
+    top-k: ${RAG_TOP_K:5}
+    max-top-k: 20
+    # 相似度 >= 0.65 视为可靠命中；0.45~0.65 判定 LOW_CONFIDENCE；< 0.45 或无命中判定 NO_RELIABLE_KNOWLEDGE
+    confidence-threshold: ${RAG_CONFIDENCE_THRESHOLD:0.65}
+    low-confidence-threshold: ${RAG_LOW_CONFIDENCE_THRESHOLD:0.45}
+    snippet-length: 1000
+
+logging:
+  level:
+    root: info
+    com.itticket.rag: debug

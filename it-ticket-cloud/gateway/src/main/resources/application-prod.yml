@@ -47,3 +47,7 @@ spring:
           uri: lb://ticket-service
           predicates:
             - Path=/api/v1/exceptions/**
+        - id: rag-service
+          uri: lb://rag-service
+          predicates:
+            - Path=/api/v1/rag/**
