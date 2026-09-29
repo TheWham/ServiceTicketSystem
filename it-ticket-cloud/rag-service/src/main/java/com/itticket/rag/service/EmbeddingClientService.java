@@ -86,6 +86,11 @@ public class EmbeddingClientService {
         }
 
         long start = System.currentTimeMillis();
+        if (properties.getApiKey() == null || properties.getApiKey().isBlank()) {
+            // 凭据缺失按依赖不可用处理，上层转为 MODEL_UNAVAILABLE / 索引待补偿（RD-006）
+            throw new BizException(ErrorCode.SYSTEM_ERROR,
+                    "向量模型凭据未配置：请通过环境变量 EMBEDDING_API_KEY 注入");
+        }
         int batchSize = properties.getBatchSize() != null && properties.getBatchSize() > 0 ? properties.getBatchSize() : 16;
         List<List<Float>> allVectors = new ArrayList<>(texts.size());
         int totalTokens = 0;

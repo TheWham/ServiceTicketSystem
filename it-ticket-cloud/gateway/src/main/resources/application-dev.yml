@@ -52,14 +52,3 @@ spring:
           uri: lb://rag-service
           predicates:
             - Path=/api/v1/rag/**
-        # 知识库生命周期与检索（rag-service）
-        - id: knowledge-service
-          uri: lb://rag-service
-          predicates:
-            - Path=/api/v1/knowledge/**
-        # AI 消息：本仓库只提供检索侧，路径精确到 ai-messages，
-        # 避免抢占 AI 客服服务后续的 /api/v1/consultations/** 其余端点
-        - id: consultation-ai-service
-          uri: lb://rag-service
-          predicates:
-            - Path=/api/v1/consultations/*/ai-messages

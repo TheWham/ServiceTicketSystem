@@ -15,11 +15,11 @@ import java.util.Locale;
  */
 public final class Roles {
 
-    /** 契约角色码 */
+    /** 契约角色码（DM-002 RoleCode） */
     public static final String EMPLOYEE = "EMPLOYEE";
     public static final String ENGINEER = "ENGINEER";
     public static final String PLATFORM_ADMIN = "PLATFORM_ADMIN";
-    public static final String KB_ADMIN = "KB_ADMIN";
+    public static final String KNOWLEDGE_ADMIN = "KNOWLEDGE_ADMIN";
 
     private Roles() {
     }
@@ -31,15 +31,15 @@ public final class Roles {
         }
         String role = raw.trim().toUpperCase(Locale.ROOT);
         return switch (role) {
-            // 历史/变体值域 → 契约值域
+            // 历史/别名值域 → 契约值域
             case "SUPERVISOR" -> PLATFORM_ADMIN;
-            case "KNOWLEDGE_ADMIN" -> KB_ADMIN;
+            case "KB_ADMIN" -> KNOWLEDGE_ADMIN;
             default -> role;
         };
     }
 
     public static boolean isKnowledgeAdmin(String role) {
-        return KB_ADMIN.equals(normalize(role));
+        return KNOWLEDGE_ADMIN.equals(normalize(role));
     }
 
     public static boolean isPlatformAdmin(String role) {

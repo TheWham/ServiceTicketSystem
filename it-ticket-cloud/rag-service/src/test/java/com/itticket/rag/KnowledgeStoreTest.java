@@ -13,6 +13,7 @@ import com.itticket.rag.mapper.KnowledgeTransitionMapper;
 import com.itticket.rag.mapper.KnowledgeVersionMapper;
 import com.itticket.rag.mapper.OutboxEventMapper;
 import com.itticket.rag.service.KnowledgeStore;
+import com.itticket.rag.support.KnowledgeContent;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -50,8 +51,7 @@ public class KnowledgeStoreTest {
         version.setVersionId("ver-1");
         version.setArticleId("art-1");
         version.setVersionNo(1);
-        version.setTitle("网络排查指南");
-        version.setContent("正文");
+        version.setContentJson(KnowledgeContent.build("网络排查指南", "摘要", null, "正文"));
         version.setAuthorId(AUTHOR);
         Mockito.when(versionMapper.selectById("ver-1")).thenReturn(version);
         return article;
@@ -66,7 +66,7 @@ public class KnowledgeStoreTest {
         KnowledgeArticle article = stubArticle(KnowledgeStatus.DRAFT, KnowledgeRiskLevel.NORMAL);
         stubUpdateOk();
 
-        store.submitForReview("art-1", AUTHOR, "KB_ADMIN", "提审备注");
+        store.submitForReview("art-1", AUTHOR, "KNOWLEDGE_ADMIN", "提审备注");
 
         Assertions.assertEquals(KnowledgeStatus.PENDING_REVIEW, article.getStatus());
         KnowledgeTransition transition = captureTransition();
@@ -84,7 +84,7 @@ public class KnowledgeStoreTest {
         stubArticle(KnowledgeStatus.PUBLISHED, KnowledgeRiskLevel.NORMAL);
 
         BizException ex = Assertions.assertThrows(BizException.class,
-                () -> store.submitForReview("art-1", AUTHOR, "KB_ADMIN", null));
+                () -> store.submitForReview("art-1", AUTHOR, "KNOWLEDGE_ADMIN", null));
 
         Assertions.assertEquals(ErrorCode.ILLEGAL_TRANSITION.getCode(), ex.getErrorCode().getCode());
         Mockito.verify(transitionMapper, Mockito.never()).insert(Mockito.any(KnowledgeTransition.class));
@@ -95,7 +95,7 @@ public class KnowledgeStoreTest {
         stubArticle(KnowledgeStatus.PENDING_REVIEW, KnowledgeRiskLevel.NORMAL);
 
         BizException ex = Assertions.assertThrows(BizException.class,
-                () -> store.approveAndPublish("art-1", AUTHOR, "KB_ADMIN", null));
+                () -> store.approveAndPublish("art-1", AUTHOR, "KNOWLEDGE_ADMIN", null));
 
         Assertions.assertEquals(ErrorCode.FORBIDDEN.getCode(), ex.getErrorCode().getCode(),
                 "AC-25：作者不得审核自己提交的内容");
@@ -107,7 +107,7 @@ public class KnowledgeStoreTest {
         stubArticle(KnowledgeStatus.PENDING_REVIEW, KnowledgeRiskLevel.HIGH);
 
         BizException ex = Assertions.assertThrows(BizException.class,
-                () -> store.approveAndPublish("art-1", REVIEWER, "KB_ADMIN", null));
+                () -> store.approveAndPublish("art-1", REVIEWER, "KNOWLEDGE_ADMIN", null));
 
         Assertions.assertEquals(ErrorCode.FORBIDDEN.getCode(), ex.getErrorCode().getCode());
     }
@@ -121,7 +121,9 @@ public class KnowledgeStoreTest {
 
         Assertions.assertEquals(KnowledgeStatus.PUBLISHED, article.getStatus());
         Assertions.assertEquals(REVIEWER, version.getReviewerId());
-        Assertions.assertEquals(REVIEWER, version.getRecheckBy(), "高风险须记录平台管理员复核人");
+        Assertions.assertEquals(REVIEWER, version.getPlatformReviewerId(), "高风险须记录平台管理员复核人");
+        Assertions.assertNotNull(version.getPlatformReviewedAt());
+        Assertions.assertEquals("APPROVED", version.getPlatformReviewDecision());
         Assertions.assertNotNull(version.getPublishedAt());
 
         KnowledgeTransition transition = captureTransition();
@@ -139,7 +141,7 @@ public class KnowledgeStoreTest {
         Mockito.when(articleMapper.updateById(Mockito.any(KnowledgeArticle.class))).thenReturn(0);
 
         BizException ex = Assertions.assertThrows(BizException.class,
-                () -> store.approveAndPublish("art-1", REVIEWER, "KB_ADMIN", null));
+                () -> store.approveAndPublish("art-1", REVIEWER, "KNOWLEDGE_ADMIN", null));
 
         Assertions.assertEquals(ErrorCode.ILLEGAL_TRANSITION.getCode(), ex.getErrorCode().getCode());
         Mockito.verify(outboxEventMapper, Mockito.never()).insert(Mockito.any(OutboxEvent.class));
@@ -151,13 +153,16 @@ public class KnowledgeStoreTest {
         stubUpdateOk();
 
         Assertions.assertThrows(BizException.class,
-                () -> store.rejectToDraft("art-1", REVIEWER, "KB_ADMIN", "   "));
+                () -> store.rejectToDraft("art-1", REVIEWER, "KNOWLEDGE_ADMIN", "   "));
 
-        KnowledgeVersion version = store.rejectToDraft("art-1", REVIEWER, "KB_ADMIN", "解决步骤不完整");
+        KnowledgeVersion version = store.rejectToDraft("art-1", REVIEWER, "KNOWLEDGE_ADMIN", "解决步骤不完整");
 
         Assertions.assertEquals(KnowledgeStatus.DRAFT, article.getStatus());
-        Assertions.assertEquals("解决步骤不完整", version.getRejectReason());
-        Assertions.assertEquals(KnowledgeStore.ACTION_REJECT, captureTransition().getEventCode());
+        // 驳回原因写入流转审计（knowledge_version 没有 reject_reason 列）
+        KnowledgeTransition transition = captureTransition();
+        Assertions.assertEquals(KnowledgeStore.ACTION_REJECT, transition.getEventCode());
+        Assertions.assertEquals("解决步骤不完整", transition.getReason());
+        Assertions.assertEquals(REVIEWER, version.getReviewerId());
     }
 
     @Test
@@ -166,9 +171,9 @@ public class KnowledgeStoreTest {
         stubUpdateOk();
 
         Assertions.assertThrows(BizException.class,
-                () -> store.offline("art-1", REVIEWER, "KB_ADMIN", null));
+                () -> store.offline("art-1", REVIEWER, "KNOWLEDGE_ADMIN", null));
 
-        store.offline("art-1", REVIEWER, "KB_ADMIN", "内容已过期");
+        store.offline("art-1", REVIEWER, "KNOWLEDGE_ADMIN", "内容已过期");
 
         Assertions.assertEquals(KnowledgeStatus.OFFLINE, article.getStatus());
         KnowledgeTransition transition = captureTransition();
@@ -182,7 +187,7 @@ public class KnowledgeStoreTest {
         stubArticle(KnowledgeStatus.DRAFT, KnowledgeRiskLevel.NORMAL);
 
         BizException ex = Assertions.assertThrows(BizException.class,
-                () -> store.offline("art-1", REVIEWER, "KB_ADMIN", "内容已过期"));
+                () -> store.offline("art-1", REVIEWER, "KNOWLEDGE_ADMIN", "内容已过期"));
 
         Assertions.assertEquals(ErrorCode.ILLEGAL_TRANSITION.getCode(), ex.getErrorCode().getCode());
     }
@@ -192,7 +197,7 @@ public class KnowledgeStoreTest {
         Mockito.when(articleMapper.selectById("art-x")).thenReturn(null);
 
         Assertions.assertThrows(BizException.class,
-                () -> store.submitForReview("art-x", AUTHOR, "KB_ADMIN", null));
+                () -> store.submitForReview("art-x", AUTHOR, "KNOWLEDGE_ADMIN", null));
     }
 
     private KnowledgeTransition captureTransition() {

@@ -1,6 +1,5 @@
 package com.itticket.rag.service;
 
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.itticket.common.api.BizException;
@@ -34,7 +33,8 @@ import java.time.LocalDateTime;
  * 3. 状态先写主对象与流转记录，再写领域事实事件；索引等外部副作用由上层在事务外执行
  *    （RD-013：外部调用不得持有主事务数据库连接）。
  *
- * 【角色约定】网关透传的 X-User-Role：知识库管理员为 KB_ADMIN，平台管理员为 PLATFORM_ADMIN。
+ * 【角色约定】网关透传的 X-User-Role：知识库管理员为 KNOWLEDGE_ADMIN（KB_ADMIN 为历史别名），
+ * 平台管理员为 PLATFORM_ADMIN；比较统一大小写无关。
  *
  * @author IT工单系统研发组 - RAG专项
  */
@@ -55,8 +55,11 @@ public class KnowledgeStore {
     public static final String EVENT_OFFLINE = "KNOWLEDGE_OFFLINE";
     public static final String EVENT_INDEX_REFRESH = "KNOWLEDGE_INDEX_REFRESH_REQUESTED";
 
-    /** 平台管理员角色码（高风险知识复核） */
+    /** 平台管理员角色码（高风险知识复核，PRD §16.4） */
     public static final String ROLE_PLATFORM_ADMIN = "PLATFORM_ADMIN";
+
+    /** 平台复核结论 */
+    private static final String PLATFORM_DECISION_APPROVED = "APPROVED";
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -141,19 +144,16 @@ public class KnowledgeStore {
         version.setReviewerId(operatorId);
         version.setPublishedAt(now);
         if (highRisk) {
-            version.setRecheckBy(operatorId);
+            // 高风险知识的平台管理员复核留痕（PRD §16.4）
+            version.setPlatformReviewerId(operatorId);
+            version.setPlatformReviewedAt(now);
+            version.setPlatformReviewDecision(PLATFORM_DECISION_APPROVED);
         }
         if (changeNote != null && !changeNote.isBlank()) {
-            version.setChangeNote(truncate(changeNote, 500));
+            // 远端 knowledge_version.change_note 为 varchar(255)
+            version.setChangeNote(truncate(changeNote, 255));
         }
         versionMapper.updateById(version);
-        // 重新通过审核时清除历史驳回原因（updateById 默认忽略 null，需显式置空）
-        if (version.getRejectReason() != null) {
-            versionMapper.update(null, Wrappers.<KnowledgeVersion>lambdaUpdate()
-                    .eq(KnowledgeVersion::getVersionId, version.getVersionId())
-                    .set(KnowledgeVersion::getRejectReason, null));
-            version.setRejectReason(null);
-        }
 
         article.setStatus(KnowledgeStatus.PUBLISHED);
         article.setCurrentVersionId(version.getVersionId());
@@ -184,7 +184,6 @@ public class KnowledgeStore {
         KnowledgeVersion version = requireCurrentVersion(article);
 
         version.setReviewerId(operatorId);
-        version.setRejectReason(truncate(reason, 500));
         versionMapper.updateById(version);
 
         article.setStatus(KnowledgeStatus.DRAFT);
@@ -242,7 +241,8 @@ public class KnowledgeStore {
         transition.setEventCode(eventCode);
         transition.setOperatorId(operatorId);
         transition.setOperatorRole(operatorRole);
-        transition.setReason(reason == null ? null : truncate(reason, 500));
+        // 远端 knowledge_transition.reason 由 V2_2 建为 varchar(255)
+        transition.setReason(reason == null ? null : truncate(reason, 255));
         transition.setOccurredAt(LocalDateTime.now());
         transitionMapper.insert(transition);
     }
@@ -251,14 +251,12 @@ public class KnowledgeStore {
         OutboxEvent event = new OutboxEvent();
         event.setEventId(Ids.next("ev"));
         event.setEventType(eventType);
-        event.setEventVersion(1);
         event.setAggregateType("KNOWLEDGE");
         event.setAggregateId(articleId);
         event.setPayloadJson(truncate(payload.toString(), 1000));
         event.setStatus("PENDING");
         event.setAttempts(0);
         event.setNextAttemptAt(LocalDateTime.now());
-        event.setCreatedAt(LocalDateTime.now());
         outboxEventMapper.insert(event);
     }
 

@@ -31,9 +31,6 @@ public class OutboxEvent {
     /** 领域事实事件类型 (SCREAMING_SNAKE_CASE) */
     private String eventType;
 
-    /** 事件信封版本 */
-    private Integer eventVersion;
-
     /** 聚合类型，如 KNOWLEDGE */
     private String aggregateType;
 
@@ -54,7 +51,4 @@ public class OutboxEvent {
 
     /** 投递成功时间 */
     private LocalDateTime publishedAt;
-
-    /** 创建时间 */
-    private LocalDateTime createdAt;
 }

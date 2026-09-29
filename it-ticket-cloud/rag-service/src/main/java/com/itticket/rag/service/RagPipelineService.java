@@ -12,6 +12,7 @@ import com.itticket.rag.enums.KnowledgeStatus;
 import com.itticket.rag.mapper.KnowledgeArticleMapper;
 import com.itticket.rag.mapper.KnowledgeVersionMapper;
 import com.itticket.rag.support.EsQueryDsl;
+import com.itticket.rag.support.KnowledgeContent;
 import com.itticket.rag.vo.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -208,29 +209,27 @@ public class RagPipelineService {
             version.setVersionId(versionId);
             version.setArticleId(articleId);
             version.setVersionNo(1);
-            String docTitle = parsedDoc.getExtractedTitle();
-            if (docTitle != null && docTitle.length() > 100) {
-                docTitle = docTitle.substring(0, 100);
-            }
-            version.setTitle(docTitle != null && !docTitle.isBlank() ? docTitle : "未命名文档");
-            version.setContent(parsedDoc.getFullContent());
-            version.setAuthorId(request.getAuthorId() != null ? request.getAuthorId() : "kb_admin");
+            version.setAuthorId(request.getAuthorId());
             version.setChangeNote(publishNow
                     ? "初始文档上传、智能切片与 1024 维向量化"
                     : "初始文档上传并落为草稿，待提审发布");
             // 仅正式发布才记录生效时间；草稿态 publishedAt 保持空（PRD §16.3）
             version.setPublishedAt(publishNow ? LocalDateTime.now() : null);
-            version.setCreatedAt(LocalDateTime.now());
 
             try {
-                Map<String, Object> contentMap = new HashMap<>();
-                contentMap.put("title", parsedDoc.getExtractedTitle());
-                contentMap.put("fileName", parsedDoc.getOriginalFileName());
-                contentMap.put("chunkCount", chunks.size());
-                contentMap.put("embeddingModel", embeddingRes.getModel());
-                contentMap.put("dimensions", embeddingRes.getDimensions());
-                contentMap.put("rawContent", parsedDoc.getFullContent());
-                version.setContentJson(objectMapper.writeValueAsString(contentMap));
+                // 权威模型：正文统一写入 content_json（title / summary / keywords / body）
+                String docTitle = parsedDoc.getExtractedTitle();
+                if (docTitle != null && docTitle.length() > 100) {
+                    docTitle = docTitle.substring(0, 100);
+                }
+                String body = parsedDoc.getFullContent() == null ? "" : parsedDoc.getFullContent();
+                String summary = body.replaceAll("\\s+", " ").trim();
+                if (summary.length() > 200) {
+                    summary = summary.substring(0, 200);
+                }
+                version.setContentJson(KnowledgeContent.build(
+                        docTitle != null && !docTitle.isBlank() ? docTitle : "未命名文档",
+                        summary, null, body));
 
                 articleMapper.insert(article);
                 versionMapper.insert(version);

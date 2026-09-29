@@ -33,27 +33,32 @@ import java.util.Map;
  * ============================================================================
  *
  * 【接口列表】：
- * 1. GET  /api/v1/knowledge/search                     : 已发布知识检索（AI-API-005，只返回 PUBLISHED）
- * 2. GET  /api/v1/knowledge/articles                   : 知识分页列表（管理端）
- * 3. GET  /api/v1/knowledge/articles/{id}              : 知识详情（文章 + 当前版本 + 流转审计）
- * 4. POST /api/v1/knowledge/articles/{id}/submit       : 提交审核（DRAFT ➔ PENDING_REVIEW）
- * 5. POST /api/v1/knowledge/articles/{id}/publish      : 审核通过并发布（PENDING_REVIEW ➔ PUBLISHED，联动 ES 入库）
- * 6. POST /api/v1/knowledge/articles/{id}/reject       : 驳回（PENDING_REVIEW ➔ DRAFT，原因必填）
- * 7. POST /api/v1/knowledge/articles/{id}/offline      : 下线（PUBLISHED ➔ OFFLINE，联动 ES 状态同步）
- * 8. POST /api/v1/knowledge/articles/{id}/reindex      : RAG 索引补偿重建
- * 9. POST /api/v1/knowledge/articles/{id}/es-chunks/purge : 显式物理清理 ES 切片（仅平台管理员）
- * 10. POST /api/v1/knowledge/admin/backfill-index-status  : 存量切片 status 回填（严格过滤上线前置）
+ * 1. GET  /api/v1/rag/articles                       : 知识分页列表（管理端）
+ * 2. GET  /api/v1/rag/articles/{id}                  : 知识详情（文章 + 当前版本 + 流转审计）
+ * 3. POST /api/v1/rag/articles/{id}/submit           : 提交审核（DRAFT ➔ PENDING_REVIEW）
+ * 4. POST /api/v1/rag/articles/{id}/publish          : 审核通过并发布（PENDING_REVIEW ➔ PUBLISHED，联动 ES 入库）
+ * 5. POST /api/v1/rag/articles/{id}/reject           : 驳回（PENDING_REVIEW ➔ DRAFT，原因必填）
+ * 6. POST /api/v1/rag/articles/{id}/offline          : 下线（PUBLISHED ➔ OFFLINE，联动 ES 状态同步）
+ * 7. POST /api/v1/rag/articles/{id}/reindex          : RAG 索引补偿重建
+ * 8. POST /api/v1/rag/articles/{id}/es-chunks/purge  : 显式物理清理 ES 切片（仅平台管理员）
+ * 9. POST /api/v1/rag/admin/backfill-index-status    : 存量切片 status 回填（严格过滤上线前置）
+ *
+ * 【职责边界】：
+ * - 本控制器只负责知识生命周期与 RAG 索引联动（SM-KNOWLEDGE-001 / AC-27）。
+ * - AI 消息（AI-API-002）与已发布知识搜索（AI-API-005）由 AI 客服服务（consultation-service）
+ *   在 /api/v1/consultations/** 与 /api/v1/knowledge/** 下实现，本模块不重复提供。
  *
  * 【契约规范说明】：
  * - 操作者身份来自网关透传的认证上下文，不接受请求体传入（AI-002）。
- * - 已发布知识对全体员工可见可搜索（PRD §16.6）；管理动作按角色守卫（SM-ROLE-001）。
+ * - 管理动作按角色守卫（SM-ROLE-001）：知识库管理员 KNOWLEDGE_ADMIN / 平台管理员 PLATFORM_ADMIN，
+ *   角色值域兼容网关历史上的小写出口与 KB_ADMIN 别名。
  * - 已发布知识不得物理删除，只允许下线/新版本/回滚（PRD §16.4），故 purge 端点独立且限平台管理员。
  *
  * @author IT工单系统研发组 - RAG专项
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/v1/knowledge")
+@RequestMapping("/api/v1/rag")
 @RequiredArgsConstructor
 public class KnowledgeArticleController {
 
@@ -63,15 +68,21 @@ public class KnowledgeArticleController {
     private final KnowledgeArticleMapper articleMapper;
     private final KnowledgeTransitionMapper transitionMapper;
 
-    /** 已发布知识检索 —— 契约 AI-005 (AI-API-005) */
-    @GetMapping("/search")
-    public Result<KnowledgeSearchResponse> search(
+    /**
+     * ES 原生文章检索（运维/验收视图，只返回 status=PUBLISHED）。
+     *
+     * <p>契约路径 {@code GET /api/v1/knowledge/search}（AI-API-005）由 AI 客服服务提供，
+     * 本端点是 rag-service 侧的等价检索能力，用于核对 ES 索引内容与下线联动（AC-27），
+     * 供运维与验收使用，不作为对外契约路径。</p>
+     */
+    @GetMapping("/articles/search")
+    public Result<KnowledgeSearchResponse> searchArticles(
             @RequestParam(value = "query", required = false) String query,
             @RequestParam(value = "category", required = false) String category,
             @RequestParam(value = "page", required = false, defaultValue = "1") int page,
             @RequestParam(value = "pageSize", required = false, defaultValue = "10") int pageSize) {
         UserContext.get();
-        log.info("Knowledge search: query={}, category={}, page={}, pageSize={}", query, category, page, pageSize);
+        log.info("ES article search: query={}, category={}, page={}, pageSize={}", query, category, page, pageSize);
         return Result.ok(indexService.searchPublishedArticles(query, category, page, pageSize));
     }
 
