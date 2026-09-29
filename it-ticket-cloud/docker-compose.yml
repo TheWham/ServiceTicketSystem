@@ -1,8 +1,10 @@
-# IT 工单系统微服务本地依赖:Nacos(注册+配置) + MySQL 8
+# IT 工单系统微服务依赖:Nacos(注册+配置) + MySQL 8
+# 注意:数据库已统一连远程库 120.92.138.195:3306(默认密码 clt123456),
+#       本 compose 里的 MySQL 仅为「离线/无远程库时的可选本地库」或 CI 用,
+#       日常联调不需要启动它(服务默认连远程)。
 # 用法:
-#   模式 A(本地):直接连本机 MySQL/Nacos,无需启动本 compose
-#   模式 B(Docker):docker compose up -d 起来后,
-#                   给工程注入环境变量 MYSQL_HOST=mysql NACOS_ADDR=nacos:8848
+#   Nacos:  docker compose up -d nacos
+#   MySQL(可选):docker compose up -d mysql 起来后,注入 MYSQL_HOST=127.0.0.1 MYSQL_PASSWORD=root123
 # MySQL 初始化自动执行 db/init/ 下的建库与种子脚本
 
 networks:

@@ -52,18 +52,19 @@ it-ticket-system/
 
 ## 快速开始
 
-### 1. 起依赖
+### 0. 数据库(统一远程)
 
-**有 Docker:**
+数据库**统一连远程库** `120.92.138.195:3306`（默认密码 `clt123456`，库名 `it_ticket_system`），无需本地起 MySQL。仅首次需初始化：
+
 ```bash
-cd it-ticket-cloud && docker compose up -d   # Nacos(8848/9848) + MySQL(3306,自动建表+种子)
+it-ticket-cloud\scripts\init-db.cmd   # 默认连远程库建表+种子;可用 MYSQL_HOST/MYSQL_PASSWORD 覆盖
 ```
 
-**无 Docker(Windows,本项目已验证的方式):**
+### 1. 起 Nacos
+
 ```bash
-it-ticket-cloud\scripts\start-mysql-local.cmd   # MySQL 免安装版,首次自动初始化数据目录并启动 3306
-it-ticket-cloud\scripts\start-nacos.cmd         # Nacos standalone 模式启动 8848/9848
-it-ticket-cloud\scripts\init-db.cmd             # 建库+建表+种子(root/root123)
+docker compose up -d nacos                 # 有 Docker
+it-ticket-cloud\scripts\start-nacos.cmd  # 无 Docker(Windows standalone,8848/9848)
 ```
 
 ### 2. 起服务(需 JDK 17 + Maven)
@@ -76,7 +77,7 @@ java -jar user-service/target/it-ticket-user-service-1.0.0.jar
 java -jar ticket-service/target/it-ticket-ticket-service-1.0.0.jar
 ```
 
-环境变量(均有默认值):`NACOS_ADDR=127.0.0.1:8848`、`MYSQL_PASSWORD=root123`、`JWT_SECRET`(生产必换)。
+**配置**：默认加载 `application-dev.yml`（本地 profile，连远程库）；生产用 `--spring.profiles.active=prod`（敏感项强制环境变量）。环境变量：`NACOS_ADDR`、`MYSQL_HOST`(默认 120.92.138.195)、`MYSQL_PASSWORD`(默认 clt123456)、`JWT_SECRET`(生产必换)。Nacos 配置中心为可选开关 `NACOS_CONFIG_ENABLED=true`（详见 `nacos-config/配置管理说明.md`）。
 
 ### 3. 起前端
 
@@ -104,15 +105,20 @@ cd frontend && npm install && npm run dev    # 5173,proxy /api → 8080 网关
 | GET | /api/health | 健康检查 | 免认证 |
 | POST | /api/v1/users/login | 登录,`{userId,password}` → `{token,user}` | 免认证 |
 | GET | /api/v1/users/login-options | 可登录用户列表 | 免认证 |
+| POST | /api/v1/users/forgot-password | 忘记密码(工号+姓名+员工号三要素→自助重置) | 免认证 |
+| POST | /api/v1/users/change-password | 修改密码(旧密码校验) | 登录 |
 | GET | /api/v1/users/me | 当前用户 | 登录 |
+| GET | /api/v1/users/accounts | 账号列表(可视化) | PLATFORM_ADMIN/KB_ADMIN |
+| POST | /api/v1/users/accounts | 新建账号(注册仅主管) | PLATFORM_ADMIN/KB_ADMIN |
+| POST | /api/v1/users/accounts/:id/reset-password | 重置他人密码 | PLATFORM_ADMIN/KB_ADMIN |
 | GET | /api/v1/users?role= | 用户列表(派单用) | 登录 |
 | GET/POST/DELETE | /api/v1/users/drafts | 提单草稿(每用户一条) | 登录 |
 | GET | /api/v1/categories/leaf | 叶子分类(提单表单下拉) | 登录 |
-| POST | /api/v1/tickets | 创建工单(client_token 幂等,创建后自动路由) | 登录 |
+| POST | /api/v1/tickets | 创建工单(idempotency_key 幂等,创建后自动路由) | 登录 |
 | GET | /api/v1/tickets | 列表(8 种筛选 + 分页) | 登录 |
 | GET | /api/v1/tickets/:id | 详情 + 流转日志 | 登录 |
-| POST | /api/v1/tickets/:id/assign | 派单/改派 | supervisor |
-| POST | /api/v1/tickets/:id/claim | 领取(条件更新防抢领) | engineer |
+| POST | /api/v1/tickets/:id/assign | 派单/改派 | PLATFORM_ADMIN |
+| POST | /api/v1/tickets/:id/claim | 接单(矩阵确认影响×紧急) | ENGINEER |
 | POST | /api/v1/tickets/:id/actions | 状态操作(route/accept/request_supplement/supply_info/external_wait/external_resolved/submit_resolution/reject/cancel/abnormal_close/reopen 等) | 状态机校验 |
 | POST | /api/v1/tickets/:id/rating | 评价 1-5 星(仅已完成) | 登录 |
 | GET | /api/v1/sla/:ticketId | SLA 计时(目标时刻/已用工时/剩余工作秒,前端倒计时基准) | 登录 |
@@ -128,17 +134,19 @@ cd frontend && npm install && npm run dev    # 5173,proxy /api → 8080 网关
 
 - **自动路由(F-06)**:创建工单后按分类路由规则(`category_route`)定位支持组,组内按加权负载选工程师;无可用候选人时工单留在 NEW 并进入异常队列,由管理员处理。
 - **SLA 计时(F-08)**:按优先级生成 SLA 实例(高 4 工作小时/中 1 工作日/低 3 工作日),基于工作日历(`work_calendar`)只计工作时间;暂停时段(`sla_pause`)不计入;超时自动转入异常处理。前端 SlaBadge/SlaTimer 以服务端计算的剩余工作秒为基准做本地倒计时。
-- **站内通知(F-10)**:9 态流转事件驱动通知(分配/接单/请求补充/验收/超时等),接收人按目标状态推导;前端 NotificationBell 30s 轮询未读数,点击通知跳转对应待办入口。
+- **站内通知(F-10)**:9 态流转事件驱动通知(分配/接单/请求补充/验收/超时等),接收人按目标状态推导;以 `event_id+receiver+channel` 生命周期幂等键去重;前端 NotificationBell 30s 轮询未读数,点击通知跳 `/tickets/:id` 按角色重定向到工作台并自动打开工单详情。
 
 ## 当前进展(2026-09-29)
 
 **已完成**:
-- **后端微服务化**:登录/JWT、网关鉴权与透传、建单+幂等、自动路由、SLA 计时与自动流转、9 态状态机 guard、异常队列、通知事件落库(详见 [it-ticket-cloud/README.md](it-ticket-cloud/README.md))
-- **前端 Element Plus 化**:经典后台布局 + 暗黑模式 + 通知中心(SlaBadge/SlaTimer/NotificationBell),角色值域对齐 PRD 大写枚举
-- **数据库结构按 PRD 全量对齐**:单库 28 张表重建(2026-09-28)
+- **后端微服务化**:登录/JWT、网关鉴权与透传、建单+幂等(idempotency_key)、自动路由(F-06)、SLA 计时与自动流转(F-08)、9 态状态机 guard(F-07)、异常队列、通知事件落库(F-10,生命周期幂等)(详见 [it-ticket-cloud/README.md](it-ticket-cloud/README.md))
+- **认证模块**:BCrypt 登录、忘记密码(三要素自助重置)、修改密码、主管侧账号管理(建号/列表/重置密码),注册仅主管可操作
+- **前端 Element Plus 化**:经典后台布局 + 暗黑模式 + 通知中心(SlaBadge/SlaTimer/NotificationBell) + 账号管理页,角色值域对齐 PRD 大写枚举(EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KB_ADMIN)
+- **数据库结构按 PRD 全量对齐**:单库 28 张表(统一连远程库),字段/枚举/优先级矩阵对齐 PRD-Ultimate
+- **配置管理**:Nacos 接入(可选) + 本地 dev/prod 双环境 profile
 - **验收评测**:27 项用例全绿(含 TC-10 注入防护),代码位于 `acceptance/`
 
-**未完成**:知识库推荐(F-01)、智能客服(F-03)等 PRD 后续功能点尚未开发。
+**未完成**:知识搜索(F-02)、转人工咨询(F-03/F-04)、聊天与附件(F-09)、平台权限审计(F-11)、案例池与知识库(F-12)、RAG 智能客服(F-13,P1) 等 PRD 功能点尚未开发。
 
 ## 相关文档
 
