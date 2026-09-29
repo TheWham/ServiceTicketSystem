@@ -1,6 +1,7 @@
 package com.itticket.rag.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -14,7 +15,7 @@ import java.time.LocalDateTime;
  *
  * 【契约规范说明 (DM-003 / DM 契约)】：
  * 1. 版本不可变性：知识发布后按版本快照留痕，修改产生新版本（version_no 递增），历史不可篡改。
- * 2. 结构化正文快照：content_json 存储包含标题、切片数、原始正文与发布元数据的 JSON 结构。
+ * 2. 映射 MySQL 物理字段：version_id, article_id, version_no, title, content, author_id, reviewer_id, recheck_by, change_note, published_at, created_at。
  *
  * @author IT工单系统研发组 - RAG专项
  */
@@ -31,8 +32,11 @@ public class KnowledgeVersion {
     /** 递增版本序号 (如 1, 2, 3) */
     private Integer versionNo;
 
-    /** 结构化正文快照 (JSON 格式，包含标题、切片数与正文内容) */
-    private String contentJson;
+    /** 知识文档标题 (100 字符内，对应 MySQL title 字段) */
+    private String title;
+
+    /** 知识正文快照内容 (对应 MySQL content 字段) */
+    private String content;
 
     /** 创建/编写人 User ID */
     private String authorId;
@@ -40,9 +44,19 @@ public class KnowledgeVersion {
     /** 审核人 User ID (未审核为空) */
     private String reviewerId;
 
-    /** 正式发布生效时间戳 */
-    private LocalDateTime publishedAt;
+    /** 高风险复核人 (对应 MySQL recheck_by 字段) */
+    private String recheckBy;
 
     /** 版本变更说明/修订日志 */
     private String changeNote;
+
+    /** 正式发布生效时间戳 */
+    private LocalDateTime publishedAt;
+
+    /** 创建时间 */
+    private LocalDateTime createdAt;
+
+    /** 扩展属性/结构化正文快照 (非数据库物理字段，避免 SQL 语法异常) */
+    @TableField(exist = false)
+    private String contentJson;
 }

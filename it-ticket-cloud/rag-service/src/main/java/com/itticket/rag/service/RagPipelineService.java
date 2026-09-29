@@ -195,16 +195,24 @@ public class RagPipelineService {
             article.setStatus(KnowledgeStatus.PUBLISHED);
             article.setCurrentVersionId(versionId);
             article.setCategoryId(request.getCategoryId() != null ? request.getCategoryId() : "C_NET");
-            article.setRiskLevel(request.getRiskLevel() != null ? request.getRiskLevel() : KnowledgeRiskLevel.LOW);
-            article.setVersion(0L);
+            article.setRiskLevel(request.getRiskLevel() != null ? request.getRiskLevel() : KnowledgeRiskLevel.NORMAL);
+            article.setCreatedAt(LocalDateTime.now());
+            article.setUpdatedAt(LocalDateTime.now());
 
             KnowledgeVersion version = new KnowledgeVersion();
             version.setVersionId(versionId);
             version.setArticleId(articleId);
             version.setVersionNo(1);
+            String docTitle = parsedDoc.getExtractedTitle();
+            if (docTitle != null && docTitle.length() > 100) {
+                docTitle = docTitle.substring(0, 100);
+            }
+            version.setTitle(docTitle != null && !docTitle.isBlank() ? docTitle : "未命名文档");
+            version.setContent(parsedDoc.getFullContent());
             version.setAuthorId(request.getAuthorId() != null ? request.getAuthorId() : "kb_admin");
             version.setChangeNote("初始文档上传、智能切片与 1024 维向量化");
             version.setPublishedAt(LocalDateTime.now());
+            version.setCreatedAt(LocalDateTime.now());
 
             try {
                 Map<String, Object> contentMap = new HashMap<>();
@@ -218,9 +226,9 @@ public class RagPipelineService {
 
                 articleMapper.insert(article);
                 versionMapper.insert(version);
-                log.info("Persisted knowledge article {} and version {} to MySQL", articleId, versionId);
+                log.info("Persisted knowledge article {} and version {} to MySQL successfully", articleId, versionId);
             } catch (Exception e) {
-                log.warn("MySQL persist warning (continuing pipeline): {}", e.getMessage());
+                log.warn("MySQL persist warning (continuing pipeline): {}", e.getMessage(), e);
             }
 
             // 4.2 批量存入 Elasticsearch (包含 content、title、dense_vector 向量)
