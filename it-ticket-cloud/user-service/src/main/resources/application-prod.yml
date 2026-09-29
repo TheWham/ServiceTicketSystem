@@ -1,0 +1,33 @@
+# ============================================================
+# 生产环境配置
+# 敏感项一律走环境变量；启动：--spring.profiles.active=prod
+# ============================================================
+
+spring:
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST}:${MYSQL_PORT:3306}/${MYSQL_DB:it_ticket_system}?useSSL=true&characterEncoding=utf8&serverTimezone=UTC&forceConnectionTimeZoneToSession=true&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME}
+    password: ${MYSQL_PASSWORD}   # 生产必须注入，无默认值
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+itticket:
+  jwt:
+    secret: ${JWT_SECRET}   # 生产必须注入，无默认值
+    ttl-hours: 12
+  auth:
+    exclude-paths:
+      - /api/v1/users/login
+      - /api/v1/users/login-options
+      - /api/v1/users/forgot-password
+      - /api/internal/**
+      - /api/health
+      - /error
+
+logging:
+  level:
+    root: warn
+    com.itticket.user.mapper: info

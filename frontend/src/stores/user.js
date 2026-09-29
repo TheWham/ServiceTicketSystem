@@ -5,11 +5,22 @@ const USER_KEY = 'mock_user'
 const ID_KEY = 'mock_user_id'
 const TOKEN_KEY = 'auth_token'
 
+// Canonical account projection, with compatibility for saved pre-migration sessions.
+function normalizeUser(user) {
+  if (!user) return null
+  return {
+    ...user,
+    display_name: user.display_name || user.name || '',
+    enabled: user.enabled ?? (user.status ? user.status === 'ACTIVE' : true),
+    role: user.role === 'KB_ADMIN' ? 'KNOWLEDGE_ADMIN' : user.role
+  }
+}
+
 // 从 localStorage 恢复登录态（刷新页面后不丢失）
 function loadStoredUser() {
   try {
     const raw = localStorage.getItem(USER_KEY)
-    return raw ? JSON.parse(raw) : null
+    return raw ? normalizeUser(JSON.parse(raw)) : null
   } catch (e) {
     return null
   }
@@ -23,6 +34,7 @@ export const useUserStore = defineStore('user', () => {
 
   function setLogin(user, jwt) {
     if (!user) return
+    user = normalizeUser(user)
     userId.value = user.user_id
     currentUser.value = user
     token.value = jwt || ''
@@ -45,9 +57,9 @@ export const useUserStore = defineStore('user', () => {
     localStorage.removeItem(TOKEN_KEY)
   }
 
-  const isEmployee = computed(() => currentUser.value?.role === 'employee')
-  const isEngineer = computed(() => currentUser.value?.role === 'engineer')
-  const isSupervisor = computed(() => currentUser.value?.role === 'supervisor')
+  const isEmployee = computed(() => currentUser.value?.role === 'EMPLOYEE')
+  const isEngineer = computed(() => currentUser.value?.role === 'ENGINEER')
+  const isSupervisor = computed(() => currentUser.value?.role === 'PLATFORM_ADMIN')
 
   return { userId, currentUser, token, setLogin, setUser, logout, isEmployee, isEngineer, isSupervisor }
 })

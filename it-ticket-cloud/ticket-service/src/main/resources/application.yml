@@ -1,37 +1,30 @@
+# 工单服务启动配置
+# 业务配置：本地 application-{profile}.yml（dev 默认 / prod 生产，见同目录）
+# 后期上服务器改用 Nacos 下发：设 NACOS_CONFIG_ENABLED=true 即用 Nacos 覆盖本地
 server:
   port: 8201
 
 spring:
   application:
     name: ticket-service
-  datasource:
-    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/it_ticket?useSSL=false&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: ${MYSQL_USERNAME:root}
-    password: ${MYSQL_PASSWORD:root123}
-    driver-class-name: com.mysql.cj.jdbc.Driver
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}   # 默认测试环境，生产设 prod
   cloud:
     nacos:
+      server-addr: ${NACOS_ADDR:127.0.0.1:8848}
       discovery:
-        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        server-addr: ${spring.cloud.nacos.server-addr}
+      config:
+        server-addr: ${spring.cloud.nacos.server-addr}
+        enabled: ${NACOS_CONFIG_ENABLED:false}
+        shared-configs:
+          - data-id: common-config.yaml
+            refresh: true
+  config:
+    import:
+      - optional:nacos:${spring.application.name}-${spring.profiles.active}.yaml
 
-mybatis-plus:
-  configuration:
-    map-underscore-to-camel-case: true
-
-spring.cloud.openfeign:
-  client:
-    config:
-      user-service:
-        connectTimeout: 2000
-        readTimeout: 3000
-
-itticket:
-  auth:
-    exclude-paths:
-      - /api/health
-      - /error
-
-logging:
-  level:
-    root: info
-    com.itticket.ticket.mapper: debug
+# 咨询转单回调与用户接口分别设置超时。
+spring.cloud.openfeign.client.config.consultation-service:
+  connectTimeout: 2000
+  readTimeout: 5000

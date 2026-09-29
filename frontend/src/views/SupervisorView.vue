@@ -4,7 +4,7 @@
     <div class="page-head">
       <div>
         <h2 class="page-title">
-          <el-icon><DataAnalysis /></el-icon> 主管看板
+          <el-icon><DataAnalysis /></el-icon> 平台管理看板
         </h2>
         <p class="page-sub">全局工单管理 · 派单 · 催办 · 改派</p>
       </div>
@@ -35,7 +35,7 @@
             style="width: 140px"
             @change="loadTickets"
           >
-            <el-option v-for="s in statuses" :key="s" :label="s" :value="s" />
+            <el-option v-for="s in statuses" :key="s" :label="statusLabel(s)" :value="s" />
           </el-select>
         </el-form-item>
         <el-form-item label="分类">
@@ -46,7 +46,7 @@
             style="width: 140px"
             @change="loadTickets"
           >
-            <el-option v-for="c in categories" :key="c" :label="c" :value="c" />
+            <el-option v-for="c in categories" :key="(c.category_id || c.categoryId)" :label="c.name" :value="(c.category_id || c.categoryId)" />
           </el-select>
         </el-form-item>
         <el-form-item label="处理人">
@@ -57,7 +57,7 @@
             style="width: 140px"
             @change="loadTickets"
           >
-            <el-option v-for="e in engineers" :key="e.user_id" :label="e.name" :value="e.user_id" />
+            <el-option v-for="e in engineers" :key="e.user_id" :label="(e.display_name || e.name)" :value="e.user_id" />
           </el-select>
         </el-form-item>
         <el-form-item class="filter-total">
@@ -80,32 +80,31 @@
             <span class="ticket-id">{{ row.ticket_id }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="90">
+        <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="statusTagType(row.status)" size="small">{{ row.status }}</el-tag>
+            <el-tag :type="statusTagType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="优先级" width="80">
           <template #default="{ row }">
-            <el-tag :type="priorityTagType(row.priority)" size="small" effect="plain">{{ row.priority }}</el-tag>
+            <el-tag :type="priorityTagType(row.priority)" size="small" effect="plain">{{ priorityLabel(row.priority) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="category" label="分类" width="80" />
+        <el-table-column prop="category_snapshot" label="分类" width="90" show-overflow-tooltip />
         <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
         <el-table-column prop="creator_name" label="提单人" width="90" />
         <el-table-column label="处理人" width="90">
           <template #default="{ row }">{{ row.assignee_name || '-' }}</template>
         </el-table-column>
+        <el-table-column label="SLA" width="110">
+          <template #default="{ row }">
+            <SlaBadge :ticket-id="row.ticket_id" mode="card" />
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
             <el-button
-              v-if="row.status === '待处理'"
-              type="primary"
-              size="small"
-              @click.stop="showAssign(row)"
-            >派单</el-button>
-            <el-button
-              v-if="['处理中','待外部'].includes(row.status)"
+              v-if="['NEW','ASSIGNED','IN_PROGRESS','PENDING_EXTERNAL'].includes(row.status)"
               size="small"
               @click.stop="showReassign(row)"
             >改派</el-button>
@@ -146,7 +145,7 @@
               <el-option
                 v-for="e in engineers"
                 :key="e.user_id"
-                :label="`${e.name} (${e.department})`"
+                :label="`${(e.display_name || e.name)} (${e.department})`"
                 :value="e.user_id"
               />
             </el-select>
@@ -182,22 +181,24 @@
       <template v-if="detailTicket">
         <el-descriptions :column="2" border class="detail-desc">
           <el-descriptions-item label="标题" :span="2">{{ detailTicket.title }}</el-descriptions-item>
-          <el-descriptions-item label="分类">{{ detailTicket.category }}</el-descriptions-item>
+          <el-descriptions-item label="分类">{{ detailTicket.category_snapshot }}</el-descriptions-item>
           <el-descriptions-item label="优先级">
-            <el-tag :type="priorityTagType(detailTicket.priority)" size="small">{{ detailTicket.priority }}</el-tag>
+            <el-tag :type="priorityTagType(detailTicket.priority)" size="small">{{ priorityLabel(detailTicket.priority) }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="状态">
-            <el-tag :type="statusTagType(detailTicket.status)" size="small">{{ detailTicket.status }}</el-tag>
+            <el-tag :type="statusTagType(detailTicket.status)" size="small">{{ statusLabel(detailTicket.status) }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="提单人">{{ detailTicket.creator_name }}</el-descriptions-item>
           <el-descriptions-item label="处理人">{{ detailTicket.assignee_name || '未分配' }}</el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ formatTime(detailTicket.created_at) }}</el-descriptions-item>
           <el-descriptions-item label="问题描述" :span="2">{{ detailTicket.description }}</el-descriptions-item>
+          <el-descriptions-item label="影响情况" :span="2">{{ detailTicket.impact_description }}</el-descriptions-item>
+          <el-descriptions-item label="紧急说明" :span="2">{{ detailTicket.urgency_description }}</el-descriptions-item>
         </el-descriptions>
 
-        <!-- 主管强制恢复 -->
-        <el-card v-if="detailTicket.status === '待外部'" shadow="never" class="action-card">
-          <template #header><span class="action-title">主管操作</span></template>
+        <!-- 平台管理员强制恢复 -->
+        <el-card v-if="detailTicket.status === 'PENDING_EXTERNAL'" shadow="never" class="action-card">
+          <template #header><span class="action-title">平台管理操作</span></template>
           <el-button type="warning" :icon="RefreshRight" @click="forceResolve(detailTicket)">
             强制恢复处理中
           </el-button>
@@ -215,7 +216,7 @@
               :type="flowTimelineType(f.to_status)"
             >
               <div class="flow-content">
-                <el-tag size="small" effect="plain">{{ f.to_status || f.from_status }}</el-tag>
+                <el-tag size="small" effect="plain">{{ statusLabel(f.to_status || f.from_status) }}</el-tag>
                 <span class="flow-operator">{{ f.operator_name }}</span>
                 <span class="flow-remark">{{ f.remark }}</span>
               </div>
@@ -228,16 +229,36 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   DataAnalysis, Refresh, RefreshRight,
   Clock, Loading, CircleCheck, Finished, Document
 } from '@element-plus/icons-vue'
-import { ticketApi, userApi } from '../api/index.js'
+import { ticketApi, userApi, categoryApi } from '../api/index.js'
+import SlaBadge from '../components/SlaBadge.vue'
 
-const categories = ['硬件', '软件', '网络', '账号', '其他']
-const statuses = ['待处理', '处理中', '待补充', '待外部', '待验收', '已完成', '已取消']
+// 状态/优先级映射（PRD §9.2 九态 + HIGH/MEDIUM/LOW）
+const STATUS_LABEL = {
+  NEW: '新建', ASSIGNED: '已分配', IN_PROGRESS: '处理中',
+  PENDING_SUPPLEMENT: '待补充', PENDING_EXTERNAL: '外部等待',
+  PENDING_ACCEPTANCE: '待验收', COMPLETED: '已完成',
+  CANCELLED: '已取消', CLOSED: '已关闭'
+}
+const STATUS_TYPE = {
+  NEW: 'warning', ASSIGNED: 'primary', IN_PROGRESS: 'primary',
+  PENDING_SUPPLEMENT: 'info', PENDING_EXTERNAL: 'info',
+  PENDING_ACCEPTANCE: 'primary', COMPLETED: 'success',
+  CANCELLED: 'info', CLOSED: 'info'
+}
+const PRIORITY_LABEL = { HIGH: '高', MEDIUM: '中', LOW: '低' }
+const PRIORITY_TYPE = { HIGH: 'danger', MEDIUM: 'warning', LOW: 'info' }
+function statusLabel(s) { return STATUS_LABEL[s] || s }
+function priorityLabel(p) { return PRIORITY_LABEL[p] || p }
+
+const categories = ref([])
+const statuses = Object.keys(STATUS_LABEL)
 
 const tickets = ref([])
 const total = ref(0)
@@ -251,10 +272,9 @@ const stats = computed(() => {
   const counts = {}
   statuses.forEach(s => counts[s] = tickets.value.filter(t => t.status === s).length)
   return [
-    { label: '待处理', count: counts['待处理'], icon: Clock, color: '#e6a23c' },
-    { label: '处理中', count: counts['处理中'], icon: Loading, color: '#409eff' },
-    { label: '待验收', count: counts['待验收'], icon: CircleCheck, color: '#13c2c2' },
-    { label: '已完成', count: counts['已完成'], icon: Finished, color: '#67c23a' },
+    { label: '处理中', count: (counts['ASSIGNED'] || 0) + (counts['IN_PROGRESS'] || 0), icon: Loading, color: '#409eff' },
+    { label: '待验收', count: counts['PENDING_ACCEPTANCE'], icon: CircleCheck, color: '#13c2c2' },
+    { label: '已完成', count: counts['COMPLETED'], icon: Finished, color: '#67c23a' },
     { label: '全部', count: total.value, icon: Document, color: '#909399' }
   ]
 })
@@ -270,23 +290,12 @@ const detailTicket = ref(null)
 const detailFlows = ref([])
 const detailVisible = ref(false)
 
-function statusTagType(s) {
-  const map = {
-    '待处理': 'warning', '处理中': 'primary', '待补充': 'info',
-    '待外部': 'info', '待验收': 'primary', '已完成': 'success', '已取消': 'info'
-  }
-  return map[s] || 'info'
-}
-
-function priorityTagType(p) {
-  const map = { '高': 'danger', '中': 'warning', '低': 'info' }
-  return map[p] || 'info'
-}
-
+function statusTagType(s) { return STATUS_TYPE[s] || 'info' }
+function priorityTagType(p) { return PRIORITY_TYPE[p] || 'info' }
 function flowTimelineType(status) {
   const map = {
-    '已完成': 'success', '待验收': 'primary', '处理中': 'primary',
-    '待处理': 'warning', '已取消': 'info'
+    COMPLETED: 'success', PENDING_ACCEPTANCE: 'primary', IN_PROGRESS: 'primary',
+    NEW: 'warning', ASSIGNED: 'primary', CANCELLED: 'info', CLOSED: 'info'
   }
   return map[status] || 'primary'
 }
@@ -331,7 +340,7 @@ async function doAssign() {
       assignee_id: selectedEngineer.value,
       reason: reassignReason.value || undefined
     })
-    ElMessage.success(assignTicket.value.assignee_id ? '改派成功！' : '派单成功！')
+    ElMessage.success('改派成功！')
     assignVisible.value = false
     loadTickets()
   } catch (e) { ElMessage.error(e.message) }
@@ -356,16 +365,31 @@ async function forceResolve(ticket) {
   } catch { return }
 
   try {
-    await ticketApi.action(ticket.ticket_id, { action: 'external_resolved', remark: '主管强制恢复' })
+    await ticketApi.action(ticket.ticket_id, { action: 'external_resolved', remark: '平台管理员强制恢复' })
     ElMessage.success('已恢复处理中')
     detailVisible.value = false
     loadTickets()
   } catch (e) { ElMessage.error(e.message) }
 }
 
-onMounted(() => {
+const route = useRoute()
+
+onMounted(async () => {
   loadEngineers()
-  loadTickets()
+  try {
+    const res = await categoryApi.leaf()
+    categories.value = res.data || []
+  } catch (e) { console.error('加载分类失败', e) }
+  await loadTickets()
+  // 通知跳转：URL 带 ?ticket=xxx 时自动打开该工单详情
+  if (route.query.ticket) {
+    openDetail({ ticket_id: route.query.ticket })
+  }
+})
+
+// 同页点击通知只改 query，组件不重挂载——watch query 变化自动打开详情
+watch(() => route.query.ticket, (tid) => {
+  if (tid) openDetail({ ticket_id: tid })
 })
 </script>
 

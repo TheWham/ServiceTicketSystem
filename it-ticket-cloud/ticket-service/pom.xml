@@ -12,7 +12,7 @@
 
     <artifactId>it-ticket-ticket-service</artifactId>
     <name>it-ticket-ticket-service</name>
-    <description>工单服务:工单全生命周期、状态机、编号生成、通知(模拟企微)。拥有 ticket、ticket_flow_log、notification_log 三张表(it_ticket 库)</description>
+    <description>工单服务:工单全生命周期、状态机、编号生成、通知(模拟企微)。使用单库 it_ticket_system(ticket、ticket_transition、notification 等)</description>
 
     <dependencies>
         <dependency>
@@ -31,6 +31,10 @@
         <dependency>
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.cloud</groupId>

@@ -1,0 +1,29 @@
+# Nacos DataId: user-service.yaml  (Group: DEFAULT_GROUP)
+# 用户服务：数据源 + MyBatis-Plus + 鉴权排除路径（jwt 密钥在 common-config.yaml 共享）
+spring:
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:120.92.138.195}:${MYSQL_PORT:3306}/${MYSQL_DB:it_ticket_system}?useSSL=false&characterEncoding=utf8&serverTimezone=UTC&forceConnectionTimeZoneToSession=true&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+itticket:
+  jwt:
+    ttl-hours: 12
+  auth:
+    exclude-paths:
+      - /api/v1/users/login
+      - /api/v1/users/login-options
+      - /api/v1/users/forgot-password
+      - /api/internal/**
+      - /api/health
+      - /error
+
+logging:
+  level:
+    root: info
+    com.itticket.user.mapper: debug

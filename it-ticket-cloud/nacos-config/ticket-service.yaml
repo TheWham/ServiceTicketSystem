@@ -1,0 +1,33 @@
+# Nacos DataId: ticket-service.yaml  (Group: DEFAULT_GROUP)
+# 工单服务：数据源 + MyBatis-Plus + Feign + 鉴权排除路径
+spring:
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:120.92.138.195}:${MYSQL_PORT:3306}/${MYSQL_DB:it_ticket_system}?useSSL=false&characterEncoding=utf8&serverTimezone=UTC&forceConnectionTimeZoneToSession=true&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+spring.cloud.openfeign:
+  client:
+    config:
+      user-service:
+        connectTimeout: 2000
+        readTimeout: 3000
+      consultation-service:
+        connectTimeout: 2000
+        readTimeout: 5000
+
+itticket:
+  auth:
+    exclude-paths:
+      - /api/health
+      - /error
+
+logging:
+  level:
+    root: info
+    com.itticket.ticket.mapper: debug

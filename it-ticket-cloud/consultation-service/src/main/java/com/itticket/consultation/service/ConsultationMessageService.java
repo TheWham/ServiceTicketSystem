@@ -1,0 +1,188 @@
+package com.itticket.consultation.service;
+
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.itticket.consultation.api.ApiCode;
+import com.itticket.consultation.api.ApiException;
+import com.itticket.consultation.api.FieldIssue;
+import com.itticket.consultation.api.PagedData;
+import com.itticket.consultation.dto.ContentRequest;
+import com.itticket.consultation.dto.MessageProjection;
+import com.itticket.consultation.entity.Assignment;
+import com.itticket.consultation.entity.Consultation;
+import com.itticket.consultation.entity.ConsultationMessage;
+import com.itticket.consultation.enums.AssignmentEndReason;
+import com.itticket.consultation.enums.ConsultationStatus;
+import com.itticket.consultation.enums.MessageSenderType;
+import com.itticket.consultation.mapper.ConsultationMessageMapper;
+import com.itticket.consultation.statemachine.ConsultationEvent;
+import com.itticket.consultation.support.Ids;
+import com.itticket.consultation.support.Times;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * 咨询消息(OpenAPI 05 sendHumanConsultationMessage / listConsultationMessages)。
+ *
+ * <p>消息是只追加事实。两类消息会触发状态迁移:
+ * <ul>
+ *   <li>当前责任工程师在 WAITING_ENGINEER 下发出的实际消息 = 首次有效回复 → HUMAN_ACTIVE
+ *       (SM-CONSULT-001;打开、已读和系统消息都不算);</li>
+ *   <li>员工在 PENDING_CONFIRMATION 下发出的消息 = 回复未解决 → HUMAN_ACTIVE,保留原结论。</li>
+ * </ul>
+ */
+@Service
+@RequiredArgsConstructor
+public class ConsultationMessageService {
+
+    private final ConsultationMessageMapper messageMapper;
+    private final ConsultationTransitionService transitionService;
+    private final AssignmentService assignmentService;
+    private final ConsultationSlaService slaService;
+    private final AuthzService authzService;
+
+    /** 人工咨询消息。仅会话参与者可发送(AX-006 SEND_MESSAGE)。 */
+    public MessageProjection send(CurrentUser user, Consultation consultation, ContentRequest request) {
+        authzService.requireParticipant(user, consultation);
+        if (consultation.getStatus().isTerminal()) {
+            throw new ApiException(ApiCode.ILLEGAL_STATE_TRANSITION, "咨询已处于终态,不能继续发送消息");
+        }
+        validateContent(request);
+
+        Optional<ConsultationMessage> replayed =
+                findByClientMessageId(consultation.getSessionId(), request.clientMessageId());
+        if (replayed.isPresent()) {
+            // RD-002:消息发送不允许用重试覆盖正文,同一 clientMessageId 返回首次结果
+            return MessageProjection.of(replayed.get());
+        }
+
+        boolean fromEngineer = user.userId().equals(consultation.getCurrentEngineerId());
+        MessageSenderType senderType = fromEngineer ? MessageSenderType.ENGINEER : MessageSenderType.EMPLOYEE;
+        ConsultationMessage message = append(consultation.getSessionId(), user.userId(), senderType,
+                request.clientMessageId(), request.content(), null);
+
+        applyMessageDrivenTransition(user, consultation, message, fromEngineer);
+        return MessageProjection.of(message);
+    }
+
+    /** OpenAPI 05 Content 的 anyOf 要求 content 或 attachment_ids 至少其一。 */
+    private void validateContent(ContentRequest request) {
+        if (request.attachmentIds() != null && !request.attachmentIds().isEmpty()) {
+            // 附件属于 F-09 附件域,本服务尚未接入。显式报错而不是静默丢弃(RD-013)。
+            throw ApiException.validation(List.of(FieldIssue.invalid("attachment_ids",
+                    "咨询消息附件由附件服务提供,当前未启用,请勿携带 attachment_ids")));
+        }
+        if (request.content() == null || request.content().isBlank()) {
+            throw ApiException.validation(List.of(FieldIssue.required("content", "消息内容不能为空")));
+        }
+    }
+
+    private void applyMessageDrivenTransition(CurrentUser user, Consultation consultation,
+                                              ConsultationMessage message, boolean fromEngineer) {
+        ConsultationStatus status = consultation.getStatus();
+
+        if (fromEngineer && status == ConsultationStatus.WAITING_ENGINEER) {
+            transitionService.apply(consultation, TransitionSpec.builder()
+                    .event(ConsultationEvent.CONSULTATION_RESPOND)
+                    .actor(user)
+                    .reason("工程师首次有效回复")
+                    .eventPayload(Map.of(
+                            "session_id", consultation.getSessionId(),
+                            "message_id", message.getMessageId()))
+                    .build());
+            // 副作用:结束当前分配任务并记录响应时间(SM-CONSULT-001 业务副作用列)
+            Optional<Assignment> active = assignmentService.activeAssignment(consultation.getSessionId());
+            LocalDateTime startedAt = active.map(Assignment::getAssignedAt).orElse(null);
+            active.ifPresent(assignment -> assignmentService.endAssignment(
+                    assignment.getAssignmentId(), AssignmentEndReason.RESPONDED, message.getSentAt()));
+            slaService.markResponded(consultation.getSessionId(), startedAt, message.getSentAt());
+            return;
+        }
+
+        if (!fromEngineer && status == ConsultationStatus.PENDING_CONFIRMATION) {
+            transitionService.apply(consultation, TransitionSpec.builder()
+                    .event(ConsultationEvent.CONSULTATION_REJECT_RESOLUTION)
+                    .actor(user)
+                    .reason("员工回复未解决")
+                    .build());
+        }
+    }
+
+    /** AI 回答落库。AI 不是会话参与者,senderId 为空,引用列表随消息一并保存。 */
+    public ConsultationMessage appendAiMessage(String sessionId, String clientMessageId,
+                                               String content, String citationJson) {
+        return append(sessionId, null, MessageSenderType.AI, clientMessageId, content, citationJson);
+    }
+
+    /** 系统消息(如工程师结论通知)。系统消息不计入首次有效响应。 */
+    public ConsultationMessage appendSystemMessage(String sessionId, String clientMessageId, String content) {
+        return append(sessionId, null, MessageSenderType.SYSTEM, clientMessageId, content, null);
+    }
+
+    /** 员工向 AI 提出的问题,作为员工消息追加(AI 对话与人工对话共用同一条会话记录)。 */
+    public ConsultationMessage appendEmployeeMessage(String sessionId, String employeeId,
+                                                     String clientMessageId, String content) {
+        return append(sessionId, employeeId, MessageSenderType.EMPLOYEE, clientMessageId, content, null);
+    }
+
+    /** 工程师提交的解决结论,作为工程师消息追加,便于员工在同一会话内查看。 */
+    public ConsultationMessage appendEngineerMessage(String sessionId, String engineerId,
+                                                     String clientMessageId, String content) {
+        return append(sessionId, engineerId, MessageSenderType.ENGINEER, clientMessageId, content, null);
+    }
+
+    private ConsultationMessage append(String sessionId, String senderId, MessageSenderType senderType,
+                                       String clientMessageId, String content, String citationJson) {
+        LocalDateTime now = Times.nowUtc();
+        ConsultationMessage message = new ConsultationMessage();
+        message.setMessageId(Ids.messageId());
+        message.setSessionId(sessionId);
+        message.setSenderId(senderId);
+        message.setSenderType(senderType);
+        message.setClientMessageId(clientMessageId);
+        message.setContent(content);
+        message.setCitationJson(citationJson);
+        message.setSentAt(now);
+        message.setCreatedAt(now);
+        message.setUpdatedAt(now);
+        messageMapper.insert(message);
+        return message;
+    }
+
+    private Optional<ConsultationMessage> findByClientMessageId(String sessionId, String clientMessageId) {
+        return Optional.ofNullable(messageMapper.selectOne(Wrappers.<ConsultationMessage>lambdaQuery()
+                .eq(ConsultationMessage::getSessionId, sessionId)
+                .eq(ConsultationMessage::getClientMessageId, clientMessageId)));
+    }
+
+    /** READ_CHAT:仅会话参与者可读聊天正文(PRD 5.2、AX-006)。 */
+    public PagedData<MessageProjection> list(CurrentUser user, Consultation consultation,
+                                             int page, int pageSize) {
+        authzService.requireParticipant(user, consultation);
+        IPage<ConsultationMessage> result = messageMapper.selectPage(
+                new Page<>(page, pageSize),
+                Wrappers.<ConsultationMessage>lambdaQuery()
+                        .eq(ConsultationMessage::getSessionId, consultation.getSessionId())
+                        .orderByAsc(ConsultationMessage::getSentAt)
+                        .orderByAsc(ConsultationMessage::getMessageId));
+        List<MessageProjection> items = result.getRecords().stream()
+                .map(MessageProjection::of)
+                .toList();
+        return new PagedData<>(items, page, pageSize, result.getTotal());
+    }
+
+    /** 转单预填用:按时间顺序加载会话消息(封顶 200 条),不经过 READ_CHAT 鉴权,由调用方负责。 */
+    public List<ConsultationMessage> loadTimeline(String sessionId) {
+        return messageMapper.selectList(Wrappers.<ConsultationMessage>lambdaQuery()
+                .eq(ConsultationMessage::getSessionId, sessionId)
+                .orderByAsc(ConsultationMessage::getSentAt)
+                .orderByAsc(ConsultationMessage::getMessageId)
+                .last("LIMIT 200"));
+    }
+}

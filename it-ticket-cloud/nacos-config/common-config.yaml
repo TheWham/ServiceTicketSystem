@@ -1,0 +1,6 @@
+# Nacos DataId: common-config.yaml  (Group: DEFAULT_GROUP)
+# 跨服务共享配置：JWT 密钥必须 gateway 与 user-service 完全一致，集中在此避免两处改不同步
+itticket:
+  jwt:
+    # 必须与 user-service 一致；生产用环境变量 JWT_SECRET 覆盖
+    secret: ${JWT_SECRET:it-ticket-dev-jwt-secret-key-32bytes-minimum!!}

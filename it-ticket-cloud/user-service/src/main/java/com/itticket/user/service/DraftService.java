@@ -1,7 +1,13 @@
 package com.itticket.user.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.itticket.common.api.BizException;
+import com.itticket.common.api.ErrorCode;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import com.itticket.user.dto.DraftRequest;
 import com.itticket.user.entity.TicketDraft;
 import com.itticket.user.mapper.TicketDraftMapper;
@@ -11,9 +17,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
-/** 提单草稿 CRUD(每用户一条,UPSERT) —— 对应旧版 userController 的草稿方法 */
+/** 提单草稿 CRUD(每用户一条,UPSERT) —— 字段对齐新提单 §10.2 */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -23,78 +28,76 @@ public class DraftService {
     private final ObjectMapper objectMapper;
 
     public DraftVO getDraft(String userId) {
-        TicketDraft draft = draftMapper.selectOne(new QueryWrapper<TicketDraft>().eq("user_id", userId));
-        if (draft == null) {
+        TicketDraft draft = draftMapper.selectOne(new QueryWrapper<TicketDraft>().eq("creator_id", userId));
+        if (draft == null || (draft.getExpiresAt() != null && draft.getExpiresAt().isBefore(LocalDateTime.now(java.time.ZoneOffset.UTC)))) {
             return null;
         }
         DraftVO vo = new DraftVO();
         vo.setDraftId(draft.getDraftId());
         vo.setUserId(draft.getUserId());
+        vo.setNature(draft.getNature());
+        vo.setCategoryId(draft.getCategoryId());
         vo.setTitle(draft.getTitle());
-        vo.setCategory(draft.getCategory());
-        vo.setSubCategory(draft.getSubCategory());
-        vo.setPriority(draft.getPriority());
         vo.setDescription(draft.getDescription());
-        vo.setAttachmentUrls(parseAttachments(draft.getAttachmentUrls()));
+        vo.setImpactDescription(draft.getImpactDescription());
+        vo.setUrgencyDescription(draft.getUrgencyDescription());
+        vo.setLocation(draft.getLocation());
+        vo.setContact(draft.getContact());
         vo.setAssetId(draft.getAssetId());
-        vo.setExpectedFinishTime(draft.getExpectedFinishTime());
         vo.setUpdatedAt(draft.getUpdatedAt());
         return vo;
     }
 
     public void saveDraft(String userId, DraftRequest req) {
-        TicketDraft existing = draftMapper.selectOne(new QueryWrapper<TicketDraft>().eq("user_id", userId));
-        String attachmentJson = toJson(req.getAttachmentUrls());
-        String priority = req.getPriority() == null || req.getPriority().isBlank() ? "中" : req.getPriority();
-
+        TicketDraft existing = draftMapper.selectOne(new QueryWrapper<TicketDraft>().eq("creator_id", userId));
         if (existing == null) {
             TicketDraft draft = new TicketDraft();
             draft.setUserId(userId);
-            applyFields(draft, req, attachmentJson, priority);
-            draft.setUpdatedAt(LocalDateTime.now());
+            draft.setCreatedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
+            draft.setVersion(0L);
+            applyFields(draft, req);
+            draft.setUpdatedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
             draftMapper.insert(draft);
         } else {
-            applyFields(existing, req, attachmentJson, priority);
-            existing.setUpdatedAt(LocalDateTime.now());
+            applyFields(existing, req);
+            existing.setUpdatedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
             draftMapper.updateById(existing);
         }
     }
 
     public void deleteDraft(String userId) {
-        draftMapper.delete(new QueryWrapper<TicketDraft>().eq("user_id", userId));
+        draftMapper.delete(new QueryWrapper<TicketDraft>().eq("creator_id", userId));
     }
 
-    private void applyFields(TicketDraft draft, DraftRequest req, String attachmentJson, String priority) {
+    private void applyFields(TicketDraft draft, DraftRequest req) {
+        draft.setNature(req.getNature());
+        draft.setCategoryId(req.getCategoryId());
         draft.setTitle(req.getTitle());
-        draft.setCategory(req.getCategory());
-        draft.setSubCategory(req.getSubCategory());
-        draft.setPriority(priority);
         draft.setDescription(req.getDescription());
-        draft.setAttachmentUrls(attachmentJson);
+        draft.setImpactDescription(req.getImpactDescription());
+        draft.setUrgencyDescription(req.getUrgencyDescription());
+        draft.setLocation(req.getLocation());
+        draft.setContact(req.getContact());
         draft.setAssetId(req.getAssetId());
-        draft.setExpectedFinishTime(req.getExpectedFinishTime());
-    }
-
-    private String toJson(List<String> urls) {
-        if (urls == null) {
-            return null;
-        }
+        Map<String, Object> payload;
         try {
-            return objectMapper.writeValueAsString(urls);
-        } catch (Exception e) {
-            log.error("[DRAFT] 序列化附件失败: {}", e.getMessage());
-            return null;
+            payload = draft.getPayloadJson() == null ? new LinkedHashMap<>()
+                    : objectMapper.readValue(draft.getPayloadJson(), new TypeReference<Map<String, Object>>() {});
+            payload.put("nature", req.getNature());
+            payload.remove("ticket_nature");
+            payload.put("category_id", req.getCategoryId());
+            payload.put("title", req.getTitle());
+            payload.put("description", req.getDescription());
+            payload.put("impact_description", req.getImpactDescription());
+            payload.put("urgency_description", req.getUrgencyDescription());
+            payload.put("location", req.getLocation());
+            payload.put("contact", req.getContact());
+            payload.put("asset_id", req.getAssetId());
+            draft.setPayloadJson(objectMapper.writeValueAsString(payload));
+        } catch (JsonProcessingException ex) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "Invalid draft payload");
         }
-    }
-
-    private List<String> parseAttachments(String json) {
-        if (json == null || json.isBlank()) {
-            return null;
-        }
-        try {
-            return objectMapper.readValue(json, objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
-        } catch (Exception e) {
-            return List.of();
-        }
+        draft.setLastSavedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
+        draft.setExpiresAt(draft.getLastSavedAt().plusDays(7));
     }
 }
