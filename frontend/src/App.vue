@@ -44,6 +44,9 @@
           </el-breadcrumb>
         </div>
         <div class="header-right">
+          <!-- 通知中心 -->
+          <NotificationBell />
+
           <!-- 暗黑切换 -->
           <el-tooltip :content="isDark ? '切换亮色' : '切换暗黑'" placement="bottom">
             <el-button text circle @click="toggleDark">
@@ -86,6 +89,7 @@ import { useUserStore } from './stores/user.js'
 import {
   Monitor, Expand, Fold, Sunny, Moon, User, SwitchButton
 } from '@element-plus/icons-vue'
+import NotificationBell from './components/NotificationBell.vue'
 
 const userStore = useUserStore()
 const router = useRouter()

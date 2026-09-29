@@ -199,6 +199,7 @@
             <el-tag size="small" type="info" effect="plain">{{ t.category_snapshot }}</el-tag>
             <span v-if="t.assignee_name">处理人：{{ t.assignee_name }}</span>
             <span>{{ formatTime(t.created_at) }}</span>
+            <SlaBadge :ticket-id="t.ticket_id" mode="card" />
           </div>
         </el-card>
       </div>
@@ -240,6 +241,9 @@
           <el-descriptions-item label="影响情况" :span="2">{{ detailTicket.impact_description }}</el-descriptions-item>
           <el-descriptions-item label="紧急说明" :span="2">{{ detailTicket.urgency_description }}</el-descriptions-item>
         </el-descriptions>
+
+        <!-- SLA 计时 -->
+        <SlaTimer :ticket-id="detailTicket.ticket_id" />
 
         <!-- 验收操作 -->
         <el-card v-if="detailTicket.status === 'PENDING_ACCEPTANCE'" shadow="never" class="action-card">
@@ -335,6 +339,8 @@ import {
 } from '@element-plus/icons-vue'
 import { ticketApi, draftApi, categoryApi } from '../api/index.js'
 import { useUserStore } from '../stores/user.js'
+import SlaBadge from '../components/SlaBadge.vue'
+import SlaTimer from '../components/SlaTimer.vue'
 
 const userStore = useUserStore()
 const tab = ref('create')

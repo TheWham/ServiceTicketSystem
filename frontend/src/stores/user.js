@@ -45,9 +45,9 @@ export const useUserStore = defineStore('user', () => {
     localStorage.removeItem(TOKEN_KEY)
   }
 
-  const isEmployee = computed(() => currentUser.value?.role === 'employee')
-  const isEngineer = computed(() => currentUser.value?.role === 'engineer')
-  const isSupervisor = computed(() => currentUser.value?.role === 'supervisor')
+  const isEmployee = computed(() => currentUser.value?.role === 'EMPLOYEE')
+  const isEngineer = computed(() => currentUser.value?.role === 'ENGINEER')
+  const isSupervisor = computed(() => ['PLATFORM_ADMIN', 'KB_ADMIN'].includes(currentUser.value?.role))
 
   return { userId, currentUser, token, setLogin, setUser, logout, isEmployee, isEngineer, isSupervisor }
 })

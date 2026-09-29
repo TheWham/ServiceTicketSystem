@@ -41,7 +41,10 @@
               <el-tag size="small" type="info" effect="plain">{{ t.category_snapshot }}</el-tag>
               <span>{{ t.creator_name }}</span>
             </div>
-            <div class="card-time">{{ formatTime(t.created_at) }}</div>
+            <div class="card-time">
+              <span>{{ formatTime(t.created_at) }}</span>
+              <SlaBadge :ticket-id="t.ticket_id" mode="card" />
+            </div>
             <el-button
               v-if="t.status === 'ASSIGNED'"
               type="success"
@@ -80,6 +83,9 @@
           <el-descriptions-item label="影响情况" :span="2">{{ detail.impact_description }}</el-descriptions-item>
           <el-descriptions-item label="紧急说明" :span="2">{{ detail.urgency_description }}</el-descriptions-item>
         </el-descriptions>
+
+        <!-- SLA 计时 -->
+        <SlaTimer :ticket-id="detail.ticket_id" />
 
         <!-- 状态操作 -->
         <el-card shadow="never" class="action-card">
@@ -222,6 +228,8 @@ import {
 } from '@element-plus/icons-vue'
 import { ticketApi } from '../api/index.js'
 import { useUserStore } from '../stores/user.js'
+import SlaBadge from '../components/SlaBadge.vue'
+import SlaTimer from '../components/SlaTimer.vue'
 
 const userStore = useUserStore()
 const allTickets = ref([])

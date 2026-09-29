@@ -96,6 +96,11 @@
         <el-table-column label="处理人" width="90">
           <template #default="{ row }">{{ row.assignee_name || '-' }}</template>
         </el-table-column>
+        <el-table-column label="SLA" width="110">
+          <template #default="{ row }">
+            <SlaBadge :ticket-id="row.ticket_id" mode="card" />
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
             <el-button
@@ -231,6 +236,7 @@ import {
   Clock, Loading, CircleCheck, Finished, Document
 } from '@element-plus/icons-vue'
 import { ticketApi, userApi, categoryApi } from '../api/index.js'
+import SlaBadge from '../components/SlaBadge.vue'
 
 // 状态/优先级映射（PRD §9.2 九态 + HIGH/MEDIUM/LOW）
 const STATUS_LABEL = {

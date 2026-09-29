@@ -49,6 +49,17 @@ export const categoryApi = {
   leaf: () => api.get('/categories/leaf')
 }
 
+// ---- 通知中心 API ----
+export const notificationApi = {
+  list: (params) => api.get('/notifications', { params }),
+  pendingCount: () => api.get('/notifications/pending-count')
+}
+
+// ---- SLA 计时 API ----
+export const slaApi = {
+  byTicket: (ticketId) => api.get(`/sla/${ticketId}`)
+}
+
 // ---- 草稿 API ----
 export const draftApi = {
   get: () => api.get('/users/drafts'),
