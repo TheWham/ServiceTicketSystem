@@ -1,0 +1,69 @@
+server:
+  port: 8202
+
+spring:
+  application:
+    name: ai-service
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/it_ai?useSSL=false&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:root123}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+spring.cloud.openfeign:
+  client:
+    config:
+      ticket-service:
+        connectTimeout: 3000
+        readTimeout: 10000
+
+itticket:
+  jwt:
+    # 必须与 gateway/user-service 一致;用于 WebSocket 握手时的 token 校验
+    secret: ${JWT_SECRET:it-ticket-dev-jwt-secret-key-32bytes-minimum!!}
+  auth:
+    exclude-paths:
+      - /api/health
+      - /error
+      # 内部接口(预留)与 WebSocket 握手(鉴权由 WsAuthInterceptor 自行完成)
+      - /api/internal/**
+      - /ws/**
+
+# ---------------- AI 大模型配置 ----------------
+# chat 与 embedding 相互独立,可分别配置不同供应商(均为 OpenAI 兼容接口)
+# 不配置 api-key 时系统仍可运行:chat 未配置 → 回复提示语;embedding 未配置 → 跳过知识库检索
+ai:
+  chat:
+    api-key: ${AI_CHAT_API_KEY:sk-019ebde4f86145dabc77c1ed9a6750bb}
+    # DeepSeek 官方 OpenAI 兼容端点;换供应商时整段替换 URL 即可
+    url: ${AI_CHAT_URL:https://api.deepseek.com/chat/completions}
+    model: ${AI_CHAT_MODEL:deepseek-chat}
+  embedding:
+    api-key: ${AI_EMBEDDING_API_KEY:sk-jpwtltusviexhctvelhqywcmlmcaimgjealjbiebhgsqtjjs}
+    # 硅基流动 OpenAI 兼容端点,BGE-M3 中文效果好且有免费额度(1024 维)
+    url: ${AI_EMBEDDING_URL:https://api.siliconflow.cn/v1/embeddings}
+    model: ${AI_EMBEDDING_MODEL:BAAI/bge-m3}
+  # RAG 检索参数
+  rag:
+    top-k: 5                # 检索返回的最大知识条数
+    min-score: 0.55         # 余弦相似度阈值,低于此值视为"知识库未覆盖"
+    chunk-size: 500         # 知识切片长度(字)
+    chunk-overlap: 50       # 切片重叠长度(字)
+  # 知识回流:定时从 ticket-service 拉取已完成工单
+  sync:
+    enabled: true
+    fixed-delay-ms: 600000  # 10 分钟一轮
+    initial-delay-ms: 60000 # 启动 1 分钟后开始首轮
+
+logging:
+  level:
+    root: info
+    com.itticket.ai.mapper: debug
