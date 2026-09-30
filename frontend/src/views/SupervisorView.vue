@@ -99,13 +99,19 @@
             <SlaBadge :ticket-id="row.ticket_id" mode="card" />
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="['NEW','ASSIGNED','IN_PROGRESS','PENDING_EXTERNAL'].includes(row.status)"
               size="small"
               @click.stop="showReassign(row)"
             >改派</el-button>
+            <el-button
+              size="small"
+              type="danger"
+              plain
+              @click.stop="deleteTicket(row)"
+            >删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -322,6 +328,22 @@ async function loadTickets() {
   } catch (e) { console.error(e) }
 }
 
+// 删除工单（PLATFORM_ADMIN）：物理删除不可恢复，需二次确认
+async function deleteTicket(row) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除工单 ${row.ticket_id}（${row.title}）吗？删除后不可恢复，流转记录与附件将一并清除。`,
+      '删除确认',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch { return }
+  try {
+    await ticketApi.remove(row.ticket_id)
+    ElMessage.success('工单已删除')
+    if (detailTicket.value?.ticket_id === row.ticket_id) detailVisible.value = false
+    await loadTickets()
+  } catch (e) { ElMessage.error(e.message || '删除失败') }
+}
 function showAssign(ticket) {
   assignTicket.value = { ...ticket }
   selectedEngineer.value = ''

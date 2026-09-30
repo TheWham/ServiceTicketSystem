@@ -50,7 +50,9 @@ export const ticketApi = {
   assign: (id, data) => api.post(`/tickets/${id}/assign`, data),
   claim: (id, data) => api.post(`/tickets/${id}/claim`, data),
   action: (id, data) => api.post(`/tickets/${id}/actions`, data),
-  rating: (id, data) => api.post(`/tickets/${id}/rating`, data)
+  rating: (id, data) => api.post(`/tickets/${id}/rating`, data),
+  // 删除工单（PLATFORM_ADMIN 专属，物理删除）
+  remove: (id) => api.delete(`/tickets/${id}`)
 }
 
 export const categoryApi = {
