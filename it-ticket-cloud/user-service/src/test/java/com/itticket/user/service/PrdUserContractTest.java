@@ -34,7 +34,7 @@ class PrdUserContractTest {
         when(roles.selectOne(any())).thenReturn(role);
         when(passwords.matches("secret", "hash")).thenReturn(true);
         JwtProperties jwt = new JwtProperties(); jwt.setSecret("0123456789012345678901234567890123456789012345678901234567890123");
-        UserService service = new UserService(users, roles, passwords, jwt);
+        UserService service = new UserService(users, roles, mock(com.itticket.user.mapper.TeamAutoJoinMapper.class), passwords, jwt);
         LoginRequest request = new LoginRequest(); request.setUserId("U01"); request.setPassword("secret");
         assertIdentity(json.valueToTree(service.login(request).getUser()));
         assertIdentity(json.valueToTree(service.currentUser("U01")));

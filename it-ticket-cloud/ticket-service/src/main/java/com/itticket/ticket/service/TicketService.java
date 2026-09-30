@@ -59,6 +59,7 @@ public class TicketService {
     private final CategoryMapper categoryMapper;
     private final AttachmentMapper attachmentMapper;
     private final TicketFlowLogMapper flowLogMapper;
+    private final com.itticket.ticket.mapper.TicketPurgeMapper ticketPurgeMapper;
     private final TicketNoGenerator noGenerator;
     private final NotificationService notificationService;
     private final UserClient userClient;
@@ -362,6 +363,36 @@ public class TicketService {
         afterCommit(() -> notificationService.sendNotification(ticketId, "ASSIGNED", req.getAssigneeId()));
 
         return new AssignOutcome(isReassign, ticketId, req.getAssigneeId());
+    }
+
+    // ---------------- 领取(仅工程师) ----------------
+
+    /**
+     * 删除工单（PLATFORM_ADMIN 专属）：清理全部关联行后删除主表，物理删除、不可恢复，整体事务。
+     */
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    public void delete(UserContext.CurrentUser operator, String ticketId) {
+        UserContext.checkRole(operator, "PLATFORM_ADMIN");
+        Ticket ticket = ticketMapper.selectById(ticketId);
+        if (ticket == null) {
+            throw new com.itticket.common.api.BizException(
+                    com.itticket.common.api.ErrorCode.TICKET_NOT_FOUND, "工单不存在:" + ticketId);
+        }
+        ticketPurgeMapper.purgeTransitions(ticketId);
+        ticketPurgeMapper.purgeMessages(ticketId);
+        ticketPurgeMapper.purgeResolutions(ticketId);
+        ticketPurgeMapper.purgeAcceptances(ticketId);
+        ticketPurgeMapper.purgeFieldValues(ticketId);
+        ticketPurgeMapper.purgeSupplements(ticketId);
+        ticketPurgeMapper.purgeExternalWaits(ticketId);
+        ticketPurgeMapper.purgeSlaInstances(ticketId);
+        ticketPurgeMapper.purgeAssignments(ticketId);
+        ticketPurgeMapper.purgeAttachments(ticketId);
+        ticketPurgeMapper.purgeExceptions(ticketId);
+        ticketPurgeMapper.purgeNotifications(ticketId);
+        ticketPurgeMapper.purgeOutbox(ticketId);
+        ticketMapper.deleteById(ticketId);
+        log.warn("[工单] 平台管理员 {} 删除了工单 {}（{}）", operator.getUserId(), ticketId, ticket.getTitle());
     }
 
     // ---------------- 领取(仅工程师) ----------------

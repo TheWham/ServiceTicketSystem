@@ -20,7 +20,7 @@ class CanonicalUserTest {
   user.setStatus("DISABLED");assertEquals("DISABLED",user.getStatus());
  }
  @Test void knowledgeAdministratorCannotManageAccounts() {
-  UserService service=new UserService(mock(UserMapper.class),mock(UserRoleMapper.class),mock(BCryptPasswordEncoder.class),new JwtProperties());
+  UserService service=new UserService(mock(UserMapper.class),mock(UserRoleMapper.class),mock(com.itticket.user.mapper.TeamAutoJoinMapper.class),mock(BCryptPasswordEncoder.class),new JwtProperties());
   assertThrows(BizException.class,()->service.listAllAccounts("KNOWLEDGE_ADMIN"));
   assertThrows(BizException.class,()->service.listAllAccounts("KB_ADMIN"));
  }
@@ -30,7 +30,7 @@ class CanonicalUserTest {
   UserRoleEntity role=new UserRoleEntity();role.setRoleCode("UNKNOWN");
   when(users.selectById("U01")).thenReturn(user);when(roles.selectOne(any())).thenReturn(role);when(passwords.matches("secret","hash")).thenReturn(true);
   LoginRequest request=new LoginRequest();request.setUserId("U01");request.setPassword("secret");
-  UserService service=new UserService(users,roles,passwords,new JwtProperties());
+  UserService service=new UserService(users,roles, mock(com.itticket.user.mapper.TeamAutoJoinMapper.class),passwords,new JwtProperties());
   assertThrows(BizException.class,()->service.login(request));
  }
 }

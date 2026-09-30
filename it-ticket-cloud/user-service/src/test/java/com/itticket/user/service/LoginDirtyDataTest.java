@@ -31,7 +31,7 @@ class LoginDirtyDataTest {
         passwords = mock(BCryptPasswordEncoder.class);
         JwtProperties jwt = new JwtProperties();
         jwt.setSecret("0123456789012345678901234567890123456789012345678901234567890123");
-        service = new UserService(users, mock(UserRoleMapper.class), passwords, jwt);
+        service = new UserService(users, mock(UserRoleMapper.class), mock(com.itticket.user.mapper.TeamAutoJoinMapper.class), passwords, jwt);
     }
 
     private LoginRequest request(String id, String pwd) {

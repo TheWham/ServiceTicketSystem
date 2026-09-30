@@ -39,7 +39,7 @@ class UserLookupDegradationTest {
         userClient = mock(UserClient.class);
         service = new TicketService(
                 mock(TicketMapper.class), mock(CategoryMapper.class), mock(AttachmentMapper.class),
-                mock(TicketFlowLogMapper.class), mock(TicketNoGenerator.class),
+                mock(TicketFlowLogMapper.class), mock(com.itticket.ticket.mapper.TicketPurgeMapper.class), mock(TicketNoGenerator.class),
                 mock(NotificationService.class), userClient, mock(SlaService.class),
                 mock(RoutingService.class), mock(ExceptionQueueService.class),
                 mock(ConsultationConvertNotifier.class), new ObjectMapper());

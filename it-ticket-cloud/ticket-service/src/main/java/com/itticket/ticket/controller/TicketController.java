@@ -82,6 +82,13 @@ public class TicketController {
     public Result<Map<String, Object>> action(@PathVariable String id, @RequestBody ActionRequest request) {
         return Result.ok("操作成功", ticketService.action(UserContext.get(), id, request));
     }
+    /** 删除工单（PLATFORM_ADMIN 专属，物理删除不可恢复） */
+    @DeleteMapping("/{id}")
+    public Result<Void> delete(@PathVariable("id") String id) {
+        ticketService.delete(UserContext.get(), id);
+        return Result.ok("工单已删除", null);
+    }
+
 
     @PostMapping("/{id}/rating")
     public Result<Void> rating(@PathVariable String id, @RequestBody RatingRequest request) {

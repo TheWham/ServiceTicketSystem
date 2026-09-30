@@ -31,7 +31,7 @@ class TicketActionEventTest {
     private final NotificationService notifications = mock(NotificationService.class);
     private final RoutingService routing = mock(RoutingService.class);
     private final TicketService service = new TicketService(tickets, mock(CategoryMapper.class), mock(AttachmentMapper.class),
-            flows, mock(TicketNoGenerator.class), notifications, mock(UserClient.class), sla, routing,
+            flows, mock(com.itticket.ticket.mapper.TicketPurgeMapper.class), mock(TicketNoGenerator.class), notifications, mock(UserClient.class), sla, routing,
             mock(ExceptionQueueService.class), mock(ConsultationConvertNotifier.class), new ObjectMapper());
 
     private Ticket ticket(TicketStatus status) {

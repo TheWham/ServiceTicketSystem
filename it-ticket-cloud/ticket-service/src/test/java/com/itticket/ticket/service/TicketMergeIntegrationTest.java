@@ -40,7 +40,7 @@ class TicketMergeIntegrationTest {
     @BeforeEach void setUp() {
         com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
                 new org.apache.ibatis.builder.MapperBuilderAssistant(new com.baomidou.mybatisplus.core.MybatisConfiguration(), ""), Ticket.class);
-        service = new TicketService(tickets, categories, attachments, flows, numbers,
+        service = new TicketService(tickets, categories, attachments, flows, mock(com.itticket.ticket.mapper.TicketPurgeMapper.class), numbers,
                 notifications, mock(UserClient.class), sla, routing, mock(ExceptionQueueService.class), conversions, json);
         Category leaf = new Category();
         leaf.setCategoryId("C_NET"); leaf.setName("Network"); leaf.setStatus("ACTIVE");
