@@ -105,7 +105,16 @@ export const ragApi = {
   }),
   getTrace: (traceId) => api.get(`/rag/traces/${traceId}`),
   listTraces: () => api.get('/rag/traces'),
-  initIndex: (recreate = false) => api.post(`/rag/indices/init?recreate=${recreate}`)
+  initIndex: (recreate = false) => api.post(`/rag/indices/init?recreate=${recreate}`),
+
+  // ---- 知识生命周期管理（SM-KNOWLEDGE-001）----
+  listArticles: (params) => api.get('/rag/articles', { params }),
+  getArticle: (id) => api.get(`/rag/articles/${id}`),
+  submitArticle: (id, data) => api.post(`/rag/articles/${id}/submit`, data || {}),
+  publishArticle: (id, data) => api.post(`/rag/articles/${id}/publish`, data || {}),
+  rejectArticle: (id, data) => api.post(`/rag/articles/${id}/reject`, data || {}),
+  offlineArticle: (id, data) => api.post(`/rag/articles/${id}/offline`, data || {}),
+  reindexArticle: (id) => api.post(`/rag/articles/${id}/reindex`)
 }
 
 export default api

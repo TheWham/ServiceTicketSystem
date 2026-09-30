@@ -24,6 +24,8 @@
     </header>
 
     <main class="kb-main-body">
+      <el-tabs v-model="activeTab" class="kb-tabs">
+      <el-tab-pane label="📄 文档上传与链路追踪" name="ingest">
       <el-row :gutter="20">
         <!-- 左侧：文档上传与参数配置 -->
         <el-col :xs="24" :lg="9">
@@ -75,6 +77,16 @@
                   <el-option label="账号与权限 (C_ACC)" value="C_ACC" />
                   <el-option label="其他分类 (C_OTH)" value="C_OTH" />
                 </el-select>
+              </el-form-item>
+
+              <el-form-item label="入库方式">
+                <el-radio-group v-model="uploadForm.publishNow">
+                  <el-radio :value="false">存为草稿（标准流程：提审 → 发布）</el-radio>
+                  <el-radio :value="true">直接发布（快速通道，跳过审核）</el-radio>
+                </el-radio-group>
+                <div v-if="uploadForm.publishNow" class="quick-warn">
+                  ⚠ 直接发布跳过审核并立即进入 RAG 检索，仅建议管理端测试使用（规范 SM-KNOWLEDGE-001 要求审核后发布）
+                </div>
               </el-form-item>
 
               <el-collapse class="advanced-params">
@@ -293,7 +305,195 @@
           </el-card>
         </el-col>
       </el-row>
+      </el-tab-pane>
+
+      <el-tab-pane label="🗂 知识生命周期管理" name="lifecycle">
+        <el-card shadow="hover" class="box-card">
+          <template #header>
+            <div class="card-header-flex">
+              <div class="card-header-title">
+                <el-icon><Notebook /></el-icon>
+                <span>知识文章列表</span>
+              </div>
+              <div class="list-toolbar">
+                <el-radio-group v-model="listQuery.status" size="small" @change="fetchArticles(1)">
+                  <el-radio-button value="">全部</el-radio-button>
+                  <el-radio-button value="DRAFT">草稿</el-radio-button>
+                  <el-radio-button value="PENDING_REVIEW">待审核</el-radio-button>
+                  <el-radio-button value="PUBLISHED">已发布</el-radio-button>
+                  <el-radio-button value="OFFLINE">已下线</el-radio-button>
+                </el-radio-group>
+                <el-button size="small" :loading="listLoading" @click="fetchArticles()">刷新</el-button>
+              </div>
+            </div>
+          </template>
+
+          <el-table
+            :data="articles"
+            v-loading="listLoading"
+            border
+            stripe
+            empty-text="暂无知识文章，可先在「文档上传」页落为草稿"
+          >
+            <el-table-column prop="articleId" label="文章ID" min-width="210" show-overflow-tooltip />
+            <el-table-column prop="categoryId" label="分类" width="90" align="center" />
+            <el-table-column label="状态" width="110" align="center">
+              <template #default="{ row }">
+                <el-tag :type="statusTagType(row.status)" effect="plain">{{ statusLabel(row.status) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="风险等级" width="100" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.riskLevel === 'HIGH' ? 'danger' : 'info'" size="small" effect="plain">
+                  {{ row.riskLevel === 'HIGH' ? '高风险' : '常规' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="currentVersionId" label="当前版本" min-width="190" show-overflow-tooltip />
+            <el-table-column prop="updatedAt" label="更新时间" width="150">
+              <template #default="{ row }">{{ formatTime(row.updatedAt) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="120" align="center" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" size="small" @click="openDetail(row.articleId)">
+                  详情 / 操作
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <div class="pager-row">
+            <el-pagination
+              v-model:current-page="listQuery.page"
+              v-model:page-size="listQuery.pageSize"
+              :total="articleTotal"
+              :page-sizes="[10, 20, 50]"
+              layout="total, sizes, prev, pager, next"
+              background
+              @size-change="fetchArticles(1)"
+              @current-change="fetchArticles()"
+            />
+          </div>
+        </el-card>
+      </el-tab-pane>
+      </el-tabs>
     </main>
+
+    <!-- 知识详情与生命周期操作抽屉 -->
+    <el-drawer
+      v-model="drawerVisible"
+      :title="`知识详情 · ${detail?.article?.articleId || ''}`"
+      size="600px"
+      :destroy-on-close="true"
+    >
+      <div v-loading="detailLoading" class="drawer-body">
+        <template v-if="detail && detail.article">
+          <el-descriptions title="文章信息" :column="2" border size="small">
+            <el-descriptions-item label="文章ID" :span="2">{{ detail.article.articleId }}</el-descriptions-item>
+            <el-descriptions-item label="状态">
+              <el-tag :type="statusTagType(detail.article.status)" effect="plain">
+                {{ statusLabel(detail.article.status) }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="风险等级">
+              {{ detail.article.riskLevel === 'HIGH' ? '高风险' : '常规' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="分类">{{ detail.article.categoryId }}</el-descriptions-item>
+            <el-descriptions-item label="乐观锁版本">{{ detail.article.version }}</el-descriptions-item>
+            <el-descriptions-item label="创建时间">{{ formatTime(detail.article.createdAt) }}</el-descriptions-item>
+            <el-descriptions-item label="更新时间">{{ formatTime(detail.article.updatedAt) }}</el-descriptions-item>
+          </el-descriptions>
+
+          <template v-if="detail.currentVersion">
+            <el-descriptions title="当前版本" :column="2" border size="small" class="mt-16">
+              <el-descriptions-item label="版本ID" :span="2">{{ detail.currentVersion.versionId }}</el-descriptions-item>
+              <el-descriptions-item label="版本号">v{{ detail.currentVersion.versionNo }}</el-descriptions-item>
+              <el-descriptions-item label="标题" :span="2">{{ detail.currentVersion.title }}</el-descriptions-item>
+              <el-descriptions-item label="作者">{{ detail.currentVersion.authorId }}</el-descriptions-item>
+              <el-descriptions-item label="审核人">{{ detail.currentVersion.reviewerId || '—' }}</el-descriptions-item>
+              <el-descriptions-item label="发布时间">{{ formatTime(detail.currentVersion.publishedAt) || '—' }}</el-descriptions-item>
+              <el-descriptions-item label="变更说明">{{ detail.currentVersion.changeNote || '—' }}</el-descriptions-item>
+              <el-descriptions-item v-if="detail.currentVersion.platformReviewerId" label="平台复核人">
+                {{ detail.currentVersion.platformReviewerId }}
+              </el-descriptions-item>
+              <el-descriptions-item v-if="detail.currentVersion.platformReviewDecision" label="复核结论">
+                {{ detail.currentVersion.platformReviewDecision }}
+              </el-descriptions-item>
+            </el-descriptions>
+          </template>
+
+          <h3 class="section-heading">🕘 流转审计时间线</h3>
+          <el-empty
+            v-if="!detail.transitions || detail.transitions.length === 0"
+            description="暂无流转记录"
+            :image-size="60"
+          />
+          <el-timeline v-else>
+            <el-timeline-item
+              v-for="t in detail.transitions"
+              :key="t.transitionId"
+              :timestamp="formatTime(t.occurredAt)"
+              :type="statusTagType(t.toStatus)"
+              placement="top"
+            >
+              <div class="transition-title">
+                <el-tag size="small" effect="plain">{{ eventLabel(t.eventCode) }}</el-tag>
+                <span class="transition-flow">{{ statusLabel(t.fromStatus) }} → {{ statusLabel(t.toStatus) }}</span>
+              </div>
+              <div class="transition-meta">操作人：{{ t.operatorId }}（{{ t.operatorRole }}）</div>
+              <div v-if="t.reason" class="transition-reason">原因：{{ t.reason }}</div>
+            </el-timeline-item>
+          </el-timeline>
+        </template>
+      </div>
+
+      <template #footer>
+        <div v-if="detail && detail.article" class="drawer-actions">
+          <el-alert
+            v-if="detail.article.status === 'OFFLINE'"
+            type="info"
+            :closable="false"
+            title="已下线知识不可恢复，只能发布新版本（规范 PRD §16.4）"
+            class="mb-12"
+          />
+          <el-button
+            v-if="detail.article.status === 'DRAFT'"
+            type="primary"
+            :loading="actionLoading"
+            @click="doSubmit"
+          >📤 提交审核</el-button>
+          <el-button
+            v-if="detail.article.status === 'PENDING_REVIEW'"
+            type="success"
+            :loading="actionLoading"
+            @click="doPublish"
+          >✅ 审核通过并发布</el-button>
+          <el-button
+            v-if="detail.article.status === 'PENDING_REVIEW'"
+            type="danger"
+            plain
+            :loading="actionLoading"
+            @click="doReject"
+          >🚫 驳回</el-button>
+          <el-button
+            v-if="detail.article.status === 'PUBLISHED'"
+            type="danger"
+            :loading="actionLoading"
+            @click="doOffline"
+          >⛔ 下线（搜索与 RAG 不再返回）</el-button>
+          <el-button
+            v-if="detail.article.status === 'PUBLISHED'"
+            type="warning"
+            plain
+            :loading="actionLoading"
+            @click="doReindex"
+          >♻ 重建 RAG 索引</el-button>
+          <div v-if="detail.article.status === 'PENDING_REVIEW'" class="self-review-hint">
+            作者不得审核自己提交的内容（AC-25）；高风险知识须平台管理员复核
+          </div>
+        </div>
+      </template>
+    </el-drawer>
   </div>
 </template>
 
@@ -313,14 +513,15 @@
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   UploadFilled,
   Cpu,
   Clock,
   Connection,
   Check,
-  Search
+  Search,
+  Notebook
 } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user.js'
 import { ragApi } from '../api/index.js'
@@ -344,10 +545,31 @@ const activeChunkNames = ref([])
 /** 切片内容搜索过滤关键词 */
 const chunkSearchKeyword = ref('')
 
+// ---- 生命周期管理状态 ----
+/** 当前页签：ingest 上传工作台 / lifecycle 生命周期管理 */
+const activeTab = ref('ingest')
+/** 知识列表查询条件 */
+const listQuery = ref({ status: '', page: 1, pageSize: 10 })
+/** 知识文章列表 */
+const articles = ref([])
+/** 文章总数（分页） */
+const articleTotal = ref(0)
+/** 列表加载中 */
+const listLoading = ref(false)
+/** 详情抽屉可见性 */
+const drawerVisible = ref(false)
+/** 详情加载中 */
+const detailLoading = ref(false)
+/** 生命周期动作执行中 */
+const actionLoading = ref(false)
+/** 当前详情（文章 + 当前版本 + 流转审计） */
+const detail = ref(null)
+
 /** 上传表单及切片策略配置 */
 const uploadForm = ref({
   title: '',           // 自定义文档标题（留空自动解析）
   categoryId: 'C_NET', // 默认分类：网络与连接
+  publishNow: false,   // 默认存为草稿（标准流程：提审 → 发布）；直接发布跳过审核，仅供快速验证
   chunkSize: 500,      // 目标切片大小（字符）
   chunkOverlap: 50     // 切片重叠大小（字符）
 })
@@ -371,9 +593,10 @@ async function handleInitEsIndex() {
   }
 }
 
-// 页面加载时自动拉取最近执行的历史链路
+// 页面加载时自动拉取最近执行的历史链路与知识列表
 onMounted(() => {
   fetchRecentTraces()
+  fetchArticles(1)
 })
 
 /** 文件选择回调 */
@@ -400,6 +623,7 @@ async function submitUploadAndProcess() {
   formData.append('file', selectedFile.value)
   if (uploadForm.value.title) formData.append('title', uploadForm.value.title)
   if (uploadForm.value.categoryId) formData.append('categoryId', uploadForm.value.categoryId)
+  formData.append('publishNow', uploadForm.value.publishNow)
   formData.append('chunkSize', uploadForm.value.chunkSize)
   formData.append('chunkOverlap', uploadForm.value.chunkOverlap)
 
@@ -407,8 +631,13 @@ async function submitUploadAndProcess() {
     const res = await ragApi.uploadDocument(formData)
     if (res && res.data) {
       currentTrace.value = res.data.trace
-      ElMessage.success('文档切片并写入 ES 成功！')
+      if (res.data.article?.status === 'DRAFT') {
+        ElMessage.success('已存为草稿，请到「知识生命周期管理」页提交审核')
+      } else {
+        ElMessage.success('文档切片并写入 ES 成功！')
+      }
       fetchRecentTraces()
+      fetchArticles(1)
       if (res.data.trace?.chunks?.length > 0) {
         activeChunkNames.value = [res.data.trace.chunks[0].chunkId]
       }
@@ -438,6 +667,196 @@ function loadTrace(trace) {
   currentTrace.value = trace
   if (trace.chunks?.length > 0) {
     activeChunkNames.value = [trace.chunks[0].chunkId]
+  }
+}
+
+// ================= 知识生命周期管理 =================
+
+function statusLabel(s) {
+  const map = { DRAFT: '草稿', PENDING_REVIEW: '待审核', PUBLISHED: '已发布', OFFLINE: '已下线' }
+  return map[s] || s
+}
+
+function statusTagType(s) {
+  if (s === 'PUBLISHED') return 'success'
+  if (s === 'PENDING_REVIEW') return 'warning'
+  if (s === 'OFFLINE') return 'danger'
+  return 'info'
+}
+
+function eventLabel(code) {
+  const map = {
+    KNOWLEDGE_SUBMIT_REVIEW: '提交审核',
+    KNOWLEDGE_PUBLISH: '审核发布',
+    KNOWLEDGE_REJECT: '驳回',
+    KNOWLEDGE_OFFLINE: '下线'
+  }
+  return map[code] || code
+}
+
+async function fetchArticles(page) {
+  if (page) listQuery.value.page = page
+  listLoading.value = true
+  try {
+    const res = await ragApi.listArticles({
+      status: listQuery.value.status || undefined,
+      page: listQuery.value.page,
+      pageSize: listQuery.value.pageSize
+    })
+    if (res?.data) {
+      articles.value = res.data.records || []
+      articleTotal.value = res.data.total || 0
+    }
+  } catch (e) {
+    ElMessage.error('加载知识列表失败: ' + (e.message || '网络错误'))
+  } finally {
+    listLoading.value = false
+  }
+}
+
+async function openDetail(articleId) {
+  drawerVisible.value = true
+  detailLoading.value = true
+  try {
+    const res = await ragApi.getArticle(articleId)
+    if (res?.data) detail.value = res.data
+  } catch (e) {
+    ElMessage.error('加载知识详情失败: ' + (e.message || '网络错误'))
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+async function refreshAfterAction() {
+  await fetchArticles()
+  if (detail.value?.article?.articleId) {
+    await openDetail(detail.value.article.articleId)
+  }
+}
+
+/** 提交审核：DRAFT ➔ PENDING_REVIEW */
+async function doSubmit() {
+  const id = detail.value.article.articleId
+  actionLoading.value = true
+  try {
+    const res = await ragApi.submitArticle(id, { remark: '工作台提交审核' })
+    if (res?.data) ElMessage.success(res.data.message || '已提交审核')
+    await refreshAfterAction()
+  } catch (e) {
+    ElMessage.error(e.message || '提审失败')
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+/** 审核通过并发布：PENDING_REVIEW ➔ PUBLISHED，联动 ES 入库 */
+async function doPublish() {
+  const id = detail.value.article.articleId
+  let note = ''
+  try {
+    const { value } = await ElMessageBox.prompt('请输入发布变更说明（可选）', '审核通过并发布', {
+      confirmButtonText: '发布',
+      cancelButtonText: '取消',
+      inputPlaceholder: '例如：内容已核对，可以发布',
+      closeOnClickModal: false
+    })
+    note = value || ''
+  } catch {
+    return
+  }
+  actionLoading.value = true
+  try {
+    const res = await ragApi.publishArticle(id, { changeNote: note })
+    if (res?.data) {
+      if (res.data.indexStatus === 'PENDING_COMPENSATION') {
+        ElMessage.warning(res.data.message || '已发布，但 RAG 索引未完成，可稍后「重建索引」补偿')
+      } else {
+        ElMessage.success(res.data.message || '发布成功，已写入 RAG 索引')
+      }
+    }
+    await refreshAfterAction()
+  } catch (e) {
+    // 作者自审 / 高风险非平台管理员复核会由服务端 403 拦截，这里原样提示
+    ElMessage.error(e.message || '发布失败')
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+/** 驳回：PENDING_REVIEW ➔ DRAFT（原因必填，写入版本驳回记录） */
+async function doReject() {
+  const id = detail.value.article.articleId
+  let reason = ''
+  try {
+    const { value } = await ElMessageBox.prompt('请输入驳回原因（必填，写入版本驳回记录）', '驳回', {
+      confirmButtonText: '确认驳回',
+      cancelButtonText: '取消',
+      inputPlaceholder: '必填',
+      inputValidator: (v) => (v && v.trim().length > 0) || '驳回原因必填',
+      closeOnClickModal: false
+    })
+    reason = value
+  } catch {
+    return
+  }
+  actionLoading.value = true
+  try {
+    const res = await ragApi.rejectArticle(id, { reason })
+    if (res?.data) ElMessage.success(res.data.message || '已驳回并退回草稿')
+    await refreshAfterAction()
+  } catch (e) {
+    ElMessage.error(e.message || '驳回失败')
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+/** 下线：PUBLISHED ➔ OFFLINE，同步 ES 状态（AC-27：搜索与 RAG 不再返回） */
+async function doOffline() {
+  const id = detail.value.article.articleId
+  let reason = ''
+  try {
+    const { value } = await ElMessageBox.prompt('请输入下线原因（必填）。下线后搜索与 RAG 索引均不再返回该版本（AC-27）。', '下线知识', {
+      confirmButtonText: '确认下线',
+      cancelButtonText: '取消',
+      inputPlaceholder: '必填',
+      inputValidator: (v) => (v && v.trim().length > 0) || '下线原因必填',
+      closeOnClickModal: false
+    })
+    reason = value
+  } catch {
+    return
+  }
+  actionLoading.value = true
+  try {
+    const res = await ragApi.offlineArticle(id, { reason })
+    if (res?.data) ElMessage.success(res.data.message || '已下线')
+    await refreshAfterAction()
+  } catch (e) {
+    ElMessage.error(e.message || '下线失败')
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+/** 重建 RAG 索引（发布后索引失败等场景的补偿入口，RD-008） */
+async function doReindex() {
+  const id = detail.value.article.articleId
+  actionLoading.value = true
+  try {
+    const res = await ragApi.reindexArticle(id)
+    if (res?.data) {
+      if (res.data.indexStatus === 'INDEXED') {
+        ElMessage.success(res.data.message || '索引重建完成')
+      } else {
+        ElMessage.warning(res.data.message || '索引重建返回异常状态')
+      }
+    }
+    await refreshAfterAction()
+  } catch (e) {
+    ElMessage.error(e.message || '重建索引失败')
+  } finally {
+    actionLoading.value = false
   }
 }
 
@@ -835,5 +1254,84 @@ function handleLogout() {
   color: #2c3e50;
   font-family: Consolas, Monaco, "Courier New", monospace;
   border: 1px solid #e4e7ed;
+}
+
+/* ===== 生命周期管理 ===== */
+.kb-tabs :deep(.el-tabs__item) {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pager-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.quick-warn {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #e6a23c;
+  line-height: 1.5;
+}
+
+.mt-16 {
+  margin-top: 16px;
+}
+
+.mb-12 {
+  margin-bottom: 12px;
+}
+
+.drawer-body {
+  padding: 0 4px;
+}
+
+.drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.self-review-hint {
+  width: 100%;
+  font-size: 12px;
+  color: #909399;
+  margin-top: 6px;
+}
+
+.transition-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.transition-flow {
+  font-weight: 600;
+  font-size: 13px;
+  color: #303133;
+}
+
+.transition-meta {
+  font-size: 12px;
+  color: #909399;
+}
+
+.transition-reason {
+  font-size: 12px;
+  color: #606266;
+  background: #f5f7fa;
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-top: 4px;
 }
 </style>
