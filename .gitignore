@@ -39,3 +39,6 @@ __pycache__/
 /javac-args.txt
 /lombok.jar
 /test.jar
+
+# 工单照片附件本地存储(运行期生成,不入库)
+**/data/attachments/

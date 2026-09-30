@@ -1001,4 +1001,11 @@ SELECT 'rag_index_pointer:index(active_article_id)' AS contract_violation WHERE 
 UNION ALL
 SELECT 'rag_index_pointer:index(index_version,status)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='index_version,status')
 UNION ALL
-SELECT 'rag_index_pointer:index(status,updated_at)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='status,updated_at');
+SELECT 'rag_index_pointer:index(status,updated_at)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='status,updated_at')
+UNION ALL
+-- 引用完整性：路由域的工程师 id 必须能回联 user.user_id（V2_1 规范 ID 迁移曾漏映射 team_member/assignment 中的旧工号）
+SELECT CONCAT('team_member.engineer_id 孤儿引用: ', tm.engineer_id) AS contract_violation
+FROM team_member tm LEFT JOIN user u ON u.user_id = tm.engineer_id WHERE u.user_id IS NULL
+UNION ALL
+SELECT CONCAT('assignment.engineer_id 孤儿引用: ', a.engineer_id) AS contract_violation
+FROM assignment a LEFT JOIN user u ON u.user_id = a.engineer_id WHERE u.user_id IS NULL;

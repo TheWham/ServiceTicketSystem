@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.itticket.common.api.BizException;
 import com.itticket.common.api.ErrorCode;
@@ -157,6 +158,8 @@ public class TicketService {
             }
         }
 
+        // 绑定提单前已上传的照片附件（草稿命名空间 → 工单）
+        bindAttachments(ticketId, req.getAttachments(), creator.getUserId());
         slaService.startCompletionSla(ticketId, created.getPriority(), created.getCreatedAt());
         String finalTicketId = ticketId;
         insertFlowLog(finalTicketId, null, TicketStatus.NEW.getValue(), "TICKET_CREATE", creator.getUserId(), "提交工单");
@@ -702,6 +705,28 @@ public class TicketService {
         } else {
             task.run();
         }
+    }
+
+    /**
+     * 绑定照片附件：提单前上传的附件处于草稿态（biz_id=上传人 id），
+     * 工单创建成功后改为正式 biz_id=工单号。仅允许绑定本人、PASSED、未撤回的草稿附件。
+     */
+    private void bindAttachments(String ticketId, List<String> attachmentIds, String uploaderId) {
+        if (attachmentIds == null || attachmentIds.isEmpty()) return;
+        int bound = 0;
+        for (String attId : attachmentIds) {
+            if (attId == null || attId.isBlank()) continue;
+            int updated = attachmentMapper.update(null, new UpdateWrapper<Attachment>()
+                    .eq("attachment_id", attId).eq("biz_type", "TICKET").eq("biz_id", uploaderId)
+                    .eq("uploader_id", uploaderId).eq("scan_status", "PASSED").isNull("withdrawn_at")
+                    .set("biz_id", ticketId).set("updated_at", LocalDateTime.now(java.time.ZoneOffset.UTC)));
+            if (updated > 0) {
+                bound++;
+            } else {
+                log.warn("附件绑定跳过: {} (非本人草稿附件或状态不符)", attId);
+            }
+        }
+        log.info("工单 {} 绑定附件 {}/{}", ticketId, bound, attachmentIds.size());
     }
 
     /** 查工单的可用附件 id 列表（attachment 表，仅 PASSED 未撤回） */
