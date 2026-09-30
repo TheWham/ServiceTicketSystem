@@ -43,34 +43,25 @@
         <div class="form-box">
           <div class="form-head">
             <h1 class="form-title">欢迎登录</h1>
-            <p class="form-sub">请选择身份并输入密码</p>
+            <p class="form-sub">请输入账号和密码</p>
           </div>
 
-          <!-- 身份选择：卡片栅格 -->
-          <div class="identity-grid">
-            <div
-              v-for="user in users"
-              :key="user.user_id"
-              class="identity-card"
-              :class="{ selected: selectedId === user.user_id }"
-              @click="selectedId = user.user_id"
-            >
-              <el-avatar :size="38" class="id-avatar" :class="roleClass(user.role)">
-                {{ user.name[0] }}
-              </el-avatar>
-              <div class="id-info">
-                <div class="id-name">{{ user.name }}</div>
-                <div class="id-meta">{{ roleMap[user.role] }}</div>
-              </div>
-              <el-icon v-if="selectedId === user.user_id" class="id-check"><CircleCheckFilled /></el-icon>
-            </div>
-          </div>
+          <!-- 账号输入 -->
+          <el-input
+            v-model="userId"
+            placeholder="请输入用户ID（如 U_EMP01）"
+            size="large"
+            class="uid-input"
+            @keyup.enter="doLogin"
+          >
+            <template #prefix><el-icon><User /></el-icon></template>
+          </el-input>
 
           <!-- 密码输入 -->
           <el-input
             v-model="password"
             type="password"
-            placeholder="请输入密码（默认 123456）"
+            placeholder="请输入密码"
             size="large"
             show-password
             class="pwd-input"
@@ -85,7 +76,7 @@
             type="primary"
             size="large"
             :loading="loading"
-            :disabled="!selectedId"
+            :disabled="!userId.trim()"
             class="login-btn"
             @click="doLogin"
           >
@@ -126,21 +117,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Lock, Promotion, Timer, Bell, CircleCheckFilled } from '@element-plus/icons-vue'
+import { Lock, User, Promotion, Timer, Bell } from '@element-plus/icons-vue'
 import { useUserStore } from '../stores/user.js'
 import { userApi } from '../api/index.js'
 
-// PRD §5.1 角色值域（大写）
-const roleMap = { EMPLOYEE: '员工', ENGINEER: '工程师', PLATFORM_ADMIN: '平台管理员', KB_ADMIN: '知识库管理员' }
-const roleClass = (role) => ({
-  EMPLOYEE: 'av-employee', ENGINEER: 'av-engineer', PLATFORM_ADMIN: 'av-admin', KB_ADMIN: 'av-kb'
-}[role] || 'av-employee')
-
-const users = ref([])
-const selectedId = ref('')
+const userId = ref('')
 const password = ref('')
 const loading = ref(false)
 const loginError = ref('')
@@ -171,24 +155,15 @@ async function doForgot() {
   }
 }
 
-onMounted(async () => {
-  try {
-    const res = await userApi.loginOptions()
-    users.value = res.data
-  } catch (e) {
-    ElMessage.error('获取登录选项失败：' + e.message)
-  }
-})
-
 async function doLogin() {
   loading.value = true
   loginError.value = ''
   try {
-    if (!selectedId.value) {
-      loginError.value = '请选择登录身份'
+    if (!userId.value.trim() || !password.value) {
+      loginError.value = '请输入用户ID和密码'
       return
     }
-    const res = await userApi.login({ userId: selectedId.value, password: password.value })
+    const res = await userApi.login({ userId: userId.value.trim(), password: password.value })
     userStore.setLogin(res.data.user, res.data.token)
     ElMessage.success(`欢迎，${res.data.user.name}`)
     const roleRoute = { EMPLOYEE: '/employee', ENGINEER: '/engineer', PLATFORM_ADMIN: '/supervisor', KB_ADMIN: '/supervisor' }
@@ -270,35 +245,8 @@ html.dark .login-panel { background: #1b2129; box-shadow: 0 12px 48px rgba(0,0,0
 .form-title { font-size: 26px; font-weight: 700; color: var(--el-text-color-primary); margin: 0 0 6px; }
 .form-sub { font-size: 13px; color: var(--el-text-color-secondary); margin: 0; }
 
-/* 身份卡片栅格 */
-.identity-grid { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; max-height: 300px; overflow-y: auto; }
-.identity-card {
-  display: flex; align-items: center; gap: 12px;
-  padding: 11px 14px; border-radius: 10px; cursor: pointer;
-  border: 1.5px solid var(--el-border-color-lighter);
-  background: var(--el-fill-color-blank);
-  transition: all .18s ease;
-  position: relative;
-}
-.identity-card:hover { border-color: var(--el-color-primary-light-5); background: var(--el-fill-color-light); }
-.identity-card.selected {
-  border-color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
-  box-shadow: 0 2px 8px rgba(64, 128, 255, 0.12);
-}
-html.dark .identity-card.selected { background: rgba(91,140,255,.12); }
 
-.id-avatar { color: #fff; font-weight: 600; flex-shrink: 0; }
-.av-employee { background: #67c23a; }
-.av-engineer { background: #409eff; }
-.av-admin { background: #e6a23c; }
-.av-kb { background: #f56c6c; }
-
-.id-info { flex: 1; min-width: 0; }
-.id-name { font-size: 14px; font-weight: 600; color: var(--el-text-color-primary); }
-.id-meta { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 1px; }
-.id-check { color: var(--el-color-primary); font-size: 20px; flex-shrink: 0; }
-
+.uid-input { margin-bottom: 12px; }
 .pwd-input { margin-bottom: 12px; }
 .login-error { margin-bottom: 12px; }
 .login-btn { width: 100%; letter-spacing: 6px; font-weight: 600; }
