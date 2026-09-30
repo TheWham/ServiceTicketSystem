@@ -139,7 +139,7 @@
 
 | 变量 | 用途 | 缺省行为 |
 |---|---|---|
-| `MYSQL_PASSWORD` | 数据源口令 | **无默认值**，未注入启动即失败 |
+| `MYSQL_PASSWORD` | 数据源口令 | 默认 clt123456，可用环境变量覆盖 |
 | `EMBEDDING_API_KEY` | 向量化凭据 | **无默认值**，未注入时向量化按 RD-006 降级 |
 
 启动：`java -jar it-ticket-rag-service-1.0.0.jar`（端口 8302），依赖 Nacos + ES + 远端库。

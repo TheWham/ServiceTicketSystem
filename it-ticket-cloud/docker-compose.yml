@@ -4,7 +4,7 @@
 #       日常联调不需要启动它(服务默认连远程)。
 # 用法:
 #   Nacos:  docker compose up -d nacos
-#   MySQL(可选):docker compose up -d mysql 起来后,注入 MYSQL_HOST=127.0.0.1 MYSQL_PASSWORD=root123
+#   MySQL(可选):docker compose up -d mysql 起来后,注入 MYSQL_HOST=127.0.0.1 MYSQL_PASSWORD=clt123456
 # MySQL 初始化自动执行 db/init/ 下的建库与种子脚本
 
 networks:
@@ -16,7 +16,7 @@ services:
     image: mysql:8.0
     container_name: it-ticket-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD before starting MySQL}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-clt123456}
       TZ: Asia/Shanghai
     ports:
       - "3306:3306"

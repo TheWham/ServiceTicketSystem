@@ -149,7 +149,7 @@ java -jar ticket-service/target/it-ticket-ticket-service-1.0.0.jar
 | `NACOS_ADDR` | `127.0.0.1:8848` | Nacos 地址 |
 | `NACOS_CONFIG_ENABLED` | `false` | 是否启用 Nacos 配置中心(默认本地 profile) |
 | `MYSQL_HOST` / `MYSQL_PORT` | `120.92.138.195` / `3306` | 数据库地址 |
-| `MYSQL_PASSWORD` | `clt123456` | 数据库密码(prod 必须注入,无默认) |
+| `MYSQL_PASSWORD` | `clt123456` | 数据库密码(所有环境默认 clt123456,可用环境变量覆盖) |
 | `JWT_SECRET` | dev 弱密钥 | JWT 签名密钥(prod 必须注入) |
 
 配置分层：`application.yml`(启动项) → `application-{profile}.yml`(业务) → Nacos(可选覆盖)。

@@ -81,7 +81,7 @@ java -jar ticket-service/target/it-ticket-ticket-service-1.0.0.jar
 # java -jar target/it-ticket-consultation-service-1.0.0.jar
 ```
 
-**配置**：默认加载 `application-dev.yml`（本地 profile，连远程库）；生产用 `--spring.profiles.active=prod`（敏感项强制环境变量）。环境变量：`NACOS_ADDR`、`MYSQL_HOST`(默认 120.92.138.195)、`MYSQL_PASSWORD`（必须注入）、`JWT_SECRET`(生产必换)。Nacos 配置中心为可选开关 `NACOS_CONFIG_ENABLED=true`（详见 `nacos-config/配置管理说明.md`）。
+**配置**：默认加载 `application-dev.yml`（本地 profile，连远程库）；生产用 `--spring.profiles.active=prod`（敏感项均可由环境变量覆盖）。环境变量：`NACOS_ADDR`、`MYSQL_HOST`(默认 120.92.138.195)、`MYSQL_PASSWORD`（默认 clt123456，生产建议注入覆盖）、`JWT_SECRET`(生产必换)。Nacos 配置中心为可选开关 `NACOS_CONFIG_ENABLED=true`（详见 `nacos-config/配置管理说明.md`）。
 
 ### 3. 起前端
 
