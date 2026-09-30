@@ -9,6 +9,7 @@ import com.itticket.user.dto.LoginRequest;
 import com.itticket.user.dto.LoginResponse;
 import com.itticket.user.entity.User;
 import com.itticket.user.entity.UserRoleEntity;
+import com.itticket.user.mapper.TeamAutoJoinMapper;
 import com.itticket.user.mapper.UserMapper;
 import com.itticket.user.mapper.UserRoleMapper;
 import com.itticket.user.vo.UserVO;
@@ -25,6 +26,7 @@ public class UserService {
 
     private final UserMapper userMapper;
     private final UserRoleMapper userRoleMapper;
+    private final TeamAutoJoinMapper teamAutoJoinMapper;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtProperties jwtProperties;
 
@@ -144,7 +146,27 @@ public class UserService {
         ur.setCreatedAt(ur.getGrantedAt());
         ur.setUpdatedAt(ur.getGrantedAt());
         userRoleMapper.insert(ur);
+
+        // 工程师自动加入全部 ACTIVE 支持团队（F-06 路由：分类→团队→成员）。
+        // 无团队管理界面的前提下避免"新建工程师永远收不到自动派单"；与建号同事务，失败整体回滚。
+        if ("ENGINEER".equals(roleCode)) {
+            autoJoinTeams(userId);
+        }
         return UserVO.from(u, roleCode);
+    }
+
+    /** 将工程师加入所有 ACTIVE 支持团队；已有成员关系则复位为 ACTIVE */
+    private void autoJoinTeams(String engineerId) {
+        java.util.List<String> teams = teamAutoJoinMapper.listActiveTeams();
+        for (String teamId : teams) {
+            if (teamAutoJoinMapper.reactivate(teamId, engineerId) == 0) {
+                teamAutoJoinMapper.join(teamId, engineerId);
+            }
+        }
+        if (!teams.isEmpty()) {
+            org.slf4j.LoggerFactory.getLogger(getClass())
+                    .info("[团队] 工程师 {} 已自动加入 {} 个支持团队: {}", engineerId, teams.size(), teams);
+        }
     }
 
     /** 修改密码（登录用户）：旧密码校验 → 新密码 BCrypt 落库 */
