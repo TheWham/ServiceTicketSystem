@@ -3,28 +3,41 @@
     <!-- 页头 -->
     <div class="page-head">
       <div>
-        <h2 class="page-title">
-          <el-icon><Tools /></el-icon> 工程师工作台
-        </h2>
-        <p class="page-sub">我负责的工单 + 待领取工单 · 看板视图（每 15 秒自动刷新）</p>
+        <h2 class="page-title">工程师工作台</h2>
+        <p class="page-sub">我负责的工单 + 待领取工单 · 每 15 秒自动刷新</p>
       </div>
       <div class="head-actions">
-        <!-- 当前咨询入口(PRD 19.2 工程师页面:当前咨询) -->
-        <el-badge :value="consultCount" :hidden="!consultCount" :max="99" class="consult-badge">
-          <el-button type="primary" plain :icon="ChatDotRound" @click="consultVisible = true">
-            当前咨询
-          </el-button>
-        </el-badge>
+        <el-input
+          v-model="keyword"
+          placeholder="搜索工单号 / 标题"
+          :prefix-icon="Search"
+          clearable
+          class="head-search"
+        />
         <el-button :icon="Refresh" circle @click="loadTickets" />
+      </div>
+    </div>
+
+    <!-- 统计卡片条 -->
+    <div class="stat-row">
+      <div v-for="s in stats" :key="s.label" class="stat-card">
+        <div class="stat-icon" :style="{ background: s.bg, color: s.color }">
+          <el-icon :size="20"><component :is="s.icon" /></el-icon>
+        </div>
+        <div class="stat-info">
+          <div class="stat-value">{{ s.value }}</div>
+          <div class="stat-label">{{ s.label }}</div>
+        </div>
       </div>
     </div>
 
     <!-- 看板 -->
     <div class="kanban">
       <div v-for="col in columns" :key="col.status" class="kanban-col">
-        <div class="col-header" :class="col.color">
+        <div class="col-header">
+          <span class="col-dot" :style="{ background: col.dotColor }"></span>
           <span class="col-label">{{ col.label }}</span>
-          <el-badge :value="col.tickets.length" :type="col.badgeType" :max="99" />
+          <span class="col-count">{{ col.tickets.length }}</span>
         </div>
         <el-scrollbar class="col-body">
           <el-empty
@@ -46,7 +59,7 @@
             </div>
             <div class="card-title">{{ t.title }}</div>
             <div class="card-meta">
-              <el-tag size="small" type="info" effect="plain">{{ t.category_snapshot }}</el-tag>
+              <el-tag size="small" type="info" effect="plain">{{ t.category_name }}</el-tag>
               <span>{{ t.creator_name }}</span>
             </div>
             <div class="card-time">
@@ -77,7 +90,7 @@
       <template v-if="detail">
         <el-descriptions :column="2" border class="detail-desc">
           <el-descriptions-item label="标题" :span="2">{{ detail.title }}</el-descriptions-item>
-          <el-descriptions-item label="分类">{{ detail.category_snapshot }}</el-descriptions-item>
+          <el-descriptions-item label="分类">{{ detail.category_name }}</el-descriptions-item>
           <el-descriptions-item label="优先级">
             <el-tag :type="priorityTagType(detail.priority)" size="small">{{ priorityLabel(detail.priority) }}</el-tag>
           </el-descriptions-item>
@@ -167,14 +180,14 @@
           <el-timeline v-else>
             <el-timeline-item
               v-for="f in detailFlows"
-              :key="f.log_id"
-              :timestamp="formatTime(f.created_at)"
+              :key="f.transition_id"
+              :timestamp="formatTime(f.occurred_at)"
               :type="flowTimelineType(f.to_status)"
             >
               <div class="flow-content">
                 <el-tag size="small" effect="plain">{{ statusLabel(f.to_status || f.from_status) }}</el-tag>
-                <span class="flow-operator">{{ f.operator_name }}</span>
-                <span class="flow-remark">{{ f.remark }}</span>
+                <span class="flow-operator">{{ f.operator_name || operatorLabel(f.operator_id) }}</span>
+                <span v-if="f.reason" class="flow-remark">{{ f.reason }}</span>
               </div>
             </el-timeline-item>
           </el-timeline>
@@ -225,8 +238,6 @@
         </el-button>
       </template>
     </el-dialog>
-    <!-- ===== 当前咨询对话窗(转人工会话) ===== -->
-    <EngineerConsultation v-model:visible="consultVisible" @count-change="consultCount = $event" />
   </div>
 </template>
 
@@ -235,13 +246,12 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-  Tools, Refresh, Pointer, CircleCheck, Promotion, ChatDotRound
+  Tools, Refresh, Pointer, CircleCheck, Promotion, Search
 } from '@element-plus/icons-vue'
 import { ticketApi } from '../api/index.js'
 import { useUserStore } from '../stores/user.js'
 import SlaBadge from '../components/SlaBadge.vue'
 import SlaTimer from '../components/SlaTimer.vue'
-import EngineerConsultation from '../components/EngineerConsultation.vue'
 
 const userStore = useUserStore()
 const allTickets = ref([])
@@ -250,27 +260,51 @@ const detailFlows = ref([])
 const detailVisible = ref(false)
 const progressRemark = ref('')
 const actionError = ref('')
-const consultVisible = ref(false)
-const consultCount = ref(0)
 let pollTimer = null
+
+// 搜索关键词
+const keyword = ref('')
+
+const filteredTickets = computed(() => {
+  const k = keyword.value.trim().toLowerCase()
+  if (!k) return allTickets.value
+  return allTickets.value.filter(t =>
+    (t.ticket_id || '').toLowerCase().includes(k) ||
+    (t.title || '').toLowerCase().includes(k) ||
+    (t.creator_name || '').toLowerCase().includes(k)
+  )
+})
 
 const columns = computed(() => {
   const statusMap = {
-    'ASSIGNED':           { label: '已分配 / 待接单', color: 'yellow', badgeType: 'warning' },
-    'IN_PROGRESS':        { label: '处理中', color: 'blue', badgeType: 'primary' },
-    'PENDING_SUPPLEMENT': { label: '待补充', color: 'purple', badgeType: 'info' },
-    'PENDING_EXTERNAL':   { label: '外部等待', color: 'orange', badgeType: 'warning' },
-    'PENDING_ACCEPTANCE': { label: '待验收', color: 'cyan', badgeType: 'primary' },
-    'COMPLETED':          { label: '已完成', color: 'green', badgeType: 'success' },
-    'CANCELLED':          { label: '已取消', color: 'gray', badgeType: 'info' },
-    'CLOSED':             { label: '已关闭', color: 'gray', badgeType: 'info' }
+    'ASSIGNED':           { label: '已分配 / 待接单', dotColor: '#e6a23c' },
+    'IN_PROGRESS':        { label: '处理中', dotColor: '#409eff' },
+    'PENDING_SUPPLEMENT': { label: '待补充', dotColor: '#909399' },
+    'PENDING_EXTERNAL':   { label: '外部等待', dotColor: '#b88230' },
+    'PENDING_ACCEPTANCE': { label: '待验收', dotColor: '#13a8a8' },
+    'COMPLETED':          { label: '已完成', dotColor: '#67c23a' },
+    'CANCELLED':          { label: '已取消', dotColor: '#c0c4cc' },
+    'CLOSED':             { label: '已关闭', dotColor: '#c0c4cc' }
   }
   const result = Object.keys(statusMap).map(s => ({ status: s, ...statusMap[s], tickets: [] }))
-  allTickets.value.forEach(t => {
+  filteredTickets.value.forEach(t => {
     const col = result.find(c => c.status === t.status)
     if (col) col.tickets.push(t)
   })
   return result
+})
+
+// 统计卡片（基于全部工单，不受搜索影响）
+const stats = computed(() => {
+  const t = allTickets.value
+  const count = (s) => t.filter(x => x.status === s).length
+  const active = t.filter(x => ['ASSIGNED','IN_PROGRESS','PENDING_SUPPLEMENT','PENDING_EXTERNAL','PENDING_ACCEPTANCE'].includes(x.status)).length
+  return [
+    { label: '待接单', value: count('ASSIGNED'), icon: 'Pointer', bg: '#fdf6ec', color: '#e6a23c' },
+    { label: '处理中', value: count('IN_PROGRESS'), icon: 'Loading', bg: '#ecf5ff', color: '#409eff' },
+    { label: '待验收', value: count('PENDING_ACCEPTANCE'), icon: 'CircleCheck', bg: '#e6f7f7', color: '#13a8a8' },
+    { label: '进行中合计', value: active, icon: 'Tickets', bg: '#f0f9eb', color: '#67c23a' }
+  ]
 })
 
 // 状态/优先级映射（PRD §9.2 九态 + HIGH/MEDIUM/LOW）
@@ -292,7 +326,7 @@ const PRIORITY_TYPE = { HIGH: 'danger', MEDIUM: 'warning', LOW: 'info' }
 function priorityLabel(p) { return PRIORITY_LABEL[p] || p }
 
 const canDone = computed(() => {
-  return detailFlows.value.some(f => f.remark && f.remark !== '提交工单' && f.operator_id === userStore.userId)
+  return detailFlows.value.some(f => f.reason && f.reason !== '提交工单' && f.operator_id === userStore.userId)
 })
 
 function statusTagType(s) { return STATUS_TYPE[s] || 'info' }
@@ -308,6 +342,9 @@ function flowTimelineType(status) {
 }
 
 function formatTime(t) { return t ? new Date(t).toLocaleString('zh-CN') : '' }
+
+// 操作人兜底：流转记录里 SYSTEM（系统自动路由）无用户档案，显示为「系统」
+function operatorLabel(operatorId) { return operatorId === 'SYSTEM' ? '系统' : (operatorId || '—') }
 
 async function loadTickets() {
   try {
@@ -428,8 +465,6 @@ watch(() => userStore.userId, (id) => {
   detailVisible.value = false
   progressRemark.value = ''
   actionError.value = ''
-  consultVisible.value = false
-  consultCount.value = 0
   if (id) loadTickets()
 })
 </script>
@@ -437,27 +472,51 @@ watch(() => userStore.userId, (id) => {
 <style scoped>
 .page-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
-.head-actions { display: flex; align-items: center; gap: 14px; }
-.consult-badge { margin-top: 2px; }
 .page-title {
   font-size: 20px;
   font-weight: 700;
   color: var(--el-text-color-primary);
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 .page-sub {
   color: var(--el-text-color-secondary);
   font-size: 13px;
   margin-top: 4px;
 }
+.head-actions { display: flex; align-items: center; gap: 10px; }
+.head-search { width: 240px; }
 
-/* 看板 */
+/* ===== 统计卡片条（简洁商务） ===== */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  transition: box-shadow .2s;
+}
+.stat-card:hover { box-shadow: 0 4px 16px rgba(31,45,61,.08); }
+.stat-icon {
+  width: 44px; height: 44px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.stat-value { font-size: 24px; font-weight: 700; color: var(--el-text-color-primary); line-height: 1.1; }
+.stat-label { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 2px; }
+
+/* ===== 看板（简洁商务） ===== */
 .kanban {
   display: flex;
   gap: 12px;
@@ -465,40 +524,46 @@ watch(() => userStore.userId, (id) => {
   padding-bottom: 8px;
 }
 .kanban-col {
-  min-width: 240px;
+  min-width: 250px;
   flex: 1;
-  background: var(--el-fill-color-light);
-  border-radius: 8px;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-extra-light);
+  border-radius: 10px;
   padding: 10px;
   display: flex;
   flex-direction: column;
 }
 .col-header {
-  font-weight: 700;
-  font-size: 14px;
+  font-weight: 600;
+  font-size: 13px;
   padding: 8px 10px;
-  border-radius: 6px;
   margin-bottom: 10px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  color: #fff;
+  gap: 8px;
+  color: var(--el-text-color-primary);
 }
-.col-header.yellow { background: #b88230; }
-.col-header.blue   { background: #337ecc; }
-.col-header.purple { background: #722ed1; }
-.col-header.orange { background: #c4562d; }
-.col-header.cyan   { background: #13a8a8; }
-.col-header.green  { background: #529b2e; }
-.col-header.gray   { background: #6b6b6b; }
+.col-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .col-label { flex: 1; }
-.col-body { flex: 1; min-height: 200px; max-height: calc(100vh - 220px); }
+.col-count {
+  min-width: 22px; height: 20px;
+  padding: 0 6px;
+  background: var(--el-fill-color-darker);
+  border-radius: 10px;
+  font-size: 12px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--el-text-color-secondary);
+}
+.col-body { flex: 1; min-height: 200px; max-height: calc(100vh - 320px); }
 
 .kanban-card {
   margin-bottom: 8px;
   cursor: pointer;
   border-left: 3px solid var(--el-color-primary);
+  border-radius: 8px;
+  transition: box-shadow .18s, transform .18s;
 }
+.kanban-card:hover { box-shadow: 0 4px 14px rgba(31,45,61,.12); transform: translateY(-1px); }
 .kanban-card.high { border-left-color: var(--el-color-danger); }
 
 .card-top {
