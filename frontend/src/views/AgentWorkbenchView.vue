@@ -386,8 +386,8 @@ const kPage = ref(1)
 const kSourceType = ref('')
 
 async function onAddKnowledge() {
-  if (!kForm.value.title.trim() || kForm.value.content.trim().length < 10) {
-    ElMessage.warning('请填写标题和至少 10 个字的知识内容')
+  if (!kForm.value.title.trim() || !kForm.value.content.trim()) {
+    ElMessage.warning('请填写标题和知识内容')
     return
   }
   kSaving.value = true

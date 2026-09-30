@@ -134,7 +134,7 @@
           <div v-if="detail.status === 'IN_PROGRESS'" class="action-row">
             <el-input
               v-model="progressRemark"
-              placeholder="请输入说明（记录进展 ≥5 字；转外部支持 ≥10 字）"
+              placeholder="请输入说明（至少 5 字）"
               class="remark-input"
               maxlength="200"
               show-word-limit
@@ -425,7 +425,7 @@ async function doAction(action) {
   actionError.value = ''
   const input = progressRemark.value.trim()
 
-  const needRemark = { progress: 5, need_info: 5, external: 10 }
+  const needRemark = { progress: 5, need_info: 5, external: 5 }
   if (needRemark[action]) {
     if (input.length < needRemark[action]) {
       actionError.value = action === 'external'

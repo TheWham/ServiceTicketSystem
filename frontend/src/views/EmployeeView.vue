@@ -301,7 +301,7 @@
           <div class="reject-area">
             <el-input
               v-model="rejectReason"
-              placeholder="驳回原因（至少 10 个字符）"
+              placeholder="请输入驳回原因"
               maxlength="200"
               show-word-limit
             />
@@ -703,8 +703,8 @@ async function acceptTicket(t) {
 // 驳回
 async function rejectTicket(t) {
   rejectError.value = ''
-  if (!rejectReason.value || rejectReason.value.length < 10) {
-    rejectError.value = '驳回原因至少 10 个字符'
+  if (!rejectReason.value || !rejectReason.value.trim()) {
+    rejectError.value = '请填写驳回原因'
     return
   }
   try {
