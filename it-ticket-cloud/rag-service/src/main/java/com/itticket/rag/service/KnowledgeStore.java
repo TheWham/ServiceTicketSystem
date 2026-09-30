@@ -114,7 +114,7 @@ public class KnowledgeStore {
 
         ObjectNode payload = payload(articleId, version.getVersionId());
         payload.put("author_id", version.getAuthorId());
-        insertEvent(EVENT_SUBMITTED, articleId, payload);
+        insertEvent(EVENT_SUBMITTED, articleId, payload, article.getVersion());
         return version;
     }
 
@@ -163,10 +163,10 @@ public class KnowledgeStore {
         insertTransition(articleId, version.getVersionId(), KnowledgeStatus.PENDING_REVIEW, KnowledgeStatus.PUBLISHED,
                 ACTION_PUBLISH, operatorId, operatorRole, changeNote);
 
-        insertEvent(EVENT_PUBLISHED, articleId, payload(articleId, version.getVersionId()));
-        ObjectNode refreshPayload = payload(articleId, version.getVersionId());
-        refreshPayload.put("index_version", version.getVersionId());
-        insertEvent(EVENT_INDEX_REFRESH, articleId, refreshPayload);
+        // EV-001/EV-008：同一聚合每个版本只允许一条事件（uk_aggregate_version 唯一约束）。
+        // 发布事务只发 KNOWLEDGE_PUBLISHED；索引刷新由同步内联执行（见上层），
+        // 不另发 KNOWLEDGE_INDEX_REFRESH_REQUESTED——该事件属于异步 IndexWorker 链路（下一轮）。
+        insertEvent(EVENT_PUBLISHED, articleId, payload(articleId, version.getVersionId()), article.getVersion());
         return version;
     }
 
@@ -214,7 +214,7 @@ public class KnowledgeStore {
 
         insertTransition(articleId, version.getVersionId(), KnowledgeStatus.PUBLISHED, KnowledgeStatus.OFFLINE,
                 ACTION_OFFLINE, operatorId, operatorRole, reason);
-        insertEvent(EVENT_OFFLINE, articleId, payload(articleId, version.getVersionId()));
+        insertEvent(EVENT_OFFLINE, articleId, payload(articleId, version.getVersionId()), article.getVersion());
         return version;
     }
 
@@ -248,15 +248,30 @@ public class KnowledgeStore {
     }
 
     private void insertEvent(String eventType, String articleId, ObjectNode payload) {
+        insertEvent(eventType, articleId, payload, null);
+    }
+
+    /**
+     * 写领域事实事件（EV-001 信封）。
+     *
+     * <p>聚合版本取文章的乐观锁版本，保证同一聚合上的事件单调递增（EV-008）。
+     * 在 {@link #updateArticle} 乐观锁更新之后调用时，文章的 version 已是迁移后的新值。</p>
+     */
+    private void insertEvent(String eventType, String articleId, ObjectNode payload, Long aggregateVersion) {
+        LocalDateTime now = LocalDateTime.now();
         OutboxEvent event = new OutboxEvent();
         event.setEventId(Ids.next("ev"));
         event.setEventType(eventType);
         event.setAggregateType("KNOWLEDGE");
         event.setAggregateId(articleId);
+        event.setEventVersion(1);
+        event.setAggregateVersion(aggregateVersion == null ? 0L : aggregateVersion);
         event.setPayloadJson(truncate(payload.toString(), 1000));
         event.setStatus("PENDING");
         event.setAttempts(0);
-        event.setNextAttemptAt(LocalDateTime.now());
+        event.setNextAttemptAt(now);
+        event.setCreatedAt(now);
+        event.setUpdatedAt(now);
         outboxEventMapper.insert(event);
     }
 

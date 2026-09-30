@@ -12,11 +12,11 @@ import java.time.LocalDateTime;
  * 领域事实事件外发实体 (OutboxEvent) - 对应数据库表 `outbox_event`
  * ============================================================================
  *
- * 【契约规范说明 (EV-001 / EV-008 / SM-EVENT-001)】：
+ * 【契约规范说明 (EV-001 / EV-008 / SM-EVENT-001，与权威 00-schema.sql 一致）】：
  * 1. event_type 统一使用 SCREAMING_SNAKE_CASE 领域事实事件类型，知识域为
  *    KNOWLEDGE_SUBMITTED / KNOWLEDGE_PUBLISHED / KNOWLEDGE_OFFLINE / KNOWLEDGE_INDEX_REFRESH_REQUESTED。
  * 2. 载荷只携带对象 ID、事件类型、版本、操作者与发生时间；禁止空对象。
- * 3. 状态迁移先落库、再写事件；投递失败进入补偿队列（RD-006 / RD-008），不得反向决定迁移是否合法。
+ * 3. 同一聚合按 aggregate_version 单调递增；状态迁移先落库、再写事件。
  *
  * @author IT工单系统研发组 - RAG专项
  */
@@ -37,10 +37,16 @@ public class OutboxEvent {
     /** 聚合 ID，如 article_id */
     private String aggregateId;
 
+    /** 事件信封版本（EV-001，固定 1） */
+    private Integer eventVersion;
+
+    /** 聚合版本：同一聚合上事件单调递增（取文章乐观锁 version） */
+    private Long aggregateVersion;
+
     /** 事件最小载荷 JSON */
     private String payloadJson;
 
-    /** 投递状态：PENDING / PUBLISHED / FAILED */
+    /** 投递状态：PENDING / PUBLISHED / FAILED / DEAD_LETTER */
     private String status;
 
     /** 投递尝试次数 */
@@ -51,4 +57,10 @@ public class OutboxEvent {
 
     /** 投递成功时间 */
     private LocalDateTime publishedAt;
+
+    /** 创建时间 */
+    private LocalDateTime createdAt;
+
+    /** 更新时间 */
+    private LocalDateTime updatedAt;
 }

@@ -131,8 +131,8 @@ public class KnowledgeStoreTest {
         Assertions.assertEquals("PENDING_REVIEW", transition.getFromStatus());
         Assertions.assertEquals("PUBLISHED", transition.getToStatus());
 
-        Assertions.assertEquals(List.of(KnowledgeStore.EVENT_PUBLISHED, KnowledgeStore.EVENT_INDEX_REFRESH),
-                captureEventTypes());
+        // 同一聚合版本只允许一条事件（uk_aggregate_version 唯一约束），索引刷新为异步链路事件，本轮不随发布同步发
+        Assertions.assertEquals(List.of(KnowledgeStore.EVENT_PUBLISHED), captureEventTypes());
     }
 
     @Test

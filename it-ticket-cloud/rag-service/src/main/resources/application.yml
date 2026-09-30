@@ -49,6 +49,7 @@ rag:
     base-url: ${EMBEDDING_BASE_URL:https://ws-klculckg6dog3won.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
     # 不再内置明文默认值：由 EMBEDDING_API_KEY 环境变量注入，未注入时向量化按依赖不可用降级（RD-006）
     model: ${EMBEDDING_MODEL:qwen3.7-text-embedding}
+    api-key: ${EMBEDDING_API_KEY:}
     dimensions: ${EMBEDDING_DIMENSIONS:1024}
     batch-size: 16
     timeout-seconds: 15
