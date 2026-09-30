@@ -408,7 +408,7 @@
             <el-descriptions title="当前版本" :column="2" border size="small" class="mt-16">
               <el-descriptions-item label="版本ID" :span="2">{{ detail.currentVersion.versionId }}</el-descriptions-item>
               <el-descriptions-item label="版本号">v{{ detail.currentVersion.versionNo }}</el-descriptions-item>
-              <el-descriptions-item label="标题" :span="2">{{ detail.currentVersion.title }}</el-descriptions-item>
+              <el-descriptions-item label="标题" :span="2">{{ versionContent.title || '—' }}</el-descriptions-item>
               <el-descriptions-item label="作者">{{ detail.currentVersion.authorId }}</el-descriptions-item>
               <el-descriptions-item label="审核人">{{ detail.currentVersion.reviewerId || '—' }}</el-descriptions-item>
               <el-descriptions-item label="发布时间">{{ formatTime(detail.currentVersion.publishedAt) || '—' }}</el-descriptions-item>
@@ -420,6 +420,30 @@
                 {{ detail.currentVersion.platformReviewDecision }}
               </el-descriptions-item>
             </el-descriptions>
+          </template>
+
+          <template v-if="detail.currentVersion">
+            <h3 class="section-heading">📄 知识内容（审核对象）</h3>
+            <div class="knowledge-content">
+              <template v-if="versionContent.summary">
+                <span class="content-label">摘要</span>
+                <p class="content-summary">{{ versionContent.summary }}</p>
+              </template>
+              <template v-if="versionContent.keywords">
+                <span class="content-label">关键词</span>
+                <div class="content-keywords">
+                  <el-tag
+                    v-for="kw in versionContent.keywords.split(/\s+/)"
+                    :key="kw"
+                    size="small"
+                    effect="plain"
+                    class="keyword-tag"
+                  >{{ kw }}</el-tag>
+                </div>
+              </template>
+              <span class="content-label">正文</span>
+              <pre class="content-body">{{ versionContent.body || '（无正文内容）' }}</pre>
+            </div>
           </template>
 
           <h3 class="section-heading">🕘 流转审计时间线</h3>
@@ -870,6 +894,31 @@ const filteredChunks = computed(() => {
   )
 })
 
+/**
+ * 当前版本正文内容：后端 content 为 JSON 字符串（title/summary/keywords/body 四键，
+ * 见 rag-service support/KnowledgeContent），此处解析供详情抽屉展示与人工审核使用。
+ * 非 JSON 的历史脏数据整体按正文兜底展示，不白屏。
+ */
+const versionContent = computed(() => {
+  const empty = { title: '', summary: '', keywords: '', body: '' }
+  const raw = detail.value?.currentVersion?.content
+  if (!raw) return empty
+  try {
+    const node = JSON.parse(raw)
+    if (node && typeof node === 'object') {
+      return {
+        title: node.title || '',
+        summary: node.summary || '',
+        keywords: node.keywords || '',
+        body: node.body || ''
+      }
+    }
+  } catch (e) {
+    return { ...empty, body: String(raw) }
+  }
+  return empty
+})
+
 function getStageTagType(status) {
   if (status === 'SUCCESS') return 'success'
   if (status === 'WARNING') return 'warning'
@@ -1124,6 +1173,52 @@ function handleLogout() {
   font-size: 14px;
   font-weight: 600;
   color: #303133;
+}
+
+/* ---- 详情抽屉：知识内容（审核对象） ---- */
+.knowledge-content {
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 12px;
+  background: #fafbfc;
+}
+
+.content-label {
+  display: block;
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 4px;
+}
+
+.content-summary {
+  margin: 0 0 10px 0;
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.6;
+}
+
+.content-keywords {
+  margin-bottom: 10px;
+}
+
+.keyword-tag {
+  margin-right: 6px;
+}
+
+.content-body {
+  margin: 0;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #303133;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 340px;
+  overflow-y: auto;
+  font-family: inherit;
 }
 
 .stage-inner-card {
