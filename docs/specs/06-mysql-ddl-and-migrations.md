@@ -98,6 +98,7 @@ CREATE TABLE ticket_field_value (
   ticket_id VARCHAR(32) NOT NULL, field_definition_id VARCHAR(64) NOT NULL,
   field_key VARCHAR(128) NOT NULL, field_definition_snapshot JSON NOT NULL, field_value JSON NOT NULL,
   definition_version VARCHAR(64) NOT NULL, created_at DATETIME(6) NOT NULL,
+  updated_at DATETIME(6) NOT NULL,
   PRIMARY KEY (ticket_id,field_definition_id),
   KEY idx_field_lookup (field_definition_id,field_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -107,6 +108,8 @@ CREATE TABLE ticket_transition (
   from_status VARCHAR(32), to_status VARCHAR(32) NOT NULL,
   event VARCHAR(64) NOT NULL, operator_id VARCHAR(64) NOT NULL,
   reason TEXT, occurred_at DATETIME(6) NOT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   UNIQUE KEY uk_transition_order (ticket_id,occurred_at,transition_id),
   KEY idx_transition_ticket (ticket_id,occurred_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -115,6 +118,7 @@ CREATE TABLE ticket_duplicate (
   relation_id VARCHAR(64) PRIMARY KEY, source_ticket_id VARCHAR(32) NOT NULL,
   master_ticket_id VARCHAR(32) NOT NULL, reason VARCHAR(2000) NOT NULL,
   created_by VARCHAR(64) NOT NULL, created_at DATETIME(6) NOT NULL,
+  updated_at DATETIME(6) NOT NULL,
   UNIQUE KEY uk_duplicate_source (source_ticket_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -123,6 +127,7 @@ CREATE TABLE attachment_access (
   subject_id VARCHAR(64) NOT NULL, request_id VARCHAR(128) NOT NULL,
   expires_at DATETIME(6) NOT NULL, accessed_at DATETIME(6),
   access_result VARCHAR(32), revoked_at DATETIME(6), issued_at DATETIME(6) NOT NULL,
+  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL,
   KEY idx_attachment_access (attachment_id,subject_id,expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -138,6 +143,8 @@ CREATE TABLE calendar_holiday (
   holiday_id VARCHAR(64) PRIMARY KEY, calendar_id VARCHAR(64) NOT NULL,
   holiday_date DATE NOT NULL, name VARCHAR(255) NOT NULL,
   is_working_day TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   UNIQUE KEY uk_calendar_date (calendar_id,holiday_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -157,6 +164,7 @@ CREATE TABLE outbox_delivery (
   entry_id VARCHAR(128), status VARCHAR(32) NOT NULL,
   attempts INT NOT NULL DEFAULT 0, last_error VARCHAR(1000),
   next_attempt_at DATETIME(6), acked_at DATETIME(6),
+  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL,
   UNIQUE KEY uk_delivery_event_group (event_id,consumer_group),
   KEY idx_delivery_retry (status,next_attempt_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -181,7 +189,7 @@ CREATE TABLE migration_id_map (
 
 ## SQL-009 完整表清单的版本门禁
 
-完整功能发布的空库脚本必须为下列每张事实表提供显式 `CREATE TABLE`。当前仅发布已实现模块，范围门禁见 SQL-011 与 spec11：34 张运行表，不以这份未来 41 表模板扩建未开发模块。
+根目录与运行空库脚本均必须为下列 41 张事实表提供显式 `CREATE TABLE`。2026-09-30 起取消旧的 34 表初始化范围限制；完整建模不代表全部业务 API 已实现。历史迁移仍以冻结版本为目标。
 
 `user,user_role,support_team,team_member,engineer_runtime_state,engineer_category_capability,category,category_route,field_definition,consultation,consultation_message,ticket,ticket_field_value,ticket_transition,ticket_message,ticket_draft,supplement_request,external_wait,ticket_resolution,ticket_acceptance,attachment,assignment,sla_instance,sla_pause,service_calendar,calendar_holiday,exception_queue,notification,audit_log,idempotency_record,outbox_event,outbox_delivery,ticket_duplicate,attachment_access,case_candidate,knowledge_article,knowledge_version,knowledge_cluster,ai_interaction,ai_provider_config,rag_index_pointer`。
 
@@ -355,6 +363,7 @@ CREATE TABLE assignment (
  assigned_at DATETIME(6) NOT NULL, response_deadline DATETIME(6),
  responded_at DATETIME(6), end_reason VARCHAR(32),
  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL,
+ UNIQUE KEY uk_assignment_attempt(biz_type,biz_id,engineer_id,assigned_at),
  KEY idx_assignment_object(biz_type,biz_id,assigned_at),
  KEY idx_assignment_engineer(engineer_id,end_reason)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -469,7 +478,10 @@ CREATE TABLE ai_provider_config (
  path_json JSON NOT NULL, capability_json JSON NOT NULL, timeout_json JSON NOT NULL,
  generation_json JSON NOT NULL, created_by VARCHAR(64) NOT NULL, created_at DATETIME(6) NOT NULL,
  validated_by VARCHAR(64), validated_at DATETIME(6), activated_by VARCHAR(64), activated_at DATETIME(6),
- retired_at DATETIME(6), rollback_from_version BIGINT, audit_request_id VARCHAR(128) NOT NULL,
+  retired_at DATETIME(6), rollback_from_version BIGINT, audit_request_id VARCHAR(128) NOT NULL,
+  updated_at DATETIME(6) NOT NULL,
+  active_provider_id VARCHAR(64) GENERATED ALWAYS AS (CASE WHEN status='ACTIVE' THEN provider_id ELSE NULL END) STORED,
+  UNIQUE KEY uk_provider_active(active_provider_id),
  UNIQUE KEY uk_provider_version(provider_id,config_version), KEY idx_provider_status(provider_id,status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -495,6 +507,8 @@ PRD 第 20 节定义业务字段名称；DM/SQL 补充强类型、技术关联�
 
 `sla_instance.ticket_id` 是可空工单关联：`biz_type=TICKET` 时必须等于 `biz_id`；`biz_type=CONSULTATION` 时为 NULL。`biz_type/biz_id` 是通用技术关联，服务写入与升级均遵守这项一致性要求。时间事实继续统一 UTC/DATETIME(6)。JSON 业务字段为 `knowledge_version.content`、`ai_interaction.retrieved_versions`、`audit_log.before_value/after_value`；`search_text` 仅是从知识内容重建的全文搜索投影。
 
-SQL-009/010 的 41 表是完整目标模板。当前可执行发布范围仍以 `11-main-schema-alignment.md` 为准：26 张已实现模块表对齐，8 张未开发 main 表保留原结构，共 34 表。附件/案例/工单动态字段等未来模板采用 PRD 名称与 JSON 类型，不代表本次改动它们的运行表。
+SQL-007/010 的完整 41 表是当前两套初始化入口的共同模型。附件、案例、知识簇、动态字段与工单消息均采用当前字段、类型和索引；旧 `category_field_def/engineer_status_log/work_calendar` 不进入新空库。已审核的兼容投影字段见 spec11；不得替换规范事实字段。
 
-已发布 `V2_0/V2_1` 保持原字节和 470ce57 目标；388f51d 安装依序执行 `V2_0 → V2_1 → V2_2`，470ce57 安装仅执行新增 `V2_2`。空库直接使用当前 `db/init`；不得重放旧版本或以新规范重新解释已执行迁移。
+生成器依据 DM-002 的枚举及 DM-004 的实体属性生成对应列的 CHECK 约束，枚举仍保存为 VARCHAR；SLA 的 ticket_id/biz_type/biz_id 关联规则也由 CHECK 保护。PRD20 和 DM-001 的 created_at/updated_at 要求覆盖全部 41 表。追加历史表的更新时间不表示可以覆盖历史正文。
+
+已发布 `V2_0/V2_1/V2_2` 保持原字节；原升级链仅到冻结的 PRD2.2 34 表版本，并不升级到本次 41 表模型。存量库须另行审核全量字段映射与增量迁移后才能切换本次应用。空库使用当前 `db/init` 或根目录合并脚本之一；不得在同一库执行两套入口，不得重放历史版本。

@@ -82,12 +82,48 @@ def validate():
     for file in sorted((DB/'init').glob('*.sql')):
         run(script(str(file.relative_to(DB)),fresh),fresh)
     assert_query(fresh,metadata_sql(),'')
-    assert_query(fresh,'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE();','34')
+    assert_query(fresh,'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE();','41')
     assert_query(fresh,"SELECT COUNT(*) FROM category WHERE status='ACTIVE' AND category_id IN ('C_HW_PC','C_HW_PR','C_SW','C_NET','C_ACC','C_OTH');",'6')
     assert_query(fresh,"SELECT COUNT(*) FROM `user` WHERE user_id IN ('U_EMP01','U_ENG01','U_ADM01','U_KBA01');",'4')
     assert_query(fresh,"SELECT COUNT(*) FROM user_role WHERE role_code='KNOWLEDGE_ADMIN';",'1')
     assert_query(fresh,"SELECT COUNT(*) FROM knowledge_version WHERE MATCH(search_text) AGAINST('打印机' IN NATURAL LANGUAGE MODE);",'1')
-    record('fresh baseline: 26 implemented canonical + 8 unchanged main tables, metadata, shared identities/categories and ngram search')
+    record('fresh baseline: full 41-table contract, metadata, shared identities/categories and ngram search')
+
+    single = schema('single_file',False)
+    root_sql = (DB.parents[1]/'db/it_ticket_system_init_v2.sql').read_text(encoding='utf-8').replace('it_ticket_system',single)
+    run(root_sql,single)
+    assert_query(single,metadata_sql(),'')
+    assert_query(single,'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE();','41')
+    for table in tables((DB/'init/00-schema.sql').read_text(encoding='utf-8')):
+        assert run(f'SHOW CREATE TABLE `{table}`;',fresh) == run(f'SHOW CREATE TABLE `{table}`;',single), table
+        assert_query(single,f'SELECT COUNT(*) FROM `{table}`;',run(f'SELECT COUNT(*) FROM `{table}`;',fresh))
+    record('root single-file initialization matches runtime DDL and seed row counts')
+
+    run("""
+INSERT INTO field_definition (field_definition_id,category_id,field_key,field_type,required,enabled,display_order,definition_version,created_at,updated_at)
+VALUES ('FD1','C_NET','network','SINGLE_SELECT',1,1,0,'v1',UTC_TIMESTAMP(6),UTC_TIMESTAMP(6));
+INSERT INTO ticket_field_value (ticket_id,field_definition_id,field_key,field_definition_snapshot,field_value,definition_version,created_at,updated_at)
+VALUES ('TK-FULL','FD1','network','{"type":"SINGLE_SELECT"}','"wifi"','v1',UTC_TIMESTAMP(6),UTC_TIMESTAMP(6));
+INSERT INTO attachment (attachment_id,biz_type,biz_id,uploader_id,object_key,file_name,size,hash,content_type,scan_status,uploaded_at,created_at,updated_at)
+VALUES ('ATT-FULL','TICKET','TK-FULL','U_EMP01','objects/full','full.txt',3,REPEAT('b',64),'text/plain','PASSED',UTC_TIMESTAMP(6),UTC_TIMESTAMP(6),UTC_TIMESTAMP(6));
+INSERT INTO ticket_message (message_id,ticket_id,sender_id,sender_type,client_message_id,content,sent_at,created_at,updated_at)
+VALUES ('TM-FULL','TK-FULL','U_EMP01','EMPLOYEE','CLIENT-FULL','Full message',UTC_TIMESTAMP(6),UTC_TIMESTAMP(6),UTC_TIMESTAMP(6));
+INSERT INTO case_candidate (case_id,source_type,source_id,structured_content,masking_status,reusable_flag,status,created_at,updated_at)
+VALUES ('CASE-FULL','TICKET','TK-FULL','{"steps":["verify"]}','PASSED',1,'PENDING_REVIEW',UTC_TIMESTAMP(6),UTC_TIMESTAMP(6));
+INSERT INTO knowledge_cluster (cluster_id,similarity_basis,status,created_at,updated_at)
+VALUES ('CLUSTER-FULL','{"system":"network"}','OPEN',UTC_TIMESTAMP(6),UTC_TIMESTAMP(6));
+INSERT INTO sla_instance (sla_id,biz_type,biz_id,sla_type,status,target_work_seconds,calendar_id,calendar_version,created_at,updated_at)
+VALUES ('SLA-FULL','CONSULTATION','CS-FULL','CONSULTATION_RESPONSE','RUNNING',600,'DEFAULT',1,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6));
+""",fresh)
+    assert_query(fresh,"SELECT field_value->>'$' FROM ticket_field_value;",'wifi')
+    assert_query(fresh,"SELECT scan_status FROM attachment;",'PASSED')
+    run("UPDATE attachment SET scan_status='CLEAN';",fresh,'Check constraint')
+    run("UPDATE field_definition SET field_type='RADIO';",fresh,'Check constraint')
+    run("UPDATE case_candidate SET masking_status='MASKED';",fresh,'Check constraint')
+    run("UPDATE sla_instance SET ticket_id='TK-WRONG';",fresh,'Check constraint')
+    run("UPDATE ticket_field_value SET field_value='not-json';",fresh,'Invalid JSON')
+    run("INSERT INTO ticket_message SELECT 'TM-DUP',ticket_id,sender_id,sender_type,client_message_id,content,sent_at,withdrawn_at,withdraw_reason,created_at,updated_at FROM ticket_message;",fresh,'Duplicate entry')
+    record('formerly deferred modules accept canonical JSON/enums and reject legacy enums, invalid SLA links and duplicate messages')
 
     main = schema('upgrade')
     run("""
@@ -112,7 +148,7 @@ INSERT INTO ticket_message (message_id,ticket_id,sender_id,content) VALUES ('TM-
     run(cutover(main),main)
     run(latest(main),main)
     assert deferred_definitions(main) == deferred_before
-    assert_query(main,metadata_sql(),'')
+    assert_query(main,metadata_sql(historical=True),'')
     assert_query(main,"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name LIKE 'legacy_v1_%';",'20')
     assert_query(main,"SELECT nature,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') FROM ticket WHERE ticket_id='TK-LEGACY-1';",'INCIDENT\t2026-09-29 00:00:00')
     assert_query(main,"SELECT creator_id,JSON_UNQUOTE(JSON_EXTRACT(payload_json,'$.ticketNature')) FROM ticket_draft;",'U_EMP01\tSERVICE_REQUEST')
@@ -150,7 +186,7 @@ INSERT INTO audit_log (audit_id,actor_id,action,object_type,object_id,before_jso
     before = deferred_definitions(canonical)
     run(latest(canonical),canonical)
     assert deferred_definitions(canonical) == before
-    assert_query(canonical,metadata_sql(),'')
+    assert_query(canonical,metadata_sql(historical=True),'')
     assert_query(canonical,"SELECT name,status,version,DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s.%f'),DATE_FORMAT(updated_at,'%Y-%m-%d %H:%i:%s.%f') FROM `user` WHERE user_id='U_EMP01';",'Retained disabled identity\tDISABLED\t42\t2026-09-29 00:00:00.123456\t2026-09-29 01:00:00.654321')
     assert_query(canonical,"SELECT status FROM `user` WHERE user_id='U_ENG01';",'ACTIVE')
     for table in ('support_team','team_member'):

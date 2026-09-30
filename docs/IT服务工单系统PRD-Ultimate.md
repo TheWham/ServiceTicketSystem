@@ -702,11 +702,11 @@
 | SLA | 保留 `ticket_id`、`breach_at`。共享 SLA 表增加 `biz_type/biz_id`：工单实例的 `ticket_id=biz_id`；咨询实例 `ticket_id=NULL`、`biz_id=session_id`。目标工作秒、日历 ID/版本、达成时间和乐观锁为计时元数据。 |
 | 知识、AI、审计 | `content`、`retrieved_versions`、`before_value/after_value` 可用 JSON 类型；类型不改变字段名。`latency` 单位明确为毫秒。 |
 | 工单字段快照 | `field_definition_snapshot` 保存提交时的定义/字段上下文快照；`ticket_field_value.field_value` 保存扩展字段值。已有工单主表快照为提交时投影，不替代尚未开发的动态字段管理。 |
-| 附件、案例 | 规范字段保持 `file_name/size/hash`、`structured_content`。未实现模块本次只统一文档，已有运行表不会仅因文档补充而自动迁移。 |
+| 附件、案例 | 规范字段保持 `file_name/size/hash`、`structured_content`。2026-09-30 起根目录与运行初始化 DDL 均采用完整字段契约；已有数据库仍须单独迁移，不会因文件变化自动升级。 |
 
 草稿、幂等、Outbox、服务日历等实现辅助对象由 spec 明确列出；这些元数据允许增加，但须记录用途。单库名称固定 `it_ticket_system`，时间存储 UTC，传输 ISO8601 带时区。
 
-完整字段规范不等于所有模块均已实现。当前实现范围及保留旧表清单见 spec 11；未开发模块使用未来完整契约规划，不能在本轮借字段对齐新建功能或补齐全部运行表。
+完整字段规范不等于所有模块均已实现。2026-09-30 用户明确要求根目录 SQL 与运行 db/init 同步强对齐完整契约：两套初始化均建立 SQL-009 的 41 表，未开发模块的表字段也采用规范。业务功能实现范围及历史 34 表迁移边界见 spec 11；本次建模不自动开通未开发 API，也不直接更改存量数据。
 
 ## 21. API 与事件约定
 

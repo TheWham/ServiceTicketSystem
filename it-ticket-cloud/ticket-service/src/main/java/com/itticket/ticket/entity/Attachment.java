@@ -13,17 +13,21 @@ import java.time.LocalDateTime;
 public class Attachment {
     @TableId(value = "attachment_id", type = IdType.INPUT)
     private String attachmentId;
-    /** CONSULTATION/TICKET */
+    /** CONSULTATION/TICKET/MESSAGE/SUPPLEMENT/KNOWLEDGE */
     private String bizType;
     private String bizId;
     private String uploaderId;
+    private String objectKey;
     private String fileName;
     /** ≤20MB */
     private Long size;
     /** 文件哈希 */
     private String hash;
-    /** PENDING/CLEAN/REJECTED */
+    private String contentType;
+    /** PENDING/PASSED/REJECTED/ERROR */
     private String scanStatus;
+    private LocalDateTime uploadedAt;
     private LocalDateTime withdrawnAt;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }
