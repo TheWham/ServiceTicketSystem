@@ -103,6 +103,18 @@
           <el-descriptions-item label="问题描述" :span="2">{{ detail.description }}</el-descriptions-item>
           <el-descriptions-item label="影响情况" :span="2">{{ detail.impact_description }}</el-descriptions-item>
           <el-descriptions-item label="紧急说明" :span="2">{{ detail.urgency_description }}</el-descriptions-item>
+          <el-descriptions-item v-if="detailPhotos.length" label="照片附件" :span="2">
+            <el-image
+              v-for="(u, i) in detailPhotos"
+              :key="i"
+              :src="u"
+              :preview-src-list="detailPhotos"
+              :initial-index="i"
+              fit="cover"
+              preview-teleported
+              style="width:96px;height:96px;margin-right:8px;border-radius:4px"
+            />
+          </el-descriptions-item>
         </el-descriptions>
 
         <!-- SLA 计时 -->
@@ -249,6 +261,7 @@ import {
   Tools, Refresh, Pointer, CircleCheck, Promotion, Search
 } from '@element-plus/icons-vue'
 import { ticketApi } from '../api/index.js'
+import { loadPhotoUrls, revokePhotoUrls } from '../utils/attachmentPhotos.js'
 import { useUserStore } from '../stores/user.js'
 import SlaBadge from '../components/SlaBadge.vue'
 import SlaTimer from '../components/SlaTimer.vue'
@@ -257,6 +270,7 @@ const userStore = useUserStore()
 const allTickets = ref([])
 const detail = ref(null)
 const detailFlows = ref([])
+const detailPhotos = ref([])
 const detailVisible = ref(false)
 const progressRemark = ref('')
 const actionError = ref('')
@@ -399,6 +413,8 @@ async function openDetail(t) {
     const res = await ticketApi.detail(t.ticket_id)
     detail.value = res.data.ticket
     detailFlows.value = res.data.flow_logs
+    revokePhotoUrls(detailPhotos.value)
+    detailPhotos.value = await loadPhotoUrls(res.data.ticket.attachments)
     progressRemark.value = ''
     actionError.value = ''
     detailVisible.value = true

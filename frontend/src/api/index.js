@@ -70,6 +70,20 @@ export const categoryApi = {
   })
 }
 
+// ---- 照片附件 API（上传走 multipart；查看需带 JWT，故用 blob 拉取） ----
+export const attachmentApi = {
+  upload: (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return api.post('/tickets/attachments/upload', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000
+    })
+  },
+  remove: (id) => api.delete(`/tickets/attachments/${id}`),
+  fetchBlob: (id) => api.get(`/tickets/attachments/${id}/content`, { responseType: 'blob', timeout: 60000 })
+}
+
 // ---- 通知中心 API ----
 export const notificationApi = {
   list: (params) => api.get('/notifications', { params }),

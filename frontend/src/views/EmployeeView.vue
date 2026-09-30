@@ -140,6 +140,25 @@
           </el-col>
         </el-row>
 
+        <!-- 照片附件（选填，最多 3 张；提交后与工单绑定，工程师/主管可见） -->
+        <el-form-item label="照片附件">
+          <div class="photo-upload">
+            <el-upload
+              v-model:file-list="photoList"
+              list-type="picture-card"
+              accept="image/jpeg,image/png,image/gif,image/webp,image/bmp"
+              :limit="3"
+              :http-request="uploadPhoto"
+              :before-upload="checkPhoto"
+              :on-remove="removePhoto"
+              :on-exceed="() => ElMessage.warning('最多上传 3 张照片')"
+            >
+              <el-icon><Plus /></el-icon>
+            </el-upload>
+            <div class="upload-tip">支持 jpg/png/gif/webp/bmp，单张不超过 20MB，最多 3 张（选填）</div>
+          </div>
+        </el-form-item>
+
         <!-- 提交区 -->
         <el-form-item>
           <el-button
@@ -253,6 +272,18 @@
           <el-descriptions-item label="问题描述" :span="2">{{ detailTicket.description }}</el-descriptions-item>
           <el-descriptions-item label="影响情况" :span="2">{{ detailTicket.impact_description }}</el-descriptions-item>
           <el-descriptions-item label="紧急说明" :span="2">{{ detailTicket.urgency_description }}</el-descriptions-item>
+          <el-descriptions-item v-if="detailPhotos.length" label="照片附件" :span="2">
+            <el-image
+              v-for="(u, i) in detailPhotos"
+              :key="i"
+              :src="u"
+              :preview-src-list="detailPhotos"
+              :initial-index="i"
+              fit="cover"
+              preview-teleported
+              style="width:96px;height:96px;margin-right:8px;border-radius:4px"
+            />
+          </el-descriptions-item>
         </el-descriptions>
 
         <!-- SLA 计时 -->
@@ -349,9 +380,10 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  EditPen, List, WarningFilled, SuccessFilled, CircleCheck, CircleClose
+  EditPen, List, WarningFilled, SuccessFilled, CircleCheck, CircleClose, Plus
 } from '@element-plus/icons-vue'
-import { ticketApi, draftApi, categoryApi } from '../api/index.js'
+import { ticketApi, draftApi, categoryApi, attachmentApi } from '../api/index.js'
+import { loadPhotoUrls, revokePhotoUrls } from '../utils/attachmentPhotos.js'
 import { useUserStore } from '../stores/user.js'
 import SlaBadge from '../components/SlaBadge.vue'
 import SlaTimer from '../components/SlaTimer.vue'
@@ -430,6 +462,7 @@ const rejectReason = ref('')
 const rejectError = ref('')
 const ratingScore = ref(0)
 const ratingComment = ref('')
+const detailPhotos = ref([])
 
 function formatTime(t) { return t ? new Date(t).toLocaleString('zh-CN') : '' }
 
@@ -477,7 +510,7 @@ const submitHint = computed(() => {
   if (tLen === 0) missing.push('工单标题')
   else if (tLen > 100) missing.push('标题需在 100 字以内')
   const dLen = form.value.description.trim().length
-  if (dLen < 10) missing.push(`问题描述（还需 ${10 - dLen} 字）`)
+  if (dLen === 0) missing.push('问题描述')
   if (!form.value.impact_description.trim()) missing.push('影响情况')
   if (!form.value.urgency_description.trim()) missing.push('紧急说明')
   if (!missing.length) return ''
@@ -495,6 +528,41 @@ function genClientToken() {
 // 幂等令牌：同一表单会话内保持不变，双击/重试只会命中后端幂等而不会重复建单
 const formToken = ref('')
 const lastSubmitAt = ref(0)
+
+// ---- 照片附件上传（先传图拿 attachment_id，提交工单时随 attachments 字段绑定）----
+const photoList = ref([])
+const photoIds = ref([])
+
+function checkPhoto(file) {
+  const okTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp']
+  if (!okTypes.includes(file.type)) {
+    ElMessage.error('仅支持图片格式（jpg/png/gif/webp/bmp）')
+    return false
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    ElMessage.error('单张照片不能超过 20MB')
+    return false
+  }
+  return true
+}
+
+async function uploadPhoto({ file, onSuccess, onError }) {
+  try {
+    const res = await attachmentApi.upload(file)
+    photoIds.value.push(res.data.attachment_id)
+    onSuccess(res.data) // 挂到 file.response，删除时据此找回 attachment_id
+  } catch (e) {
+    onError(e)
+    ElMessage.error('照片上传失败：' + e.message)
+  }
+}
+
+function removePhoto(file) {
+  const attId = file.response?.attachment_id
+  if (!attId) return
+  photoIds.value = photoIds.value.filter(id => id !== attId)
+  attachmentApi.remove(attId).catch(() => {})
+}
 
 // 提交工单
 async function submitTicket() {
@@ -527,12 +595,15 @@ async function submitTicket() {
       location: form.value.location.trim() || null,
       contact: form.value.contact.trim() || null,
       asset_id: form.value.asset_id.trim() || null,
+      attachments: photoIds.value.length ? photoIds.value : undefined,
       idempotency_key: formToken.value
     })
     form.value = {
       nature: 'INCIDENT', category_id: '', title: '', description: '',
       impact_description: '', urgency_description: '', location: '', contact: '', asset_id: ''
     }
+    photoList.value = []
+    photoIds.value = []
     formToken.value = genClientToken()
     await draftApi.delete().catch(() => {})
     draftBanner.value = false
@@ -601,6 +672,8 @@ async function openDetail(ticket) {
     const res = await ticketApi.detail(ticket.ticket_id)
     detailTicket.value = res.data.ticket
     detailFlows.value = res.data.flow_logs
+    revokePhotoUrls(detailPhotos.value)
+    detailPhotos.value = await loadPhotoUrls(res.data.ticket.attachments)
     rejectReason.value = ''
     rejectError.value = ''
     ratingScore.value = 0
@@ -689,6 +762,9 @@ onUnmounted(() => clearTimeout(draftTimer))
 </script>
 
 <style scoped>
+/* 照片附件上传提示 */
+.upload-tip { font-size: 12px; color: #909399; margin-top: 4px; line-height: 1.4; }
+
 .view-tabs :deep(.el-tabs__header) { margin-bottom: 16px; }
 .tab-badge { margin-left: 6px; }
 

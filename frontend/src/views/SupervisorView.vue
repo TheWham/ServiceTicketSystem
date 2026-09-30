@@ -198,6 +198,18 @@
           <el-descriptions-item label="问题描述" :span="2">{{ detailTicket.description }}</el-descriptions-item>
           <el-descriptions-item label="影响情况" :span="2">{{ detailTicket.impact_description }}</el-descriptions-item>
           <el-descriptions-item label="紧急说明" :span="2">{{ detailTicket.urgency_description }}</el-descriptions-item>
+          <el-descriptions-item v-if="detailPhotos.length" label="照片附件" :span="2">
+            <el-image
+              v-for="(u, i) in detailPhotos"
+              :key="i"
+              :src="u"
+              :preview-src-list="detailPhotos"
+              :initial-index="i"
+              fit="cover"
+              preview-teleported
+              style="width:96px;height:96px;margin-right:8px;border-radius:4px"
+            />
+          </el-descriptions-item>
         </el-descriptions>
 
         <!-- 主管强制恢复 -->
@@ -241,6 +253,7 @@ import {
   Clock, Loading, CircleCheck, Finished, Document
 } from '@element-plus/icons-vue'
 import { ticketApi, userApi, categoryApi } from '../api/index.js'
+import { loadPhotoUrls, revokePhotoUrls } from '../utils/attachmentPhotos.js'
 import SlaBadge from '../components/SlaBadge.vue'
 
 // 状态/优先级映射（PRD §9.2 九态 + HIGH/MEDIUM/LOW）
@@ -292,6 +305,7 @@ const reassignReason = ref('')
 // 详情
 const detailTicket = ref(null)
 const detailFlows = ref([])
+const detailPhotos = ref([])
 const detailVisible = ref(false)
 
 function statusTagType(s) { return STATUS_TYPE[s] || 'info' }
@@ -374,6 +388,8 @@ async function openDetail(ticket) {
     const res = await ticketApi.detail(ticket.ticket_id)
     detailTicket.value = res.data.ticket
     detailFlows.value = res.data.flow_logs
+    revokePhotoUrls(detailPhotos.value)
+    detailPhotos.value = await loadPhotoUrls(res.data.ticket.attachments)
     detailVisible.value = true
   } catch (e) { ElMessage.error('加载详情失败：' + e.message) }
 }
