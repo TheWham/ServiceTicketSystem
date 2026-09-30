@@ -3,26 +3,24 @@
     <!-- 页头 -->
     <div class="page-head">
       <div>
-        <h2 class="page-title">
-          <el-icon><DataAnalysis /></el-icon> 平台管理看板
-        </h2>
+        <h2 class="page-title">主管看板</h2>
         <p class="page-sub">全局工单管理 · 派单 · 催办 · 改派</p>
       </div>
       <el-button :icon="Refresh" circle @click="loadTickets" />
     </div>
 
-    <!-- 统计卡片 -->
-    <el-row :gutter="12" class="stat-row">
-      <el-col v-for="s in stats" :key="s.label" :xs="12" :sm="8" :md="4">
-        <el-card shadow="hover" class="stat-card">
-          <el-statistic :value="s.count" :title="s.label">
-            <template #suffix>
-              <el-icon v-if="s.icon" :color="s.color"><component :is="s.icon" /></el-icon>
-            </template>
-          </el-statistic>
-        </el-card>
-      </el-col>
-    </el-row>
+    <!-- 统计卡片条（简洁商务） -->
+    <div class="stat-row">
+      <div v-for="s in stats" :key="s.label" class="stat-card">
+        <div class="stat-icon" :style="{ background: s.bg, color: s.color }">
+          <el-icon :size="20"><component :is="s.icon" /></el-icon>
+        </div>
+        <div class="stat-info">
+          <div class="stat-value">{{ s.count }}</div>
+          <div class="stat-label">{{ s.label }}</div>
+        </div>
+      </div>
+    </div>
 
     <!-- 筛选栏 -->
     <el-card shadow="never" class="filter-card">
@@ -46,7 +44,7 @@
             style="width: 140px"
             @change="loadTickets"
           >
-            <el-option v-for="c in categories" :key="(c.category_id || c.categoryId)" :label="c.name" :value="(c.category_id || c.categoryId)" />
+            <el-option v-for="c in categories" :key="c.categoryId" :label="c.name" :value="c.categoryId" />
           </el-select>
         </el-form-item>
         <el-form-item label="处理人">
@@ -57,7 +55,7 @@
             style="width: 140px"
             @change="loadTickets"
           >
-            <el-option v-for="e in engineers" :key="e.user_id" :label="(e.name)" :value="e.user_id" />
+            <el-option v-for="e in engineers" :key="e.user_id" :label="e.name" :value="e.user_id" />
           </el-select>
         </el-form-item>
         <el-form-item class="filter-total">
@@ -90,7 +88,7 @@
             <el-tag :type="priorityTagType(row.priority)" size="small" effect="plain">{{ priorityLabel(row.priority) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="category_snapshot" label="分类" width="90" show-overflow-tooltip />
+        <el-table-column prop="category_name" label="分类" width="90" show-overflow-tooltip />
         <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
         <el-table-column prop="creator_name" label="提单人" width="90" />
         <el-table-column label="处理人" width="90">
@@ -145,7 +143,7 @@
               <el-option
                 v-for="e in engineers"
                 :key="e.user_id"
-                :label="`${(e.name)} (${e.department_id})`"
+                :label="`${e.name} (${e.department})`"
                 :value="e.user_id"
               />
             </el-select>
@@ -181,7 +179,7 @@
       <template v-if="detailTicket">
         <el-descriptions :column="2" border class="detail-desc">
           <el-descriptions-item label="标题" :span="2">{{ detailTicket.title }}</el-descriptions-item>
-          <el-descriptions-item label="分类">{{ detailTicket.category_snapshot }}</el-descriptions-item>
+          <el-descriptions-item label="分类">{{ detailTicket.category_name }}</el-descriptions-item>
           <el-descriptions-item label="优先级">
             <el-tag :type="priorityTagType(detailTicket.priority)" size="small">{{ priorityLabel(detailTicket.priority) }}</el-tag>
           </el-descriptions-item>
@@ -196,9 +194,9 @@
           <el-descriptions-item label="紧急说明" :span="2">{{ detailTicket.urgency_description }}</el-descriptions-item>
         </el-descriptions>
 
-        <!-- 平台管理员强制恢复 -->
+        <!-- 主管强制恢复 -->
         <el-card v-if="detailTicket.status === 'PENDING_EXTERNAL'" shadow="never" class="action-card">
-          <template #header><span class="action-title">平台管理操作</span></template>
+          <template #header><span class="action-title">主管操作</span></template>
           <el-button type="warning" :icon="RefreshRight" @click="forceResolve(detailTicket)">
             强制恢复处理中
           </el-button>
@@ -211,14 +209,14 @@
           <el-timeline v-else>
             <el-timeline-item
               v-for="f in detailFlows"
-              :key="f.log_id"
-              :timestamp="formatTime(f.created_at)"
+              :key="f.transition_id"
+              :timestamp="formatTime(f.occurred_at)"
               :type="flowTimelineType(f.to_status)"
             >
               <div class="flow-content">
                 <el-tag size="small" effect="plain">{{ statusLabel(f.to_status || f.from_status) }}</el-tag>
-                <span class="flow-operator">{{ f.operator_name }}</span>
-                <span class="flow-remark">{{ f.remark }}</span>
+                <span class="flow-operator">{{ f.operator_name || operatorLabel(f.operator_id) }}</span>
+                <span v-if="f.reason" class="flow-remark">{{ f.reason }}</span>
               </div>
             </el-timeline-item>
           </el-timeline>
@@ -272,10 +270,10 @@ const stats = computed(() => {
   const counts = {}
   statuses.forEach(s => counts[s] = tickets.value.filter(t => t.status === s).length)
   return [
-    { label: '处理中', count: (counts['ASSIGNED'] || 0) + (counts['IN_PROGRESS'] || 0), icon: Loading, color: '#409eff' },
-    { label: '待验收', count: counts['PENDING_ACCEPTANCE'], icon: CircleCheck, color: '#13c2c2' },
-    { label: '已完成', count: counts['COMPLETED'], icon: Finished, color: '#67c23a' },
-    { label: '全部', count: total.value, icon: Document, color: '#909399' }
+    { label: '处理中', count: (counts['ASSIGNED'] || 0) + (counts['IN_PROGRESS'] || 0), icon: Loading, bg: '#ecf5ff', color: '#409eff' },
+    { label: '待验收', count: counts['PENDING_ACCEPTANCE'], icon: CircleCheck, bg: '#e6f7f7', color: '#13a8a8' },
+    { label: '已完成', count: counts['COMPLETED'], icon: Finished, bg: '#f0f9eb', color: '#67c23a' },
+    { label: '全部工单', count: total.value, icon: Document, bg: '#f4f4f5', color: '#909399' }
   ]
 })
 
@@ -301,6 +299,9 @@ function flowTimelineType(status) {
 }
 
 function formatTime(t) { return t ? new Date(t).toLocaleString('zh-CN') : '' }
+
+// 操作人兜底：流转记录里 SYSTEM（系统自动路由）无用户档案，显示为「系统」
+function operatorLabel(operatorId) { return operatorId === 'SYSTEM' ? '系统' : (operatorId || '—') }
 
 async function loadEngineers() {
   try {
@@ -365,7 +366,7 @@ async function forceResolve(ticket) {
   } catch { return }
 
   try {
-    await ticketApi.action(ticket.ticket_id, { action: 'external_resolved', remark: '平台管理员强制恢复' })
+    await ticketApi.action(ticket.ticket_id, { action: 'external_resolved', remark: '主管强制恢复' })
     ElMessage.success('已恢复处理中')
     detailVisible.value = false
     loadTickets()
@@ -414,17 +415,32 @@ watch(() => route.query.ticket, (tid) => {
   margin-top: 4px;
 }
 
-/* 统计卡片 */
-.stat-row { margin-bottom: 16px; }
-.stat-card { text-align: center; }
-.stat-card :deep(.el-statistic__head) {
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
+/* ===== 统计卡片条（简洁商务） ===== */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
 }
-.stat-card :deep(.el-statistic__content) {
-  font-size: 28px;
-  font-weight: 700;
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  transition: box-shadow .2s;
 }
+.stat-card:hover { box-shadow: 0 4px 16px rgba(31,45,61,.08); }
+.stat-icon {
+  width: 44px; height: 44px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.stat-value { font-size: 24px; font-weight: 700; color: var(--el-text-color-primary); line-height: 1.1; }
+.stat-label { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 2px; }
 
 /* 筛选 */
 .filter-card { margin-bottom: 16px; }

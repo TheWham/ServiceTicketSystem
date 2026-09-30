@@ -3,8 +3,7 @@
   <router-view v-if="isLoginPage" />
 
   <!-- 已登录：经典后台布局 -->
-  <div v-else class="app-shell">
-  <el-container class="app-layout">
+  <el-container v-else class="app-layout">
     <!-- ===== 侧边栏 ===== -->
     <el-aside :width="collapse ? '64px' : '220px'" class="app-aside">
       <div class="logo-area">
@@ -23,11 +22,6 @@
         <el-menu-item index="home">
           <el-icon><Monitor /></el-icon>
           <template #title>工作台</template>
-        </el-menu-item>
-        <!-- 智能客服与转人工(PRD F-02/F-03),仅员工可见 -->
-        <el-menu-item v-if="userStore.isEmployee" index="consultation">
-          <el-icon><ChatDotRound /></el-icon>
-          <template #title>智能客服</template>
         </el-menu-item>
       </el-menu>
 
@@ -70,7 +64,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item disabled>
-                  <el-icon><User /></el-icon>{{ userStore.currentUser?.department_id }}
+                  <el-icon><User /></el-icon>{{ userStore.currentUser?.department }}
                 </el-dropdown-item>
                 <el-dropdown-item command="changePwd">
                   <el-icon><Lock /></el-icon>修改密码
@@ -95,32 +89,14 @@
       </el-main>
     </el-container>
   </el-container>
-
-    <!-- ===== 智能客服对话框入口(PRD F-02/F-03,仅员工) ===== -->
-    <template v-if="userStore.isEmployee">
-      <transition name="fade">
-        <button v-show="!isLoginPage" class="chat-fab" title="智能客服 / 转人工"
-                @click="consultOpen = true">
-          <el-icon :size="22"><ChatDotRound /></el-icon>
-        </button>
-      </transition>
-
-      <el-drawer v-model="consultOpen" title="智能客服" size="540px"
-                 :append-to-body="true" :close-on-click-modal="false"
-                 destroy-on-close class="consult-drawer">
-        <ConsultationChat @navigate="consultOpen = false" />
-      </el-drawer>
-    </template>
-  </div>
 </template>
 
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from './stores/user.js'
-import ConsultationChat from './components/ConsultationChat.vue'
 import {
-  Monitor, Expand, Fold, Sunny, Moon, User, SwitchButton, Lock, Setting, ChatDotRound
+  Monitor, Expand, Fold, Sunny, Moon, User, SwitchButton, Lock, Setting
 } from '@element-plus/icons-vue'
 import NotificationBell from './components/NotificationBell.vue'
 import ChangePasswordDialog from './components/ChangePasswordDialog.vue'
@@ -131,8 +107,6 @@ const route = useRoute()
 
 const collapse = ref(false)
 const isDark = ref(localStorage.getItem('app_theme') === 'dark')
-/** 智能客服对话框(转人工入口不再整页跳转) */
-const consultOpen = ref(false)
 
 // 初始化主题
 watch(isDark, (val) => {
@@ -142,44 +116,35 @@ watch(isDark, (val) => {
 
 const isLoginPage = computed(() => route.path === '/login')
 
-const activeMenu = computed(() => (route.path === '/consultation' ? 'consultation' : 'home'))
+const activeMenu = computed(() => 'home')
 
 const breadcrumb = computed(() => {
-  const map = { '/employee': '员工工作台', '/engineer': '工程师工作台', '/supervisor': '平台管理', '/accounts': '账号管理', '/consultation': '智能客服', '/knowledge': '知识工作台' }
+  const map = { '/employee': '员工工作台', '/engineer': '工程师工作台', '/supervisor': '主管看板', '/accounts': '账号管理' }
   return map[route.path] || '工作台'
 })
 
 // PRD §5.1 角色值域（大写）
 const roleLabel = computed(() => {
-  const map = { EMPLOYEE: '员工', ENGINEER: '工程师', PLATFORM_ADMIN: '平台管理员', KNOWLEDGE_ADMIN: '知识库管理员' }
+  const map = { EMPLOYEE: '员工', ENGINEER: '工程师', PLATFORM_ADMIN: '平台管理员', KB_ADMIN: '知识库管理员' }
   return map[userStore.currentUser?.role] || ''
 })
 
 const roleTagType = computed(() => {
-  const map = { EMPLOYEE: 'success', ENGINEER: 'primary', PLATFORM_ADMIN: 'warning', KNOWLEDGE_ADMIN: 'danger' }
+  const map = { EMPLOYEE: 'success', ENGINEER: 'primary', PLATFORM_ADMIN: 'warning', KB_ADMIN: 'danger' }
   return map[userStore.currentUser?.role] || 'info'
 })
 
-// 账号管理属于平台管理权限。
-const isAdmin = computed(() => userStore.currentUser?.role === 'PLATFORM_ADMIN')
+// 主管（平台管理员/知识库管理员）可见账号管理
+const isAdmin = computed(() => ['PLATFORM_ADMIN', 'KB_ADMIN'].includes(userStore.currentUser?.role))
 
 const pwdVisible = ref(false)
 
 function toggleDark() { isDark.value = !isDark.value }
 
-function onMenuSelect(index) {
-  // 智能客服入口是对话框(抽屉),不再整页跳转
-  if (index === 'consultation') {
-    consultOpen.value = true
-    return
-  }
-  const target = { EMPLOYEE: '/employee', ENGINEER: '/engineer', PLATFORM_ADMIN: '/supervisor', KNOWLEDGE_ADMIN: '/knowledge' }[userStore.currentUser?.role]
-  if (target && route.path !== target) router.push(target)
-}
+function onMenuSelect() { /* 单页应用，无需跳转 */ }
 
 function onUserCommand(cmd) {
   if (cmd === 'logout') {
-    consultOpen.value = false
     userStore.logout()
     router.push('/login')
   } else if (cmd === 'changePwd') {
@@ -191,7 +156,6 @@ function onUserCommand(cmd) {
 </script>
 
 <style scoped>
-.app-shell { height: 100vh; overflow: hidden; }
 .app-layout { height: 100vh; overflow: hidden; }
 
 /* ===== 侧边栏 ===== */
@@ -257,21 +221,6 @@ function onUserCommand(cmd) {
   overflow-y: auto;
   padding: 20px;
   background: var(--el-bg-color-page);
-}
-
-/* ===== 智能客服悬浮入口 ===== */
-.chat-fab {
-  position: fixed; right: 28px; bottom: 32px; z-index: 100;
-  width: 52px; height: 52px; border-radius: 50%;
-  border: none; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--el-color-primary); color: #fff;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, .22);
-  transition: transform .15s ease, box-shadow .15s ease;
-}
-.chat-fab:hover {
-  transform: translateY(-2px) scale(1.05);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, .28);
 }
 
 /* ===== 动画 ===== */

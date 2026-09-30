@@ -7,24 +7,11 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' }
 })
 
-function randomId(prefix) {
-  const uuid = (typeof crypto !== 'undefined' && crypto.randomUUID)
-    ? crypto.randomUUID().replace(/-/g, '')
-    : Math.random().toString(36).slice(2) + Date.now().toString(36)
-  return `${prefix}_${uuid}`
-}
-
 // 请求拦截：注入 JWT（Spring Cloud 网关统一鉴权）
-// + 契约头:X-Request-Id 每请求必带;写请求带 Idempotency-Key(spec 05 / PRD 21.1,RD-002)
 api.interceptors.request.use(config => {
   const userStore = useUserStore()
   if (userStore.token) {
     config.headers['Authorization'] = `Bearer ${userStore.token}`
-  }
-  config.headers['X-Request-Id'] = config.headers['X-Request-Id'] || randomId('req')
-  const method = (config.method || 'get').toLowerCase()
-  if (method !== 'get' && !config.headers['Idempotency-Key']) {
-    config.headers['Idempotency-Key'] = randomId('idem')
   }
   return config
 })
@@ -33,7 +20,7 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   res => res.data,
   err => {
-    const msg = err.response?.data?.message || err.response?.data?.msg || err.message || '网络错误'
+    const msg = err.response?.data?.msg || err.message || '网络错误'
     console.error('[API Error]', msg)
     return Promise.reject(new Error(msg))
   }
@@ -48,16 +35,16 @@ export const userApi = {
   // 认证模块：忘记密码(免登录)/修改密码
   forgotPassword: (data) => api.post('/users/forgot-password', data),
   changePassword: (data) => api.post('/users/change-password', data),
-  // 平台管理员账号管理
+  // 主管账号管理
   listAccounts: () => api.get('/users/accounts'),
   createAccount: (data) => api.post('/users/accounts', data),
-  resetPassword: (userId, data) => api.post(`/users/accounts/${userId}/reset-password`, data)
+  resetPassword: (userId, data) => api.post(`/users/accounts/${userId}/reset-password`, data),
+  changeRole: (userId, data) => api.put(`/users/accounts/${userId}/role`, data)
 }
 
 // ---- 工单 API ----
 export const ticketApi = {
-  // config 可透传 { headers: { 'Idempotency-Key': ... } }(建单幂等键由表单会话持有)
-  create: (data, config) => api.post('/tickets', data, config),
+  create: (data) => api.post('/tickets', data),
   list: (params) => api.get('/tickets', { params }),
   detail: (id) => api.get(`/tickets/${id}`),
   assign: (id, data) => api.post(`/tickets/${id}/assign`, data),
@@ -83,19 +70,9 @@ export const slaApi = {
 
 // ---- 草稿 API ----
 export const draftApi = {
-  DRAFT_ID_KEY: 'ticket_draft_id',
-  ensureDraftId() {
-    const key = `${this.DRAFT_ID_KEY}:${useUserStore().userId}`
-    let id = localStorage.getItem(key)
-    if (!id) {
-      id = 'draft-' + randomId('f')
-      localStorage.setItem(key, id)
-    }
-    return id
-  },
-  get: (id) => api.get(`/ticket-drafts/${id}`),
-  save: (id, data) => api.put(`/ticket-drafts/${id}`, data),
-  delete: (id) => api.delete(`/ticket-drafts/${id}`)
+  get: () => api.get('/users/drafts'),
+  save: (data) => api.post('/users/drafts', data),
+  delete: () => api.delete('/users/drafts')
 }
 
 export default api
