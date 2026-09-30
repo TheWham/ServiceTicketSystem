@@ -5,7 +5,11 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 /**
- * 知识正文 content_json 读写测试（权威模型键：title / summary / keywords / body）。
+ * 知识正文 content 列（V2_2 之后的 JSON 列）读写测试，权威四键：title / summary / keywords / body。
+ *
+ * <p>规范关联：DM-004 核心持久化实体（specs/01-data-model-strong-types.md:100）规定
+ * knowledge_version.content 的键结构；读取侧对脏数据（非 JSON/缺键/空值）必须容错兜底，
+ * 不因单条历史数据异常中断检索或索引重建。</p>
  */
 public class KnowledgeContentTest {
 

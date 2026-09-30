@@ -8,6 +8,16 @@ import org.junit.jupiter.api.Test;
 
 /**
  * 领域判定测试（MR-004 四态 + AI-001 高风险口径：普通登录排障不得误拦）。
+ *
+ * <p>规范引用（路径相对仓库根目录 docs/）：</p>
+ * <ul>
+ *   <li>MR-004 · specs/10-model-rag-integration.md:70 —— OFFICE_IT / OFF_TOPIC / HIGH_RISK / UNCERTAIN 四态；</li>
+ *   <li>AI-001 · specs/02-ai-api-json-schema.md:14 —— 高风险只覆盖「动作 × 敏感对象」组合，
+ *       普通登录排障（「账号登录失败」「忘记密码」）不得被一概拒答；</li>
+ *   <li>PRD AC-02 · IT服务工单系统PRD-Ultimate.md:886 —— 领域外明确不能答复、高风险拒答。</li>
+ * </ul>
+ *
+ * <p>词表/正则取自 RagRetrievalProperties 默认配置，与生产 application.yml 同源。</p>
  */
 public class DomainClassifierTest {
 

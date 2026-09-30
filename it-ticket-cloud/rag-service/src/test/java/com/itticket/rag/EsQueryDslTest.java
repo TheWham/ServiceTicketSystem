@@ -9,6 +9,16 @@ import java.util.List;
 
 /**
  * ES 查询 DSL 组装与相似度换算的单元测试（不依赖 ES 实例）。
+ *
+ * <p>规范引用（路径相对仓库根目录 docs/）：</p>
+ * <ul>
+ *   <li>AI-001 · specs/02-ai-api-json-schema.md:14 / AC-27 · specs/09-prd-spec-test-traceability.md:93 ——
+ *       所有检索 DSL 强制 status=PUBLISHED 过滤；</li>
+ *   <li>AI-004.4 · specs/02-ai-api-json-schema.md:174 —— 文章级检索 collapse 折叠 + cardinality 取文章数；</li>
+ *   <li>MR-011 · specs/10-model-rag-integration.md:151 —— 置 OFFLINE 时同步写 offline_at；</li>
+ *   <li>MR-001 · specs/10-model-rag-integration.md:34 —— 阈值 0.70 判定依赖 esScoreToCosine 换算
+ *       （ES cosine _score = (1+cos)/2）。</li>
+ * </ul>
  */
 public class EsQueryDslTest {
 

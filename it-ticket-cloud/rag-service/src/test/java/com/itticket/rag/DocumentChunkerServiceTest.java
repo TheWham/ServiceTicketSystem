@@ -8,6 +8,13 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+/**
+ * 文档切片服务测试：Markdown 标题层级分块、章节标题继承、切片度量字段完整性。
+ *
+ * <p>规范关联：切片是 MR-004（specs/10-model-rag-integration.md:70）检索链路的输入，
+ * 切片质量直接决定召回；本组件不感知知识状态机（SM-KNOWLEDGE-001），
+ * 草稿/发布分支由 RagPipelineService 编排。</p>
+ */
 public class DocumentChunkerServiceTest {
 
     private final DocumentChunkerService chunkerService = new DocumentChunkerService();

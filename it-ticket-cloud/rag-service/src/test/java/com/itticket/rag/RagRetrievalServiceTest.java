@@ -32,6 +32,18 @@ import static org.mockito.Mockito.verifyNoInteractions;
 /**
  * 检索与领域判定测试：覆盖 MR-004 领域四态、AI-001（冷启动修订）拒答口径、
  * RD-006 依赖降级、AI-008 引用校验。
+ *
+ * <p>规范引用（路径相对仓库根目录 docs/）：</p>
+ * <ul>
+ *   <li>MR-004 · specs/10-model-rag-integration.md:70 —— 领域判定前置于检索，领域外/高风险短路；</li>
+ *   <li>AI-001 · specs/02-ai-api-json-schema.md:14 —— 阈值分档：≥0.70 可靠、0.45–0.70 拒答
+ *       LOW_CONFIDENCE、&lt;0.45 或无命中不强制拒答（冷启动修订，对应 PRD AC-02 · PRD:886）；</li>
+ *   <li>RD-006 · specs/04-resilience-degradation.md:67 —— 向量化失败按依赖不可用降级 MODEL_UNAVAILABLE；</li>
+ *   <li>AI-008 · specs/02-ai-api-json-schema.md:96 —— 引用复核仍 PUBLISHED，已下线丢弃（AC-27 · specs/09:93）；</li>
+ *   <li>AI-004.3 · specs/02-ai-api-json-schema.md:134 —— citation.snippet ≤1000、title 非空。</li>
+ * </ul>
+ *
+ * <p>纯单元测试：Mockito 打桩 Embedding/ES/mapper，不依赖外部服务。</p>
  */
 public class RagRetrievalServiceTest {
 

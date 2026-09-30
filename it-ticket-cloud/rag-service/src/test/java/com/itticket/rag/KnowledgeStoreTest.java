@@ -23,6 +23,18 @@ import java.util.List;
 
 /**
  * 知识状态机守卫测试（SM-KNOWLEDGE-001 / SM-001 / AC-25 / PRD §16.4）。
+ *
+ * <p>规范引用（路径相对仓库根目录 docs/）：</p>
+ * <ul>
+ *   <li>SM-KNOWLEDGE-001 · specs/03-business-state-machine.md:90 —— 四条迁移边与角色守卫；</li>
+ *   <li>SM-001 · specs/03-business-state-machine.md:12 —— 每次迁移写一条流转审计；</li>
+ *   <li>AC-25 · specs/09-prd-spec-test-traceability.md:91 —— 作者不得自审（publishIsRejectedWhenReviewerIsTheAuthor）；</li>
+ *   <li>PRD §16.4 · IT服务工单系统PRD-Ultimate.md:515 —— 高风险须平台管理员复核（highRiskPublish*）；</li>
+ *   <li>EV-008 · specs/07-domain-events-outbox-redis.md:85 —— 同一聚合版本只允许一条事件
+ *       （highRiskPublishByPlatformAdminRecordsRecheckAndEmitsEvents 断言发布只发一条）。</li>
+ * </ul>
+ *
+ * <p>纯单元测试：Mockito 打桩 mapper，不依赖数据库与 Spring 容器。</p>
  */
 public class KnowledgeStoreTest {
 
@@ -61,6 +73,7 @@ public class KnowledgeStoreTest {
         Mockito.when(articleMapper.updateById(Mockito.any(KnowledgeArticle.class))).thenReturn(1);
     }
 
+    /** DRAFT ➔ PENDING_REVIEW：迁移成功并写一条流转审计 + KNOWLEDGE_SUBMITTED 事件（SM-KNOWLEDGE-001 · specs/03:90） */
     @Test
     public void submitMovesDraftToPendingReviewAndWritesAudit() {
         KnowledgeArticle article = stubArticle(KnowledgeStatus.DRAFT, KnowledgeRiskLevel.NORMAL);
@@ -79,6 +92,7 @@ public class KnowledgeStoreTest {
         Assertions.assertEquals(List.of(KnowledgeStore.EVENT_SUBMITTED), events);
     }
 
+    /** 非 DRAFT 状态提审一律拒绝，且不写审计（SM-KNOWLEDGE-001 迁移边白名单 · specs/03:90） */
     @Test
     public void submitIsRejectedWhenNotDraft() {
         stubArticle(KnowledgeStatus.PUBLISHED, KnowledgeRiskLevel.NORMAL);
@@ -90,6 +104,7 @@ public class KnowledgeStoreTest {
         Mockito.verify(transitionMapper, Mockito.never()).insert(Mockito.any(KnowledgeTransition.class));
     }
 
+    /** AC-25（specs/09:91）：作者本人发布被拒，且不产生任何状态写入 */
     @Test
     public void publishIsRejectedWhenReviewerIsTheAuthor() {
         stubArticle(KnowledgeStatus.PENDING_REVIEW, KnowledgeRiskLevel.NORMAL);
@@ -102,6 +117,7 @@ public class KnowledgeStoreTest {
         Mockito.verify(articleMapper, Mockito.never()).updateById(Mockito.any(KnowledgeArticle.class));
     }
 
+    /** PRD §16.4（PRD:515）：高风险知识由普通知识库管理员发布被拒 */
     @Test
     public void highRiskPublishRequiresPlatformAdmin() {
         stubArticle(KnowledgeStatus.PENDING_REVIEW, KnowledgeRiskLevel.HIGH);
@@ -112,6 +128,7 @@ public class KnowledgeStoreTest {
         Assertions.assertEquals(ErrorCode.FORBIDDEN.getCode(), ex.getErrorCode().getCode());
     }
 
+    /** PRD §16.4：平台管理员发布高风险知识须留复核痕迹；EV-008（specs/07:85）：发布只发一条事件 */
     @Test
     public void highRiskPublishByPlatformAdminRecordsRecheckAndEmitsEvents() {
         KnowledgeArticle article = stubArticle(KnowledgeStatus.PENDING_REVIEW, KnowledgeRiskLevel.HIGH);
@@ -135,6 +152,7 @@ public class KnowledgeStoreTest {
         Assertions.assertEquals(List.of(KnowledgeStore.EVENT_PUBLISHED), captureEventTypes());
     }
 
+    /** 乐观锁并发冲突（updateById 返回 0 行）时迁移失败且不发事件（SM-001 · specs/03:12） */
     @Test
     public void concurrentModificationFailsTheTransition() {
         stubArticle(KnowledgeStatus.PENDING_REVIEW, KnowledgeRiskLevel.NORMAL);
@@ -147,6 +165,7 @@ public class KnowledgeStoreTest {
         Mockito.verify(outboxEventMapper, Mockito.never()).insert(Mockito.any(OutboxEvent.class));
     }
 
+    /** 驳回必须带原因；合法驳回回 DRAFT 且原因写入流转审计（SM-KNOWLEDGE-001 · specs/03:90） */
     @Test
     public void rejectRequiresReasonAndReturnsToDraft() {
         KnowledgeArticle article = stubArticle(KnowledgeStatus.PENDING_REVIEW, KnowledgeRiskLevel.NORMAL);
@@ -165,6 +184,7 @@ public class KnowledgeStoreTest {
         Assertions.assertEquals(REVIEWER, version.getReviewerId());
     }
 
+    /** 下线必须带原因，成功下线写 KNOWLEDGE_OFFLINE 事件（SM-KNOWLEDGE-001 · specs/03:90） */
     @Test
     public void offlineRequiresReasonAndEmitsOfflineEvent() {
         KnowledgeArticle article = stubArticle(KnowledgeStatus.PUBLISHED, KnowledgeRiskLevel.NORMAL);
@@ -182,6 +202,7 @@ public class KnowledgeStoreTest {
         Assertions.assertEquals(List.of(KnowledgeStore.EVENT_OFFLINE), captureEventTypes());
     }
 
+    /** 非 PUBLISHED 状态下线被拒（SM-KNOWLEDGE-001 迁移边白名单 · specs/03:90） */
     @Test
     public void offlineIsRejectedWhenNotPublished() {
         stubArticle(KnowledgeStatus.DRAFT, KnowledgeRiskLevel.NORMAL);
@@ -192,6 +213,7 @@ public class KnowledgeStoreTest {
         Assertions.assertEquals(ErrorCode.ILLEGAL_TRANSITION.getCode(), ex.getErrorCode().getCode());
     }
 
+    /** 文章不存在直接拒绝，不产生任何写入 */
     @Test
     public void missingArticleIsRejected() {
         Mockito.when(articleMapper.selectById("art-x")).thenReturn(null);

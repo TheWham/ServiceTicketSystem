@@ -10,6 +10,10 @@ import java.util.List;
 
 /**
  * RRF 融合排序的单元测试。
+ *
+ * <p>规范关联：服务于 MR-004（specs/10-model-rag-integration.md:70）检索链路的混合召回阶段；
+ * 融合只改排序，不得改写余弦相似度——阈值判定（MR-001 · specs/10-model-rag-integration.md:34）
+ * 始终基于真实 cosine，故 cosineSimilarityIsCarriedThroughUnchanged 是核心断言。</p>
  */
 public class RankFusionTest {
 
