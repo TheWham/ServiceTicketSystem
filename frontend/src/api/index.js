@@ -54,7 +54,18 @@ export const ticketApi = {
 }
 
 export const categoryApi = {
-  leaf: () => api.get('/categories/leaf')
+  // 后端返回 snake_case（category_id / ticket_nature），统一归一化为前端使用的 camelCase
+  leaf: () => api.get('/categories/leaf').then(res => {
+    if (res && Array.isArray(res.data)) {
+      res.data = res.data.map(c => ({
+        ...c,
+        categoryId: c.categoryId || c.category_id,
+        parentId: c.parentId || c.parent_id,
+        nature: c.nature || c.ticketNature || c.ticket_nature
+      }))
+    }
+    return res
+  })
 }
 
 // ---- 通知中心 API ----
