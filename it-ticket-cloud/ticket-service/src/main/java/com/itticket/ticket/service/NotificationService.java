@@ -130,7 +130,7 @@ public class NotificationService {
                 sent = true;
             } catch (Exception e) {
                 lastError = e.getMessage();
-                log.warn("[通知] 第 次发送失败: {} -> {} ({}): {}", attempt, eventId, receiverId, channel, lastError);
+                log.warn("[通知] 第 {} 次发送失败: {} -> {} ({}): {}", attempt, eventId, receiverId, channel, lastError);
             }
         }
 

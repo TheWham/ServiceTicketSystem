@@ -94,7 +94,7 @@ public class TicketService {
         if (!TicketNature.isValid(req.getNature())) errors.add("工单性质无效（INCIDENT/SERVICE_REQUEST）");
         if (req.getTitle() == null || req.getTitle().trim().isEmpty()) errors.add("工单标题不能为空");
         if (req.getTitle() != null && req.getTitle().trim().length() > 100) errors.add("工单标题不能超过100字符");
-        if (req.getDescription() == null || req.getDescription().trim().length() < 10) errors.add("问题描述至少10个字符");
+        if (req.getDescription() == null || req.getDescription().trim().isEmpty()) errors.add("问题描述不能为空");
         if (req.getDescription() != null && req.getDescription().trim().length() > 5000) errors.add("问题描述不能超过5000字符");
         if (req.getImpactDescription() == null || req.getImpactDescription().trim().isEmpty()) errors.add("影响情况不能为空");
         if (req.getUrgencyDescription() == null || req.getUrgencyDescription().trim().isEmpty()) errors.add("紧急说明不能为空");

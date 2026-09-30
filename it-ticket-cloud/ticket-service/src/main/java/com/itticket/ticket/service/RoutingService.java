@@ -10,6 +10,7 @@ import com.itticket.ticket.entity.Ticket;
 import com.itticket.ticket.entity.TicketFlowLog;
 import com.itticket.ticket.mapper.TicketFlowLogMapper;
 import com.itticket.ticket.feign.UserClient;
+import com.itticket.ticket.enums.TicketStatus;
 import com.itticket.ticket.mapper.AssignmentMapper;
 import com.itticket.ticket.mapper.CategoryRouteMapper;
 import com.itticket.ticket.mapper.TeamMemberMapper;
@@ -145,20 +146,28 @@ public class RoutingService {
             return null;
         }
 
-        // 4. 加权负载：OPEN 工单数最少者（简化权重，非终态工单计 1）
-        String best = null;
-        long bestLoad = Long.MAX_VALUE;
-        for (String engId : available) {
-            Long load = ticketMapper.selectCount(new QueryWrapper<Ticket>()
-                    .eq("assignee_id", engId)
-                    .notIn("status", "COMPLETED", "CANCELLED", "CLOSED"));
-            long l = load == null ? 0 : load;
-            if (l < bestLoad) {
-                bestLoad = l;
-                best = engId;
+        // 4. 负载均衡：统计各候选工程师持有的非终态（未结）工单数，单量最少者优先，
+        //    0 单即空闲工程师最先被选中。一次分组聚合查询，避免逐人 N 次 COUNT。
+        Map<String, Long> loads = new HashMap<>();
+        List<Map<String, Object>> rows = ticketMapper.selectMaps(new QueryWrapper<Ticket>()
+                .select("assignee_id", "COUNT(*) AS open_load")
+                .in("assignee_id", available)
+                .notIn("status", TicketStatus.COMPLETED.getValue(),
+                        TicketStatus.CANCELLED.getValue(),
+                        TicketStatus.CLOSED.getValue())
+                .groupBy("assignee_id"));
+        for (Map<String, Object> row : rows) {
+            Object engId = row.get("assignee_id");
+            Object cnt = row.get("open_load");
+            if (engId != null && cnt instanceof Number) {
+                loads.put(engId.toString(), ((Number) cnt).longValue());
             }
         }
-        log.info("[路由] 加权负载选择: (负载 {})", best, bestLoad);
+        // min 在负载相同时保持候选顺序（团队 route_order 先后）作为平局依据
+        String best = available.stream()
+                .min(Comparator.comparingLong(id -> loads.getOrDefault(id, 0L)))
+                .orElse(null);
+        log.info("[路由] 负载均衡选择: {} (未结工单 {})", best, best == null ? "-" : loads.getOrDefault(best, 0L));
         return best;
     }
 

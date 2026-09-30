@@ -388,7 +388,6 @@ const formRules = {
   ],
   description: [
     { required: true, message: '请填写问题描述', trigger: 'blur' },
-    { min: 10, message: '请至少填写 10 个字，说明何时开始、报错原文、已尝试的操作', trigger: 'blur' },
     { max: 5000, message: '问题描述不能超过 5000 个字符', trigger: 'blur' }
   ],
   impact_description: [

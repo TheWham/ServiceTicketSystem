@@ -31,7 +31,7 @@ public class Ticket {
     private String categorySnapshot;
     /** 标题 1~100 字符 */
     private String title;
-    /** 问题描述 10~5000 字符 */
+    /** 问题描述 1~5000 字符 */
     private String description;
     /** 影响情况（接单确认用） */
     private String impactDescription;

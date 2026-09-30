@@ -23,7 +23,7 @@ public class CreateTicketRequest {
     private String categoryId;
     /** 标题 1~100 字符（必填） */
     private String title;
-    /** 问题描述 10~5000 字符（必填） */
+    /** 问题描述 1~5000 字符（必填） */
     private String description;
     /** 影响情况（必填，供工程师确认影响范围） */
     private String impactDescription;
