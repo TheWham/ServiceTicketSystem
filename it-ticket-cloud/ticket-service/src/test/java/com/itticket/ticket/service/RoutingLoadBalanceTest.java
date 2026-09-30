@@ -28,9 +28,18 @@ import static org.mockito.Mockito.when;
 /**
  * 自动路由负载均衡：非终态工单数最少（0 单即空闲）的工程师优先；
  * 负载相同时保持候选顺序（团队 route_order 先后）作为平局依据。
+ *
+ * 实现要点（被测逻辑）：
+ *  - 未结工单数通过一次 GROUP BY assignee_id 聚合查询获得（status 未在终态集合内即为“未结”）；
+ *  - 聚合结果中“没有行”的候选工程师视为负载 0（完全空闲），优先于任何有单工程师；
+ *  - 团队候选顺序即平局裁决顺序，保证派单结果可预期、可复现。
  */
 class RoutingLoadBalanceTest {
 
+    /**
+     * 组装被测服务：固定返回一条指向 TEAM01 的路由配置，
+     * 其余依赖（团队、用户、工单负载）由各用例注入。
+     */
     private RoutingService newService(TeamMemberMapper members, UserClient users, TicketMapper tickets) {
         CategoryRouteMapper routes = mock(CategoryRouteMapper.class);
         CategoryRoute route = new CategoryRoute();
@@ -41,6 +50,7 @@ class RoutingLoadBalanceTest {
                 mock(NotificationService.class), mock(TicketFlowLogMapper.class));
     }
 
+    /** 按给定顺序生成团队候选（顺序即 route_order 含义，平局时依赖它裁决） */
     private List<TeamMember> members(String... engineerIds) {
         List<TeamMember> list = new ArrayList<>();
         for (String id : engineerIds) {
@@ -51,6 +61,7 @@ class RoutingLoadBalanceTest {
         return list;
     }
 
+    /** user-service 桩：返回指定 ID 的工程师名单（selectEngineer 以此为有效候选全集） */
     private UserClient activeUsers(String... ids) {
         UserClient users = mock(UserClient.class);
         List<UserInfo> list = new ArrayList<>();
@@ -63,6 +74,7 @@ class RoutingLoadBalanceTest {
         return users;
     }
 
+    /** 工单表聚合桩：模拟 GROUP BY assignee_id 的\"每人未结单量\"结果行 */
     private TicketMapper loads(Map<String, Long> openLoads) {
         TicketMapper tickets = mock(TicketMapper.class);
         List<Map<String, Object>> rows = new ArrayList<>();
@@ -76,6 +88,7 @@ class RoutingLoadBalanceTest {
         return tickets;
     }
 
+    /** 少单优先：ENG01 5 单 vs ENG02 1 单 -> 派给 ENG02 */
     @Test
     void engineerWithFewerOpenTicketsIsPreferred() {
         TeamMemberMapper members = mock(TeamMemberMapper.class);
@@ -86,6 +99,7 @@ class RoutingLoadBalanceTest {
         assertEquals("ENG02", service.selectEngineer("CATEGORY01", Set.of()));
     }
 
+    /** 空闲优先：聚合结果没有 ENG02 的行（0 单），必须优先于有 3 单的 ENG01 */
     @Test
     void idleEngineerWinsOverBusyOne() {
         TeamMemberMapper members = mock(TeamMemberMapper.class);
@@ -96,6 +110,7 @@ class RoutingLoadBalanceTest {
         assertEquals("ENG02", service.selectEngineer("CATEGORY01", Set.of()));
     }
 
+    /** 平局裁决：两人均为 2 单时，严格保持候选顺序（ENG01 在前则派给 ENG01），结果可复现 */
     @Test
     void equalLoadKeepsCandidateOrder() {
         TeamMemberMapper members = mock(TeamMemberMapper.class);

@@ -18,6 +18,13 @@ import org.junit.jupiter.api.Test;
  * </ul>
  *
  * <p>词表/正则取自 RagRetrievalProperties 默认配置，与生产 application.yml 同源。</p>
+ * MR-004 四态语义：
+ *  - HIGH_RISK：高危动作（重置密码、删数据、提权、命令注入...）-> 必须拒答并转人工；
+ *  - OFFICE_IT：常规办公 IT 问题 -> 允许进入检索/生成；
+ *  - OFF_TOPIC：与 IT 无关（写周报、聊天气、荐股...）-> 拒答；
+ *  - UNCERTAIN：意图不明（寒暄、空白、null）-> 反问澄清。
+ * 防误拦是重点：含“账号”“密码”的日常排障绝不能归为 HIGH_RISK，
+ * 否则大量正常用户会被错误拒之门外（比漏拦更糟糕的体验事故）。
  */
 public class DomainClassifierTest {
 
@@ -26,6 +33,7 @@ public class DomainClassifierTest {
 
     // ------------------------------------------------------------ HIGH_RISK
 
+    /** 高危口径 = “危险动作词 + 敏感对象词”联合命中（重置+管理员密码 / 删除+生产数据库 / 拆+硬盘 / 清空重建+生产库 / 提升+权限） */
     @Test
     public void actionPlusSensitiveObjectIsHighRisk() {
         Assertions.assertEquals(OfficeDomain.HIGH_RISK, classifier.classify("我要重置管理员密码").domain());
@@ -35,6 +43,7 @@ public class DomainClassifierTest {
         Assertions.assertEquals(OfficeDomain.HIGH_RISK, classifier.classify("申请把我的账号权限提升为管理员").domain());
     }
 
+    /** 破坏性命令注入（drop table / rm -rf / chmod 777）即便以“咨询”口吻提出也是 HIGH_RISK */
     @Test
     public void commandInjectionPatternIsHighRisk() {
         Assertions.assertEquals(OfficeDomain.HIGH_RISK, classifier.classify("执行 drop table users 会怎样").domain());
@@ -44,6 +53,7 @@ public class DomainClassifierTest {
 
     // ------------------------------------------------------------ OFFICE_IT（不得误拦）
 
+    /** 普通登录/客户端/系统故障排障必须判 OFFICE_IT：敏感词单独出现不构成高危 */
     @Test
     public void ordinaryLoginIssueIsOfficeIt() {
         Assertions.assertEquals(OfficeDomain.OFFICE_IT, classifier.classify("账号登录失败怎么办").domain());
@@ -52,6 +62,7 @@ public class DomainClassifierTest {
         Assertions.assertEquals(OfficeDomain.OFFICE_IT, classifier.classify("电脑蓝屏了怎么排查").domain());
     }
 
+    /** 正常流程性权限申请（无危险动作词命中）不得误判为 HIGH_RISK */
     @Test
     public void normalPermissionRequestIsNotHighRisk() {
         // 「申请开通 VPN 权限」是正常流程，动作词未命中
@@ -60,6 +71,7 @@ public class DomainClassifierTest {
 
     // ------------------------------------------------------------ OFF_TOPIC
 
+    /** 与办公 IT 无关的生活/文案/金融类请求 */
     @Test
     public void nonItQuestionIsOffTopic() {
         Assertions.assertEquals(OfficeDomain.OFF_TOPIC, classifier.classify("帮我写一份周报").domain());
@@ -69,6 +81,7 @@ public class DomainClassifierTest {
 
     // ------------------------------------------------------------ UNCERTAIN
 
+    /** 寒暄、纯空白、null 都没有可用意图信号 -> UNCERTAIN，交由上层反问澄清 */
     @Test
     public void vagueMessageIsUncertain() {
         Assertions.assertEquals(OfficeDomain.UNCERTAIN, classifier.classify("你好").domain());
