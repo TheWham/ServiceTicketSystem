@@ -53,7 +53,6 @@ rag:
     dimensions: ${EMBEDDING_DIMENSIONS:1024}
     batch-size: 16
     timeout-seconds: 15
-    api-key: ${EMBEDDING_API_KEY:}
   # RAG 检索与知识策略（本模块不做模型生成；对话与生成由 AI 客服服务负责）
   retrieval:
     top-k: ${RAG_TOP_K:5}
