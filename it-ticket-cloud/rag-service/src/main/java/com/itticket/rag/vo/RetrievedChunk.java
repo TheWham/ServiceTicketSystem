@@ -7,19 +7,19 @@ import java.math.BigDecimal;
  * 检索命中切片 (RetrievedChunk)
  * ============================================================================
  *
- * <p>契约 MR-004：检索器只返回 PUBLISHED 版本，并携带
+ * <p>契约 MR-004（specs/10-model-rag-integration.md:70）：检索器只返回 PUBLISHED 版本，并携带
  * {@code articleId / versionId / score / snippet / indexVersion}。
  * content 供对接方拼装 Prompt；score 为余弦相似度 [0,1]。</p>
  *
  * @param chunkId      切片 ID
  * @param articleId    所属知识文章 ID
- * @param versionId    所属知识版本 ID（可追溯到 knowledge_version.version_id，DM-004）
+ * @param versionId    所属知识版本 ID（可追溯到 knowledge_version.version_id，DM-004 · specs/01-data-model-strong-types.md:100）
  * @param title        切片继承的标题
- * @param snippet      截断后的摘要片段（≤1000）
+ * @param snippet      截断后的摘要片段（≤1000，AI-004.3 · specs/02-ai-api-json-schema.md:134）
  * @param content      切片全文
  * @param categoryId   知识分类
  * @param score        余弦相似度 [0,1]；纯全文命中（无向量）时为 null
- * @param indexVersion 该切片所属的索引版本（ES 文档 index_version 字段，MR-011）
+ * @param indexVersion 该切片所属的索引版本（ES 文档 index_version 字段，MR-011 · specs/10-model-rag-integration.md:151）
  * @author IT工单系统研发组 - RAG专项
  */
 public record RetrievedChunk(

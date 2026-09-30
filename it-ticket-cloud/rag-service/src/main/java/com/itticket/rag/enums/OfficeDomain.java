@@ -3,10 +3,10 @@ package com.itticket.rag.enums;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * 办公 IT 领域判定结果 —— 契约 MR-004（docs/specs/10-model-rag-integration.md）。
+ * 办公 IT 领域判定结果 —— 契约 MR-004（specs/10-model-rag-integration.md:70）。
  *
  * <p>领域判定独立于生成结果；检索资料和用户输入均不得覆盖领域规则
- * （AI-001：单个 IT 关键词或检索命中不构成领域许可）。</p>
+ * （AI-001 · specs/02-ai-api-json-schema.md:14：单个 IT 关键词或检索命中不构成领域许可）。</p>
  */
 public enum OfficeDomain {
     /** 办公 IT 范围内：允许检索，无命中也可给通用建议（AI-001） */

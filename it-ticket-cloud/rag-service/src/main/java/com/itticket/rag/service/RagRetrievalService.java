@@ -33,14 +33,23 @@ import java.util.Set;
  *
  * 【职责边界】：
  * 本服务负责「把问题变成已发布知识的可靠依据」，不负责生成回答：
- * 1. 领域判定（MR-004：OFFICE_IT / OFF_TOPIC / HIGH_RISK / UNCERTAIN，独立于检索结果）；
+ * 1. 领域判定（MR-004 · specs/10-model-rag-integration.md:70：
+ *    OFFICE_IT / OFF_TOPIC / HIGH_RISK / UNCERTAIN，独立于检索结果）；
  * 2. 问题向量化（复用 Embedding 客户端，1024 维）；
- * 3. ES 混合检索（向量 kNN + BM25 全文，RRF 融合），强制 status=PUBLISHED；
- * 4. 阈值分档与引用校验（AI-008：引用必须指向仍然 PUBLISHED 的知识版本）。
+ * 3. ES 混合检索（向量 kNN + BM25 全文，RRF 融合），强制 status=PUBLISHED
+ *    （AI-001 · specs/02-ai-api-json-schema.md:14；AC-27 · specs/09-prd-spec-test-traceability.md:93）；
+ * 4. 阈值分档与引用校验（AI-008 · specs/02-ai-api-json-schema.md:96：
+ *    引用必须指向仍然 PUBLISHED 的知识版本）。
  *
  * <p>大模型生成与对话状态由 AI 客服服务负责，本服务通过 /api/v1/rag/retrievals 交付
  * 检索依据与领域判定。领域外/高风险不做检索，办公 IT 的无命中/不相关命中不强制拒答
- * （允许空引用通用回答），置信度不足与知识冲突仍拒答（AI-001 冷启动修订）。</p>
+ * （允许空引用通用回答），置信度不足与知识冲突仍拒答（AI-001 冷启动修订，
+ * 对应 PRD AC-02 · IT服务工单系统PRD-Ultimate.md:886）。</p>
+ *
+ * 【降级语义】：
+ * 向量或检索依赖不可用时按 RD-006（specs/04-resilience-degradation.md:67）返回
+ * dependencyUnavailable + MODEL_UNAVAILABLE，不得用模型常识补写回答；
+ * 依赖超时边界按 RD-003（specs/04-resilience-degradation.md:33）。
  *
  * @author IT工单系统研发组 - RAG专项
  */
@@ -104,7 +113,8 @@ public class RagRetrievalService {
         }
         String trimmed = question.trim();
 
-        // 1) 领域判定（MR-004：独立于生成与检索结果，领域外/高风险不做检索）
+        // 1) 领域判定（MR-004 · specs/10-model-rag-integration.md:70：
+        //    独立于生成与检索结果，领域外/高风险不做检索）
         DomainClassifier.Verdict verdict = domainClassifier.classify(trimmed);
         OfficeDomain domain = verdict.domain();
         if (domain == OfficeDomain.OFF_TOPIC) {
@@ -120,7 +130,7 @@ public class RagRetrievalService {
             return outcome(domain, false, null, List.of(), zero(), null, false);
         }
 
-        // 2) 问题向量化；失败按依赖不可用降级，不退化到无依据回答（RD-006）
+        // 2) 问题向量化；失败按依赖不可用降级，不退化到无依据回答（RD-006 · specs/04-resilience-degradation.md:67）
         List<Float> vector;
         try {
             EmbeddingClientService.EmbeddingResult embedding = embeddingService.generateEmbeddings(List.of(trimmed));
@@ -133,7 +143,8 @@ public class RagRetrievalService {
             return outcome(domain, true, "向量服务不可用", List.of(), zero(), AiRefusalReason.MODEL_UNAVAILABLE, false);
         }
 
-        // 3) 混合检索（强制 PUBLISHED 过滤，AC-27）
+        // 3) 混合检索（强制 PUBLISHED 过滤：AI-001 · specs/02-ai-api-json-schema.md:14；
+        //    AC-27 · specs/09-prd-spec-test-traceability.md:93）
         List<ChunkHit> hits;
         try {
             hits = indexService.searchTopKChunks(vector, trimmed, categoryId, resolveTopK(topK));
@@ -142,7 +153,8 @@ public class RagRetrievalService {
             return outcome(domain, true, "检索服务不可用", List.of(), zero(), AiRefusalReason.MODEL_UNAVAILABLE, false);
         }
 
-        // 4) 阈值分档（AI-001：无命中/不相关不强制拒答；置信度不足仍拒答）
+        // 4) 阈值分档（AI-001 · specs/02-ai-api-json-schema.md:14：
+        //    无命中/不相关不强制拒答；置信度不足仍拒答）
         BigDecimal topScore = maxSimilarity(hits);
         boolean reliable;
         AiRefusalReason reason;
@@ -162,9 +174,10 @@ public class RagRetrievalService {
     }
 
     /**
-     * 组装并校验知识引用（AI-008）。
+     * 组装并校验知识引用（AI-008 · specs/02-ai-api-json-schema.md:96）。
      *
-     * <p>同一文章只保留相似度最高的一条切片；引用前复核文章仍为 PUBLISHED，已下线版本一律丢弃。</p>
+     * <p>同一文章只保留相似度最高的一条切片；引用前复核文章仍为 PUBLISHED，已下线版本一律丢弃
+     * （AC-27 · specs/09-prd-spec-test-traceability.md:93）。</p>
      */
     public List<KnowledgeCitation> buildVerifiedCitations(List<ChunkHit> hits) {
         if (hits == null || hits.isEmpty()) {
@@ -210,7 +223,7 @@ public class RagRetrievalService {
         return citations;
     }
 
-    /** 转为对外检索响应（MR-004：只返回 PUBLISHED 版本，携带 score 与 indexVersion） */
+    /** 转为对外检索响应（MR-004 · specs/10-model-rag-integration.md:70：只返回 PUBLISHED 版本，携带 score 与 indexVersion） */
     public RagRetrievalResponse toResponse(RetrievalOutcome outcome) {
         List<RetrievedChunk> items = outcome.hits() == null ? List.of() : outcome.hits().stream()
                 .map(hit -> new RetrievedChunk(

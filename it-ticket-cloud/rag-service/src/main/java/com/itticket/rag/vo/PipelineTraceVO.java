@@ -18,6 +18,9 @@ import java.util.List;
  * 提供一次文档摄入（Ingestion）操作的端到端可观测性（Observability）报告，
  * 包含解析耗时、切片数量、Token 预估、ES 写入状态、以及各切片的正文明细。
  *
+ * 【规范关联】：降级结果必须显式可判定、可观测（RD-013 · specs/04-resilience-degradation.md:142），
+ * 链路各阶段状态即该条款在入库通道的落点。
+ *
  * @author IT工单系统研发组 - RAG专项
  */
 @Data

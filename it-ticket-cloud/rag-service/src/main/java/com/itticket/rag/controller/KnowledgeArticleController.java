@@ -48,11 +48,30 @@ import java.util.Map;
  * - AI 消息（AI-API-002）与已发布知识搜索（AI-API-005）由 AI 客服服务（consultation-service）
  *   在 /api/v1/consultations/** 与 /api/v1/knowledge/** 下实现，本模块不重复提供。
  *
- * 【契约规范说明】：
- * - 操作者身份来自网关透传的认证上下文，不接受请求体传入（AI-002）。
- * - 管理动作按角色守卫（SM-ROLE-001）：知识库管理员 KNOWLEDGE_ADMIN / 平台管理员 PLATFORM_ADMIN，
- *   角色值域兼容网关历史上的小写出口与 KB_ADMIN 别名。
- * - 已发布知识不得物理删除，只允许下线/新版本/回滚（PRD §16.4），故 purge 端点独立且限平台管理员。
+ * 【规范引用】（路径相对仓库根目录 docs/）：
+ * - SM-KNOWLEDGE-001 · specs/03-business-state-machine.md:90
+ *     知识四态状态机 DRAFT ➔ PENDING_REVIEW ➔ PUBLISHED ➔ OFFLINE 及各迁移守卫。
+ * - SM-001 · specs/03-business-state-machine.md:12
+ *     每次状态迁移追加 knowledge_transition 审计记录，历史不可覆盖。
+ * - AC-25 · specs/09-prd-spec-test-traceability.md:91
+ *     作者不得审核自己提交的内容（发布守卫）。
+ * - AC-27 · specs/09-prd-spec-test-traceability.md:93
+ *     知识下线后页面搜索与 RAG 检索均不再返回该版本。
+ * - PRD §16.4 · IT服务工单系统PRD-Ultimate.md:515
+ *     高风险知识须平台管理员复核；已发布知识不物理删除，只允许下线/新版本/回滚。
+ * - PRD §5.1 · IT服务工单系统PRD-Ultimate.md:89
+ *     角色值域（KNOWLEDGE_ADMIN / PLATFORM_ADMIN / ENGINEER）。
+ * - RD-006 / RD-008 · specs/04-resilience-degradation.md:67 / :93
+ *     索引失败不回滚已合法状态，走补偿入口（reindex）。
+ * - AI-004.4 / AI-API-005 · specs/02-ai-api-json-schema.md:174 / :257
+ *     契约知识搜索接口（GET /api/v1/knowledge/search）由 AI 客服服务提供；
+ *     本模块 /articles/search 仅为核对 ES 内容的运维等价视图，不是对外契约路径。
+ * - AI-002 · specs/02-ai-api-json-schema.md:25
+ *     操作者身份来自网关透传的认证上下文，不信任请求体。
+ *
+ * 【角色守卫】：
+ * - 管理动作按角色守卫：知识库管理员 KNOWLEDGE_ADMIN / 平台管理员 PLATFORM_ADMIN，
+ *   角色值域兼容网关历史上的小写出口与 KB_ADMIN 别名（见 support/Roles.java）。
  *
  * @author IT工单系统研发组 - RAG专项
  */
@@ -71,9 +90,11 @@ public class KnowledgeArticleController {
     /**
      * ES 原生文章检索（运维/验收视图，只返回 status=PUBLISHED）。
      *
-     * <p>契约路径 {@code GET /api/v1/knowledge/search}（AI-API-005）由 AI 客服服务提供，
-     * 本端点是 rag-service 侧的等价检索能力，用于核对 ES 索引内容与下线联动（AC-27），
-     * 供运维与验收使用，不作为对外契约路径。</p>
+     * <p>契约路径 {@code GET /api/v1/knowledge/search}（AI-API-005 · specs/02-ai-api-json-schema.md:257，
+     * 响应形态 AI-004.4 · :174）由 AI 客服服务提供；本端点是 rag-service 侧的等价检索能力，
+     * 用于核对 ES 索引内容与下线联动（AC-27 · specs/09-prd-spec-test-traceability.md:93），
+     * 供运维与验收使用，不作为对外契约路径。响应字段对齐 AI-004.4：
+     * articleId / versionId / title / summary / categoryId + 分页元数据。</p>
      */
     @GetMapping("/articles/search")
     public Result<KnowledgeSearchResponse> searchArticles(
@@ -86,7 +107,7 @@ public class KnowledgeArticleController {
         return Result.ok(indexService.searchPublishedArticles(query, category, page, pageSize));
     }
 
-    /** 知识分页列表（管理端：草稿/待审/已发布/下线全量可查） */
+    /** 知识分页列表（管理端：草稿/待审/已发布/下线全量可查，状态值域见 SM-KNOWLEDGE-001） */
     @GetMapping("/articles")
     public Result<Page<KnowledgeArticle>> listArticles(
             @RequestParam(value = "status", required = false) String status,
@@ -102,7 +123,7 @@ public class KnowledgeArticleController {
         return Result.ok(articleMapper.selectPage(pageRequest, wrapper));
     }
 
-    /** 知识详情：文章 + 当前版本 + 流转审计 */
+    /** 知识详情：文章 + 当前版本 + 流转审计时间线（审计要求 SM-001 · specs/03-business-state-machine.md:12） */
     @GetMapping("/articles/{id}")
     public Result<KnowledgeDetail> detail(@PathVariable("id") String id) {
         UserContext.get();
@@ -117,7 +138,12 @@ public class KnowledgeArticleController {
                 transitions));
     }
 
-    /** 提交审核：DRAFT ➔ PENDING_REVIEW */
+    /**
+     * 提交审核：DRAFT ➔ PENDING_REVIEW。
+     *
+     * <p>SM-KNOWLEDGE-001 · specs/03-business-state-machine.md:90：
+     * 允许角色为知识库管理员/工程师；守卫「已脱敏，结构化字段完整」。</p>
+     */
     @PostMapping("/articles/{id}/submit")
     public Result<KnowledgeLifecycleResult> submit(@PathVariable("id") String id,
                                                    @RequestBody(required = false) KnowledgeLifecycleRequest request) {
@@ -127,7 +153,17 @@ public class KnowledgeArticleController {
                 request == null ? null : request.getRemark()));
     }
 
-    /** 审核通过并发布：PENDING_REVIEW ➔ PUBLISHED（守卫：作者不得自审 / 高风险须平台管理员复核） */
+    /**
+     * 审核通过并发布：PENDING_REVIEW ➔ PUBLISHED。
+     *
+     * <p>守卫（SM-KNOWLEDGE-001 · specs/03-business-state-machine.md:90）：</p>
+     * <ul>
+     *   <li>作者不得自审（AC-25 · specs/09-prd-spec-test-traceability.md:91）；</li>
+     *   <li>高风险知识须平台管理员复核（PRD §16.4 · IT服务工单系统PRD-Ultimate.md:515）。</li>
+     * </ul>
+     * <p>发布成功后在事务外联动 ES 切片入库；索引失败不回滚状态，标记
+     * PENDING_COMPENSATION 走 reindex 补偿（RD-006/RD-008 · specs/04-resilience-degradation.md:67/:93）。</p>
+     */
     @PostMapping("/articles/{id}/publish")
     public Result<KnowledgeLifecycleResult> publish(@PathVariable("id") String id,
                                                     @RequestBody(required = false) KnowledgeLifecycleRequest request) {
@@ -137,7 +173,7 @@ public class KnowledgeArticleController {
                 request == null ? null : request.getChangeNote()));
     }
 
-    /** 驳回：PENDING_REVIEW ➔ DRAFT（原因必填） */
+    /** 驳回：PENDING_REVIEW ➔ DRAFT，原因必填（SM-KNOWLEDGE-001 · specs/03-business-state-machine.md:90） */
     @PostMapping("/articles/{id}/reject")
     public Result<KnowledgeLifecycleResult> reject(@PathVariable("id") String id,
                                                    @RequestBody(required = false) KnowledgeLifecycleRequest request) {
@@ -147,7 +183,13 @@ public class KnowledgeArticleController {
                 request == null ? null : request.getReason()));
     }
 
-    /** 下线：PUBLISHED ➔ OFFLINE（原因必填，同步刷新搜索与 RAG 索引，AC-27） */
+    /**
+     * 下线：PUBLISHED ➔ OFFLINE，原因必填（SM-KNOWLEDGE-001 · specs/03-business-state-machine.md:90）。
+     *
+     * <p>下线后同步刷新搜索与 RAG 索引：ES 中该文章全部切片 status 置 OFFLINE，
+     * 此后检索与 AI 引用均不再返回（AC-27 · IT服务工单系统PRD-Ultimate.md:911 /
+     * specs/09-prd-spec-test-traceability.md:93）。</p>
+     */
     @PostMapping("/articles/{id}/offline")
     public Result<KnowledgeLifecycleResult> offline(@PathVariable("id") String id,
                                                     @RequestBody(required = false) KnowledgeLifecycleRequest request) {
@@ -157,7 +199,10 @@ public class KnowledgeArticleController {
                 request == null ? null : request.getReason()));
     }
 
-    /** RAG 索引补偿重建（发布后索引失败、或 ES 曾不可用时的补偿入口，RD-008） */
+    /**
+     * RAG 索引补偿重建：发布后索引失败、或 ES 曾不可用时的补偿入口
+     * （RD-006/RD-008 · specs/04-resilience-degradation.md:67/:93）。
+     */
     @PostMapping("/articles/{id}/reindex")
     public Result<KnowledgeLifecycleResult> reindex(@PathVariable("id") String id) {
         UserContext.CurrentUser user = requireManageRole();
@@ -168,7 +213,9 @@ public class KnowledgeArticleController {
     /**
      * 显式物理清理该文章的 ES 切片（仅平台管理员）。
      *
-     * <p>业务下线只做逻辑标记，本端点用于数据修复；不进入任何业务链路（PRD §16.4）。</p>
+     * <p>业务下线只做逻辑标记（PUBLISHED ➔ OFFLINE），已发布知识不物理删除
+     * （PRD §16.4 · IT服务工单系统PRD-Ultimate.md:515）；本端点仅用于数据修复，
+     * 不进入任何业务链路。</p>
      */
     @PostMapping("/articles/{id}/es-chunks/purge")
     public Result<Map<String, Object>> purgeEsChunks(@PathVariable("id") String id) {
@@ -185,7 +232,9 @@ public class KnowledgeArticleController {
     /**
      * 存量切片 status 回填：把缺少 status 的历史切片补为 PUBLISHED。
      *
-     * <p>严格状态过滤上线的前置动作，否则历史切片在检索中不可见（AC-27 相关）。</p>
+     * <p>严格状态过滤上线的前置动作：不先回填，历史切片在检索中全部不可见
+     * （AI-001 只读 PUBLISHED · specs/02-ai-api-json-schema.md:14；
+     * AC-27 · specs/09-prd-spec-test-traceability.md:93）。</p>
      */
     @PostMapping("/admin/backfill-index-status")
     public Result<Map<String, Object>> backfillIndexStatus() {
@@ -200,7 +249,7 @@ public class KnowledgeArticleController {
 
     // ---------------------------------------------------------------- 角色守卫
 
-    /** 提交审核：知识库管理员 / 平台管理员 / 工程师（SM-KNOWLEDGE-001） */
+    /** 提交审核：知识库管理员 / 平台管理员 / 工程师（SM-KNOWLEDGE-001 迁移表「提交审核」行；角色值域 PRD §5.1） */
     private UserContext.CurrentUser requireSubmitRole() {
         UserContext.CurrentUser user = UserContext.get();
         if (!Roles.canSubmitReview(user.getRole())) {

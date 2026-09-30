@@ -12,11 +12,17 @@ import java.time.LocalDateTime;
  * 领域事实事件外发实体 (OutboxEvent) - 对应数据库表 `outbox_event`
  * ============================================================================
  *
- * 【契约规范说明 (EV-001 / EV-008 / SM-EVENT-001，与权威 00-schema.sql 一致）】：
+ * 【契约规范说明】（路径相对仓库根目录 docs/）：
  * 1. event_type 统一使用 SCREAMING_SNAKE_CASE 领域事实事件类型，知识域为
- *    KNOWLEDGE_SUBMITTED / KNOWLEDGE_PUBLISHED / KNOWLEDGE_OFFLINE / KNOWLEDGE_INDEX_REFRESH_REQUESTED。
- * 2. 载荷只携带对象 ID、事件类型、版本、操作者与发生时间；禁止空对象。
- * 3. 同一聚合按 aggregate_version 单调递增；状态迁移先落库、再写事件。
+ *    KNOWLEDGE_SUBMITTED / KNOWLEDGE_PUBLISHED / KNOWLEDGE_OFFLINE / KNOWLEDGE_INDEX_REFRESH_REQUESTED
+ *    （SM-EVENT-001 · specs/03-business-state-machine.md:103）。
+ * 2. 信封 13 列（event_id/event_type/aggregate_type/aggregate_id/event_version/aggregate_version/
+ *    payload_json/status/attempts/next_attempt_at/published_at/created_at/updated_at），
+ *    载荷只携带对象 ID、事件类型、版本、操作者与发生时间；禁止空对象
+ *    （EV-001 · specs/07-domain-events-outbox-redis.md:12）。
+ * 3. 同一聚合按 aggregate_version 单调递增（uk_aggregate_version 唯一约束，一聚合版本一事件）；
+ *    状态迁移先落库、再写事件（EV-008 · specs/07-domain-events-outbox-redis.md:85）。
+ * 4. DDL 权威来源：specs/06-mysql-ddl-and-migrations.md（SQL-010 空库全量 DDL · :202）。
  *
  * @author IT工单系统研发组 - RAG专项
  */

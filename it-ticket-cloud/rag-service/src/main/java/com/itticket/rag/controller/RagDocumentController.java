@@ -34,6 +34,22 @@ import java.util.Map;
  *
  * <p>注：大模型生成与对话状态由 AI 客服服务负责，本模块只提供检索与知识策略判定。</p>
  *
+ * 【规范引用】（路径相对仓库根目录 docs/）：
+ * - SM-KNOWLEDGE-001 · specs/03-business-state-machine.md:90
+ *     上传 publishNow=false 时落 DRAFT 走标准生命周期；publishNow=true 为兼容的快速直发通道。
+ * - AI-001 · specs/02-ai-api-json-schema.md:14
+ *     检索只读当前 PUBLISHED 知识版本及其索引。
+ * - AC-27 · specs/09-prd-spec-test-traceability.md:93
+ *     已下线知识在检索中不返回（检索侧 status=PUBLISHED 硬过滤）。
+ * - MR-004 · specs/10-model-rag-integration.md:70
+ *     RAG 调用链路：领域判定 ➔ 检索 ➔ 阈值分档，本模块输出判定结果供 AI 客服使用。
+ * - RD-003 · specs/04-resilience-degradation.md:33
+ *     检索类依赖超时边界（ES 检索 5s）。
+ * - MR-011 · specs/10-model-rag-integration.md:151
+ *     索引生命周期管理（indices/init 初始化与重建）。
+ * - AI-002 · specs/02-ai-api-json-schema.md:25
+ *     作者/操作者身份取网关透传的认证上下文，不接受请求体传入。
+ *
  * @author IT工单系统研发组 - RAG专项
  */
 @Slf4j
@@ -47,7 +63,10 @@ public class RagDocumentController {
     private final RagRetrievalService retrievalService;
 
     /**
-     * 手动初始化/新建 ES 知识切片索引
+     * 手动初始化/新建 ES 知识切片索引。
+     *
+     * <p>索引生命周期管理入口（MR-011 · specs/10-model-rag-integration.md:151）；
+     * mapping 含 status/risk_level 等过滤字段（AC-27 状态过滤的前置）。</p>
      *
      * @param recreate 是否强制删除后重建索引（默认 false）
      * @return 包含 ES 节点及初始化状态的响应报文
@@ -61,12 +80,20 @@ public class RagDocumentController {
     }
 
     /**
-     * 上传文档并执行切片、入库 ES 完整链路
+     * 上传文档并执行切片、入库 ES 完整链路。
+     *
+     * <p>入库通道分两种（SM-KNOWLEDGE-001 · specs/03-business-state-machine.md:90）：</p>
+     * <ul>
+     *   <li>{@code publishNow=true}（默认）：兼容快速通道，直接 PUBLISHED 并写入 ES；</li>
+     *   <li>{@code publishNow=false}：标准生命周期，落 DRAFT 不写 ES，
+     *       需经 submit ➔ publish 才进入检索索引（AI-001 只读 PUBLISHED）。</li>
+     * </ul>
      *
      * @param file         上传的 Markdown 或 TXT 文件流
      * @param title        自定义文档标题（可选，留空则自动从 Markdown 提取）
      * @param categoryId   知识分类编码（默认 C_NET）
-     * @param riskLevel    知识风险等级（LOW, MEDIUM, HIGH）
+     * @param riskLevel    知识风险等级（NORMAL / HIGH；LOW/MEDIUM 为遗留值，入库时归一为 NORMAL）
+     * @param publishNow   是否立即发布（默认 true 快速通道；false 落草稿走审核流）
      * @param chunkSize    目标切片字符数（默认 500）
      * @param chunkOverlap 切片重叠字符数（默认 50）
      * @param minChunkSize 最小切片字符数（默认 30）
@@ -131,8 +158,16 @@ public class RagDocumentController {
     /**
      * RAG 检索：返回已发布知识的 Top-K 切片与策略判定，供 AI 客服服务对接。
      *
-     * <p>强制过滤 status=PUBLISHED（AI-001 / AC-27）；命中高风险主题或相似度不足时，
-     * 通过 reliable=false 与 suggestedRefusalReason 告知对接方应当拒答。</p>
+     * <p>本端点是 rag-service 对外的检索出口（AI 客服的 ai-messages 链路经此取知识）：</p>
+     * <ul>
+     *   <li>强制过滤 status=PUBLISHED（AI-001 · specs/02-ai-api-json-schema.md:14）；
+     *       下线文章不再返回（AC-27 · specs/09-prd-spec-test-traceability.md:93）；</li>
+     *   <li>领域判定前置（MR-004 · specs/10-model-rag-integration.md:70）：
+     *       OFF_TOPIC / HIGH_RISK 时 items 为空并以 suggestedReplyType/suggestedRefusalReason
+     *       告知对接方应拒答；</li>
+     *   <li>阈值分档（AI-001）：topScore &lt; 0.45 判 unreliable，0.45–0.70 建议 LOW_CONFIDENCE
+     *       拒答，≥ 0.70 判 reliable；无命中/不相关不强制拒答，由 AI 客服走通用回答。</li>
+     * </ul>
      *
      * @param request 检索请求（question 必填，categoryId / topK 可选）
      */

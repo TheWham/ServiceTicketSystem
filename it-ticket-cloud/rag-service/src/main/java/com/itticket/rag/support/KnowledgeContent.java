@@ -9,8 +9,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * 知识正文 JSON 读写工具 (KnowledgeContent)
  * ============================================================================
  *
- * <p>权威模型把知识正文存于 {@code knowledge_version.content_json}，键为
- * {@code title / summary / keywords / body}（见 db/init/00-schema.sql 的 search_text 生成列）。
+ * <p>权威模型把知识正文存于 {@code knowledge_version.content}（V2_2 之后的 JSON 列），键为
+ * {@code title / summary / keywords / body}（DM-004 核心持久化实体 · specs/01-data-model-strong-types.md:100；
+ * 列结构见 SQL-010 · specs/06-mysql-ddl-and-migrations.md:202）。
  * 本工具统一读写这四个键，避免各处手拼 JSON 造成键名漂移。</p>
  *
  * <p>读取侧对脏数据容错：非 JSON、缺键、空值都退化为可用的兜底值，

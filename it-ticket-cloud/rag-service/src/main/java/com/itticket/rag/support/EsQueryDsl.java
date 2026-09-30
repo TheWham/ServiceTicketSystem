@@ -17,12 +17,14 @@ import java.util.List;
  * 纯静态、无状态、不持有 HTTP 连接，便于单元测试直接断言生成的 JSON，
  * 由 ElasticsearchIndexService 负责发送请求。
  *
- * 【契约规范说明】：
- * 1. AI-001 / AC-27：所有检索强制过滤 status=PUBLISHED，已下线版本不得返回。
- * 2. 文章级检索按 article_id collapse 去重（切片 → 文章），total 用 cardinality 聚合取文章数，
+ * 【契约规范说明】（路径相对仓库根目录 docs/）：
+ * 1. AI-001（specs/02-ai-api-json-schema.md:14）/ AC-27（specs/09-prd-spec-test-traceability.md:93）：
+ *    所有检索强制过滤 status=PUBLISHED，已下线版本不得返回。
+ * 2. 文章级检索响应形态对齐 AI-004.4（specs/02-ai-api-json-schema.md:174）：
+ *    按 article_id collapse 去重（切片 → 文章），total 用 cardinality 聚合取文章数，
  *    因为 collapse 后的 hits.total 仍是切片数。
  * 3. 相似度：ES 对 cosine 相似度返回的 _score 为 (1 + cos) / 2，需换算回 [0,1] 区间的余弦相似度，
- *    否则阈值判定（如 0.65）会整体偏移。
+ *    否则阈值判定（MR-001 · specs/10-model-rag-integration.md:34，默认 0.70）会整体偏移。
  *
  * @author IT工单系统研发组 - RAG专项
  */
@@ -114,7 +116,10 @@ public final class EsQueryDsl {
         return write(root);
     }
 
-    /** 按 article_id 批量更新切片状态（下线联动，AC-27）；置 OFFLINE 时同时记录 offline_at（MR-011） */
+    /**
+     * 按 article_id 批量更新切片状态（下线联动，AC-27 · specs/09-prd-spec-test-traceability.md:93）；
+     * 置 OFFLINE 时同时记录 offline_at（MR-011 · specs/10-model-rag-integration.md:151）
+     */
     public static String updateStatusByArticleBody(String articleId, String newStatus) {
         ObjectNode root = MAPPER.createObjectNode();
         ObjectNode term = root.putObject("query").putObject("term");
@@ -131,7 +136,7 @@ public final class EsQueryDsl {
         return write(root);
     }
 
-    /** 存量回填：为缺少 status 字段的历史切片补 PUBLISHED，避免严格过滤后旧数据全部不可见 */
+    /** 存量回填：为缺少 status 字段的历史切片补 PUBLISHED，避免严格过滤后旧数据全部不可见（AI-001 · specs/02-ai-api-json-schema.md:14） */
     public static String backfillStatusBody(String status) {
         ObjectNode root = MAPPER.createObjectNode();
         ArrayNode mustNot = root.putObject("query").putObject("bool").putArray("must_not");
@@ -144,7 +149,7 @@ public final class EsQueryDsl {
         return write(root);
     }
 
-    /** 按 article_id 物理清理切片（仅显式管理端点使用，业务链路不得调用） */
+    /** 按 article_id 物理清理切片（仅显式管理端点使用，业务链路不得调用；PRD §16.4 · IT服务工单系统PRD-Ultimate.md:515） */
     public static String deleteByArticleBody(String articleId) {
         ObjectNode root = MAPPER.createObjectNode();
         root.putObject("query").putObject("term").put("article_id", articleId);

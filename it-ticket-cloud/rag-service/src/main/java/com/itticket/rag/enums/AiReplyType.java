@@ -3,7 +3,7 @@ package com.itticket.rag.enums;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * AI 回答类型 —— 契约 AI-003（docs/specs/02-ai-api-json-schema.md）。
+ * AI 回答类型 —— 契约 AI-003（specs/02-ai-api-json-schema.md:33）。
  *
  * <p>本模块只负责检索与领域判定，最终 replyType 由 AI 客服服务决定；
  * 本枚举仅作为检索响应中的建议提示，不构成决策。</p>

@@ -12,10 +12,14 @@ import java.time.LocalDateTime;
  * 知识状态流转审计实体 (KnowledgeTransition) - 对应数据库表 `knowledge_transition`
  * ============================================================================
  *
- * 【契约规范说明 (SM-001)】：
- * 1. 每个合法迁移必须追加一条流转记录，实体状态不可直接覆盖历史。
+ * 【契约规范说明】（路径相对仓库根目录 docs/）：
+ * 1. 每个合法迁移必须追加一条流转记录，实体状态不可直接覆盖历史
+ *    （SM-001 · specs/03-business-state-machine.md:12）。
  * 2. event_code 使用稳定的 DOMAIN_ACTION 动作码（如 KNOWLEDGE_SUBMIT_REVIEW / KNOWLEDGE_PUBLISH /
- *    KNOWLEDGE_REJECT / KNOWLEDGE_OFFLINE），不得与领域事实事件类型（SCREAMING_SNAKE_CASE）混用。
+ *    KNOWLEDGE_REJECT / KNOWLEDGE_OFFLINE），不得与领域事实事件类型（SCREAMING_SNAKE_CASE）混用
+ *    （SM-EVENT-001 · specs/03-business-state-machine.md:103）。
+ * 3. 迁移守卫与角色要求见 SM-KNOWLEDGE-001（specs/03-business-state-machine.md:90）；
+ *    驳回/下线必须携带非空 reason。
  *
  * @author IT工单系统研发组 - RAG专项
  */

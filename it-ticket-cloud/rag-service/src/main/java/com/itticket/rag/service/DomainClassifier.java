@@ -15,11 +15,11 @@ import java.util.regex.PatternSyntaxException;
  * 办公 IT 领域判定器 (DomainClassifier)
  * ============================================================================
  *
- * 【契约依据】MR-004（docs/specs/10-model-rag-integration.md）：
+ * 【契约依据】MR-004（docs/specs/10-model-rag-integration.md:70）：
  * 判定结果独立于生成结果，四态为 OFFICE_IT / OFF_TOPIC / HIGH_RISK / UNCERTAIN；
  * 「单个 IT 关键词或检索命中不构成领域许可」，检索资料与用户输入不得覆盖领域规则。
  *
- * 【AI-001（docs/specs/02）的高风险口径修正】：
+ * 【AI-001（docs/specs/02-ai-api-json-schema.md:14）的高风险口径修正】：
  * 高风险只覆盖「动作 × 敏感对象」的组合（如「重置+密码」「删除+数据库」「拆+硬盘」），
  * 以及明确的命令/越权正则；普通登录排障（「账号登录失败」「忘记密码」）不得被误拦。
  *

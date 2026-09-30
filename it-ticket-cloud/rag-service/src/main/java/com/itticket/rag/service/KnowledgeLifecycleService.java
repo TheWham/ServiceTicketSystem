@@ -17,9 +17,11 @@ import org.springframework.stereotype.Service;
  * ============================================================================
  *
  * 【职责边界】：
- * 1. 事务内的状态迁移与守卫委托给 {@link KnowledgeStore}（SM-001）。
- * 2. 事务提交后再执行 RAG 索引副作用，避免外部调用持有主事务数据库连接（RD-013）。
- * 3. 索引失败不回滚已合法状态，标记 PENDING_COMPENSATION 并可由 reindex 端点补偿（RD-006 / RD-008）。
+ * 1. 事务内的状态迁移与守卫委托给 {@link KnowledgeStore}（SM-001 · specs/03-business-state-machine.md:12）。
+ * 2. 事务提交后再执行 RAG 索引副作用，避免外部调用持有主事务数据库连接
+ *    （RD-013 · specs/04-resilience-degradation.md:142）。
+ * 3. 索引失败不回滚已合法状态，标记 PENDING_COMPENSATION 并可由 reindex 端点补偿
+ *    （RD-006 / RD-008 · specs/04-resilience-degradation.md:67 / :93）。
  *
  * 【状态机（SM-KNOWLEDGE-001）】：
  * <pre>
@@ -45,7 +47,7 @@ public class KnowledgeLifecycleService {
     private final RagPipelineService pipelineService;
     private final ElasticsearchIndexService indexService;
 
-    /** 提交审核：DRAFT ➔ PENDING_REVIEW */
+    /** 提交审核：DRAFT ➔ PENDING_REVIEW（SM-KNOWLEDGE-001 · specs/03-business-state-machine.md:90） */
     public KnowledgeLifecycleResult submitForReview(String articleId, String operatorId, String operatorRole, String remark) {
         KnowledgeVersion version = store.submitForReview(articleId, operatorId, operatorRole, remark);
         return new KnowledgeLifecycleResult(articleId, version.getVersionId(), KnowledgeStatus.PENDING_REVIEW,
@@ -55,7 +57,11 @@ public class KnowledgeLifecycleService {
     /**
      * 审核通过并发布：PENDING_REVIEW ➔ PUBLISHED，并建立 RAG 索引。
      *
-     * <p>守卫在事务内完成：作者不得自审（AC-25）、高风险须平台管理员复核（PRD §16.4）。</p>
+     * <p>守卫在事务内完成：作者不得自审（AC-25 · specs/09-prd-spec-test-traceability.md:91）、
+     * 高风险须平台管理员复核（PRD §16.4 · IT服务工单系统PRD-Ultimate.md:515）。</p>
+     *
+     * <p>索引副作用在事务提交后执行（RD-013 · specs/04-resilience-degradation.md:142）；
+     * 失败不回滚已合法状态，标记 PENDING_COMPENSATION（RD-006/RD-008）。</p>
      */
     public KnowledgeLifecycleResult publish(String articleId, String operatorId, String operatorRole, String changeNote) {
         KnowledgeVersion version = store.approveAndPublish(articleId, operatorId, operatorRole, changeNote);
@@ -79,7 +85,7 @@ public class KnowledgeLifecycleService {
         return new KnowledgeLifecycleResult(articleId, version.getVersionId(), KnowledgeStatus.PUBLISHED, indexStatus, message);
     }
 
-    /** 审核驳回：PENDING_REVIEW ➔ DRAFT（原因必填） */
+    /** 审核驳回：PENDING_REVIEW ➔ DRAFT，原因必填（SM-KNOWLEDGE-001 · specs/03-business-state-machine.md:90） */
     public KnowledgeLifecycleResult reject(String articleId, String operatorId, String operatorRole, String reason) {
         KnowledgeVersion version = store.rejectToDraft(articleId, operatorId, operatorRole, reason);
         return new KnowledgeLifecycleResult(articleId, version.getVersionId(), KnowledgeStatus.DRAFT,
@@ -87,9 +93,10 @@ public class KnowledgeLifecycleService {
     }
 
     /**
-     * 下线：PUBLISHED ➔ OFFLINE，并同步 ES 切片状态（AC-27）。
+     * 下线：PUBLISHED ➔ OFFLINE，并同步 ES 切片状态
+     * （AC-27 · specs/09-prd-spec-test-traceability.md:93：下线后搜索与 RAG 均不再返回）。
      *
-     * <p>ES 同步失败不回滚知识下线事实，标记待补偿后可用 reindex/重新发布修复。</p>
+     * <p>ES 同步失败不回滚知识下线事实，标记待补偿后可用 reindex/重新发布修复（RD-006/RD-008）。</p>
      */
     public KnowledgeLifecycleResult offline(String articleId, String operatorId, String operatorRole, String reason) {
         KnowledgeVersion version = store.offline(articleId, operatorId, operatorRole, reason);
@@ -103,7 +110,7 @@ public class KnowledgeLifecycleService {
     }
 
     /**
-     * 索引补偿重建：仅对已发布知识执行。
+     * 索引补偿重建：仅对已发布知识执行（RD-008 · specs/04-resilience-degradation.md:93）。
      *
      * <p>先把该文章现有切片置为 OFFLINE（不物理删除，AC-27 语义等价），再按当前版本重新切片入库，
      * 避免补偿后出现同一文章的新旧切片同时可见。</p>
@@ -127,7 +134,8 @@ public class KnowledgeLifecycleService {
      * 判断索引是否真正写入 ES。
      *
      * <p>ES 不可达时 indexChunks 会走本地快照降级并返回 success=true（供上传链路追踪用），
-     * 但那不是索引成功；按 RD-013 不得用成功响应掩盖失败，故此处按 esStatus 复核。</p>
+     * 但那不是索引成功；按 RD-013（specs/04-resilience-degradation.md:142，
+     * 「禁止用空成功响应掩盖失败」）此处按 esStatus 复核。</p>
      */
     private boolean isIndexed(ElasticsearchIndexService.IndexResult esResult) {
         if (esResult == null || !esResult.isSuccess()) {
@@ -140,19 +148,23 @@ public class KnowledgeLifecycleService {
     /**
      * 显式物理清理该文章的 ES 切片（管理用途）。
      *
-     * <p>知识下线只做逻辑标记；本方法仅在明确要求清理时调用，不进入任何业务链路（PRD §16.4）。</p>
+     * <p>知识下线只做逻辑标记；已发布知识不物理删除，本方法仅在明确要求清理时调用，
+     * 不进入任何业务链路（PRD §16.4 · IT服务工单系统PRD-Ultimate.md:515）。</p>
      */
     public long purgeEsChunks(String articleId) {
         store.requireArticle(articleId);
         return indexService.deleteChunksByArticleId(articleId);
     }
 
-    /** 确保索引可用（管理端初始化） */
+    /** 确保索引可用（管理端初始化，MR-011 · specs/10-model-rag-integration.md:151） */
     public boolean ensureIndexReady() {
         return indexService.ensureIndexReady();
     }
 
-    /** 存量切片 status 回填（严格状态过滤上线前置动作） */
+    /**
+     * 存量切片 status 回填：严格状态过滤上线的前置动作，
+     * 否则历史切片在检索中全部不可见（AI-001 只读 PUBLISHED · specs/02-ai-api-json-schema.md:14）。
+     */
     public long backfillMissingStatus() {
         long updated = indexService.backfillMissingStatus();
         if (updated < 0) {

@@ -28,10 +28,20 @@ import java.util.List;
  * ============================================================================
  *
  * 【业务背景与职责】：
- * 1. 适配 OpenAI 标准 Embedding 协议规范（POST /v1/embeddings）。
+ * 1. 适配 OpenAI 标准 Embedding 协议规范（POST /v1/embeddings）
+ *    （MR-003 · specs/10-model-rag-integration.md:46：OpenAI-compatible HTTP）。
  * 2. 对接阿里云百炼 / 通义千问专属 Embedding 模型（如 qwen3.7-text-embedding，1024维）。
  * 3. 支持多切片自动分批（Batching）、请求重试与耗时指标度量。
  * 4. 严格校验返回向量维度与顺序，输出各切片的密集向量（Dense Vector）。
+ *
+ * 【规范引用】（路径相对仓库根目录 docs/）：
+ * - MR-001 · specs/10-model-rag-integration.md:13
+ *     Provider 配置以不可变版本发布。
+ * - MR-002 · specs/10-model-rag-integration.md:40
+ *     apiKey 只存 Secret 引用：本服务不内置明文默认值，由 EMBEDDING_API_KEY 环境变量注入。
+ * - RD-006 · specs/04-resilience-degradation.md:67
+ *     凭据缺失/调用失败按依赖不可用降级，上层转为 MODEL_UNAVAILABLE 或索引待补偿，
+ *     不得用失败静默产出空向量。
  *
  * @author IT工单系统研发组 - RAG专项
  */
@@ -87,7 +97,8 @@ public class EmbeddingClientService {
 
         long start = System.currentTimeMillis();
         if (properties.getApiKey() == null || properties.getApiKey().isBlank()) {
-            // 凭据缺失按依赖不可用处理，上层转为 MODEL_UNAVAILABLE / 索引待补偿（RD-006）
+            // 凭据缺失按依赖不可用处理，上层转为 MODEL_UNAVAILABLE / 索引待补偿
+            // （RD-006 · specs/04-resilience-degradation.md:67；密钥治理 MR-002 · specs/10-model-rag-integration.md:40）
             throw new BizException(ErrorCode.SYSTEM_ERROR,
                     "向量模型凭据未配置：请通过环境变量 EMBEDDING_API_KEY 注入");
         }

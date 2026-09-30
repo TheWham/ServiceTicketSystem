@@ -7,9 +7,12 @@ import java.util.Locale;
  * 角色值域归一化 (Roles)
  * ============================================================================
  *
- * <p>契约 DM-002 的 RoleCode 值域为 EMPLOYEE / ENGINEER / PLATFORM_ADMIN / KNOWLEDGE_ADMIN；
+ * <p>契约 DM-002 枚举目录（specs/01-data-model-strong-types.md:41）与 PRD §5.1
+ * （IT服务工单系统PRD-Ultimate.md:89）的 RoleCode 值域为
+ * EMPLOYEE / ENGINEER / PLATFORM_ADMIN / KNOWLEDGE_ADMIN；
  * 网关 JWT 与种子数据实际下发 KB_ADMIN，历史数据还存在 supervisor / knowledge_admin 小写值。
- * 本工具把这些变体统一为契约值域，避免状态机守卫因大小写或别名而误判。</p>
+ * 本工具把这些变体统一为契约值域，避免状态机守卫（SM-KNOWLEDGE-001 · specs/03-business-state-machine.md:90）
+ * 因大小写或别名而误判。</p>
  *
  * @author IT工单系统研发组 - RAG专项
  */
@@ -55,7 +58,7 @@ public final class Roles {
         return isKnowledgeAdmin(role) || isPlatformAdmin(role);
     }
 
-    /** 可提交审核的角色：知识库管理员、平台管理员或工程师（SM-KNOWLEDGE-001） */
+    /** 可提交审核的角色：知识库管理员、平台管理员或工程师（SM-KNOWLEDGE-001 · specs/03-business-state-machine.md:90「提交审核」行） */
     public static boolean canSubmitReview(String role) {
         return canManageKnowledge(role) || isEngineer(role);
     }

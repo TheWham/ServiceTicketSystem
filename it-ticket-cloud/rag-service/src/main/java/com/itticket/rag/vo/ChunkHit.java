@@ -9,7 +9,7 @@ import java.math.BigDecimal;
  *
  * <p>携带向量/全文两路的命中信息，供 RRF 融合、置信度判定与知识引用组装使用。</p>
  *
- * @param indexVersion     索引版本（ES 文档 index_version 字段，MR-011 索引生命周期追踪）
+ * @param indexVersion     索引版本（ES 文档 index_version 字段，MR-011 · specs/10-model-rag-integration.md:151 索引生命周期追踪）
  * @param cosineSimilarity 向量余弦相似度 [0,1]；仅向量路命中时有值，纯全文命中为 null
  * @param knnRank          向量路名次（1 起）；未命中为 -1
  * @param textRank         全文路名次（1 起）；未命中为 -1

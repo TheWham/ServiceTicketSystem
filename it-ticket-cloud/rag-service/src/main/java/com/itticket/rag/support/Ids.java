@@ -7,8 +7,8 @@ import java.util.UUID;
  * 业务主键生成器 (Ids)
  * ============================================================================
  *
- * <p>契约 DM-001：主键使用不可变 String 业务 ID。线上库相关列均为 varchar(32)，
- * 因此统一约束「前缀 + 随机段」总长不超过 32。</p>
+ * <p>契约 DM-001（specs/01-data-model-strong-types.md:12）：主键使用不可变 String 业务 ID。
+ * 线上库相关列均为 varchar(32)，因此统一约束「前缀 + 随机段」总长不超过 32。</p>
  *
  * @author IT工单系统研发组 - RAG专项
  */
@@ -34,7 +34,7 @@ public final class Ids {
         return prefix + random.substring(0, Math.min(room, random.length()));
     }
 
-    /** 校验并返回可直接落库的会话 ID（契约 DM-003：SessionId 最大 32 字符） */
+    /** 校验并返回可直接落库的业务 ID（契约 DM-003 · specs/01-data-model-strong-types.md:86：标识符最大 32 字符） */
     public static boolean fits(String value) {
         return value != null && !value.isBlank() && value.length() <= MAX_LENGTH;
     }

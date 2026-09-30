@@ -19,7 +19,8 @@ import java.util.Map;
  *     rrf(d) = Σ_list 1 / (K + rank_list(d))，本实现 K = 60（业界常用值）
  *
  * 余弦相似度独立保留在 {@link ChunkHit#cosineSimilarity()} 上，不参与融合打分，
- * 以确保阈值判定（如 0.65）始终基于真实语义相似度。
+ * 以确保阈值判定（MR-001 · specs/10-model-rag-integration.md:34，默认 0.70）始终基于真实语义相似度。
+ * 本组件服务于 MR-004（specs/10-model-rag-integration.md:70）RAG 检索链路的混合召回阶段。
  *
  * @author IT工单系统研发组 - RAG专项
  */

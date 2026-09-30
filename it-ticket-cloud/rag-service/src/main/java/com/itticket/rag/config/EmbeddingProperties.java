@@ -17,6 +17,12 @@ import org.springframework.stereotype.Component;
  * - batch-size: 批处理大小（默认 16）
  * - timeout-seconds: 超时时间（秒）
  *
+ * 【规范引用】（路径相对仓库根目录 docs/）：
+ * - MR-001 · specs/10-model-rag-integration.md:13 — Provider 配置以不可变版本发布。
+ * - MR-002 · specs/10-model-rag-integration.md:40 — apiKey 只存 Secret 引用：
+ *   本类不提供明文默认值，一律由环境变量 EMBEDDING_API_KEY 注入，禁止入库/入 Git/入日志。
+ * - RD-006 · specs/04-resilience-degradation.md:67 — 未注入凭据时按依赖不可用降级（见 EmbeddingClientService）。
+ *
  * @author IT工单系统研发组 - RAG专项
  */
 @Data
@@ -27,7 +33,7 @@ public class EmbeddingProperties {
     /** OpenAI 兼容接口的基础端点 */
     private String baseUrl = "https://ws-klculckg6dog3won.cn-beijing.maas.aliyuncs.com/compatible-mode/v1";
 
-    /** 访问密钥 API Key —— 一律由环境变量 EMBEDDING_API_KEY 注入，不提供默认值（禁止明文入库） */
+    /** 访问密钥 API Key —— 一律由环境变量 EMBEDDING_API_KEY 注入，不提供默认值（MR-002 · specs/10-model-rag-integration.md:40：禁止明文入库） */
     private String apiKey;
 
     /** 向量嵌入模型标识 */

@@ -4,10 +4,11 @@ import com.baomidou.mybatisplus.annotation.EnumValue;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * 知识风险等级 —— 契约 DM-002 值域为 NORMAL / HIGH。
+ * 知识风险等级 —— 契约 DM-002 枚举目录（specs/01-data-model-strong-types.md:41）值域为 NORMAL / HIGH。
  *
  * <p>线上存量数据与上传接口历史上出现过 LOW / MEDIUM，故保留声明以兼容读取；
- * 写入前统一经 {@link #normalize()} 归一，避免出现第三、第四种落库值。</p>
+ * 写入前统一经 {@link #normalize()} 归一，避免出现第三、第四种落库值。
+ * 高风险知识的发布守卫见 PRD §16.4（IT服务工单系统PRD-Ultimate.md:515）。</p>
  */
 public enum KnowledgeRiskLevel {
     /** 常规知识 */
@@ -33,7 +34,7 @@ public enum KnowledgeRiskLevel {
         return value;
     }
 
-    /** 高风险知识：发布环节需要平台管理员复核（PRD §16.4） */
+    /** 高风险知识：发布环节需要平台管理员复核（PRD §16.4 · IT服务工单系统PRD-Ultimate.md:515） */
     public boolean isHighRisk() {
         return this == HIGH;
     }

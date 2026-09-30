@@ -14,9 +14,14 @@ import java.util.Map;
  * ============================================================================
  *
  * 【阶段划分】：
- * - PARSING     : 文档读取、格式校验、标题识别
- * - CHUNKING    : 语义切分、重叠滑动、Token 估算
- * - ES_INDEXING : ES 索引探测、Schema Mapping、批量写入
+ * - PARSING         : 文档读取、格式校验、标题识别
+ * - CHUNKING        : 语义切分、重叠滑动、Token 估算
+ * - VECTOR_EMBEDDING: 向量嵌入计算（百炼/Maas Embedding，MR-003 · specs/10-model-rag-integration.md:46）
+ * - ES_INDEXING     : ES 索引探测、Schema Mapping、批量写入（草稿态为 SKIPPED，
+ *                     AI-001 · specs/02-ai-api-json-schema.md:14）
+ *
+ * 【降级观测】：依赖降级时必须显式标记（如 SKIPPED/WARNING），禁止用空成功掩盖失败
+ * （RD-013 · specs/04-resilience-degradation.md:142）。
  *
  * @author IT工单系统研发组 - RAG专项
  */

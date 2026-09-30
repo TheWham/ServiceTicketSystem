@@ -3,7 +3,7 @@ package com.itticket.rag.enums;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * AI 结构化拒答原因 —— 契约 AI-003（docs/specs/02-ai-api-json-schema.md）值域（7 值）。
+ * AI 结构化拒答原因 —— 契约 AI-003（specs/02-ai-api-json-schema.md:33）值域（7 值）。
  *
  * <p>注意：这是拒答原因，不是 HTTP 错误码；HTTP 层 AI 领域失败使用 AI-* 错误码。</p>
  */
@@ -16,7 +16,7 @@ public enum AiRefusalReason {
     CONFLICTING_KNOWLEDGE("CONFLICTING_KNOWLEDGE"),
     /** 高风险主题：权限变更/安全事件处置/数据恢复/高风险命令/硬件拆修（AI-001） */
     HIGH_RISK_TOPIC("HIGH_RISK_TOPIC"),
-    /** 模型或向量服务不可用（RD-006 降级） */
+    /** 模型或向量服务不可用（RD-006 降级 · specs/04-resilience-degradation.md:67） */
     MODEL_UNAVAILABLE("MODEL_UNAVAILABLE"),
     /** 策略拦截 */
     POLICY_BLOCKED("POLICY_BLOCKED"),

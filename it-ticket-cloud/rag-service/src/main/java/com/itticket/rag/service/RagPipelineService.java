@@ -45,6 +45,15 @@ import java.util.concurrent.ConcurrentHashMap;
  * 2. 数据库幂等持久化：分别向 MySQL knowledge_article 与 knowledge_version 表写入业务快照。
  * 3. 内存级 Trace 缓存（TraceStore）：支持前端工作台即时回溯与历史链路审查。
  *
+ * 【规范引用】（路径相对仓库根目录 docs/）：
+ * - SM-KNOWLEDGE-001 · specs/03-business-state-machine.md:90
+ *     publishNow=false 时落 DRAFT 走标准生命周期（草稿不进检索索引）；
+ *     publishNow=true 为兼容的快速直发通道（直接 PUBLISHED）。
+ * - AI-001 · specs/02-ai-api-json-schema.md:14
+ *     未发布（DRAFT）内容不得进入检索索引，草稿只落 MySQL 不写 ES。
+ * - MR-011 · specs/10-model-rag-integration.md:151
+ *     索引写入是可重建投影：发布/补偿时按当前版本重建索引（indexVersion）。
+ *
  * @author IT工单系统研发组 - RAG专项
  */
 @Slf4j
@@ -64,7 +73,12 @@ public class RagPipelineService {
     private final Map<String, PipelineTraceVO> traceStore = new ConcurrentHashMap<>();
 
     /**
-     * 处理文档上传并执行 RAG 切片、向量化与入库完整链路
+     * 处理文档上传并执行 RAG 切片、向量化与入库完整链路。
+     *
+     * <p>入库分支（SM-KNOWLEDGE-001 · specs/03-business-state-machine.md:90）：
+     * {@code publishNow=true} 直接落 PUBLISHED 并写 ES（兼容快速通道）；
+     * {@code publishNow=false} 落 DRAFT 不写 ES（AI-001 · specs/02-ai-api-json-schema.md:14），
+     * 需经 submit ➔ publish 生命周期才进入检索索引。</p>
      *
      * @param file    上传的原始文件
      * @param request 文档元数据及切片配置
@@ -246,7 +260,7 @@ public class RagPipelineService {
                 esResult = indexService.indexChunks(articleId, versionId, article.getCategoryId(),
                         article.getRiskLevel(), EsQueryDsl.STATUS_PUBLISHED, version.getPublishedAt(), chunks);
             } else {
-                // AI-001：未发布内容不得进入检索索引，草稿只落库不写 ES
+                // AI-001（specs/02-ai-api-json-schema.md:14）：未发布内容不得进入检索索引，草稿只落库不写 ES
                 esResult = indexService.skippedResult("草稿态未写入 ES，待审核发布后由发布流程建立索引");
                 log.info("Draft article {} kept out of ES index (publishNow=false)", articleId);
             }
@@ -409,6 +423,9 @@ public class RagPipelineService {
 
     /**
      * 按知识版本正文重建检索索引（发布、以及 ES 侧补偿重建时调用）。
+     *
+     * <p>索引是可重建投影，indexVersion 取知识版本 ID（MR-011 · specs/10-model-rag-integration.md:151）；
+     * 发布通道由 KnowledgeLifecycleService 在事务提交后调用本方法（RD-013 · specs/04-resilience-degradation.md:142）。</p>
      *
      * @param article   知识文章
      * @param version   待索引版本

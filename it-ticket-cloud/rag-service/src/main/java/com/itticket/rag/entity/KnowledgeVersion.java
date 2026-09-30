@@ -16,9 +16,11 @@ import java.time.LocalDateTime;
  * 【权威模型（main 最新，对齐 V2_2 之后形态）】：
  * 1. 正文存于 content 列（JSON），键为 title / summary / keywords / body，
  *    读写统一由 {@link com.itticket.rag.support.KnowledgeContent} 处理。
- * 2. 版本不可变性：发布后按版本快照留痕，修改产生新版本（version_no 递增）。
- * 3. 审核人 reviewer_id（用于"作者不得自审"守卫，AC-25）；高风险知识的平台管理员
- *    复核人 platform_reviewer_id（PRD §16.4）。
+ * 2. 版本不可变性：发布后按版本快照留痕，修改产生新版本（version_no 递增）
+ *    （SM-KNOWLEDGE-001 · specs/03-business-state-machine.md:90「新版本发布」迁移）。
+ * 3. 审核人 reviewer_id（用于"作者不得自审"守卫，
+ *    AC-25 · specs/09-prd-spec-test-traceability.md:91）；高风险知识的平台管理员
+ *    复核人 platform_reviewer_id（PRD §16.4 · IT服务工单系统PRD-Ultimate.md:515）。
  *
  * 【迁移说明】：
  * - 本实体对齐的是 V2_2 迁移执行后的列（content + created_at/updated_at）。
@@ -47,7 +49,7 @@ public class KnowledgeVersion {
     /** 创建/编写人 User ID */
     private String authorId;
 
-    /** 审核人 User ID（作者不得自审，AC-25） */
+    /** 审核人 User ID（作者不得自审，AC-25 · specs/09-prd-spec-test-traceability.md:91） */
     private String reviewerId;
 
     /** 正式发布生效时间戳 */
@@ -56,7 +58,7 @@ public class KnowledgeVersion {
     /** 版本变更说明 */
     private String changeNote;
 
-    /** 高风险知识的平台管理员复核人（PRD §16.4） */
+    /** 高风险知识的平台管理员复核人（PRD §16.4 · IT服务工单系统PRD-Ultimate.md:515） */
     private String platformReviewerId;
 
     /** 平台管理员复核时间 */

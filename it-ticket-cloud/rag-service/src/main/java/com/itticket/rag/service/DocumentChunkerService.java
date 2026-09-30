@@ -30,6 +30,11 @@ import java.util.UUID;
  * 4. Token 估算：
  *    - 针对中英混合技术文档，按 ~1.3 字符/Token 算法精确估算 Token 消耗。
  *
+ * 【规范关联】：
+ * 切片质量直接决定检索命中率（MR-004 · specs/10-model-rag-integration.md:70 的检索链路输入）；
+ * 切片参数（chunkSize/chunkOverlap/minChunkSize）来自上传接口入参，见 dto/ChunkConfigDTO。
+ * 本组件为纯函数式处理，不感知知识状态机（SM-KNOWLEDGE-001），发布/草稿分支由上层编排。
+ *
  * @author IT工单系统研发组 - RAG专项
  */
 @Slf4j

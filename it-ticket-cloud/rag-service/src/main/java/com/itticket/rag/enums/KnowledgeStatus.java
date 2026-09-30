@@ -4,7 +4,8 @@ import com.baomidou.mybatisplus.annotation.EnumValue;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
- * 知识文章状态 —— 契约 SM-KNOWLEDGE-001 / PRD §16.3 值域：DRAFT / PENDING_REVIEW / PUBLISHED / OFFLINE。
+ * 知识文章状态 —— 契约 SM-KNOWLEDGE-001（specs/03-business-state-machine.md:90）/
+ * PRD §16.3（IT服务工单系统PRD-Ultimate.md:504）值域：DRAFT / PENDING_REVIEW / PUBLISHED / OFFLINE。
  *
  * <p>SUBMITTED / REVIEWED / ARCHIVED 为历史过渡值，仅为兼容既有数据保留，不参与状态流转；
  * 流转白名单由 {@link #isContracted()} 界定。</p>

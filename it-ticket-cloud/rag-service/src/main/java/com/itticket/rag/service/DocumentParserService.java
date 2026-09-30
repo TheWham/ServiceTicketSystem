@@ -27,6 +27,11 @@ import java.util.List;
  * 【支持格式】：
  * - Markdown 格式（.md、.markdown）
  * - 纯文本格式（.txt）
+ *
+ * 【规范关联】：
+ * 解析出的标题/正文经 KnowledgeContent 写入 knowledge_version.content 的
+ * title/summary/keywords/body 四键（权威数据模型，见 entity/KnowledgeVersion）；
+ * 本组件不感知知识状态机（SM-KNOWLEDGE-001 · specs/03-business-state-machine.md:90）。
  * 
  * @author IT工单系统研发组 - RAG专项
  */
