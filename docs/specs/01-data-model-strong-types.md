@@ -144,7 +144,8 @@ class CategoryRoute {
 }
 class FieldDefinition {
    String fieldDefinitionId; String categoryId; String fieldKey;
-  FieldType fieldType; boolean required; String optionsJson; int displayOrder; boolean enabled;
+   FieldType fieldType; boolean required; String optionsJson; int displayOrder; boolean enabled;
+   String definitionVersion;
 }
 ```
 

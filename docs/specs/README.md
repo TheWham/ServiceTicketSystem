@@ -6,7 +6,7 @@
 
 2026-09-29 后续强对齐修订以 PRD 2.2 第20/20.1节为准：工单 `nature` 与分类/草稿 `ticket_nature` 分属不同对象；咨询 `resolved_type`、流转 `event`、SLA `breach_at`、知识 `content`、AI `retrieved_versions/latency`、审计 `before_value/after_value` 在 DM、SQL、HTTP 和事件载荷中保持一致。曾发布的迁移脚本和历史版本记录保留原字段，不视为当前契约。
 
-文档门禁：`python -m unittest discover -s docs/tests -p 'test_*.py'`。检查 PRD 业务字段在 SQL 契约中的覆盖、关键 HTTP 字段和 JSON 示例；数据库独立门禁继续区分已实现模块与暂缓模块。文档检查不能替代完整业务验收。
+文档门禁：`python -m unittest discover -s docs/tests -p 'test_*.py'`。检查 PRD 业务字段在 SQL 契约和两套可执行入口中的覆盖、关键 HTTP 字段和 JSON 示例。2026-09-30 起两套初始化入口均对齐完整 41 表，取消初始化字段的暂缓例外；历史 34 表迁移单独验证。文档检查不能替代完整业务验收。
 
 | 契约 | 文件 | 唯一负责 | 不负责 |
 |---|---|---|---|

@@ -15,21 +15,21 @@ SELECT 'ticket.impact_description' AS contract_violation WHERE NOT EXISTS (SELEC
 UNION ALL
 SELECT 'ticket.urgency_description' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='urgency_description' AND LOWER(column_type)='text' AND is_nullable='NO')
 UNION ALL
-SELECT 'ticket.location' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='location' AND LOWER(column_type)='varchar(255)')
+SELECT 'ticket.location' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='location' AND LOWER(column_type)='varchar(255)' AND is_nullable='YES')
 UNION ALL
-SELECT 'ticket.contact' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='contact' AND LOWER(column_type)='varchar(255)')
+SELECT 'ticket.contact' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='contact' AND LOWER(column_type)='varchar(255)' AND is_nullable='YES')
 UNION ALL
-SELECT 'ticket.asset_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='asset_id' AND LOWER(column_type)='varchar(64)')
+SELECT 'ticket.asset_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='asset_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
 SELECT 'ticket.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='status' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
 SELECT 'ticket.priority' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='priority' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
-SELECT 'ticket.assignee_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='assignee_id' AND LOWER(column_type)='varchar(64)')
+SELECT 'ticket.assignee_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='assignee_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
-SELECT 'ticket.source_session_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='source_session_id' AND LOWER(column_type)='varchar(32)')
+SELECT 'ticket.source_session_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='source_session_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='YES')
 UNION ALL
-SELECT 'ticket.field_definition_snapshot' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='field_definition_snapshot' AND LOWER(column_type)='json')
+SELECT 'ticket.field_definition_snapshot' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='field_definition_snapshot' AND LOWER(column_type)='json' AND is_nullable='YES')
 UNION ALL
 SELECT 'ticket.version' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='version' AND LOWER(column_type)='bigint' AND is_nullable='NO')
 UNION ALL
@@ -37,9 +37,9 @@ SELECT 'ticket.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM
 UNION ALL
 SELECT 'ticket.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
-SELECT 'ticket.completed_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='completed_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'ticket.completed_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='completed_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'ticket.closed_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='closed_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'ticket.closed_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket' AND column_name='closed_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
 SELECT 'ticket:index(creator_id,status)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ticket' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='creator_id,status')
 UNION ALL
@@ -47,11 +47,31 @@ SELECT 'ticket:index(assignee_id,status)' AS contract_violation WHERE NOT EXISTS
 UNION ALL
 SELECT 'ticket:index(priority,status)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ticket' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='priority,status')
 UNION ALL
+SELECT 'ticket_field_value.ticket_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_field_value' AND column_name='ticket_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_field_value.field_definition_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_field_value' AND column_name='field_definition_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_field_value.field_key' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_field_value' AND column_name='field_key' AND LOWER(column_type)='varchar(128)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_field_value.field_definition_snapshot' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_field_value' AND column_name='field_definition_snapshot' AND LOWER(column_type)='json' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_field_value.field_value' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_field_value' AND column_name='field_value' AND LOWER(column_type)='json' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_field_value.definition_version' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_field_value' AND column_name='definition_version' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_field_value.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_field_value' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_field_value.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_field_value' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_field_value:index(ticket_id,field_definition_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ticket_field_value' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='ticket_id,field_definition_id')
+UNION ALL
+SELECT 'ticket_field_value:index(field_definition_id,field_key)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ticket_field_value' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='field_definition_id,field_key')
+UNION ALL
 SELECT 'ticket_transition.transition_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_transition' AND column_name='transition_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
 SELECT 'ticket_transition.ticket_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_transition' AND column_name='ticket_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
-SELECT 'ticket_transition.from_status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_transition' AND column_name='from_status' AND LOWER(column_type)='varchar(32)')
+SELECT 'ticket_transition.from_status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_transition' AND column_name='from_status' AND LOWER(column_type)='varchar(32)' AND is_nullable='YES')
 UNION ALL
 SELECT 'ticket_transition.to_status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_transition' AND column_name='to_status' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
@@ -59,13 +79,57 @@ SELECT 'ticket_transition.event' AS contract_violation WHERE NOT EXISTS (SELECT 
 UNION ALL
 SELECT 'ticket_transition.operator_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_transition' AND column_name='operator_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
-SELECT 'ticket_transition.reason' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_transition' AND column_name='reason' AND LOWER(column_type)='text')
+SELECT 'ticket_transition.reason' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_transition' AND column_name='reason' AND LOWER(column_type)='text' AND is_nullable='YES')
 UNION ALL
 SELECT 'ticket_transition.occurred_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_transition' AND column_name='occurred_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_transition.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_transition' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_transition.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_transition' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
 SELECT 'ticket_transition:index(ticket_id,occurred_at,transition_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ticket_transition' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='ticket_id,occurred_at,transition_id')
 UNION ALL
 SELECT 'ticket_transition:index(ticket_id,occurred_at)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ticket_transition' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='ticket_id,occurred_at')
+UNION ALL
+SELECT 'ticket_duplicate.relation_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_duplicate' AND column_name='relation_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_duplicate.source_ticket_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_duplicate' AND column_name='source_ticket_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_duplicate.master_ticket_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_duplicate' AND column_name='master_ticket_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_duplicate.reason' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_duplicate' AND column_name='reason' AND LOWER(column_type)='varchar(2000)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_duplicate.created_by' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_duplicate' AND column_name='created_by' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_duplicate.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_duplicate' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_duplicate.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_duplicate' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_duplicate:index(source_ticket_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ticket_duplicate' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='source_ticket_id')
+UNION ALL
+SELECT 'attachment_access.access_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment_access' AND column_name='access_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment_access.attachment_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment_access' AND column_name='attachment_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment_access.subject_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment_access' AND column_name='subject_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment_access.request_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment_access' AND column_name='request_id' AND LOWER(column_type)='varchar(128)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment_access.expires_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment_access' AND column_name='expires_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment_access.accessed_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment_access' AND column_name='accessed_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
+UNION ALL
+SELECT 'attachment_access.access_result' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment_access' AND column_name='access_result' AND LOWER(column_type)='varchar(32)' AND is_nullable='YES')
+UNION ALL
+SELECT 'attachment_access.revoked_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment_access' AND column_name='revoked_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
+UNION ALL
+SELECT 'attachment_access.issued_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment_access' AND column_name='issued_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment_access.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment_access' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment_access.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment_access' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment_access:index(attachment_id,subject_id,expires_at)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='attachment_access' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='attachment_id,subject_id,expires_at')
 UNION ALL
 SELECT 'service_calendar.calendar_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='service_calendar' AND column_name='calendar_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
@@ -81,7 +145,7 @@ SELECT 'service_calendar.version' AS contract_violation WHERE NOT EXISTS (SELECT
 UNION ALL
 SELECT 'service_calendar.effective_from' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='service_calendar' AND column_name='effective_from' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
-SELECT 'service_calendar.effective_to' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='service_calendar' AND column_name='effective_to' AND LOWER(column_type)='datetime(6)')
+SELECT 'service_calendar.effective_to' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='service_calendar' AND column_name='effective_to' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
 SELECT 'service_calendar.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='service_calendar' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
@@ -97,6 +161,10 @@ SELECT 'calendar_holiday.name' AS contract_violation WHERE NOT EXISTS (SELECT 1 
 UNION ALL
 SELECT 'calendar_holiday.is_working_day' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='calendar_holiday' AND column_name='is_working_day' AND LOWER(column_type)='tinyint(1)' AND is_nullable='NO')
 UNION ALL
+SELECT 'calendar_holiday.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='calendar_holiday' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'calendar_holiday.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='calendar_holiday' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
 SELECT 'calendar_holiday:index(calendar_id,holiday_date)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='calendar_holiday' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='calendar_id,holiday_date')
 UNION ALL
 SELECT 'exception_queue.exception_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='exception_queue' AND column_name='exception_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
@@ -109,15 +177,15 @@ SELECT 'exception_queue.reason_code' AS contract_violation WHERE NOT EXISTS (SEL
 UNION ALL
 SELECT 'exception_queue.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='exception_queue' AND column_name='status' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
-SELECT 'exception_queue.claimed_by' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='exception_queue' AND column_name='claimed_by' AND LOWER(column_type)='varchar(64)')
+SELECT 'exception_queue.claimed_by' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='exception_queue' AND column_name='claimed_by' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
-SELECT 'exception_queue.claimed_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='exception_queue' AND column_name='claimed_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'exception_queue.claimed_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='exception_queue' AND column_name='claimed_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'exception_queue.resolved_by' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='exception_queue' AND column_name='resolved_by' AND LOWER(column_type)='varchar(64)')
+SELECT 'exception_queue.resolved_by' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='exception_queue' AND column_name='resolved_by' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
-SELECT 'exception_queue.resolved_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='exception_queue' AND column_name='resolved_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'exception_queue.resolved_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='exception_queue' AND column_name='resolved_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'exception_queue.reason' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='exception_queue' AND column_name='reason' AND LOWER(column_type)='text')
+SELECT 'exception_queue.reason' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='exception_queue' AND column_name='reason' AND LOWER(column_type)='text' AND is_nullable='YES')
 UNION ALL
 SELECT 'exception_queue.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='exception_queue' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
@@ -126,6 +194,34 @@ UNION ALL
 SELECT 'exception_queue:index(status,created_at)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='exception_queue' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='status,created_at')
 UNION ALL
 SELECT 'exception_queue:index(object_type,object_id,reason_code,status)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='exception_queue' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='object_type,object_id,reason_code,status')
+UNION ALL
+SELECT 'outbox_delivery.delivery_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_delivery' AND column_name='delivery_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'outbox_delivery.event_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_delivery' AND column_name='event_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'outbox_delivery.stream_name' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_delivery' AND column_name='stream_name' AND LOWER(column_type)='varchar(128)' AND is_nullable='NO')
+UNION ALL
+SELECT 'outbox_delivery.consumer_group' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_delivery' AND column_name='consumer_group' AND LOWER(column_type)='varchar(128)' AND is_nullable='NO')
+UNION ALL
+SELECT 'outbox_delivery.entry_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_delivery' AND column_name='entry_id' AND LOWER(column_type)='varchar(128)' AND is_nullable='YES')
+UNION ALL
+SELECT 'outbox_delivery.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_delivery' AND column_name='status' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'outbox_delivery.attempts' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_delivery' AND column_name='attempts' AND LOWER(column_type)='int' AND is_nullable='NO')
+UNION ALL
+SELECT 'outbox_delivery.last_error' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_delivery' AND column_name='last_error' AND LOWER(column_type)='varchar(1000)' AND is_nullable='YES')
+UNION ALL
+SELECT 'outbox_delivery.next_attempt_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_delivery' AND column_name='next_attempt_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
+UNION ALL
+SELECT 'outbox_delivery.acked_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_delivery' AND column_name='acked_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
+UNION ALL
+SELECT 'outbox_delivery.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_delivery' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'outbox_delivery.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_delivery' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'outbox_delivery:index(event_id,consumer_group)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='outbox_delivery' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='event_id,consumer_group')
+UNION ALL
+SELECT 'outbox_delivery:index(status,next_attempt_at)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='outbox_delivery' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='status,next_attempt_at')
 UNION ALL
 SELECT 'user.user_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='user' AND column_name='user_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
@@ -139,7 +235,7 @@ SELECT 'user.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM infor
 UNION ALL
 SELECT 'user.identity_source' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='user' AND column_name='identity_source' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
-SELECT 'user.last_identity_sync_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='user' AND column_name='last_identity_sync_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'user.last_identity_sync_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='user' AND column_name='last_identity_sync_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
 SELECT 'user.version' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='user' AND column_name='version' AND LOWER(column_type)='bigint' AND is_nullable='NO')
 UNION ALL
@@ -161,7 +257,7 @@ SELECT 'user_role.granted_by' AS contract_violation WHERE NOT EXISTS (SELECT 1 F
 UNION ALL
 SELECT 'user_role.granted_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='user_role' AND column_name='granted_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
-SELECT 'user_role.revoked_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='user_role' AND column_name='revoked_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'user_role.revoked_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='user_role' AND column_name='revoked_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
 SELECT 'user_role.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='user_role' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
@@ -193,7 +289,7 @@ SELECT 'team_member.engineer_id' AS contract_violation WHERE NOT EXISTS (SELECT 
 UNION ALL
 SELECT 'team_member.joined_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='team_member' AND column_name='joined_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
-SELECT 'team_member.left_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='team_member' AND column_name='left_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'team_member.left_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='team_member' AND column_name='left_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
 SELECT 'team_member.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='team_member' AND column_name='status' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
@@ -209,9 +305,9 @@ SELECT 'engineer_runtime_state.engineer_id' AS contract_violation WHERE NOT EXIS
 UNION ALL
 SELECT 'engineer_runtime_state.presence' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='engineer_runtime_state' AND column_name='presence' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
-SELECT 'engineer_runtime_state.last_activity_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='engineer_runtime_state' AND column_name='last_activity_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'engineer_runtime_state.last_activity_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='engineer_runtime_state' AND column_name='last_activity_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'engineer_runtime_state.last_assigned_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='engineer_runtime_state' AND column_name='last_assigned_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'engineer_runtime_state.last_assigned_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='engineer_runtime_state' AND column_name='last_assigned_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
 SELECT 'engineer_runtime_state.version' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='engineer_runtime_state' AND column_name='version' AND LOWER(column_type)='bigint' AND is_nullable='NO')
 UNION ALL
@@ -231,7 +327,7 @@ SELECT 'engineer_category_capability.enabled' AS contract_violation WHERE NOT EX
 UNION ALL
 SELECT 'engineer_category_capability.effective_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='engineer_category_capability' AND column_name='effective_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
-SELECT 'engineer_category_capability.expired_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='engineer_category_capability' AND column_name='expired_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'engineer_category_capability.expired_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='engineer_category_capability' AND column_name='expired_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
 SELECT 'engineer_category_capability.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='engineer_category_capability' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
@@ -243,7 +339,7 @@ SELECT 'engineer_category_capability:index(category_id,team_id,enabled)' AS cont
 UNION ALL
 SELECT 'category.category_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category' AND column_name='category_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
-SELECT 'category.parent_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category' AND column_name='parent_id' AND LOWER(column_type)='varchar(64)')
+SELECT 'category.parent_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category' AND column_name='parent_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
 SELECT 'category.ticket_nature' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category' AND column_name='ticket_nature' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
@@ -271,7 +367,7 @@ SELECT 'category_route.route_order' AS contract_violation WHERE NOT EXISTS (SELE
 UNION ALL
 SELECT 'category_route.effective_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category_route' AND column_name='effective_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
-SELECT 'category_route.expired_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category_route' AND column_name='expired_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'category_route.expired_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category_route' AND column_name='expired_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
 SELECT 'category_route.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category_route' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
@@ -281,23 +377,49 @@ SELECT 'category_route:index(category_id,team_id,effective_at)' AS contract_viol
 UNION ALL
 SELECT 'category_route:index(category_id,route_order,effective_at)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='category_route' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='category_id,route_order,effective_at')
 UNION ALL
+SELECT 'field_definition.field_definition_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='field_definition' AND column_name='field_definition_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'field_definition.category_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='field_definition' AND column_name='category_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'field_definition.field_key' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='field_definition' AND column_name='field_key' AND LOWER(column_type)='varchar(128)' AND is_nullable='NO')
+UNION ALL
+SELECT 'field_definition.field_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='field_definition' AND column_name='field_type' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'field_definition.required' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='field_definition' AND column_name='required' AND LOWER(column_type)='tinyint(1)' AND is_nullable='NO')
+UNION ALL
+SELECT 'field_definition.options_json' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='field_definition' AND column_name='options_json' AND LOWER(column_type)='json' AND is_nullable='YES')
+UNION ALL
+SELECT 'field_definition.display_order' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='field_definition' AND column_name='display_order' AND LOWER(column_type)='int' AND is_nullable='NO')
+UNION ALL
+SELECT 'field_definition.enabled' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='field_definition' AND column_name='enabled' AND LOWER(column_type)='tinyint(1)' AND is_nullable='NO')
+UNION ALL
+SELECT 'field_definition.definition_version' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='field_definition' AND column_name='definition_version' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'field_definition.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='field_definition' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'field_definition.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='field_definition' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'field_definition:index(category_id,field_key,definition_version)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='field_definition' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='category_id,field_key,definition_version')
+UNION ALL
+SELECT 'field_definition:index(category_id,enabled,display_order)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='field_definition' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='category_id,enabled,display_order')
+UNION ALL
 SELECT 'consultation.session_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation' AND column_name='session_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
 SELECT 'consultation.creator_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation' AND column_name='creator_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
-SELECT 'consultation.category_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation' AND column_name='category_id' AND LOWER(column_type)='varchar(64)')
+SELECT 'consultation.category_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation' AND column_name='category_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
 SELECT 'consultation.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation' AND column_name='status' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
-SELECT 'consultation.current_engineer_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation' AND column_name='current_engineer_id' AND LOWER(column_type)='varchar(64)')
+SELECT 'consultation.current_engineer_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation' AND column_name='current_engineer_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
 SELECT 'consultation.source' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation' AND column_name='source' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
-SELECT 'consultation.resolved_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation' AND column_name='resolved_type' AND LOWER(column_type)='varchar(32)')
+SELECT 'consultation.resolved_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation' AND column_name='resolved_type' AND LOWER(column_type)='varchar(32)' AND is_nullable='YES')
 UNION ALL
-SELECT 'consultation.converted_ticket_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation' AND column_name='converted_ticket_id' AND LOWER(column_type)='varchar(32)')
+SELECT 'consultation.converted_ticket_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation' AND column_name='converted_ticket_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='YES')
 UNION ALL
-SELECT 'consultation.closed_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation' AND column_name='closed_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'consultation.closed_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation' AND column_name='closed_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
 SELECT 'consultation.version' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation' AND column_name='version' AND LOWER(column_type)='bigint' AND is_nullable='NO')
 UNION ALL
@@ -313,7 +435,7 @@ SELECT 'consultation_message.message_id' AS contract_violation WHERE NOT EXISTS 
 UNION ALL
 SELECT 'consultation_message.session_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation_message' AND column_name='session_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
-SELECT 'consultation_message.sender_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation_message' AND column_name='sender_id' AND LOWER(column_type)='varchar(64)')
+SELECT 'consultation_message.sender_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation_message' AND column_name='sender_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
 SELECT 'consultation_message.sender_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation_message' AND column_name='sender_type' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
@@ -321,13 +443,13 @@ SELECT 'consultation_message.client_message_id' AS contract_violation WHERE NOT 
 UNION ALL
 SELECT 'consultation_message.content' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation_message' AND column_name='content' AND LOWER(column_type)='mediumtext' AND is_nullable='NO')
 UNION ALL
-SELECT 'consultation_message.citation_json' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation_message' AND column_name='citation_json' AND LOWER(column_type)='json')
+SELECT 'consultation_message.citation_json' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation_message' AND column_name='citation_json' AND LOWER(column_type)='json' AND is_nullable='YES')
 UNION ALL
 SELECT 'consultation_message.sent_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation_message' AND column_name='sent_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
-SELECT 'consultation_message.withdrawn_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation_message' AND column_name='withdrawn_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'consultation_message.withdrawn_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation_message' AND column_name='withdrawn_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'consultation_message.withdraw_reason' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation_message' AND column_name='withdraw_reason' AND LOWER(column_type)='varchar(2000)')
+SELECT 'consultation_message.withdraw_reason' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation_message' AND column_name='withdraw_reason' AND LOWER(column_type)='varchar(2000)' AND is_nullable='YES')
 UNION ALL
 SELECT 'consultation_message.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='consultation_message' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
@@ -337,13 +459,39 @@ SELECT 'consultation_message:index(session_id,sent_at,message_id)' AS contract_v
 UNION ALL
 SELECT 'consultation_message:index(session_id,client_message_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='consultation_message' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='session_id,client_message_id')
 UNION ALL
+SELECT 'ticket_message.message_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='message_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_message.ticket_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='ticket_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_message.sender_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='sender_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
+UNION ALL
+SELECT 'ticket_message.sender_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='sender_type' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_message.client_message_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='client_message_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_message.content' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='content' AND LOWER(column_type)='mediumtext' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_message.sent_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='sent_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_message.withdrawn_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='withdrawn_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
+UNION ALL
+SELECT 'ticket_message.withdraw_reason' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='withdraw_reason' AND LOWER(column_type)='varchar(2000)' AND is_nullable='YES')
+UNION ALL
+SELECT 'ticket_message.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_message.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_message:index(ticket_id,sent_at,message_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ticket_message' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='ticket_id,sent_at,message_id')
+UNION ALL
+SELECT 'ticket_message:index(ticket_id,client_message_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ticket_message' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='ticket_id,client_message_id')
+UNION ALL
 SELECT 'ticket_draft.draft_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_draft' AND column_name='draft_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
 SELECT 'ticket_draft.creator_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_draft' AND column_name='creator_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
-SELECT 'ticket_draft.ticket_nature' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_draft' AND column_name='ticket_nature' AND LOWER(column_type)='varchar(32)')
+SELECT 'ticket_draft.ticket_nature' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_draft' AND column_name='ticket_nature' AND LOWER(column_type)='varchar(32)' AND is_nullable='YES')
 UNION ALL
-SELECT 'ticket_draft.category_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_draft' AND column_name='category_id' AND LOWER(column_type)='varchar(64)')
+SELECT 'ticket_draft.category_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_draft' AND column_name='category_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
 SELECT 'ticket_draft.payload_json' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_draft' AND column_name='payload_json' AND LOWER(column_type)='json' AND is_nullable='NO')
 UNION ALL
@@ -359,6 +507,124 @@ SELECT 'ticket_draft.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 
 UNION ALL
 SELECT 'ticket_draft:index(creator_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ticket_draft' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='creator_id')
 UNION ALL
+SELECT 'supplement_request.request_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='supplement_request' AND column_name='request_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'supplement_request.ticket_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='supplement_request' AND column_name='ticket_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'supplement_request.sequence_no' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='supplement_request' AND column_name='sequence_no' AND LOWER(column_type)='int' AND is_nullable='NO')
+UNION ALL
+SELECT 'supplement_request.requested_by' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='supplement_request' AND column_name='requested_by' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'supplement_request.content' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='supplement_request' AND column_name='content' AND LOWER(column_type)='text' AND is_nullable='NO')
+UNION ALL
+SELECT 'supplement_request.requested_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='supplement_request' AND column_name='requested_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'supplement_request.responded_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='supplement_request' AND column_name='responded_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
+UNION ALL
+SELECT 'supplement_request.overdue_closed' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='supplement_request' AND column_name='overdue_closed' AND LOWER(column_type)='tinyint(1)' AND is_nullable='NO')
+UNION ALL
+SELECT 'supplement_request.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='supplement_request' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'supplement_request.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='supplement_request' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'supplement_request:index(ticket_id,sequence_no)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='supplement_request' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='ticket_id,sequence_no')
+UNION ALL
+SELECT 'external_wait.wait_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='external_wait' AND column_name='wait_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'external_wait.ticket_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='external_wait' AND column_name='ticket_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'external_wait.dependency_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='external_wait' AND column_name='dependency_type' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'external_wait.reason' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='external_wait' AND column_name='reason' AND LOWER(column_type)='varchar(2000)' AND is_nullable='NO')
+UNION ALL
+SELECT 'external_wait.expected_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='external_wait' AND column_name='expected_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'external_wait.started_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='external_wait' AND column_name='started_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'external_wait.ended_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='external_wait' AND column_name='ended_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
+UNION ALL
+SELECT 'external_wait.resume_note' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='external_wait' AND column_name='resume_note' AND LOWER(column_type)='varchar(2000)' AND is_nullable='YES')
+UNION ALL
+SELECT 'external_wait.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='external_wait' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'external_wait.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='external_wait' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'external_wait:index(ticket_id,started_at)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='external_wait' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='ticket_id,started_at')
+UNION ALL
+SELECT 'ticket_resolution.resolution_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_resolution' AND column_name='resolution_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_resolution.ticket_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_resolution' AND column_name='ticket_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_resolution.solution' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_resolution' AND column_name='solution' AND LOWER(column_type)='mediumtext' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_resolution.verification' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_resolution' AND column_name='verification' AND LOWER(column_type)='text' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_resolution.submitted_by' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_resolution' AND column_name='submitted_by' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_resolution.submitted_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_resolution' AND column_name='submitted_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_resolution.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_resolution' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_resolution.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_resolution' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_resolution:index(ticket_id,submitted_at)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ticket_resolution' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='ticket_id,submitted_at')
+UNION ALL
+SELECT 'ticket_acceptance.acceptance_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_acceptance' AND column_name='acceptance_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_acceptance.ticket_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_acceptance' AND column_name='ticket_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_acceptance.result' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_acceptance' AND column_name='result' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_acceptance.reason' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_acceptance' AND column_name='reason' AND LOWER(column_type)='varchar(2000)' AND is_nullable='YES')
+UNION ALL
+SELECT 'ticket_acceptance.operator_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_acceptance' AND column_name='operator_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
+UNION ALL
+SELECT 'ticket_acceptance.occurred_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_acceptance' AND column_name='occurred_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_acceptance.rating_score' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_acceptance' AND column_name='rating_score' AND LOWER(column_type)='tinyint' AND is_nullable='YES')
+UNION ALL
+SELECT 'ticket_acceptance.rating_comment' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_acceptance' AND column_name='rating_comment' AND LOWER(column_type)='varchar(2000)' AND is_nullable='YES')
+UNION ALL
+SELECT 'ticket_acceptance.rated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_acceptance' AND column_name='rated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
+UNION ALL
+SELECT 'ticket_acceptance.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_acceptance' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_acceptance.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_acceptance' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'ticket_acceptance:index(ticket_id,occurred_at)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ticket_acceptance' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='ticket_id,occurred_at')
+UNION ALL
+SELECT 'attachment.attachment_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='attachment_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment.biz_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='biz_type' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment.biz_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='biz_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment.uploader_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='uploader_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment.object_key' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='object_key' AND LOWER(column_type)='varchar(512)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment.file_name' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='file_name' AND LOWER(column_type)='varchar(255)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment.size' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='size' AND LOWER(column_type)='bigint' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment.hash' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='hash' AND LOWER(column_type)='char(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment.content_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='content_type' AND LOWER(column_type)='varchar(255)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment.scan_status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='scan_status' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment.uploaded_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='uploaded_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment.withdrawn_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='withdrawn_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
+UNION ALL
+SELECT 'attachment.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'attachment:index(biz_type,biz_id,hash)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='attachment' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='biz_type,biz_id,hash')
+UNION ALL
+SELECT 'attachment:index(object_key)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='attachment' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='object_key')
+UNION ALL
 SELECT 'assignment.assignment_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='assignment' AND column_name='assignment_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
 SELECT 'assignment.biz_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='assignment' AND column_name='biz_type' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
@@ -369,15 +635,17 @@ SELECT 'assignment.engineer_id' AS contract_violation WHERE NOT EXISTS (SELECT 1
 UNION ALL
 SELECT 'assignment.assigned_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='assignment' AND column_name='assigned_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
-SELECT 'assignment.response_deadline' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='assignment' AND column_name='response_deadline' AND LOWER(column_type)='datetime(6)')
+SELECT 'assignment.response_deadline' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='assignment' AND column_name='response_deadline' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'assignment.responded_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='assignment' AND column_name='responded_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'assignment.responded_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='assignment' AND column_name='responded_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'assignment.end_reason' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='assignment' AND column_name='end_reason' AND LOWER(column_type)='varchar(32)')
+SELECT 'assignment.end_reason' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='assignment' AND column_name='end_reason' AND LOWER(column_type)='varchar(32)' AND is_nullable='YES')
 UNION ALL
 SELECT 'assignment.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='assignment' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
 SELECT 'assignment.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='assignment' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'assignment:index(biz_type,biz_id,engineer_id,assigned_at)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='assignment' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='biz_type,biz_id,engineer_id,assigned_at')
 UNION ALL
 SELECT 'assignment:index(biz_type,biz_id,assigned_at)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='assignment' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='biz_type,biz_id,assigned_at')
 UNION ALL
@@ -385,7 +653,7 @@ SELECT 'assignment:index(engineer_id,end_reason)' AS contract_violation WHERE NO
 UNION ALL
 SELECT 'sla_instance.sla_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sla_instance' AND column_name='sla_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
-SELECT 'sla_instance.ticket_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sla_instance' AND column_name='ticket_id' AND LOWER(column_type)='varchar(32)')
+SELECT 'sla_instance.ticket_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sla_instance' AND column_name='ticket_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='YES')
 UNION ALL
 SELECT 'sla_instance.biz_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sla_instance' AND column_name='biz_type' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
@@ -401,11 +669,11 @@ SELECT 'sla_instance.elapsed_work_seconds' AS contract_violation WHERE NOT EXIST
 UNION ALL
 SELECT 'sla_instance.paused_seconds' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sla_instance' AND column_name='paused_seconds' AND LOWER(column_type)='bigint' AND is_nullable='NO')
 UNION ALL
-SELECT 'sla_instance.target_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sla_instance' AND column_name='target_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'sla_instance.target_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sla_instance' AND column_name='target_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'sla_instance.breach_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sla_instance' AND column_name='breach_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'sla_instance.breach_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sla_instance' AND column_name='breach_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'sla_instance.met_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sla_instance' AND column_name='met_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'sla_instance.met_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sla_instance' AND column_name='met_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
 SELECT 'sla_instance.calendar_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sla_instance' AND column_name='calendar_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
@@ -431,7 +699,7 @@ SELECT 'sla_pause.reason_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 
 UNION ALL
 SELECT 'sla_pause.started_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sla_pause' AND column_name='started_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
-SELECT 'sla_pause.ended_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sla_pause' AND column_name='ended_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'sla_pause.ended_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sla_pause' AND column_name='ended_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
 SELECT 'sla_pause.operator_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sla_pause' AND column_name='operator_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
@@ -455,11 +723,11 @@ SELECT 'notification.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FR
 UNION ALL
 SELECT 'notification.attempts' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='notification' AND column_name='attempts' AND LOWER(column_type)='int' AND is_nullable='NO')
 UNION ALL
-SELECT 'notification.last_error' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='notification' AND column_name='last_error' AND LOWER(column_type)='varchar(1000)')
+SELECT 'notification.last_error' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='notification' AND column_name='last_error' AND LOWER(column_type)='varchar(1000)' AND is_nullable='YES')
 UNION ALL
-SELECT 'notification.sent_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='notification' AND column_name='sent_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'notification.sent_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='notification' AND column_name='sent_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'notification.read_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='notification' AND column_name='read_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'notification.read_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='notification' AND column_name='read_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
 SELECT 'notification.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='notification' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
@@ -471,7 +739,7 @@ SELECT 'notification:index(receiver_id,status)' AS contract_violation WHERE NOT 
 UNION ALL
 SELECT 'audit_log.audit_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='audit_log' AND column_name='audit_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
-SELECT 'audit_log.actor_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='audit_log' AND column_name='actor_id' AND LOWER(column_type)='varchar(64)')
+SELECT 'audit_log.actor_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='audit_log' AND column_name='actor_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
 SELECT 'audit_log.action' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='audit_log' AND column_name='action' AND LOWER(column_type)='varchar(128)' AND is_nullable='NO')
 UNION ALL
@@ -479,11 +747,11 @@ SELECT 'audit_log.object_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 
 UNION ALL
 SELECT 'audit_log.object_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='audit_log' AND column_name='object_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
-SELECT 'audit_log.before_value' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='audit_log' AND column_name='before_value' AND LOWER(column_type)='json')
+SELECT 'audit_log.before_value' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='audit_log' AND column_name='before_value' AND LOWER(column_type)='json' AND is_nullable='YES')
 UNION ALL
-SELECT 'audit_log.after_value' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='audit_log' AND column_name='after_value' AND LOWER(column_type)='json')
+SELECT 'audit_log.after_value' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='audit_log' AND column_name='after_value' AND LOWER(column_type)='json' AND is_nullable='YES')
 UNION ALL
-SELECT 'audit_log.reason' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='audit_log' AND column_name='reason' AND LOWER(column_type)='varchar(2000)')
+SELECT 'audit_log.reason' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='audit_log' AND column_name='reason' AND LOWER(column_type)='varchar(2000)' AND is_nullable='YES')
 UNION ALL
 SELECT 'audit_log.request_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='audit_log' AND column_name='request_id' AND LOWER(column_type)='varchar(128)' AND is_nullable='NO')
 UNION ALL
@@ -509,7 +777,7 @@ SELECT 'idempotency_record.request_hash' AS contract_violation WHERE NOT EXISTS 
 UNION ALL
 SELECT 'idempotency_record.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='idempotency_record' AND column_name='status' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
-SELECT 'idempotency_record.result_json' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='idempotency_record' AND column_name='result_json' AND LOWER(column_type)='json')
+SELECT 'idempotency_record.result_json' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='idempotency_record' AND column_name='result_json' AND LOWER(column_type)='json' AND is_nullable='YES')
 UNION ALL
 SELECT 'idempotency_record.expires_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='idempotency_record' AND column_name='expires_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
@@ -539,9 +807,9 @@ SELECT 'outbox_event.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FR
 UNION ALL
 SELECT 'outbox_event.attempts' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_event' AND column_name='attempts' AND LOWER(column_type)='int' AND is_nullable='NO')
 UNION ALL
-SELECT 'outbox_event.next_attempt_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_event' AND column_name='next_attempt_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'outbox_event.next_attempt_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_event' AND column_name='next_attempt_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'outbox_event.published_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_event' AND column_name='published_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'outbox_event.published_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_event' AND column_name='published_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
 SELECT 'outbox_event.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='outbox_event' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
@@ -551,11 +819,31 @@ SELECT 'outbox_event:index(status,next_attempt_at)' AS contract_violation WHERE 
 UNION ALL
 SELECT 'outbox_event:index(aggregate_type,aggregate_id,aggregate_version)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='outbox_event' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='aggregate_type,aggregate_id,aggregate_version')
 UNION ALL
+SELECT 'case_candidate.case_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='case_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'case_candidate.source_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='source_type' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'case_candidate.source_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='source_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'case_candidate.structured_content' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='structured_content' AND LOWER(column_type)='json' AND is_nullable='NO')
+UNION ALL
+SELECT 'case_candidate.masking_status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='masking_status' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'case_candidate.reusable_flag' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='reusable_flag' AND LOWER(column_type)='tinyint(1)' AND is_nullable='NO')
+UNION ALL
+SELECT 'case_candidate.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='status' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'case_candidate.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'case_candidate.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'case_candidate:index(source_type,source_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='case_candidate' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='source_type,source_id')
+UNION ALL
 SELECT 'knowledge_article.article_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_article' AND column_name='article_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
 SELECT 'knowledge_article.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_article' AND column_name='status' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
-SELECT 'knowledge_article.current_version_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_article' AND column_name='current_version_id' AND LOWER(column_type)='varchar(64)')
+SELECT 'knowledge_article.current_version_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_article' AND column_name='current_version_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
 SELECT 'knowledge_article.category_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_article' AND column_name='category_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
@@ -579,23 +867,35 @@ SELECT 'knowledge_version.content' AS contract_violation WHERE NOT EXISTS (SELEC
 UNION ALL
 SELECT 'knowledge_version.author_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_version' AND column_name='author_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
-SELECT 'knowledge_version.reviewer_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_version' AND column_name='reviewer_id' AND LOWER(column_type)='varchar(64)')
+SELECT 'knowledge_version.reviewer_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_version' AND column_name='reviewer_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
-SELECT 'knowledge_version.published_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_version' AND column_name='published_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'knowledge_version.published_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_version' AND column_name='published_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'knowledge_version.change_note' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_version' AND column_name='change_note' AND LOWER(column_type)='varchar(2000)')
+SELECT 'knowledge_version.change_note' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_version' AND column_name='change_note' AND LOWER(column_type)='varchar(2000)' AND is_nullable='YES')
 UNION ALL
-SELECT 'knowledge_version.platform_reviewer_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_version' AND column_name='platform_reviewer_id' AND LOWER(column_type)='varchar(64)')
+SELECT 'knowledge_version.platform_reviewer_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_version' AND column_name='platform_reviewer_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
-SELECT 'knowledge_version.platform_reviewed_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_version' AND column_name='platform_reviewed_at' AND LOWER(column_type)='datetime(6)')
+SELECT 'knowledge_version.platform_reviewed_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_version' AND column_name='platform_reviewed_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'knowledge_version.platform_review_decision' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_version' AND column_name='platform_review_decision' AND LOWER(column_type)='varchar(32)')
+SELECT 'knowledge_version.platform_review_decision' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_version' AND column_name='platform_review_decision' AND LOWER(column_type)='varchar(32)' AND is_nullable='YES')
 UNION ALL
 SELECT 'knowledge_version.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_version' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
 SELECT 'knowledge_version.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_version' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
 SELECT 'knowledge_version:index(article_id,version_no)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='knowledge_version' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='article_id,version_no')
+UNION ALL
+SELECT 'knowledge_cluster.cluster_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_cluster' AND column_name='cluster_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+UNION ALL
+SELECT 'knowledge_cluster.similarity_basis' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_cluster' AND column_name='similarity_basis' AND LOWER(column_type)='json' AND is_nullable='NO')
+UNION ALL
+SELECT 'knowledge_cluster.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_cluster' AND column_name='status' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+UNION ALL
+SELECT 'knowledge_cluster.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_cluster' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'knowledge_cluster.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_cluster' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
+UNION ALL
+SELECT 'knowledge_cluster:index(status)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='knowledge_cluster' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='status')
 UNION ALL
 SELECT 'ai_interaction.interaction_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_interaction' AND column_name='interaction_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
@@ -605,9 +905,9 @@ SELECT 'ai_interaction.model_version' AS contract_violation WHERE NOT EXISTS (SE
 UNION ALL
 SELECT 'ai_interaction.retrieved_versions' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_interaction' AND column_name='retrieved_versions' AND LOWER(column_type)='json' AND is_nullable='NO')
 UNION ALL
-SELECT 'ai_interaction.confidence' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_interaction' AND column_name='confidence' AND LOWER(column_type)='decimal(8,4)')
+SELECT 'ai_interaction.confidence' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_interaction' AND column_name='confidence' AND LOWER(column_type)='decimal(8,4)' AND is_nullable='YES')
 UNION ALL
-SELECT 'ai_interaction.feedback' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_interaction' AND column_name='feedback' AND LOWER(column_type)='varchar(32)')
+SELECT 'ai_interaction.feedback' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_interaction' AND column_name='feedback' AND LOWER(column_type)='varchar(32)' AND is_nullable='YES')
 UNION ALL
 SELECT 'ai_interaction.latency' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_interaction' AND column_name='latency' AND LOWER(column_type)='bigint' AND is_nullable='NO')
 UNION ALL
@@ -619,142 +919,86 @@ SELECT 'ai_interaction.updated_at' AS contract_violation WHERE NOT EXISTS (SELEC
 UNION ALL
 SELECT 'ai_interaction:index(session_id,occurred_at)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ai_interaction' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='session_id,occurred_at')
 UNION ALL
-SELECT 'attachment.attachment_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='attachment_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+SELECT 'ai_provider_config.provider_config_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='provider_config_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
-SELECT 'attachment.biz_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='biz_type' AND LOWER(column_type)='varchar(16)' AND is_nullable='NO')
+SELECT 'ai_provider_config.provider_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='provider_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
-SELECT 'attachment.biz_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='biz_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+SELECT 'ai_provider_config.config_version' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='config_version' AND LOWER(column_type)='bigint' AND is_nullable='NO')
 UNION ALL
-SELECT 'attachment.uploader_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='uploader_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+SELECT 'ai_provider_config.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='status' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
-SELECT 'attachment.file_name' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='file_name' AND LOWER(column_type)='varchar(255)' AND is_nullable='NO')
+SELECT 'ai_provider_config.base_url' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='base_url' AND LOWER(column_type)='varchar(512)' AND is_nullable='NO')
 UNION ALL
-SELECT 'attachment.size' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='size' AND LOWER(column_type)='bigint' AND is_nullable='NO')
+SELECT 'ai_provider_config.api_key_secret_ref' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='api_key_secret_ref' AND LOWER(column_type)='varchar(255)' AND is_nullable='NO')
 UNION ALL
-SELECT 'attachment.hash' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='hash' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+SELECT 'ai_provider_config.model' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='model' AND LOWER(column_type)='varchar(128)' AND is_nullable='NO')
 UNION ALL
-SELECT 'attachment.scan_status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='scan_status' AND LOWER(column_type)='varchar(16)' AND is_nullable='NO')
+SELECT 'ai_provider_config.embedding_model' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='embedding_model' AND LOWER(column_type)='varchar(128)' AND is_nullable='YES')
 UNION ALL
-SELECT 'attachment.withdrawn_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='withdrawn_at' AND LOWER(column_type)='datetime')
+SELECT 'ai_provider_config.protocol_version' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='protocol_version' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
-SELECT 'attachment.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='attachment' AND column_name='created_at' AND LOWER(column_type)='datetime' AND is_nullable='NO')
+SELECT 'ai_provider_config.path_json' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='path_json' AND LOWER(column_type)='json' AND is_nullable='NO')
 UNION ALL
-SELECT 'attachment:index(attachment_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='attachment' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='attachment_id')
+SELECT 'ai_provider_config.capability_json' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='capability_json' AND LOWER(column_type)='json' AND is_nullable='NO')
 UNION ALL
-SELECT 'attachment:index(biz_type,biz_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='attachment' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='biz_type,biz_id')
+SELECT 'ai_provider_config.timeout_json' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='timeout_json' AND LOWER(column_type)='json' AND is_nullable='NO')
 UNION ALL
-SELECT 'case_candidate.case_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='case_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+SELECT 'ai_provider_config.generation_json' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='generation_json' AND LOWER(column_type)='json' AND is_nullable='NO')
 UNION ALL
-SELECT 'case_candidate.source_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='source_type' AND LOWER(column_type)='varchar(16)' AND is_nullable='NO')
+SELECT 'ai_provider_config.created_by' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='created_by' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
-SELECT 'case_candidate.source_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='source_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+SELECT 'ai_provider_config.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
-SELECT 'case_candidate.structured_content' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='structured_content' AND LOWER(column_type)='text')
+SELECT 'ai_provider_config.validated_by' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='validated_by' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
-SELECT 'case_candidate.masking_status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='masking_status' AND LOWER(column_type)='varchar(16)' AND is_nullable='NO')
+SELECT 'ai_provider_config.validated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='validated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'case_candidate.reusable_flag' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='reusable_flag' AND LOWER(column_type)='tinyint' AND is_nullable='NO')
+SELECT 'ai_provider_config.activated_by' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='activated_by' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
-SELECT 'case_candidate.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='status' AND LOWER(column_type)='varchar(16)' AND is_nullable='NO')
+SELECT 'ai_provider_config.activated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='activated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'case_candidate.cluster_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='cluster_id' AND LOWER(column_type)='varchar(32)')
+SELECT 'ai_provider_config.retired_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='retired_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'case_candidate.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='created_at' AND LOWER(column_type)='datetime' AND is_nullable='NO')
+SELECT 'ai_provider_config.rollback_from_version' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='rollback_from_version' AND LOWER(column_type)='bigint' AND is_nullable='YES')
 UNION ALL
-SELECT 'case_candidate.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='case_candidate' AND column_name='updated_at' AND LOWER(column_type)='datetime' AND is_nullable='NO')
+SELECT 'ai_provider_config.audit_request_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='audit_request_id' AND LOWER(column_type)='varchar(128)' AND is_nullable='NO')
 UNION ALL
-SELECT 'case_candidate:index(case_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='case_candidate' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='case_id')
+SELECT 'ai_provider_config.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
-SELECT 'case_candidate:index(status,reusable_flag)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='case_candidate' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='status,reusable_flag')
+SELECT 'ai_provider_config.active_provider_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND column_name='active_provider_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
-SELECT 'category_field_def.field_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category_field_def' AND column_name='field_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+SELECT 'ai_provider_config:index(active_provider_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='active_provider_id')
 UNION ALL
-SELECT 'category_field_def.category_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category_field_def' AND column_name='category_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+SELECT 'ai_provider_config:index(provider_id,config_version)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ai_provider_config' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='provider_id,config_version')
 UNION ALL
-SELECT 'category_field_def.name' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category_field_def' AND column_name='name' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
+SELECT 'ai_provider_config:index(provider_id,status)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ai_provider_config' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='provider_id,status')
 UNION ALL
-SELECT 'category_field_def.field_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category_field_def' AND column_name='field_type' AND LOWER(column_type)='varchar(16)' AND is_nullable='NO')
+SELECT 'rag_index_pointer.pointer_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' AND column_name='pointer_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
-SELECT 'category_field_def.required' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category_field_def' AND column_name='required' AND LOWER(column_type)='tinyint' AND is_nullable='NO')
+SELECT 'rag_index_pointer.article_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' AND column_name='article_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
-SELECT 'category_field_def.options' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category_field_def' AND column_name='options' AND LOWER(column_type)='varchar(1000)')
+SELECT 'rag_index_pointer.knowledge_version_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' AND column_name='knowledge_version_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='NO')
 UNION ALL
-SELECT 'category_field_def.sort_order' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category_field_def' AND column_name='sort_order' AND LOWER(column_type)='int' AND is_nullable='NO')
+SELECT 'rag_index_pointer.index_version' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' AND column_name='index_version' AND LOWER(column_type)='varchar(128)' AND is_nullable='NO')
 UNION ALL
-SELECT 'category_field_def.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category_field_def' AND column_name='created_at' AND LOWER(column_type)='datetime' AND is_nullable='NO')
+SELECT 'rag_index_pointer.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' AND column_name='status' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
 UNION ALL
-SELECT 'category_field_def.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='category_field_def' AND column_name='updated_at' AND LOWER(column_type)='datetime' AND is_nullable='NO')
+SELECT 'rag_index_pointer.version' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' AND column_name='version' AND LOWER(column_type)='bigint' AND is_nullable='NO')
 UNION ALL
-SELECT 'category_field_def:index(field_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='category_field_def' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='field_id')
+SELECT 'rag_index_pointer.activated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' AND column_name='activated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'category_field_def:index(category_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='category_field_def' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='category_id')
+SELECT 'rag_index_pointer.offlined_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' AND column_name='offlined_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='YES')
 UNION ALL
-SELECT 'engineer_status_log.id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='engineer_status_log' AND column_name='id' AND LOWER(column_type)='bigint' AND is_nullable='NO')
+SELECT 'rag_index_pointer.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' AND column_name='created_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
-SELECT 'engineer_status_log.engineer_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='engineer_status_log' AND column_name='engineer_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
+SELECT 'rag_index_pointer.updated_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' AND column_name='updated_at' AND LOWER(column_type)='datetime(6)' AND is_nullable='NO')
 UNION ALL
-SELECT 'engineer_status_log.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='engineer_status_log' AND column_name='status' AND LOWER(column_type)='varchar(16)' AND is_nullable='NO')
+SELECT 'rag_index_pointer.active_article_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' AND column_name='active_article_id' AND LOWER(column_type)='varchar(64)' AND is_nullable='YES')
 UNION ALL
-SELECT 'engineer_status_log.source' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='engineer_status_log' AND column_name='source' AND LOWER(column_type)='varchar(16)' AND is_nullable='NO')
+SELECT 'rag_index_pointer:index(knowledge_version_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='knowledge_version_id')
 UNION ALL
-SELECT 'engineer_status_log.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='engineer_status_log' AND column_name='created_at' AND LOWER(column_type)='datetime' AND is_nullable='NO')
+SELECT 'rag_index_pointer:index(active_article_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='active_article_id')
 UNION ALL
-SELECT 'engineer_status_log:index(id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='engineer_status_log' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='id')
+SELECT 'rag_index_pointer:index(index_version,status)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='index_version,status')
 UNION ALL
-SELECT 'engineer_status_log:index(engineer_id,created_at)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='engineer_status_log' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='engineer_id,created_at')
-UNION ALL
-SELECT 'knowledge_cluster.cluster_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_cluster' AND column_name='cluster_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
-UNION ALL
-SELECT 'knowledge_cluster.similarity_basis' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_cluster' AND column_name='similarity_basis' AND LOWER(column_type)='varchar(200)' AND is_nullable='NO')
-UNION ALL
-SELECT 'knowledge_cluster.status' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_cluster' AND column_name='status' AND LOWER(column_type)='varchar(16)' AND is_nullable='NO')
-UNION ALL
-SELECT 'knowledge_cluster.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='knowledge_cluster' AND column_name='created_at' AND LOWER(column_type)='datetime' AND is_nullable='NO')
-UNION ALL
-SELECT 'knowledge_cluster:index(cluster_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='knowledge_cluster' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='cluster_id')
-UNION ALL
-SELECT 'ticket_field_value.id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_field_value' AND column_name='id' AND LOWER(column_type)='bigint' AND is_nullable='NO')
-UNION ALL
-SELECT 'ticket_field_value.ticket_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_field_value' AND column_name='ticket_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
-UNION ALL
-SELECT 'ticket_field_value.field_definition_snapshot' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_field_value' AND column_name='field_definition_snapshot' AND LOWER(column_type)='varchar(1000)' AND is_nullable='NO')
-UNION ALL
-SELECT 'ticket_field_value.field_value' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_field_value' AND column_name='field_value' AND LOWER(column_type)='varchar(2000)')
-UNION ALL
-SELECT 'ticket_field_value.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_field_value' AND column_name='created_at' AND LOWER(column_type)='datetime' AND is_nullable='NO')
-UNION ALL
-SELECT 'ticket_field_value:index(id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ticket_field_value' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='id')
-UNION ALL
-SELECT 'ticket_field_value:index(ticket_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ticket_field_value' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='ticket_id')
-UNION ALL
-SELECT 'ticket_message.message_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='message_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
-UNION ALL
-SELECT 'ticket_message.ticket_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='ticket_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
-UNION ALL
-SELECT 'ticket_message.sender_id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='sender_id' AND LOWER(column_type)='varchar(32)' AND is_nullable='NO')
-UNION ALL
-SELECT 'ticket_message.content' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='content' AND LOWER(column_type)='text' AND is_nullable='NO')
-UNION ALL
-SELECT 'ticket_message.withdrawn_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='withdrawn_at' AND LOWER(column_type)='datetime')
-UNION ALL
-SELECT 'ticket_message.created_at' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='ticket_message' AND column_name='created_at' AND LOWER(column_type)='datetime' AND is_nullable='NO')
-UNION ALL
-SELECT 'ticket_message:index(message_id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ticket_message' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='message_id')
-UNION ALL
-SELECT 'ticket_message:index(ticket_id,created_at)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='ticket_message' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='ticket_id,created_at')
-UNION ALL
-SELECT 'work_calendar.id' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='work_calendar' AND column_name='id' AND LOWER(column_type)='bigint' AND is_nullable='NO')
-UNION ALL
-SELECT 'work_calendar.cal_date' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='work_calendar' AND column_name='cal_date' AND LOWER(column_type)='date' AND is_nullable='NO')
-UNION ALL
-SELECT 'work_calendar.day_type' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='work_calendar' AND column_name='day_type' AND LOWER(column_type)='varchar(16)' AND is_nullable='NO')
-UNION ALL
-SELECT 'work_calendar.start_time' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='work_calendar' AND column_name='start_time' AND LOWER(column_type)='time')
-UNION ALL
-SELECT 'work_calendar.end_time' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='work_calendar' AND column_name='end_time' AND LOWER(column_type)='time')
-UNION ALL
-SELECT 'work_calendar.lunch_pause' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='work_calendar' AND column_name='lunch_pause' AND LOWER(column_type)='tinyint' AND is_nullable='NO')
-UNION ALL
-SELECT 'work_calendar:index(id)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='work_calendar' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='id')
-UNION ALL
-SELECT 'work_calendar:index(cal_date)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='work_calendar' AND non_unique=0 GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='cal_date');
+SELECT 'rag_index_pointer:index(status,updated_at)' AS contract_violation WHERE NOT EXISTS (SELECT 1 FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='rag_index_pointer' GROUP BY index_name HAVING GROUP_CONCAT(column_name ORDER BY seq_in_index SEPARATOR ',')='status,updated_at');

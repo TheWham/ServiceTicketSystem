@@ -26,6 +26,7 @@ import static org.mockito.Mockito.*;
 class TicketMergeIntegrationTest {
     private final TicketMapper tickets = mock(TicketMapper.class);
     private final CategoryMapper categories = mock(CategoryMapper.class);
+    private final AttachmentMapper attachments = mock(AttachmentMapper.class);
     private final TicketFlowLogMapper flows = mock(TicketFlowLogMapper.class);
     private final TicketNoGenerator numbers = mock(TicketNoGenerator.class);
     private final NotificationService notifications = mock(NotificationService.class);
@@ -39,7 +40,7 @@ class TicketMergeIntegrationTest {
     @BeforeEach void setUp() {
         com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
                 new org.apache.ibatis.builder.MapperBuilderAssistant(new com.baomidou.mybatisplus.core.MybatisConfiguration(), ""), Ticket.class);
-        service = new TicketService(tickets, categories, mock(AttachmentMapper.class), flows, numbers,
+        service = new TicketService(tickets, categories, attachments, flows, numbers,
                 notifications, mock(UserClient.class), sla, routing, mock(ExceptionQueueService.class), conversions, json);
         Category leaf = new Category();
         leaf.setCategoryId("C_NET"); leaf.setName("Network"); leaf.setStatus("ACTIVE");
@@ -100,6 +101,24 @@ class TicketMergeIntegrationTest {
         CreateTicketRequest req = request(); req.setIdempotencyKey("body-key");
         assertThrows(BizException.class, () -> service.create(employee, req, "header-key"));
         verify(tickets, never()).insert(any(Ticket.class));
+    }
+
+    @Test void attachmentQueryUsesPassedScanAndExcludesWithdrawnFiles() {
+        Ticket ticket = new Ticket();
+        ticket.setTicketId("TK001"); ticket.setCreatorId("U_EMP01");
+        ticket.setStatus(TicketStatus.NEW);
+        when(tickets.selectById("TK001")).thenReturn(ticket);
+        service.get("TK001");
+        var query = ArgumentCaptor.forClass(QueryWrapper.class);
+        verify(attachments).selectList(query.capture());
+        var sql = query.getValue().getSqlSegment();
+        var values = query.getValue().getParamNameValuePairs().values();
+        assertTrue(sql.contains("scan_status ="));
+        assertTrue(sql.contains("withdrawn_at IS NULL"));
+        assertTrue(values.contains("PASSED"));
+        assertFalse(values.contains("CLEAN"));
+        assertTrue(values.contains("TICKET"));
+        assertTrue(values.contains("TK001"));
     }
 
     @Test void acceptsBothNatureContractsAndPreservesUppercaseProjection() throws Exception {

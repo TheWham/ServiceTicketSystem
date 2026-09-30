@@ -16,6 +16,19 @@ SQL = (SPECS / '06-mysql-ddl-and-migrations.md').read_text(encoding='utf-8')
 
 
 class ContractAlignmentTest(unittest.TestCase):
+    def test_prd_business_fields_exist_in_both_executable_entrypoints(self):
+        core = PRD.split('## 20. ')[1].split('## 21. ')[0]
+        entities = re.findall(r'^\|[^|]*`(\w+)`[^|]*\|\s*`([^`]+)`', core, re.M)
+        for path in ('db/it_ticket_system_init_v2.sql', 'it-ticket-cloud/db/init/00-schema.sql'):
+            sql = (ROOT/path).read_text(encoding='utf-8')
+            tables = {m.group(1): m.group(2) for m in re.finditer(
+                r'CREATE TABLE\s+`?(\w+)`?\s*\(([\s\S]+?)\) ENGINE=', sql)}
+            for table, fields in entities:
+                with self.subTest(path=path, table=table):
+                    self.assertIn(table,tables)
+                    for field in fields.split(','):
+                        self.assertRegex(tables[table],rf'(?i)\b{field.strip()}`?\s+(?:VARCHAR|CHAR|TEXT|MEDIUMTEXT|JSON|BIGINT|INT|DATETIME|DECIMAL|TINYINT|SMALLINT)\b')
+
     def test_dm_entities_preserve_prd_business_fields(self):
         dm = (SPECS / '01-data-model-strong-types.md').read_text(encoding='utf-8')
         classes = {m.group(1): m.group(2) for m in re.finditer(r'class (\w+)\s*\{([^}]+)\}', dm)}

@@ -1,5 +1,19 @@
 # main 与 PRD 字段对齐及单库升级范围
 
+## 2026-09-30 当前裁定：两套初始化完整 41 表
+
+用户明确要求根目录 SQL 和运行 `db/init` 一起强对齐完整 PRD/spec，替代下方历史记录中的“未开发 8 表不动”初始化范围。
+
+- `db/it_ticket_system_init_v2.sql` 与 `it-ticket-cloud/db/init/00-schema.sql` 均由 `it-ticket-cloud/db/tools/build_schema.py` 从 SQL-007/010 生成同一套 41 表；根目录文件还拼入运行目录的两份种子脚本。两个入口只能选一个用于空库。
+- 附件、案例、知识簇、工单消息、动态字段全部采用完整规范。旧 `category_field_def` 改由 `field_definition` 表达，旧 `work_calendar` 改由 `service_calendar/calendar_holiday` 表达；规范未列出的 `engineer_status_log` 不在新空库创建。旧库的数据没有被删除或自动转换。
+- 已记录的兼容字段继续作为实现投影：`user.password_hash`；工单分类、影响/紧急、资产校验、幂等、响应/解决/评价字段；草稿明细投影；SLA 提醒字段；通知和异常展示字段；`knowledge_version.search_text` 及全文索引。规范字段仍是事实来源，知识搜索投影从 `content JSON` 生成。
+- 各表统一创建/更新时间；补齐 DM 要求的分配唯一键、provider 唯一 ACTIVE 配置。枚举 CHECK 来自 DM-002/004，SLA 双业务关联由 CHECK 校验。附件读取仅返回 `PASSED` 且未撤回记录。
+- 完整建模不等于完成全部业务功能，不扩展尚未实现的 API。
+- `V2_0/V2_1/V2_2` 保持原字节与含义；V2_2 生成器改读冻结的 `tests/fixtures/canonical-prd22-34-schema.sql`。这条历史链只到 34 表版本，不能作为本次 41 表升级方案。存量库须单独审核字段/JSON/枚举/数据映射与新增迁移后才能切换应用。
+- 当前元数据门禁检查 41 表；历史迁移验证读取冻结 34 表 fixture，不能用新标准改写历史测试目标。
+
+以下内容均为 2026-09-29 及更早的范围、实现与验证历史；其“当前”“本轮”描述属于对应历史版本，不覆盖本节。
+
 ## 当前裁定：PRD 2.2 业务名称优先，规范补充类型和技术字段
 
 本节替代下方 470ce57 历史记录中的字段裁定。用户在 a99ab6a 更新规范后，进一步要求整套 PRD/spec 强对齐；不能继续把旧 SQL 名称当作业务命名权威。已实现模块按 PRD 第 20 节业务字典同步运行 DDL、Java、查询、DTO 与 OpenAPI。技术字段、UTC/DATETIME(6)、强类型、版本与索引继续由 DM/SQL 补充。

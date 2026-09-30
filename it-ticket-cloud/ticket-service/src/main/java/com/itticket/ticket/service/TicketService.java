@@ -673,11 +673,11 @@ public class TicketService {
         }
     }
 
-    /** 查工单的可用附件 id 列表（attachment 表，仅 CLEAN 未撤回） */
+    /** 查工单的可用附件 id 列表（attachment 表，仅 PASSED 未撤回） */
     private List<String> listAttachmentIds(String ticketId) {
         List<Attachment> atts = attachmentMapper.selectList(new QueryWrapper<Attachment>()
                 .eq("biz_type", "TICKET").eq("biz_id", ticketId)
-                .eq("scan_status", "CLEAN").isNull("withdrawn_at"));
+                .eq("scan_status", "PASSED").isNull("withdrawn_at"));
         if (atts == null || atts.isEmpty()) return List.of();
         return atts.stream().map(Attachment::getAttachmentId).toList();
     }

@@ -46,7 +46,7 @@
                    ▼
         ┌──────────────────────┐
         │ MySQL it_ticket_system│  统一远程库 120.92.138.195
-        │ 28 张表(单库)         │
+        │ 41 张表(单库)         │
         └──────────────────────┘
         ┌──────────────────────┐
         │ Nacos :8848           │  注册中心(+可选配置中心)
@@ -83,7 +83,7 @@ it-ticket-cloud/
 │       └── entity/       # Ticket / TicketTransition / Assignment / SlaInstance ...
 ├── common/             # Result/错误码/JWT 工具(纯 Java)
 ├── common-web/         # 全局异常、UserContext 透传头解析、时间格式
-├── db/init/            # 00-schema.sql(28表结构) → 10-seed.sql(种子)
+├── db/init/            # 00-schema.sql(41表完整契约) → 10/11 种子
 ├── nacos-config/       # Nacos 配置中心 DataId + 导入 zip + 配置管理说明
 ├── scripts/            # start-all / start-nacos / init-db(连远程库)
 └── docker-compose.yml  # Nacos + MySQL(MySQL 仅可选本地/CI,日常连远程)
@@ -135,7 +135,7 @@ java -jar ticket-service/target/it-ticket-ticket-service-1.0.0.jar
 | U_EMP01 | E1001 | 演示员工 | EMPLOYEE |
 | U_ENG01 | E2001 | 演示工程师 | ENGINEER |
 | U_ADM01 | E3001 | 平台管理员 | PLATFORM_ADMIN |
-| U_KBA01 | E4001 | 知识库管理员 | KB_ADMIN |
+| U_KBA01 | E4001 | 知识库管理员 | KNOWLEDGE_ADMIN |
 
 > `123456` 为演示用默认密码（管理员预置，登录仅校验哈希）。用户「修改密码」时新密码仍需满足强度规则（6-32 位含字母+数字）。
 
@@ -158,21 +158,21 @@ java -jar ticket-service/target/it-ticket-ticket-service-1.0.0.jar
 
 ## 数据库设计
 
-单库 `it_ticket_system`，28 张表，全部对齐 PRD-Ultimate §20。
+单库 `it_ticket_system`，41 张表，按 docs 中 PRD 2.2 和 SQL-007/010 建模；完整表结构不表示全部业务功能均已实现。
 
 **核心表**：
 - `user`：`user_id` PK、`employee_no`、`name`、`department_id`、`status`(ACTIVE/DISABLED)、`identity_source`、`password_hash`(BCrypt)、`created_at/updated_at`
-- `user_role`：`user_id + role_code`(EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KB_ADMIN)、`granted_at/revoked_at`
-- `ticket`：`ticket_id` PK(TK+日期+序号)、`title`、`ticket_nature`(INCIDENT/SERVICE_REQUEST)、`category_id`、`impact/urgency_description`、`priority`(HIGH/MEDIUM/LOW)、`status`(9态)、`assignee_id`、`idempotency_key`、`version`(乐观锁) 等
+- `user_role`：`user_id + role_code`(EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KNOWLEDGE_ADMIN)、`granted_at/revoked_at`
+- `ticket`：`ticket_id` PK(TK+日期+序号)、`title`、`nature`(INCIDENT/SERVICE_REQUEST)、`category_id`、`impact/urgency_description`、`priority`(HIGH/MEDIUM/LOW)、`status`(9态)、`assignee_id`、`idempotency_key`、`version`(乐观锁) 等
 - `ticket_transition`：流转日志(只追加)
 - `assignment`：派单记录、`response_deadline/responded_at`
-- `sla_instance` / `sla_pause` / `work_calendar`：SLA 计时三件套
+- `sla_instance` / `sla_pause` / `service_calendar` / `calendar_holiday`：SLA 计时及服务日历
 - `notification`：通知(`event_id+receiver+channel` 幂等)
 - `exception_queue`：异常队列(路由失败/补充超限/外部等待超时)
 - `category` / `category_route` / `support_team` / `team_member`：分类与路由
 - `attachment` / `ticket_draft` 等
 
-DDL 见 `db/init/00-schema.sql`，种子见 `db/init/10-seed.sql`。
+DDL 见 `db/init/00-schema.sql`，种子见 `db/init/10-seed.sql` 和 `11-knowledge-seed.sql`。根目录 `db/it_ticket_system_init_v2.sql` 是相同内容的合并入口，只选一个用于空库。存量库升级边界见 `db/README.md`。
 
 ---
 
