@@ -2,15 +2,39 @@
   <div class="consultation-chat">
     <!-- 初始化:自动恢复进行中的咨询,没有则新开 AI 会话(进去就是对话框) -->
     <div v-if="booting" v-loading="true" element-loading-text="正在进入对话…"
-         class="booting"></div>
+         class="booting" role="status" aria-label="正在进入对话" aria-busy="true"></div>
+    <div v-else-if="!session && bootError" class="boot-error" role="alert">
+      <h3>暂时无法进入咨询</h3>
+      <p>{{ bootError }}</p>
+      <el-button type="primary" @click="autoStart">重新连接</el-button>
+      <el-button @click="goCreateTicket">提交工单</el-button>
+    </div>
 
     <!-- ===== 聊天面板 ===== -->
     <el-card v-else-if="session" shadow="never" class="panel chat-panel">
+        <template #header>
+          <div class="support-header">
+            <div class="support-heading">
+              <span class="support-icon"><el-icon :size="20"><Service /></el-icon></span>
+              <div>
+                <h3>IT 服务助手</h3>
+                <p>{{ isAiHandling ? '先聊聊遇到的问题，随时可以转人工' : 'AI 与人工服务，共享本次对话记录' }}</p>
+              </div>
+            </div>
+            <el-tag :type="CONSULTATION_STATUS[session.status]?.type || 'info'" effect="light" size="small">
+              {{ CONSULTATION_STATUS[session.status]?.label || '咨询中' }}
+            </el-tag>
+          </div>
+        </template>
+        <el-alert v-if="syncError" type="warning" :closable="false" show-icon class="state-banner">
+          <template #title>对话更新暂时中断：{{ syncError }}</template>
+          <el-button text type="primary" :loading="loadingMessages" @click="reload">重新加载对话</el-button>
+        </el-alert>
         <!-- 等待工程师的提示 -->
         <el-alert v-if="isWaitingHuman" type="warning" :closable="false"
                   class="state-banner">
           <template #title>
-            已转人工，正在为你分配工程师{{ assignmentTip }}。工程师需要在 10 个工作分钟内首次回复。
+            {{ queueStatus.assigned ? '已进入人工服务队列，等待工程师首次回复。' : '已提交转人工申请，正在分配工程师。' }}
             <span v-if="queueStatus.assigned" class="queue-count">
               当前排队 <strong>{{ queueCount }}</strong> 人
             </span>
@@ -48,7 +72,7 @@
         </el-alert>
 
         <!-- 消息流 -->
-        <div ref="scrollRef" class="chat-body" v-loading="loadingMessages">
+        <div ref="scrollRef" class="chat-body" v-loading="loadingMessages" role="log" aria-label="咨询消息" aria-live="polite" :aria-busy="loadingMessages" tabindex="0">
           <div v-for="msg in messages" :key="msg.id" class="msg-row" :class="rowClass(msg)">
             <div class="msg-avatar" :class="'avatar-' + msg.senderType.toLowerCase()">
               {{ avatarOf(msg.senderType) }}
@@ -67,7 +91,7 @@
                 </div>
                 <div class="refusal-reason">{{ refusalText(msg.refusalReason) }}</div>
                 <div class="refusal-actions">
-                  <el-button type="primary" size="small" :icon="Service" @click="openTransfer()">
+                    <el-button v-if="canTransfer" type="primary" size="small" :icon="Service" @click="openTransfer()">
                     转人工
                   </el-button>
                   <el-button size="small" :icon="Tickets" @click="goCreateTicket">直接提交工单</el-button>
@@ -98,7 +122,7 @@
                 <!-- 通用能力回答标识(冷启动放宽策略:无知识库依据,提示可沉淀) -->
                 <div v-if="msg.generalAnswer" class="general-answer-note">
                   <el-icon><MagicStick /></el-icon>
-                  这条回答基于 AI 通用知识，暂无知识库依据。点击「已解决」可保存有帮助反馈，供后续知识整理与审核参考。
+                  AI 通用建议，暂无知识库依据。请结合实际情况核对，也可以转人工确认。
                 </div>
 
                 <!-- 有知识依据时展示经过校验的真实引用 -->
@@ -107,16 +131,13 @@
                     <el-icon><Document /></el-icon> 依据以下已发布知识
                   </div>
                   <el-popover v-for="c in msg.citations" :key="c.versionId"
-                              placement="top" :width="340" trigger="hover">
+                              placement="top" width="min(340px, 90vw)" trigger="click">
                     <template #reference>
-                      <el-tag class="citation-tag" effect="plain" size="small">{{ c.title }}</el-tag>
+                      <el-button class="citation-tag" plain size="small" :aria-label="`查看知识依据：${c.title}`">{{ c.title }}</el-button>
                     </template>
                     <div class="citation-pop">
                       <div class="citation-pop-title">{{ c.title }}</div>
                       <div class="citation-pop-snippet">{{ c.snippet }}</div>
-                      <div class="citation-pop-meta">
-                        版本 {{ c.versionId }} · 相关度 {{ c.score }}
-                      </div>
                     </div>
                   </el-popover>
                 </div>
@@ -126,11 +147,11 @@
                   <template v-if="msg.feedback === null">
                     <span class="answer-feedback-label">这个回答解决你的问题了吗？</span>
                     <el-button size="small" type="success" :loading="msg.feedbackPending"
-                               :disabled="closing || cancelingQueue" @click="resolveAnswer(msg)">✅ 已解决</el-button>
+                               :disabled="closing || cancelingQueue" @click="resolveAnswer(msg)">已解决</el-button>
                     <el-button size="small" type="warning" :disabled="msg.feedbackPending || closing || cancelingQueue"
-                               @click="markUnresolved(msg)">❌ 未解决</el-button>
+                               @click="markUnresolved(msg)">未解决</el-button>
                   </template>
-                  <span v-else-if="msg.feedback === 'resolved'" class="feedback-resolved">✅ 已标记为解决</span>
+                  <span v-else-if="msg.feedback === 'resolved'" class="feedback-resolved">已标记为解决</span>
                   <div v-else class="feedback-unresolved">
                     <template v-if="msg.transferSubmitted">
                       <span>已提交转人工申请</span>
@@ -166,6 +187,7 @@
             </el-button>
           </div>
           <el-input ref="inputRef" v-model="draft" type="textarea" :rows="3" resize="none"
+                    aria-label="咨询内容" aria-describedby="consultation-input-help"
                     :maxlength="inputMaxLength" show-word-limit
                     :placeholder="inputPlaceholder" :disabled="sending || aiThinking || inputDisabled || closing || cancelingQueue"
                     @keydown.enter.exact.prevent="send" />
@@ -180,6 +202,7 @@
               发送
             </el-button>
           </div>
+          <p id="consultation-input-help" class="input-help">Enter 发送 · Shift + Enter 换行</p>
         </div>
 
         <!-- 终态:开新会话 -->
@@ -191,11 +214,14 @@
       </el-card>
 
     <!-- 转人工对话框 -->
-    <el-dialog v-model="transferVisible" title="转人工咨询" width="460px" append-to-body
+    <el-dialog v-model="transferVisible" title="转人工咨询" width="min(460px, 94vw)" append-to-body
                @closed="pendingTransferMessage = null">
       <el-form label-width="90px">
         <el-form-item label="问题类型" required>
-          <el-radio-group v-model="transferForm.categoryId" class="category-options">
+          <p v-if="categoriesLoading" role="status">正在加载问题类型…</p>
+          <div v-else-if="categoriesError" role="alert">{{ categoriesError }}<el-button text @click="loadTransferCategories">重试</el-button></div>
+          <p v-else-if="!categories.length">暂无可用的问题类型，请联系 IT 服务团队。</p>
+          <el-radio-group v-else v-model="transferForm.categoryId" class="category-options">
             <el-radio v-for="(c, index) in categories" :key="c.id" :value="c.id" border>
               <span class="category-number">{{ index + 1 }}</span>
               {{ c.name }}
@@ -205,13 +231,13 @@
       </el-form>
       <el-alert type="info" :closable="false">
         <template #title>
-          系统会按分类和负载分配给一名工程师，只有被分配的工程师会看到待回复咨询。
+          请选择最接近的问题类型，我们会为你安排合适的工程师，并保留本次对话记录。
         </template>
       </el-alert>
       <template #footer>
         <el-button @click="transferVisible = false">取消</el-button>
         <el-button type="primary" :loading="transferring"
-                   :disabled="!transferForm.categoryId" @click="doTransfer">
+                   :disabled="!transferForm.categoryId || categoriesLoading || !!categoriesError" @click="doTransfer">
           确认转人工
         </el-button>
       </template>
@@ -222,13 +248,14 @@
 <script setup>
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { categoryApi } from '../api/index.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ChatDotRound, Service, Close, Promotion, Tickets,
   Document, WarningFilled, CircleCheck, RefreshLeft, MagicStick
 } from '@element-plus/icons-vue'
 import {
-  consultationApi, REFUSAL_REASON, TERMINAL_STATUS, TICKET_ENTRY_MESSAGE
+  consultationApi, CONSULTATION_STATUS, REFUSAL_REASON, TERMINAL_STATUS, TICKET_ENTRY_MESSAGE
 } from '../api/consultation.js'
 
 /**
@@ -241,15 +268,25 @@ const emit = defineEmits(['navigate'])
 
 const router = useRouter()
 
-// 分类取自 it_consultation.category 种子数据的末级可路由分类
-const categories = [
-  { id: 'C_HW_PC', name: '电脑故障' },
-  { id: 'C_HW_PR', name: '打印机故障' },
-  { id: 'C_SW', name: '软件故障' },
-  { id: 'C_NET', name: '网络访问' },
-  { id: 'C_ACC', name: '账号与权限' },
-  { id: 'C_OTH', name: '其他服务' }
-]
+const categories = ref([])
+const categoriesLoading = ref(false)
+const categoriesError = ref('')
+async function loadTransferCategories() {
+  if (disposed) return
+  if (categoriesLoading.value) return
+  categoriesLoading.value = true
+  categoriesError.value = ''
+  try {
+    const response = await categoryApi.leaf()
+    if (disposed) return
+    categories.value = (response.data || []).filter(item => item.status === 'ACTIVE')
+      .map(item => ({ id: item.category_id, name: item.name }))
+  } catch (error) {
+    if (disposed) return
+    categories.value = []
+    categoriesError.value = error.message || '问题类型加载失败'
+  } finally { if (!disposed) categoriesLoading.value = false }
+}
 
 const session = ref(null)
 const messages = ref([])
@@ -259,6 +296,8 @@ const sending = ref(false)
 const aiThinking = ref(false)
 const loadingMessages = ref(false)
 const booting = ref(false)
+const bootError = ref('')
+const syncError = ref('')
 const closing = ref(false)
 const scrollRef = ref(null)
 const inputRef = ref(null)
@@ -277,6 +316,10 @@ const resumable = ref([])
 let pollTimer = null
 let localSeq = 0
 let sessionRevision = 0
+let disposed = false
+const lifetime = new AbortController()
+const isCurrentSession = (revision, id) =>
+  !disposed && revision === sessionRevision && session.value?.sessionId === id
 
 const isTerminal = computed(() => TERMINAL_STATUS.includes(session.value?.status))
 /** AI-004.4 的转人工只在 AI_ACTIVE 下合法;已在人工流程里不再重复转 */
@@ -301,56 +344,72 @@ const queueCount = computed(() => queueStatus.value.waitingCount)
  * 没有则新开 AI 会话并由 AI 客服先做自我介绍。
  */
 async function autoStart() {
+  if (disposed) return
+  if (booting.value) return
   booting.value = true
+  bootError.value = ''
   try {
     await loadResumable()
+    if (disposed) return
     if (resumable.value.length) {
       await resumeSession(resumable.value[0])
     } else {
       await startAi()
     }
   } catch (e) {
-    ElMessage.error(e.message)
+    if (disposed) return
+    bootError.value = e.message || '咨询服务暂不可用，请重试'
   } finally {
-    booting.value = false
-    focusInput()
+    if (!disposed) {
+      booting.value = false
+      focusInput()
+    }
   }
 }
 
 /** 挂载时拉取本人进行中的咨询(OpenAPI 05 listConsultations,后端按 creator 过滤)。 */
 async function loadResumable() {
-  try {
-    const page = await consultationApi.list(1, 20)
-    resumable.value = (page?.items || [])
-      .filter(s => !TERMINAL_STATUS.includes(s.status))
-      .slice(0, 5)
-  } catch (e) {
-    // 列表失败不阻塞,按无进行中咨询处理
-    resumable.value = []
-  }
+  if (disposed) return
+  const page = await consultationApi.list(1, 20)
+  if (disposed) return
+  resumable.value = (page?.items || [])
+    .filter(s => !TERMINAL_STATUS.includes(s.status))
+    .slice(0, 5)
 }
 
 /** 继续一个进行中的咨询:恢复完整时间线(含此前 AI 对话,PRD 13.1)。 */
 async function resumeSession(s) {
+  if (disposed || creating.value) return
+  const revision = ++sessionRevision
   creating.value = true
   try {
     session.value = { ...s, sessionId: s.session_id }
     await reload()
+    if (!isCurrentSession(revision, s.session_id)) return
     await refreshQueueStatus()
+    if (!isCurrentSession(revision, s.session_id)) return
     startPolling()
   } catch (e) {
+    if (disposed) return
+    if (!isCurrentSession(revision, s.session_id)) return
     ElMessage.error(e.message)
     session.value = null
   } finally {
-    creating.value = false
+    if (!disposed) {
+      creating.value = false
+    }
   }
 }
 
 async function startAi() {
+  if (disposed) return
   if (creating.value) return
   creating.value = true
+  bootError.value = ''
   try {
-    session.value = await consultationApi.create('AI')
+    const created = await consultationApi.create('AI')
+    if (disposed) return
+    session.value = created
     sessionRevision++
     draft.value = ''
     sending.value = false
@@ -361,29 +420,43 @@ async function startAi() {
     scrollToBottom()
     startPolling()
   } catch (e) {
-    ElMessage.error(e.message)
+    if (disposed) return
+    bootError.value = e.message || '无法创建咨询，请重试'
+    ElMessage.error(bootError.value)
   } finally {
-    creating.value = false
+    if (!disposed) {
+      creating.value = false
+    }
   }
 }
 
 async function reload() {
+  if (disposed) return
   if (!session.value) return
+  const sessionId = session.value.sessionId
+  const revision = sessionRevision
   loadingMessages.value = true
   try {
-    const [detail, page] = await Promise.all([
+    const [detail, items] = await Promise.all([
       consultationApi.get(session.value.sessionId),
-      consultationApi.listMessages(session.value.sessionId)
+      consultationApi.listMessages(session.value.sessionId, { signal: lifetime.signal })
     ])
+    if (!isCurrentSession(revision, sessionId)) return
     session.value = { ...session.value, ...detail,
                       sessionId: detail.session_id || session.value.sessionId,
                       status: detail.status }
-    messages.value = withGreeting((page?.items || []).map(toLocalMessage))
+    messages.value = withGreeting(items.map(toLocalMessage))
+    syncError.value = ''
   } catch (e) {
+    if (disposed) return
+    if (!isCurrentSession(revision, sessionId)) return
+    syncError.value = e.message || '对话加载失败'
     ElMessage.error(e.message)
   } finally {
-    loadingMessages.value = false
-    scrollToBottom()
+    if (!disposed) {
+      loadingMessages.value = false
+      scrollToBottom()
+    }
   }
 }
 
@@ -420,7 +493,7 @@ function pushLocal(senderType, content, extra = {}) {
   scrollToBottom()
 }
 
-const GREETING_TEXT = '你好，我是 IT 智能助手小 T 👋 我可以帮你解决 VPN 连不上、邮箱收不到邮件、打印机故障、账号权限等常见 IT 问题。请描述你遇到的情况，我会先尝试帮你解决；如果解决不了，可以随时转接人工客服。'
+const GREETING_TEXT = '你好，我是 IT 服务助手。请描述你遇到的问题，例如网络连接、邮箱、打印机或账号权限。你可以随时转人工，或提交工单跟进处理。'
 
 function createGreeting() {
   return {
@@ -440,12 +513,14 @@ function withGreeting(items) {
     : [createGreeting(), ...items]
 }
 
-async function send() {
+async function send(event) {
+  if (disposed) return
+  if (event?.isComposing) return
   const text = draft.value.trim()
   if (!text || !session.value || isTerminal.value || inputDisabled.value || sending.value || aiThinking.value || closing.value || cancelingQueue.value) return
   const sessionId = session.value.sessionId
   const revision = sessionRevision
-  const stillActive = () => revision === sessionRevision && session.value?.sessionId === sessionId && !isTerminal.value
+  const stillActive = () => !disposed && revision === sessionRevision && session.value?.sessionId === sessionId && !isTerminal.value
   draft.value = ''
 
   if (isAiHandling.value) {
@@ -466,7 +541,7 @@ async function send() {
           generalAnswer: res.replyType === 'ANSWER' && !hasCitations
         })
         if (!hasCitations) {
-          pushLocal('SYSTEM', '这条回答来自 AI 的通用知识（暂无知识库依据）。如果对你有帮助，请点「已解决」，它会进入知识库审核队列，帮助更多同事。')
+          pushLocal('SYSTEM', '这条回答暂无知识库依据。你可以反馈是否解决问题，或转人工进一步确认。')
         } else if (res.suggestTransfer) {
           pushLocal('SYSTEM', '这个回答的把握不高，如果没解决问题建议转人工。')
         }
@@ -476,7 +551,7 @@ async function send() {
       // AI 故障不阻塞主链路:提示并保留转人工/提单入口(RD-013)
       pushLocal('SYSTEM', `AI 暂时不可用（${e.message}）。你可以转人工或直接提交工单。`)
     } finally {
-      if (revision === sessionRevision) aiThinking.value = false
+      if (!disposed && revision === sessionRevision) aiThinking.value = false
     }
     return
   }
@@ -489,49 +564,61 @@ async function send() {
     pushLocal('EMPLOYEE', text)
     await refreshStatus()
   } catch (e) {
+    if (disposed) return
     if (!stillActive()) return
     ElMessage.error(e.message)
     draft.value = text
   } finally {
-    if (revision === sessionRevision) sending.value = false
+    if (!disposed && revision === sessionRevision) sending.value = false
   }
 }
 
 // ---------------------------------------------------------------- 转人工与收尾
 
-function openTransfer(msg = null) {
+async function openTransfer(msg = null) {
+  if (disposed) return
   if (!canTransfer.value || closing.value || cancelingQueue.value) return
   pendingTransferMessage.value = msg
   transferForm.value.categoryId = ''
   transferVisible.value = true
+  await loadTransferCategories()
 }
 
 async function doTransfer() {
-  if (!transferForm.value.categoryId || transferring.value || closing.value || cancelingQueue.value || !canTransfer.value) return
+  if (disposed) return
+  if (!transferForm.value.categoryId || categoriesLoading.value || categoriesError.value || transferring.value || closing.value || cancelingQueue.value || !canTransfer.value) return
   transferring.value = true
+  const sessionId = session.value.sessionId
+  const revision = sessionRevision
   try {
     const res = await consultationApi.transfer(
-      session.value.sessionId, transferForm.value.categoryId)
+      sessionId, transferForm.value.categoryId)
+    if (!isCurrentSession(revision, sessionId) || isTerminal.value) return
     const assignmentId = res?.assignmentId || res?.assignment_id
-    const selectedCategory = categories.find(c => c.id === transferForm.value.categoryId)
+    const selectedCategory = categories.value.find(c => c.id === transferForm.value.categoryId)
     session.value.status = res?.status || 'WAITING_ENGINEER'
     assignmentSeconds.value = res?.estimatedWaitSeconds ?? res?.estimated_wait_seconds ?? null
     if (pendingTransferMessage.value) pendingTransferMessage.value.transferSubmitted = true
     transferVisible.value = false
     pendingTransferMessage.value = null
     await refreshQueueStatus()
+    if (!isCurrentSession(revision, sessionId) || isTerminal.value) return
     pushLocal('SYSTEM', assignmentId
       ? `已按“${selectedCategory?.name || '所选分类'}”进入人工客服队列，工程师会尽快接入。`
-      : `已按“${selectedCategory?.name || '所选分类'}”提交转人工申请，但当前没有可用工程师，已进入异常队列等待处理。`)
+      : `已按“${selectedCategory?.name || '所选分类'}”提交转人工申请，当前暂无可用工程师，请等待服务团队安排。`)
     startPolling()
   } catch (e) {
+    if (disposed) return
     ElMessage.error(e.message)
   } finally {
-    transferring.value = false
+    if (!disposed) {
+      transferring.value = false
+    }
   }
 }
 
 async function resolveAnswer(msg) {
+  if (disposed) return
   if (msg.feedbackPending || !isAiHandling.value || closing.value || cancelingQueue.value) return
   const sessionId = session.value.sessionId
   const revision = sessionRevision
@@ -546,31 +633,44 @@ async function resolveAnswer(msg) {
     finishSession(res?.status || 'RESOLVED')
     pushLocal('SYSTEM', '员工确认问题已解决，会话结束')
   } catch (e) {
+    if (disposed) return
     if (stillActive()) ElMessage.error(e.message || '反馈或确认未保存，请重试')
   } finally {
-    msg.feedbackPending = false
+    if (!disposed) {
+      msg.feedbackPending = false
+    }
   }
 }
 
 async function saveAnswerFeedback(sessionId, msg, feedback) {
+  if (disposed) return
+  const revision = sessionRevision
   // 历史旧消息可能没有交互 ID，不伪造关联；新消息反馈失败时保留按钮供重试。
   if (!msg.interactionId || msg.recordedFeedback === feedback) return
   const res = await consultationApi.feedback(sessionId, msg.interactionId, feedback)
+  if (!isCurrentSession(revision, sessionId)) return
   if (!res?.accepted) throw new Error('反馈未保存，请重试')
   msg.recordedFeedback = feedback
 }
 
 async function confirmResolved() {
+  if (disposed) return
+  if (!session.value || isTerminal.value) return
+  const sessionId = session.value.sessionId
+  const revision = sessionRevision
   try {
-    const res = await consultationApi.confirm(session.value.sessionId)
-    session.value.status = res?.status || 'RESOLVED'
+    const res = await consultationApi.confirm(sessionId)
+    if (!isCurrentSession(revision, sessionId) || isTerminal.value) return
+    finishSession(res?.status || 'RESOLVED')
     pushLocal('SYSTEM', '已确认解决，本次咨询结束。')
   } catch (e) {
+    if (disposed) return
     ElMessage.error(e.message)
   }
 }
 
 async function markUnresolved(msg) {
+  if (disposed) return
   if (msg.feedbackPending || !isAiHandling.value || closing.value || cancelingQueue.value) return
   const sessionId = session.value.sessionId
   const revision = sessionRevision
@@ -580,53 +680,78 @@ async function markUnresolved(msg) {
     if (revision !== sessionRevision || session.value?.sessionId !== sessionId || !isAiHandling.value) return
     msg.feedback = 'unresolved'
   } catch (e) {
+    if (disposed) return
     if (revision === sessionRevision) ElMessage.error(e.message || '反馈未保存，请重试')
   } finally {
-    msg.feedbackPending = false
+    if (!disposed) {
+      msg.feedbackPending = false
+    }
   }
 }
 
 async function cancelQueue() {
+  if (disposed) return
   if (cancelingQueue.value || closing.value || isTerminal.value || !session.value?.sessionId) return
   cancelingQueue.value = true
+  const sessionId = session.value.sessionId
+  const revision = sessionRevision
   try {
     const res = await consultationApi.close(session.value.sessionId, '员工取消人工客服排队')
+    if (!isCurrentSession(revision, sessionId)) return
     finishSession(res?.status || 'CLOSED')
     pushLocal('SYSTEM', '员工已取消人工客服排队，本次咨询结束')
   } catch (e) {
+    if (disposed) return
     ElMessage.error(e.message || '取消排队失败')
   } finally {
-    cancelingQueue.value = false
+    if (!disposed) {
+      cancelingQueue.value = false
+    }
   }
 }
 
 async function reopenSession() {
+  if (disposed) return
+  if (!session.value) return
+  const sessionId = session.value.sessionId
+  const revision = sessionRevision
+  const status = session.value.status
   try {
     const { value } = await ElMessageBox.prompt('请说明问题复发的情况', '恢复咨询', {
       confirmButtonText: '恢复', cancelButtonText: '取消',
       inputValidator: v => (v && v.trim().length > 0) || '恢复原因必填'
     })
-    const res = await consultationApi.reopen(session.value.sessionId, value.trim())
+    if (!isCurrentSession(revision, sessionId) || session.value.status !== status) return
+    const res = await consultationApi.reopen(sessionId, value.trim())
+    if (!isCurrentSession(revision, sessionId) || session.value.status !== status) return
     session.value.status = res.status
     queueStatus.value = { assigned: false, waitingCount: 0 }
     pushLocal('SYSTEM', '咨询已恢复，正在重新分配工程师。')
     startPolling()
   } catch (e) {
+    if (disposed) return
     if (e !== 'cancel') ElMessage.error(e.message || '恢复失败')
   }
 }
 
 async function closeSession() {
+  if (disposed) return
   if (closing.value || cancelingQueue.value || transferring.value || isTerminal.value || !session.value?.sessionId) return
   closing.value = true
+  const sessionId = session.value.sessionId
+  const revision = sessionRevision
   try {
     const res = await consultationApi.close(session.value.sessionId, '员工主动结束咨询')
+    if (!isCurrentSession(revision, sessionId)) return
     finishSession(res?.status || 'CLOSED')
     pushLocal('SYSTEM', '员工已结束对话，会话已断开。')
   } catch (e) {
+    if (disposed) return
     ElMessage.error(e.message || '结束失败')
   } finally {
-    closing.value = false
+    if (!disposed) {
+      closing.value = false
+    }
   }
 }
 
@@ -647,9 +772,9 @@ function goCreateTicket() {
   // 跳到提单页(默认落在“提交工单” tab);带 session 让提单页拉取咨询预填(PRD 9.1)
   emit('navigate')
   if (session.value?.sessionId && !isTerminal.value) {
-    router.push({ path: '/employee', query: { from: 'consultation', session: session.value.sessionId } })
+    router.push({ path: '/employee', query: { view: 'create', from: 'consultation', session: session.value.sessionId } })
   } else {
-    router.push('/employee')
+    router.push({ path: '/employee', query: { view: 'create' } })
   }
 }
 
@@ -677,18 +802,24 @@ function resetQueueStatus() {
 }
 
 async function refreshQueueStatus() {
+  if (disposed) return
   if (!session.value?.sessionId || !isWaitingHuman.value) {
     resetQueueStatus()
     return
   }
+  const sessionId = session.value.sessionId
+  const revision = sessionRevision
   try {
     const res = await consultationApi.queueStatus(session.value.sessionId)
+    if (!isCurrentSession(revision, sessionId) || !isWaitingHuman.value) return
     queueStatus.value = {
       assigned: res?.assigned === true,
       waitingCount: Number(res?.waitingCount ?? res?.waiting_count ?? 0)
     }
   } catch (e) {
+    if (disposed) return
     // 排队人数只是辅助信息，接口失败时隐藏，不能阻断聊天状态轮询。
+    if (!isCurrentSession(revision, sessionId)) return
     resetQueueStatus()
   }
 }
@@ -696,10 +827,11 @@ async function refreshQueueStatus() {
 // ---------------------------------------------------------------- 轮询与工具
 
 async function refreshStatus() {
+  if (disposed) return
   if (!session.value || isTerminal.value) return
   const sessionId = session.value.sessionId
   const revision = sessionRevision
-  const isCurrent = () => session.value?.sessionId === sessionId && revision === sessionRevision
+  const isCurrent = () => !disposed && session.value?.sessionId === sessionId && revision === sessionRevision
   try {
     const detail = await consultationApi.get(sessionId)
     if (!isCurrent() || isTerminal.value || closing.value || cancelingQueue.value) return
@@ -717,21 +849,24 @@ async function refreshStatus() {
     if (!isCurrent()) return
     // 人工阶段轮询拉取新消息,工程师回复无需手动刷新
     if (!isAiHandling.value) {
-      const page = await consultationApi.listMessages(sessionId)
+      const items = await consultationApi.listMessages(sessionId, { signal: lifetime.signal })
       if (!isCurrent()) return
-      const items = page?.items || []
       if (items.length !== messages.value.filter(m => m.serverId).length) {
         messages.value = withGreeting(items.map(toLocalMessage))
         scrollToBottom()
       }
     }
     if (isTerminal.value) finishSession(session.value.status)
+    syncError.value = ''
   } catch (e) {
-    // 轮询失败静默,不打断对话
+    if (disposed) return
+    if (!isCurrentSession(revision, sessionId)) return
+    if (isCurrent()) syncError.value = e.message || '无法获取最新消息，正在尝试重新连接'
   }
 }
 
 function startPolling() {
+  if (disposed || !session.value || isTerminal.value) return
   stopPolling()
   pollTimer = setInterval(refreshStatus, 5000)
 }
@@ -742,12 +877,13 @@ function stopPolling() {
 
 function scrollToBottom() {
   nextTick(() => {
+    if (disposed) return
     const el = scrollRef.value
     if (el) el.scrollTop = el.scrollHeight
   })
 }
 function focusInput() {
-  nextTick(() => inputRef.value?.focus())
+  nextTick(() => { if (!disposed) inputRef.value?.focus() })
 }
 
 const rowClass = (msg) => (msg.senderType === 'EMPLOYEE' ? 'row-right' : 'row-left')
@@ -763,12 +899,29 @@ const formatTime = (iso) => {
 }
 
 onMounted(autoStart)
-onUnmounted(stopPolling)
+onUnmounted(() => {
+  disposed = true
+  sessionRevision++
+  lifetime.abort()
+  stopPolling()
+})
 </script>
 
 <style scoped>
 .consultation-chat { width: 100%; }
-.panel { border-radius: 10px; }
+.panel { border-radius: 12px; }
+.chat-panel { border: 1px solid var(--el-border-color-lighter); }
+.chat-panel :deep(.el-card__header) { padding: 18px 20px; }
+.chat-panel :deep(.el-card__body) { padding: 16px 20px; }
+.support-heading h3, .support-heading p { margin: 0; }
+.boot-error { padding: 64px 24px; text-align: center; background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter); border-radius: 12px; }
+.boot-error h3 { color: var(--el-text-color-primary); }
+.boot-error p { margin: 12px 0 24px; color: var(--el-text-color-secondary); }
+.support-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.support-heading { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.support-icon { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
+.support-heading h3 { font-size: 15px; font-weight: 600; color: var(--el-text-color-primary); }
+.support-heading p { margin-top: 4px; font-size: 12px; line-height: 1.5; color: var(--el-text-color-secondary); }
 
 /* 初始化 */
 .booting { min-height: 520px; border-radius: 10px; }
@@ -791,7 +944,7 @@ onUnmounted(stopPolling)
 
 /* 消息流 */
 .chat-body {
-  height: 460px; overflow-y: auto; padding: 8px 4px;
+  height: clamp(200px, calc(100dvh - 410px), 460px); overflow-y: auto; padding: 16px 4px;
   background: var(--el-fill-color-lighter); border-radius: 8px;
 }
 .msg-row { display: flex; gap: 10px; margin-bottom: 16px; padding: 0 8px; }
@@ -802,24 +955,24 @@ onUnmounted(stopPolling)
 .msg-avatar {
   flex: none; width: 34px; height: 34px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 600; color: #fff;
+  font-size: 13px; font-weight: 600; color: var(--ws-on-solid);
 }
 .avatar-employee { background: var(--el-color-primary); }
-.avatar-ai { background: #7c3aed; }
+.avatar-ai { color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
 .avatar-engineer { background: var(--el-color-success); }
 .avatar-system { background: var(--el-color-info); }
 
 .msg-main { display: flex; flex-direction: column; max-width: 78%; }
 .msg-meta { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
 .msg-sender { font-size: 12px; color: var(--el-text-color-secondary); }
-.msg-time { font-size: 11px; color: var(--el-text-color-placeholder); }
+.msg-time { font-size: 11px; color: var(--el-text-color-secondary); }
 
 .msg-bubble {
   padding: 10px 14px; border-radius: 10px; line-height: 1.7;
   background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter);
 }
 .msg-text { white-space: pre-wrap; word-break: break-word; }
-.bubble-employee { background: var(--el-color-primary); border-color: var(--el-color-primary); color: #fff; }
+.bubble-employee { background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-7); color: var(--el-text-color-primary); }
 .bubble-system {
   background: transparent; border: none; color: var(--el-text-color-secondary);
   font-size: 13px; padding: 4px 0;
@@ -853,7 +1006,8 @@ onUnmounted(stopPolling)
   display: flex; align-items: center; gap: 4px; font-size: 12px;
   color: var(--el-text-color-secondary); margin-bottom: 6px;
 }
-.citation-tag { margin-right: 6px; cursor: pointer; }
+.citation-tag { margin: 0 6px 6px 0; max-width: 100%; height: auto; min-height: 28px; white-space: normal; text-align: left; }
+.citation-tag :deep(span) { overflow-wrap: anywhere; }
 .citation-pop-title { font-weight: 600; margin-bottom: 6px; }
 .citation-pop-snippet { font-size: 13px; line-height: 1.6; color: var(--el-text-color-regular); }
 .citation-pop-meta {
@@ -889,6 +1043,17 @@ onUnmounted(stopPolling)
 /* 输入区 */
 .chat-input { margin-top: 12px; }
 .input-toolbar { display: flex; justify-content: flex-end; margin-bottom: 4px; }
-.chat-actions { margin-top: 8px; display: flex; justify-content: space-between; align-items: center; }
-.chat-actions-left { display: flex; gap: 8px; }
+.chat-actions { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chat-actions-left { display: flex; gap: 8px; flex-wrap: wrap; }
+.chat-actions :deep(.el-button + .el-button), .answer-feedback :deep(.el-button + .el-button) { margin-left: 0; }
+.input-help { font-size: 11px; color: var(--el-text-color-secondary); margin: 8px 0 0; text-align: right; }
+.chat-body:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+@media (max-width: 480px) {
+  .chat-panel :deep(.el-card__header), .chat-panel :deep(.el-card__body) { padding: 12px; }
+  .support-header { align-items: flex-start; flex-wrap: wrap; }
+  .msg-main { max-width: calc(100% - 44px); }
+  .refusal-actions { flex-wrap: wrap; }
+  .feedback-unresolved { flex-wrap: wrap; }
+}
 </style>

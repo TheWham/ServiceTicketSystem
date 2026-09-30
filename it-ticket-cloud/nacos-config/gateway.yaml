@@ -23,6 +23,10 @@ spring:
           uri: lb://consultation-service
           predicates:
             - Path=/api/v1/consultations/**,/api/v1/knowledge/**
+        - id: rag-service
+          uri: lb://rag-service
+          predicates:
+            - Path=/api/v1/rag/**
         - id: category-service
           uri: lb://ticket-service
           predicates:

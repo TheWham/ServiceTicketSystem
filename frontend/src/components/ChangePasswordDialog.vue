@@ -2,25 +2,29 @@
   <el-dialog
     :model-value="modelValue"
     title="修改密码"
-    width="420px"
+    width="min(440px, 94vw)"
     :close-on-click-modal="false"
+    :close-on-press-escape="!loading"
+    :show-close="!loading"
     @update:model-value="$emit('update:modelValue', $event)"
+    @closed="resetForm"
   >
-    <el-form :model="form" label-width="90px">
-      <el-form-item label="旧密码" required>
-        <el-input v-model="form.oldPassword" type="password" show-password placeholder="请输入当前密码" />
+    <p class="password-help">设置 6–32 位新密码，包含字母和数字。</p>
+    <el-form :model="form" label-position="top" @submit.prevent="submit">
+      <el-form-item label="当前密码" required>
+        <el-input v-model="form.oldPassword" type="password" autocomplete="current-password" :disabled="loading" show-password placeholder="请输入当前密码" />
       </el-form-item>
       <el-form-item label="新密码" required>
-        <el-input v-model="form.newPassword" type="password" show-password placeholder="6-32位，含字母和数字" />
+        <el-input v-model="form.newPassword" type="password" autocomplete="new-password" :disabled="loading" show-password placeholder="请输入新密码" />
       </el-form-item>
       <el-form-item label="确认新密码" required>
-        <el-input v-model="form.confirm" type="password" show-password placeholder="再次输入新密码" />
+        <el-input v-model="form.confirm" type="password" autocomplete="new-password" :disabled="loading" show-password placeholder="再次输入新密码" />
       </el-form-item>
+      <div class="password-actions">
+        <el-button :disabled="loading" @click="close">取消</el-button>
+        <el-button type="primary" native-type="submit" :loading="loading">确认修改</el-button>
+      </div>
     </el-form>
-    <template #footer>
-      <el-button @click="close">取消</el-button>
-      <el-button type="primary" :loading="loading" @click="submit">确认修改</el-button>
-    </template>
   </el-dialog>
 </template>
 
@@ -37,10 +41,15 @@ const form = ref({ oldPassword: '', newPassword: '', confirm: '' })
 
 function close() {
   emit('update:modelValue', false)
+  resetForm()
+}
+
+function resetForm() {
   form.value = { oldPassword: '', newPassword: '', confirm: '' }
 }
 
 async function submit() {
+  if (loading.value) return
   const f = form.value
   if (!f.oldPassword || !f.newPassword || !f.confirm) {
     ElMessage.warning('请填写完整')
@@ -52,7 +61,7 @@ async function submit() {
   }
   loading.value = true
   try {
-    await userApi.changePassword({ oldPassword: f.oldPassword, newPassword: f.newPassword })
+    await userApi.changePassword({ old_password: f.oldPassword, new_password: f.newPassword })
     ElMessage.success('密码修改成功')
     close()
   } catch (e) {
@@ -62,3 +71,8 @@ async function submit() {
   }
 }
 </script>
+
+<style scoped>
+.password-help { margin: 0 0 20px; font-size: 13px; line-height: 1.7; color: var(--el-text-color-secondary); }
+.password-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px; }
+</style>

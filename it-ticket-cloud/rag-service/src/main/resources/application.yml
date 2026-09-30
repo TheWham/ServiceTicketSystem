@@ -48,6 +48,7 @@ rag:
   embedding:
     base-url: ${EMBEDDING_BASE_URL:https://ws-klculckg6dog3won.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
     # 不再内置明文默认值：由 EMBEDDING_API_KEY 环境变量注入，未注入时向量化按依赖不可用降级（RD-006）
+    api-key: ${EMBEDDING_API_KEY:}
     model: ${EMBEDDING_MODEL:qwen3.7-text-embedding}
     api-key: ${EMBEDDING_API_KEY:}
     dimensions: ${EMBEDDING_DIMENSIONS:1024}
@@ -57,7 +58,8 @@ rag:
   retrieval:
     top-k: ${RAG_TOP_K:5}
     max-top-k: 20
-    # 相似度 >= 0.65 视为可靠命中；0.45~0.65 判定 LOW_CONFIDENCE；< 0.45 或无命中判定 NO_RELIABLE_KNOWLEDGE
+    # >=0.65 为可靠命中；0.45~0.65 拒答 LOW_CONFIDENCE；<0.45 或无命中允许上层通用回答。
+    # 属性类默认可靠阈值0.70，此YAML覆盖为0.65；消费者以reliable/reason裁决，不复制阈值。
     confidence-threshold: ${RAG_CONFIDENCE_THRESHOLD:0.65}
     low-confidence-threshold: ${RAG_LOW_CONFIDENCE_THRESHOLD:0.45}
     snippet-length: 1000

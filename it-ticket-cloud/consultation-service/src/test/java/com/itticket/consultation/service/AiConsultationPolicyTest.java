@@ -26,10 +26,7 @@ class AiConsultationPolicyTest {
         ConsultationProperties properties = new ConsultationProperties();
         properties.getAi().setAnswerEnabled(true);
         properties.getAi().setProvider("openai-compatible");
-        properties.getAi().setHighRiskKeywords(List.of("密码"));
-        RagResult answer = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER,
-                "通用建议：检查输入法与大小写锁定。", List.of(), BigDecimal.ONE,
-                false, "model", List.of(), 10, null, true);
+        RagResult answer = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, "通用建议：检查输入法与大小写锁定。", List.of(), BigDecimal.ONE, null, "model", List.of(), 10, null, true, false);
         Fixture fixture = new Fixture(properties, answer);
         AiChatResponse response = fixture.chat("我的密码没改过却登录不上了");
         assertThat(response.replyType()).isEqualTo(AiReplyType.ANSWER);
@@ -45,8 +42,7 @@ class AiConsultationPolicyTest {
     void offTopicRefusalHistoryExplicitlyStatesServiceBoundary() {
         ConsultationProperties properties = new ConsultationProperties();
         properties.getAi().setAnswerEnabled(true);
-        Fixture fixture = new Fixture(properties, new RagResult(RagStatus.SUCCESS, AiReplyType.REFUSE,
-                null, List.of(), BigDecimal.ZERO, false, "model", List.of(), 10, null, false, true));
+        Fixture fixture = new Fixture(properties, new RagResult(RagStatus.SUCCESS, AiReplyType.REFUSE, null, List.of(), BigDecimal.ZERO, AiRefusalReason.OFF_TOPIC, "model", List.of(), 10, null, false, false));
         AiChatResponse response = fixture.chat("推荐电影");
         assertThat(response.refusalReason()).isEqualTo(AiRefusalReason.OFF_TOPIC);
         ArgumentCaptor<String> content = ArgumentCaptor.forClass(String.class);
