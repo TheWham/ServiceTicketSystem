@@ -63,6 +63,10 @@ public class ConsultationProperties {
          * 无论哪种,检索都只读 PUBLISHED 知识,生成都必须落在检索到的资料上(AI-001)。
          */
         private String provider = "local";
+        private String retrievalProvider = "rag-service";
+        private String ragBaseUrl = "http://127.0.0.1:8302";
+        private long ragRequestTimeoutMs = 5000;
+        private BigDecimal localRetrievalMinScore = new BigDecimal("0.60");
 
         /** OpenAI 兼容端点的基址,例如 https://.../compatible-mode/v1(不含 /chat/completions)。 */
         private String baseUrl;
@@ -107,6 +111,5 @@ public class ConsultationProperties {
         private long circuitOpenMillis = 30000;
         private int circuitHalfOpenSuccessThreshold = 3;
         /** AI-001:高风险主题关键词,命中即拒答并引导转人工。 */
-        private List<String> highRiskKeywords = new java.util.ArrayList<>();
     }
 }

@@ -1,5 +1,5 @@
 <template>
-  <el-drawer :model-value="visible" title="当前咨询" size="760px"
+  <el-drawer :model-value="visible" title="当前咨询" size="min(880px, 100vw)"
              :append-to-body="true" :close-on-click-modal="false"
              @update:model-value="v => emit('update:visible', v)">
     <div class="eng-consult">
@@ -7,12 +7,17 @@
       <div class="session-pane">
         <div class="pane-head">
           <span>进行中</span>
-          <el-tag size="small" effect="plain" type="primary">{{ activeSessions.length }}</el-tag>
+          <div class="pane-tools"><el-tag size="small" effect="plain" type="primary">{{ activeSessions.length }}</el-tag>
+          <el-button text circle :icon="Refresh" :loading="loadingSessions" aria-label="刷新咨询列表" @click="loadSessions" /></div>
         </div>
+        <div v-if="listError" class="list-error" role="status">咨询列表更新失败：{{ listError }}<el-button text type="primary" size="small" @click="loadSessions">重试</el-button></div>
+        <p v-if="loadingSessions && !sessions.length" class="pane-tip" role="status">正在加载咨询…</p>
         <el-scrollbar class="pane-body">
-          <el-empty v-if="activeSessions.length === 0" description="暂无进行中的咨询" :image-size="56" />
+          <el-empty v-if="activeSessions.length === 0 && !loadingSessions && !listError" description="暂无进行中的咨询" :image-size="56" />
           <div v-for="s in activeSessions" :key="s.session_id"
                class="session-item" :class="{ selected: selectedId === s.session_id }"
+               role="button" tabindex="0" :aria-pressed="selectedId === s.session_id"
+               @keydown.enter.prevent="openSession(s.session_id)" @keydown.space.prevent="openSession(s.session_id)"
                @click="openSession(s.session_id)">
             <div class="applicant">{{ applicantLabel(s) }}</div>
             <div class="session-top">
@@ -31,6 +36,8 @@
             </div>
             <div v-for="s in endedSessions" :key="s.session_id"
                  class="session-item ended" :class="{ selected: selectedId === s.session_id }"
+                 role="button" tabindex="0" :aria-pressed="selectedId === s.session_id"
+                 @keydown.enter.prevent="openSession(s.session_id)" @keydown.space.prevent="openSession(s.session_id)"
                  @click="openSession(s.session_id)">
               <div class="applicant">{{ applicantLabel(s) }}</div>
               <div class="session-top">
@@ -42,7 +49,7 @@
             </div>
           </template>
         </el-scrollbar>
-        <div class="pane-tip">列表每 10 秒自动刷新，新分配的咨询会自动出现</div>
+        <div class="pane-tip">新分配的咨询会自动更新</div>
       </div>
 
       <!-- ===== 右:聊天窗 ===== -->
@@ -58,14 +65,15 @@
               </el-tag>
               </div>
             </div>
-            <el-button text :icon="Refresh" :loading="loadingMessages" @click="reloadSelected" />
+            <el-button text :icon="Refresh" :loading="loadingMessages" aria-label="刷新对话" title="刷新对话" @click="reloadSelected" />
           </div>
+          <el-alert v-if="messageError" type="warning" :closable="false" show-icon class="state-banner" :title="`对话更新失败：${messageError}`" />
 
           <!-- 状态横幅 -->
           <el-alert v-if="selected.status === 'WAITING_ENGINEER'" type="warning" :closable="false"
                     class="state-banner">
             <template #title>
-              等待你的首次有效回复：发送第一条消息即完成接入（10 个工作分钟响应 SLA，打开会话不算响应）。
+              请在 10 个工作分钟内发送首次回复。发送后即开始接待，打开对话不会计为回复。
             </template>
           </el-alert>
           <el-alert v-else-if="selected.status === 'PENDING_CONFIRMATION'" type="success" :closable="false"
@@ -86,7 +94,7 @@
           </el-alert>
 
           <!-- 消息流(含员工与 AI 的此前对话,PRD 13.1) -->
-          <div ref="scrollRef" class="chat-body" v-loading="loadingMessages">
+          <div ref="scrollRef" class="chat-body" v-loading="loadingMessages" role="log" aria-label="咨询对话记录" aria-live="polite" :aria-busy="loadingMessages" tabindex="0">
             <div v-for="msg in messages" :key="msg.id" class="msg-row" :class="rowClass(msg)">
               <div class="msg-avatar" :class="'avatar-' + msg.senderType.toLowerCase()">
                 {{ avatarOf(msg.senderType) }}
@@ -113,9 +121,9 @@
                         <el-icon><Document /></el-icon> 依据以下已发布知识
                       </div>
                       <el-popover v-for="c in msg.citations" :key="c.versionId"
-                                  placement="top" :width="340" trigger="hover">
+                                  placement="top" width="min(340px, 90vw)" trigger="click">
                         <template #reference>
-                          <el-tag class="citation-tag" effect="plain" size="small">{{ c.title }}</el-tag>
+                          <el-button class="citation-tag" plain size="small" :aria-label="`查看知识依据：${c.title}`">{{ c.title }}</el-button>
                         </template>
                         <div class="citation-pop">
                           <div class="citation-pop-title">{{ c.title }}</div>
@@ -132,28 +140,30 @@
           <!-- 输入区 -->
           <div v-if="!isTerminal" class="chat-input">
             <el-input v-model="draft" type="textarea" :rows="3" resize="none"
-                      maxlength="12000" show-word-limit :disabled="sending"
+                      aria-label="回复咨询" aria-describedby="engineer-input-help"
+                      maxlength="12000" show-word-limit :disabled="sending || openingSession"
                       :placeholder="inputPlaceholder"
                       @keydown.enter.exact.prevent="send" />
             <div class="chat-actions">
               <div class="chat-actions-left">
                 <el-button v-if="selected.status === 'HUMAN_ACTIVE'" type="success"
-                           :icon="CircleCheck" :disabled="sending"
+                           :icon="CircleCheck" :disabled="sending || openingSession"
                            @click="submitResolution">
                   提交解决结论
                 </el-button>
                 <!-- PRD 9.1:人工咨询中由工程师发送提单快捷入口,员工确认表单后提交 -->
                 <el-button v-if="canSendTicketEntry" :icon="Tickets"
-                           :disabled="sending" @click="sendTicketEntry">
+                           :disabled="sending || openingSession" @click="sendTicketEntry">
                   发送提单入口
                 </el-button>
                 <span v-if="hint" class="input-hint">{{ hint }}</span>
               </div>
               <el-button type="primary" :icon="Promotion" :loading="sending"
-                         :disabled="!draft.trim()" @click="send">
+                         :disabled="!draft.trim() || openingSession" @click="send">
                 发送
               </el-button>
             </div>
+            <p id="engineer-input-help" class="input-hint keyboard-hint">Enter 发送 · Shift + Enter 换行</p>
           </div>
         </template>
         <el-empty v-else description="选择左侧咨询查看完整对话（含此前 AI 对话）" :image-size="80" />
@@ -199,9 +209,18 @@ const messages = ref([])
 const draft = ref('')
 const sending = ref(false)
 const loadingMessages = ref(false)
+const loadingSessions = ref(false)
+const listError = ref('')
+const messageError = ref('')
 const scrollRef = ref(null)
 const applicants = ref({})
 const finalMessagesLoaded = ref(false)
+const openingSession = ref(false)
+const lifetime = new AbortController()
+let disposed = false
+let selectionRevision = 0
+
+const isCurrentSelection = revision => !disposed && revision === selectionRevision
 
 let listTimer = null
 let pollTimer = null
@@ -225,8 +244,10 @@ const canSendTicketEntry = computed(() =>
 const statusMeta = (s) => ENGINEER_STATUS[s] || { label: s, type: 'info' }
 
 async function loadApplicants() {
+  if (disposed) return
   try {
     const res = await userApi.listUsers()
+    if (disposed) return
     applicants.value = Object.fromEntries((res.data || []).map(user => [user.user_id, user]))
   } catch (e) {
     // 用户目录暂不可用时仍显示咨询接口提供的申请人账号。
@@ -256,15 +277,19 @@ function updateSelected(detail) {
 // ---------------------------------------------------------------- 列表
 
 async function loadSessions() {
+  if (disposed || loadingSessions.value) return
+  loadingSessions.value = true
   const snapshot = selected.value
   try {
     const page = await consultationApi.list(1, 100)
+    if (disposed) return
     const items = page?.items || []
     sessions.value = items
+    listError.value = ''
     emit('count-change', activeSessions.value.length)
 
     // 列表刷新时同步当前选中会话的状态(员工确认/结束/回复未解决)
-    if (selected.value && selected.value === snapshot) {
+    if (!openingSession.value && selected.value && selected.value === snapshot) {
       const fresh = items.find(i => i.session_id === selected.value.session_id)
       if (fresh && fresh.status !== selected.value.status) {
         updateSelected(fresh)
@@ -273,21 +298,26 @@ async function loadSessions() {
     }
     // 状态先同步，再加载预览，避免消息预览慢时延迟结束通知。
     for (const s of activeSessions.value) {
+      if (disposed) return
       if (previews.value[s.session_id] === undefined) await loadPreview(s.session_id)
     }
   } catch (e) {
-    // 轮询失败静默,不打断工作
+    if (disposed) return
+    listError.value = e.message || '咨询列表暂不可用'
+  } finally {
+    if (!disposed) loadingSessions.value = false
   }
 }
 
 async function loadPreview(sessionId) {
+  if (disposed) return
   try {
-    const page = await consultationApi.listMessages(sessionId)
-    const items = (page?.items || []).filter(m => m.sender_type !== 'SYSTEM')
-    const last = items[items.length - 1]
+    const items = await consultationApi.listMessages(sessionId, { signal: lifetime.signal })
+    if (disposed) return
+    const last = items.filter(m => m.sender_type !== 'SYSTEM').at(-1)
     previews.value[sessionId] = last ? last.content : '暂无消息'
   } catch (e) {
-    previews.value[sessionId] = ''
+    if (!disposed) previews.value[sessionId] = ''
   }
 }
 
@@ -314,41 +344,58 @@ function applyStatusChange(before, after) {
 // ---------------------------------------------------------------- 会话与消息
 
 async function openSession(sessionId) {
-  if (selectedId.value === sessionId) return
+  if (disposed || (selectedId.value === sessionId && !openingSession.value)) return
+  const revision = ++selectionRevision
+  openingSession.value = true
+  sending.value = false
   loadingMessages.value = true
   try {
     const detail = await consultationApi.get(sessionId)
+    if (!isCurrentSelection(revision)) return
     // 先观察状态，再取历史，确保终态通知已提交后才读取最后一批消息。
-    const page = await consultationApi.listMessages(sessionId)
+    const items = await consultationApi.listMessages(sessionId, { signal: lifetime.signal })
+    if (!isCurrentSelection(revision)) return
     selected.value = { ...detail, session_id: detail.session_id || sessionId }
-    messages.value = (page?.items || []).map(toLocalMessage)
+    messages.value = items.map(toLocalMessage)
+    messageError.value = ''
     finalMessagesLoaded.value = isTerminal.value
     draft.value = ''
     scrollToBottom()
   } catch (e) {
+    if (!isCurrentSelection(revision)) return
+    messageError.value = e.message || '对话暂不可用'
     ElMessage.error(e.message)
   } finally {
-    loadingMessages.value = false
+    if (isCurrentSelection(revision)) {
+      loadingMessages.value = false
+      openingSession.value = false
+    }
   }
 }
 
 async function reloadSelected() {
-  if (!selected.value) return
+  if (disposed || openingSession.value || !selected.value) return
+  const revision = selectionRevision
   const snapshot = selected.value
   loadingMessages.value = true
   try {
     const detail = await consultationApi.get(snapshot.session_id)
-    if (selected.value !== snapshot) return
-    const page = await consultationApi.listMessages(snapshot.session_id)
-    if (selected.value !== snapshot) return
+    if (!isCurrentSelection(revision) || selected.value !== snapshot) return
+    const items = await consultationApi.listMessages(snapshot.session_id, { signal: lifetime.signal })
+    if (!isCurrentSelection(revision) || selected.value !== snapshot) return
     updateSelected(detail)
-    messages.value = (page?.items || []).map(toLocalMessage)
+    messages.value = items.map(toLocalMessage)
+    messageError.value = ''
     finalMessagesLoaded.value = isTerminal.value
   } catch (e) {
+    if (!isCurrentSelection(revision) || selected.value !== snapshot) return
+    messageError.value = e.message || '对话暂不可用'
     ElMessage.error(e.message)
   } finally {
-    loadingMessages.value = false
-    scrollToBottom()
+    if (isCurrentSelection(revision)) {
+      loadingMessages.value = false
+      scrollToBottom()
+    }
   }
 }
 
@@ -365,7 +412,10 @@ function toLocalMessage(item) {
   }
 }
 
-async function send() {
+async function send(event) {
+  if (disposed || openingSession.value) return
+  const revision = selectionRevision
+  if (event?.isComposing) return
   const text = draft.value.trim()
   if (!text || !selected.value || isTerminal.value || sending.value) return
   const sessionId = selected.value.session_id
@@ -373,7 +423,7 @@ async function send() {
   sending.value = true
   try {
     await consultationApi.sendMessage(sessionId, text)
-    if (selected.value?.session_id !== sessionId || isTerminal.value) return
+    if (!isCurrentSelection(revision) || selected.value?.session_id !== sessionId || isTerminal.value) return
     messages.value.push({
       id: `local-${Date.now()}`,
       senderType: 'ENGINEER',
@@ -389,13 +439,14 @@ async function send() {
       await loadSessions()
     }
   } catch (e) {
+    if (!isCurrentSelection(revision)) return
     ElMessage.error(e.message)
     if (selected.value?.session_id === sessionId && !isTerminal.value) {
       draft.value = text
       await reloadSelected()
     }
   } finally {
-    sending.value = false
+    if (isCurrentSelection(revision)) sending.value = false
   }
 }
 
@@ -408,12 +459,14 @@ const isTicketEntry = (msg) =>
  * 渲染成可点击卡片,点击跳转到提单界面由员工本人确认提交。
  */
 async function sendTicketEntry() {
+  if (disposed || openingSession.value) return
+  const revision = selectionRevision
   if (!selected.value || !canSendTicketEntry.value || sending.value) return
   const sessionId = selected.value.session_id
   sending.value = true
   try {
     await consultationApi.sendMessage(sessionId, TICKET_ENTRY_MESSAGE)
-    if (selected.value?.session_id !== sessionId || isTerminal.value) return
+    if (!isCurrentSelection(revision) || selected.value?.session_id !== sessionId || isTerminal.value) return
     messages.value.push({
       id: `local-${Date.now()}`,
       senderType: 'ENGINEER',
@@ -423,13 +476,16 @@ async function sendTicketEntry() {
     scrollToBottom()
     ElMessage.success('已发送提交工单入口')
   } catch (e) {
+    if (!isCurrentSelection(revision)) return
     ElMessage.error(e.message)
   } finally {
-    sending.value = false
+    if (isCurrentSelection(revision)) sending.value = false
   }
 }
 
 async function submitResolution() {
+  if (disposed || openingSession.value) return
+  const revision = selectionRevision
   if (!selected.value || isTerminal.value || sending.value) return
   const sessionId = selected.value.session_id
   let conclusion = ''
@@ -445,16 +501,17 @@ async function submitResolution() {
     )
     conclusion = value.trim()
   } catch (e) {
+    if (!isCurrentSelection(revision)) return
     return
   }
-  if (selected.value?.session_id !== sessionId || isTerminal.value) return
+  if (!isCurrentSelection(revision) || selected.value?.session_id !== sessionId || isTerminal.value) return
   sending.value = true
   try {
     // 当前输入框内容作为结论的补充上下文一并发出
     const extra = draft.value.trim()
     if (extra) {
       await consultationApi.sendMessage(sessionId, extra)
-      if (selected.value?.session_id !== sessionId || isTerminal.value) return
+      if (!isCurrentSelection(revision) || selected.value?.session_id !== sessionId || isTerminal.value) return
       messages.value.push({
         id: `local-${Date.now()}`,
         senderType: 'ENGINEER',
@@ -464,7 +521,7 @@ async function submitResolution() {
       draft.value = ''
     }
     const res = await consultationApi.submitResolution(sessionId, conclusion)
-    if (selected.value?.session_id !== sessionId || isTerminal.value) return
+    if (!isCurrentSelection(revision) || selected.value?.session_id !== sessionId || isTerminal.value) return
     selected.value.status = res.status
     messages.value.push({
       id: `local-${Date.now() + 1}`,
@@ -476,36 +533,41 @@ async function submitResolution() {
     ElMessage.success('解决结论已提交')
     await loadSessions()
   } catch (e) {
+    if (!isCurrentSelection(revision)) return
     ElMessage.error(e.message)
   } finally {
-    sending.value = false
+    if (isCurrentSelection(revision)) sending.value = false
   }
 }
 
 // ---------------------------------------------------------------- 轮询
 
 async function pollSelected() {
+  if (disposed || openingSession.value) return
+  const revision = selectionRevision
   if (!selected.value || (isTerminal.value && finalMessagesLoaded.value)) return
   const snapshot = selected.value
   try {
     const detail = await consultationApi.get(snapshot.session_id)
-    if (selected.value !== snapshot) return
+    if (!isCurrentSelection(revision) || selected.value !== snapshot) return
     updateSelected(detail)
     const updated = selected.value
-    const page = await consultationApi.listMessages(snapshot.session_id)
-    if (selected.value !== updated) return
-    const items = page?.items || []
+    const items = await consultationApi.listMessages(snapshot.session_id, { signal: lifetime.signal })
+    if (!isCurrentSelection(revision) || selected.value !== updated) return
     if (items.length !== messages.value.filter(m => m.serverId).length) {
       messages.value = items.map(toLocalMessage)
       scrollToBottom()
     }
     finalMessagesLoaded.value = isTerminal.value
+    messageError.value = ''
   } catch (e) {
-    // 轮询失败静默
+    if (!isCurrentSelection(revision)) return
+    if (selected.value?.session_id === snapshot.session_id) messageError.value = e.message || '无法获取最新消息'
   }
 }
 
 watch(() => props.visible, (open) => {
+  if (disposed) return
   if (open) {
     loadApplicants()
     loadSessions()
@@ -523,6 +585,9 @@ onMounted(() => {
   listTimer = setInterval(loadSessions, 10000)
 })
 onUnmounted(() => {
+  disposed = true
+  selectionRevision++
+  lifetime.abort()
   clearInterval(listTimer)
   clearInterval(pollTimer)
 })
@@ -531,6 +596,7 @@ onUnmounted(() => {
 
 function scrollToBottom() {
   nextTick(() => {
+    if (disposed) return
     const el = scrollRef.value
     if (el) el.scrollTop = el.scrollHeight
   })
@@ -548,12 +614,12 @@ const formatTime = (iso) => {
 </script>
 
 <style scoped>
-.eng-consult { display: flex; gap: 12px; height: calc(100vh - 110px); }
+.eng-consult { display: flex; gap: 20px; height: calc(100dvh - 110px); color: var(--el-text-color-primary); }
 
 /* 左:列表 */
 .session-pane {
   flex: none; width: 240px; display: flex; flex-direction: column;
-  background: var(--el-fill-color-light); border-radius: 8px; padding: 10px;
+  background: var(--el-bg-color); border-right: 1px solid var(--el-border-color-lighter); padding-right: 16px;
 }
 .pane-head {
   display: flex; justify-content: space-between; align-items: center;
@@ -563,17 +629,20 @@ const formatTime = (iso) => {
 .pane-head-end { margin-top: 14px; border-top: 1px dashed var(--el-border-color); padding-top: 12px; }
 .pane-body { flex: 1; }
 .pane-tip {
-  font-size: 11px; color: var(--el-text-color-placeholder);
+  font-size: 12px; color: var(--el-text-color-secondary);
   padding-top: 8px; text-align: center;
 }
 .session-item {
   padding: 8px 10px; border-radius: 6px; cursor: pointer; margin-bottom: 6px;
-  background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter);
+  background: var(--el-bg-color); border: 1px solid transparent;
   transition: border-color .15s;
 }
 .session-item:hover { border-color: var(--el-color-primary-light-5); }
-.session-item.selected { border-color: var(--el-color-primary); }
-.session-item.ended { opacity: .7; }
+.session-item.selected { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
+.session-item.ended { color: var(--el-text-color-secondary); }
+.session-item:focus-visible, .chat-body:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: -2px; }
+.pane-tools { display: flex; align-items: center; gap: 6px; }
+.list-error { font-size: 12px; color: var(--el-text-color-regular); padding: 8px; line-height: 1.6; }
 .applicant { font-size: 13px; font-weight: 600; margin-bottom: 6px; overflow-wrap: anywhere; }
 .session-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
 .session-id {
@@ -603,17 +672,17 @@ const formatTime = (iso) => {
 .msg-avatar {
   flex: none; width: 34px; height: 34px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 600; color: #fff;
+  font-size: 13px; font-weight: 600; color: var(--ws-on-solid);
 }
 .avatar-employee { background: var(--el-color-primary); }
-.avatar-ai { background: #7c3aed; }
+.avatar-ai { color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
 .avatar-engineer { background: var(--el-color-success); }
 .avatar-system { background: var(--el-color-info); }
 
 .msg-main { display: flex; flex-direction: column; max-width: 78%; }
 .msg-meta { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
 .msg-sender { font-size: 12px; color: var(--el-text-color-secondary); }
-.msg-time { font-size: 11px; color: var(--el-text-color-placeholder); }
+.msg-time { font-size: 11px; color: var(--el-text-color-secondary); }
 
 .msg-bubble {
   padding: 10px 14px; border-radius: 10px; line-height: 1.7;
@@ -625,7 +694,7 @@ const formatTime = (iso) => {
   display: flex; align-items: center; gap: 6px;
   font-size: 13px; color: var(--el-text-color-secondary);
 }
-.bubble-engineer { background: var(--el-color-success); border-color: var(--el-color-success); color: #fff; }
+.bubble-engineer { background: var(--el-color-primary-light-9); border-color: var(--el-color-primary-light-7); color: var(--el-text-color-primary); }
 .bubble-system {
   background: transparent; border: none; color: var(--el-text-color-secondary);
   font-size: 13px; padding: 4px 0;
@@ -636,7 +705,8 @@ const formatTime = (iso) => {
   display: flex; align-items: center; gap: 4px; font-size: 12px;
   color: var(--el-text-color-secondary); margin-bottom: 6px;
 }
-.citation-tag { margin-right: 6px; cursor: pointer; }
+.citation-tag { margin: 0 6px 6px 0; max-width: 100%; height: auto; min-height: 28px; white-space: normal; text-align: left; }
+.citation-tag :deep(span) { overflow-wrap: anywhere; }
 .citation-pop-title { font-weight: 600; margin-bottom: 6px; }
 .citation-pop-snippet { font-size: 13px; line-height: 1.6; color: var(--el-text-color-regular); }
 
@@ -646,5 +716,14 @@ const formatTime = (iso) => {
   margin-top: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px;
 }
 .chat-actions-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.input-hint { font-size: 12px; color: var(--el-text-color-placeholder); }
+.input-hint { font-size: 12px; color: var(--el-text-color-secondary); }
+.keyboard-hint { margin: 8px 0 0; text-align: right; font-size: 11px; }
+.chat-actions :deep(.el-button + .el-button) { margin-left: 0; }
+@media (max-width: 640px) {
+  .eng-consult { flex-direction: column; height: auto; min-height: calc(100dvh - 110px); }
+  .session-pane { width: 100%; max-height: 220px; padding: 0 0 12px; border-right: 0; border-bottom: 1px solid var(--el-border-color-lighter); }
+  .chat-body { min-height: 260px; max-height: 45dvh; }
+  .chat-actions { flex-wrap: wrap; }
+  .msg-main { max-width: calc(100% - 44px); }
+}
 </style>

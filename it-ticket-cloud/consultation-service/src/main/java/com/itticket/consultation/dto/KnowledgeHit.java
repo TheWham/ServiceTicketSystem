@@ -17,8 +17,8 @@ import lombok.Data;
  *   <li>全文检索命中为 MySQL {@code MATCH ... AGAINST} 相关度,取值无上界;</li>
  *   <li>LIKE 回退命中为按名次衰减的基础分({@code 1/名次}),见 {@code KnowledgeQueryMapper}。</li>
  * </ul>
- * 对外(引用 score、置信度)必须先归一化到 [0,1] 并保留 4 位小数(AI-004.3),
- * 归一化在 {@code KnowledgeRagAdapter} 内完成。
+ * 本地检索在 {@code MySqlKnowledgeRetriever} 中将相关度归一化到 [0,1] 并保留 4 位小数。
+ * 该分数可作为引用 score，与外部模型生成的回答置信度分别保存；远端 RAG 分数不经过此投影。
  */
 @Data
 public class KnowledgeHit {

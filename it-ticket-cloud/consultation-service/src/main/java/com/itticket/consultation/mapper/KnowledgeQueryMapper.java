@@ -2,6 +2,7 @@ package com.itticket.consultation.mapper;
 
 import com.itticket.consultation.dto.KnowledgeHit;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
@@ -61,10 +62,9 @@ public interface KnowledgeQueryMapper {
      * RAG 召回回退:ngram 分词未命中(短词、低频词)时用 LIKE 模糊匹配兜底。
      *
      * <p>基础分为 {@code 1.0 / 名次}(名次按发布时间倒序,MySQL 8 窗口函数):
-     * 首条按 KnowledgeRagAdapter 的归一化公式折算后置信度为 0.5,低于 {@code ai.min-confidence}
-     * 默认值 0.60,上游据此按 {@code LOW_CONFIDENCE} 拒答并建议转人工——回退命中只用于给出引用线索,
-     * 不足以支撑综合回答(AI-001「置信度不足必须拒答」)。
-     * 名次衰减同时保证各命中得分互不相同,不会因为同分被冲突判据(见 KnowledgeRagAdapter)误判为知识冲突。
+     * 首条经 {@code MySqlKnowledgeRetriever} 归一化后相关度为 0.5，低于
+     * {@code ai.local-retrieval-min-score} 默认值 0.60，因此默认按 {@code LOW_CONFIDENCE} 拒答。
+     * 这是本地检索可靠性策略，与模型回答置信度及语义知识冲突判定分别处理。
      *
      * @param pattern    已按 {@code ESCAPE '/'} 转义过的 LIKE 中间串(不含首尾百分号)
      * @param categoryId 可选分类过滤
@@ -171,10 +171,14 @@ public interface KnowledgeQueryMapper {
     /**
      * 引用有效性复核(AI-008:返回客户端前必须确认引用的知识版本仍为 PUBLISHED 当前版本)。
      *
-     * @return 命中返回 1,否则 0
+     * <p>锁定读获取最新提交状态，不复用 REPEATABLE READ 快照或 MyBatis 查询缓存。
+     * 在回答落库事务中，共享锁持续到提交；竞争写锁时立即失败，由调用方明确降级。
+     *
+     * @return 当前发布版本 ID；不存在时为 null
      */
+    @Options(useCache = false, flushCache = Options.FlushCachePolicy.TRUE)
     @Select("""
-            SELECT COUNT(1)
+            SELECT v.version_id
               FROM knowledge_article a
               JOIN knowledge_version v
                 ON v.version_id = a.current_version_id
@@ -182,7 +186,8 @@ public interface KnowledgeQueryMapper {
              WHERE a.status = 'PUBLISHED'
                AND a.article_id = #{articleId}
                AND v.version_id = #{versionId}
+             FOR SHARE NOWAIT
             """)
-    int countPublishedCurrentVersion(@Param("articleId") String articleId,
-                                     @Param("versionId") String versionId);
+    String selectPublishedCurrentVersion(@Param("articleId") String articleId,
+                                         @Param("versionId") String versionId);
 }

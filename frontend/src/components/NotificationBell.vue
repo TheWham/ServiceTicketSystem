@@ -1,13 +1,13 @@
 <template>
   <el-popover
     placement="bottom-end"
-    :width="380"
+    width="min(380px, calc(100vw - 24px))"
     trigger="click"
     @show="loadList"
   >
     <template #reference>
       <el-badge :value="pendingCount > 0 ? pendingCount : ''" :max="99" class="notify-badge">
-        <el-button text circle class="bell-btn">
+        <el-button text circle class="bell-btn" :aria-label="pendingCount ? `通知，${pendingCount} 条待办` : '查看通知'" title="查看通知">
           <el-icon :size="18"><Bell /></el-icon>
         </el-button>
       </el-badge>
@@ -21,22 +21,33 @@
         </el-tag>
       </div>
 
-      <el-scrollbar v-if="list.length" max-height="380px">
+      <div v-if="listError" class="notify-error" role="status">
+        <span>通知加载失败：{{ listError }}</span>
+        <el-button text type="primary" size="small" :loading="loading" @click="loadList">重新加载</el-button>
+      </div>
+      <p v-if="loading" role="status" class="notify-loading">正在加载通知…</p>
+      <el-scrollbar v-if="list.length" max-height="380px" :aria-busy="loading">
         <div
           v-for="n in list"
           :key="n.notification_id"
           class="notify-item"
           :class="{ unread: n.status === 'SENT' }"
+          :role="n.action_url ? 'link' : undefined"
+          :tabindex="n.action_url ? 0 : undefined"
+          :aria-label="n.action_url ? `查看通知：${n.title}` : undefined"
           @click="onOpen(n)"
+          @keydown.enter.prevent="onOpen(n)"
+          @keydown.space.prevent="onOpen(n)"
         >
           <div class="notify-item-title">{{ n.title }}</div>
           <div class="notify-item-content">{{ n.content }}</div>
           <div class="notify-item-time">{{ formatTime(n.created_at) }}</div>
         </div>
       </el-scrollbar>
-      <el-empty v-else description="暂无通知" :image-size="60" />
+      <el-empty v-else-if="!loading && !listError" description="暂无通知" :image-size="60" />
 
       <div class="notify-footer">
+        <p v-if="countError" role="status" class="notify-tip">待办数量更新失败：{{ countError }}<el-button text size="small" type="primary" @click="loadCount">重试</el-button></p>
         <span class="notify-tip">查看通知不等于完成行动，请点击通知进入待办</span>
       </div>
     </div>
@@ -52,21 +63,30 @@ import { notificationApi } from '../api/index.js'
 const router = useRouter()
 const list = ref([])
 const pendingCount = ref(0)
+const loading = ref(false)
+const listError = ref('')
+const countError = ref('')
 let timer = null
 
 async function loadCount() {
   try {
     const res = await notificationApi.pendingCount()
     pendingCount.value = res.data || 0
-  } catch (e) { /* 静默，不打断页面 */ }
+    countError.value = ''
+  } catch (e) { countError.value = e.message || '待办数量暂不可用' }
 }
 
 async function loadList() {
+  if (loading.value) return
+  loading.value = true
+  listError.value = ''
   try {
     const res = await notificationApi.list({ page: 1, page_size: 20 })
     list.value = res.data?.list || []
   } catch (e) {
-    list.value = []
+    listError.value = e.message || '服务暂不可用'
+  } finally {
+    loading.value = false
   }
 }
 
@@ -131,5 +151,8 @@ defineExpose({ loadCount })
   padding-top: 6px; border-top: 1px solid var(--el-border-color-lighter);
   text-align: center;
 }
-.notify-tip { font-size: 11px; color: var(--el-text-color-placeholder); }
+.notify-tip { font-size: 12px; color: var(--el-text-color-secondary); }
+.notify-item:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: -2px; background: var(--el-fill-color-light); }
+.notify-error, .notify-loading { padding: 12px 0; color: var(--el-text-color-regular); font-size: 13px; line-height: 1.7; }
+.notify-item-content, .notify-item-title { overflow-wrap: anywhere; }
 </style>

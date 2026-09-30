@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { useUserStore } from '../stores/user.js'
+import { requireCurrentAccounts } from '../auth/identity.js'
 
 const api = axios.create({
   baseURL: '/api/v1',
@@ -18,24 +19,34 @@ api.interceptors.request.use(config => {
 
 // 响应拦截：统一错误处理
 api.interceptors.response.use(
-  res => res.data,
+  res => {
+    const payload = res.data
+    if (payload && typeof payload.code === 'number' && payload.code !== 0) {
+      const error = new Error(payload.msg || '请求未完成，请重试')
+      error.code = payload.code
+      throw error
+    }
+    return payload
+  },
   err => {
     const msg = err.response?.data?.msg || err.message || '网络错误'
-    console.error('[API Error]', msg)
-    return Promise.reject(new Error(msg))
+    const error = new Error(msg)
+    error.status = err.response?.status
+    error.code = err.response?.data?.code || err.code
+    return Promise.reject(error)
   }
 )
 
 // ---- 用户 API ----
 export const userApi = {
   login: (data) => api.post('/users/login', data),
-  loginOptions: () => api.get('/users/login-options'),
+  loginOptions: () => api.get('/users/login-options', { headers: { 'Cache-Control': 'no-cache' } }).then(requireCurrentAccounts),
   getMe: () => api.get('/users/me'),
   listUsers: (params) => api.get('/users', { params }),
   // 认证模块：忘记密码(免登录)/修改密码
   forgotPassword: (data) => api.post('/users/forgot-password', data),
   changePassword: (data) => api.post('/users/change-password', data),
-  // 主管账号管理
+  // 平台管理员账号管理
   listAccounts: () => api.get('/users/accounts'),
   createAccount: (data) => api.post('/users/accounts', data),
   resetPassword: (userId, data) => api.post(`/users/accounts/${userId}/reset-password`, data),
@@ -44,7 +55,7 @@ export const userApi = {
 
 // ---- 工单 API ----
 export const ticketApi = {
-  create: (data) => api.post('/tickets', data),
+  create: (data, config) => api.post('/tickets', data, config),
   list: (params) => api.get('/tickets', { params }),
   detail: (id) => api.get(`/tickets/${id}`),
   assign: (id, data) => api.post(`/tickets/${id}/assign`, data),
