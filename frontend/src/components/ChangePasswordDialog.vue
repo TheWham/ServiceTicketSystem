@@ -52,7 +52,7 @@ async function submit() {
   }
   loading.value = true
   try {
-    await userApi.changePassword({ old_password: f.oldPassword, new_password: f.newPassword })
+    await userApi.changePassword({ oldPassword: f.oldPassword, newPassword: f.newPassword })
     ElMessage.success('密码修改成功')
     close()
   } catch (e) {
