@@ -3,6 +3,8 @@
 对应 PRD-v2 的 **F-02(咨询入口与知识搜索)、F-03(转人工及人工咨询)、F-13(RAG/AI 回答、引用、拒答、反馈)**。
 本服务是**咨询会话状态的唯一写入方**，与用户、工单服务共用规范数据库 `it_ticket_system`；共享表按业务类型隔离。
 
+2026-10-08：默认已接入 rag-service 混合检索。联调配置、降级语义和验证命令见 [RAG-INTEGRATION.md](RAG-INTEGRATION.md)，接口契约见 [RAG 对接说明](../rag-service/INTEGRATION.md)。
+
 端口 `8301`,通过 gateway 的 `/api/v1/consultations/**`、`/api/v1/knowledge/**` 路由访问。
 
 ---
@@ -44,7 +46,7 @@ POST /api/v1/consultations/{id}/feedback                     → 持久化待处
 
 1. 会话状态必须是 `AI_ACTIVE`,否则 `AI_SESSION_NOT_ACTIVE`;
 2. 员工提问先落库 —— 即便后续 AI 降级,对话历史仍然完整;
-3. `openai-compatible` 先独立进行语义范围/风险分类：`OFFICE_IT` 才进入检索生成，`OFF_TOPIC` 明确拒答，`HIGH_RISK` 转人工，`UNCERTAIN` 追问。按实际意图判断，不用 IT 关键词白名单；普通登录排障可答；
+3. 默认由 rag-service 返回领域和知识策略：`OFFICE_IT` 才进入生成，`OFF_TOPIC` 明确拒答，`HIGH_RISK` 转人工，`UNCERTAIN` 追问；显式配置 `retrieval-provider=mysql` 时保留模型分类与 SQL 检索的兼容链路；
 4. `ai.answer-enabled=false`(评测未达 PRD 17.3 上线门槛)→ `REFUSE / POLICY_BLOCKED`;
 5. 否则经 `GuardedRagClient` 调用 RAG:超时、并发上限、连续 5 次失败打开断路器;
 6. **输出闸门 `AiAnswerGuard`** 按固定优先级判定,任一条不过即结构化拒答:
@@ -72,7 +74,7 @@ RD-006 允许两者二选一,选拒答是因为会话保持可用、客户端只
 | `openai-compatible` | 走 OpenAI 兼容端点做受约束生成(当前默认) |
 | `local` | 不调外部模型,只按检索结果拼装答案。离线、演示或评测未上线时使用 |
 
-`local` 不具备语义分类或模型通用知识能力，仍保留关键词高风险兜底、无命中拒答；冷启动通用回答策略需使用 `openai-compatible`。
+`local` 不具备模型通用知识能力，无命中仍拒答；冷启动通用回答策略需使用 `openai-compatible`。检索独立由 `retrieval-provider=rag-service|mysql` 决定，默认使用 RAG；关键词高风险兜底仅用于 `local + mysql` 兼容模式。
 
 **两种模式下检索都只读 `PUBLISHED` 当前版本**,模型拿不到数据库、未发布案例、原始工单或聊天正文。
 
@@ -85,7 +87,7 @@ RD-006 允许两者二选一,选拒答是因为会话保持可用、客户端只
    `choices[0].message.content`,推理字段不解析、不落库、不写日志(AI-001、AI-008)。
 3. **先范围判定再受约束生成** —— 无命中仍可生成办公 IT 通用建议；即使无命中，模型给出的任何虚构 versionId 也会导致整次输出无效。有命中但不相关时允许不引用，不把不相关来源挂到通用答案上。
 
-分类和生成共享同一次 `GuardedRagClient` 的总超时与并发保护，不另设重试循环；代价是正常回答多一次模型请求。
+检索和生成共享同一次 `GuardedRagClient` 的总超时与并发保护，重试也消耗同一预算。RAG 模式只调用一次生成模型；MySQL 兼容模式另加一次模型分类。
 两次调用都严格验证完整响应、字段类型、置信度范围和引用，不接收工具调用或截断响应。
 HTTP stub 测试验证流程与边界，不能证明真实模型对自然语言、混合请求和提示注入的分类准确率；上线仍需代表性语义评测。
 

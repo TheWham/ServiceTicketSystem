@@ -132,7 +132,12 @@ public class GuardedRagClient {
                     break;
                 }
 
-                last = attemptOnce(query, requestId);
+                long remainingMs = timeoutMillis() - elapsedMs(startNanos);
+                if (remainingMs <= 0) {
+                    last = RagResult.degraded(RagStatus.TIMEOUT, ERROR_TIMEOUT, elapsedMs(startNanos));
+                    break;
+                }
+                last = attemptOnce(query, requestId, remainingMs);
                 if (last.status() == RagStatus.SUCCESS) {
                     circuitBreaker.recordSuccess();
                     log.debug("[rag] 调用成功 dependency={} circuit={} replyType={} citations={} "
@@ -145,7 +150,7 @@ public class GuardedRagClient {
 
                 circuitBreaker.recordFailure();
                 logDegraded(last, requestId, sessionId, attempt);
-                if (!retryable(last.status())) {
+                if (!retryable(last)) {
                     // RD-003:不得对业务拒绝重试
                     break;
                 }
@@ -172,7 +177,7 @@ public class GuardedRagClient {
     }
 
     /** 单次尝试:并发许可 → 线程池执行 → 限时等待 → 输出校验。 */
-    private RagResult attemptOnce(RagQuery query, String requestId) {
+    private RagResult attemptOnce(RagQuery query, String requestId, long remainingMs) {
         long attemptStart = System.nanoTime();
         if (!permits.tryAcquire()) {
             // RD-007:并发已满立即降级,不阻塞排队
@@ -184,7 +189,7 @@ public class GuardedRagClient {
         Future<RagResult> future = null;
         try {
             future = executor.submit(task);
-            RagResult result = future.get(timeoutMillis(), TimeUnit.MILLISECONDS);
+            RagResult result = future.get(remainingMs, TimeUnit.MILLISECONDS);
             return validate(result, elapsedMs(attemptStart));
         } catch (TimeoutException e) {
             // cancel(true) 只发中断信号:JDBC 查询未必立即响应中断,
@@ -260,8 +265,10 @@ public class GuardedRagClient {
     }
 
     /** RD-003:只对确认可安全重试的瞬时故障重试。 */
-    private static boolean retryable(RagStatus status) {
-        return status == RagStatus.TIMEOUT || status == RagStatus.UNAVAILABLE;
+    private static boolean retryable(RagResult result) {
+        if (result.errorClass() != null && List.of("NOT_CONFIGURED", "RAG_NOT_CONFIGURED", "RAG_AUTH_MISSING", "RAG_AUTH_FAILED",
+                "AUTH_FAILED", "PERMANENT", "RAG_BUSINESS_FAILURE", "RAG_INTERRUPTED").contains(result.errorClass())) return false;
+        return result.status() == RagStatus.TIMEOUT || result.status() == RagStatus.UNAVAILABLE;
     }
 
     /** 错误分类只取异常类型简名,不带消息与堆栈(AI-006 错误不得包含堆栈)。 */

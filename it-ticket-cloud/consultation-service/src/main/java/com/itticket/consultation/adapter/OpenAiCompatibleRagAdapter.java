@@ -31,7 +31,7 @@ import java.util.Set;
 /**
  * 基于 OpenAI 兼容端点的受约束 RAG 生成(AX-003/AX-007 的 RagAdapter 实现)。
  *
- * <p><b>检索仍在本地</b>:候选资料一律来自 {@link KnowledgeQueryService#retrieve},
+ * <p><b>检索来源可配置</b>:默认通过 {@link RagServiceClient} 获取混合检索结果，mysql 为显式兼容模式。
  * 只读 {@code PUBLISHED} 且为当前版本的知识(AI-001、RD-006)。知识优先，资料不足时可给办公 IT 通用建议，
  * 不接触数据库,也拿不到未发布案例、原始工单或聊天正文(AI-001、AI-008)。
  *
@@ -77,11 +77,13 @@ public class OpenAiCompatibleRagAdapter implements RagAdapter {
     private final KnowledgeQueryService knowledgeQueryService;
     private final ConsultationProperties properties;
     private final HttpClient httpClient;
+    private final RagServiceClient ragServiceClient;
 
     public OpenAiCompatibleRagAdapter(KnowledgeQueryService knowledgeQueryService,
                                       ConsultationProperties properties) {
         this.knowledgeQueryService = knowledgeQueryService;
         this.properties = properties;
+        this.ragServiceClient = new RagServiceClient(properties);
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .followRedirects(HttpClient.Redirect.NEVER)
@@ -92,8 +94,12 @@ public class OpenAiCompatibleRagAdapter implements RagAdapter {
     public RagResult answer(RagQuery query, String requestId) {
         long startNanos = System.nanoTime();
         ConsultationProperties.Ai ai = properties.getAi();
+        boolean remoteRetrieval = "rag-service".equals(ai.getRetrievalProvider());
+        if (!remoteRetrieval && !"mysql".equals(ai.getRetrievalProvider())) {
+            return RagResult.degraded(RagStatus.UNAVAILABLE, "RAG_NOT_CONFIGURED", elapsedMs(startNanos));
+        }
 
-        if (isBlank(ai.getBaseUrl()) || isBlank(ai.getApiKey())) {
+        if (!remoteRetrieval && (isBlank(ai.getBaseUrl()) || isBlank(ai.getApiKey()))) {
             // 配置缺失是显式可判定的降级,不能伪装成"无可靠知识"(RD-013)
             log.error("[rag] 未配置模型端点或凭据 dependency={} requestId={}", DEPENDENCY, requestId);
             return RagResult.degraded(RagStatus.UNAVAILABLE, ERROR_NOT_CONFIGURED, elapsedMs(startNanos));
@@ -104,27 +110,36 @@ public class OpenAiCompatibleRagAdapter implements RagAdapter {
         List<KnowledgeHit> hits;
         ModelReply reply;
         try {
-            JsonNode classification = callModel(ai, classificationPrompt(),
-                    MAPPER.createObjectNode().put("question", query.question()).toString(), requestId, ai.getMaxOutputTokens());
-            if (classification == null || !classification.isObject() || classification.size() != 1
-                    || !classification.path("decision").isTextual()) {
-                return RagResult.degraded(RagStatus.INVALID_RESPONSE, ERROR_INVALID_RESPONSE, elapsedMs(startNanos));
+            if (remoteRetrieval) {
+                RagServiceClient.Retrieval retrieval = ragServiceClient.retrieve(query, requestId);
+                if (retrieval.decision() != null) return retrieval.decision();
+                hits = retrieval.hits();
+                if (isBlank(ai.getBaseUrl()) || isBlank(ai.getApiKey())) {
+                    return RagResult.degraded(RagStatus.UNAVAILABLE, ERROR_NOT_CONFIGURED, elapsedMs(startNanos));
+                }
+            } else {
+                JsonNode classification = callModel(ai, classificationPrompt(),
+                        MAPPER.createObjectNode().put("question", query.question()).toString(), requestId, ai.getMaxOutputTokens());
+                if (classification == null || !classification.isObject() || classification.size() != 1
+                        || !classification.path("decision").isTextual()) {
+                    return RagResult.degraded(RagStatus.INVALID_RESPONSE, ERROR_INVALID_RESPONSE, elapsedMs(startNanos));
+                }
+                String decision = classification.path("decision").asText();
+                if ("OFF_TOPIC".equals(decision) || "HIGH_RISK".equals(decision)) {
+                    return new RagResult(RagStatus.SUCCESS, AiReplyType.REFUSE, null, List.of(),
+                            RagResult.ZERO_CONFIDENCE, false, ai.getModel(), List.of(), elapsedMs(startNanos),
+                            null, false, "OFF_TOPIC".equals(decision), "HIGH_RISK".equals(decision));
+                }
+                if ("UNCERTAIN".equals(decision)) {
+                    return new RagResult(RagStatus.SUCCESS, AiReplyType.CLARIFY,
+                            "请补充遇到问题的办公设备或应用、具体表现及错误提示，以便确认是否属于办公 IT 问题。",
+                            List.of(), BigDecimal.ONE, false, ai.getModel(), List.of(), elapsedMs(startNanos), null);
+                }
+                if (!"OFFICE_IT".equals(decision)) {
+                    return RagResult.degraded(RagStatus.INVALID_RESPONSE, ERROR_INVALID_RESPONSE, elapsedMs(startNanos));
+                }
+                hits = knowledgeQueryService.retrieve(query.question(), query.categoryId(), Math.max(1, query.topK()));
             }
-            String decision = classification.path("decision").asText();
-            if ("OFF_TOPIC".equals(decision) || "HIGH_RISK".equals(decision)) {
-                return new RagResult(RagStatus.SUCCESS, AiReplyType.REFUSE, null, List.of(),
-                        RagResult.ZERO_CONFIDENCE, false, ai.getModel(), List.of(), elapsedMs(startNanos),
-                        null, false, "OFF_TOPIC".equals(decision), "HIGH_RISK".equals(decision));
-            }
-            if ("UNCERTAIN".equals(decision)) {
-                return new RagResult(RagStatus.SUCCESS, AiReplyType.CLARIFY,
-                        "请补充遇到问题的办公设备或应用、具体表现及错误提示，以便确认是否属于办公 IT 问题。",
-                        List.of(), BigDecimal.ONE, false, ai.getModel(), List.of(), elapsedMs(startNanos), null);
-            }
-            if (!"OFFICE_IT".equals(decision)) {
-                return RagResult.degraded(RagStatus.INVALID_RESPONSE, ERROR_INVALID_RESPONSE, elapsedMs(startNanos));
-            }
-            hits = knowledgeQueryService.retrieve(query.question(), query.categoryId(), Math.max(1, query.topK()));
             reply = callModel(ai, query, hits, requestId);
         } catch (HttpFailure e) {
             log.warn("[rag] 模型调用失败 dependency={} status={} errorClass={} requestId={} sessionId={}",
@@ -168,7 +183,7 @@ public class OpenAiCompatibleRagAdapter implements RagAdapter {
                 return RagResult.degraded(RagStatus.INVALID_RESPONSE, ERROR_INVALID_RESPONSE,
                         elapsedMs(startNanos));
             }
-            citations.add(toCitation(hit));
+            citations.add(toCitation(hit, remoteRetrieval));
         }
 
         List<String> retrievedVersionIds = new ArrayList<>(byVersion.keySet());
@@ -379,7 +394,7 @@ public class OpenAiCompatibleRagAdapter implements RagAdapter {
     }
 
     /** 引用条目全部由检索结果重建,模型无法影响其中任何字段。 */
-    private static KnowledgeCitationDto toCitation(KnowledgeHit hit) {
+    private static KnowledgeCitationDto toCitation(KnowledgeHit hit, boolean remoteRetrieval) {
         String snippet = nullToEmpty(hit.getSummary());
         if (snippet.isBlank()) {
             snippet = nullToEmpty(hit.getBody());
@@ -391,7 +406,8 @@ public class OpenAiCompatibleRagAdapter implements RagAdapter {
                 hit.getArticleId(),
                 hit.getVersionId(),
                 truncate(safeTitle(hit), TITLE_MAX),
-                normalizeScore(hit.getScore()),
+                remoteRetrieval ? BigDecimal.valueOf(hit.getScore()).setScale(CONFIDENCE_SCALE, RoundingMode.HALF_UP)
+                        : normalizeScore(hit.getScore()),
                 truncate(snippet, SNIPPET_MAX));
     }
 

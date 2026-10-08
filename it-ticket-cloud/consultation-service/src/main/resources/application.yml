@@ -2,6 +2,10 @@ server:
   port: 8301
 
 spring:
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
   application:
     name: consultation-service
   profiles:
@@ -12,7 +16,7 @@ spring:
     # 但知识搜索、人工咨询与转人工不受影响(RD-013 主链路不可阻断)。
     import:
       - optional:nacos:${spring.application.name}-${spring.profiles.active}.yaml
-      - optional:file:./ai-secrets.yml
+      - optional:file:${AI_SECRETS_FILE:./ai-secrets.yml}
   cloud:
     nacos:
       server-addr: ${NACOS_ADDR:127.0.0.1:8848}
@@ -83,9 +87,14 @@ itticket:
 
       # 生成侧供应商:openai-compatible 走外部模型,local 只按检索结果拼装(不调外部依赖)
       provider: ${AI_PROVIDER:openai-compatible}
-      base-url: ${AI_BASE_URL:https://ws-klculckg6dog3won.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
-      # AX-007:凭据必须从加密配置读取。此处只留占位,真实值放 application-local.yml(已 gitignore)
-      # 或环境变量 AI_API_KEY / Nacos 配置中心,不得提交到仓库。
+      # 检索与生成独立配置。RAG 故障不能静默回退到 MySQL 或通用回答。
+      retrieval-provider: ${AI_RETRIEVAL_PROVIDER:rag-service}
+      rag-base-url: ${RAG_BASE_URL:http://127.0.0.1:8302}
+      retrieval-timeout-ms: ${RAG_RETRIEVAL_TIMEOUT_MS:20000}
+      rag-citation-min-score: ${RAG_CONFIDENCE_THRESHOLD:0.70}
+      base-url: ${AI_BASE_URL:}
+      # 【手动配置入口】模块根目录 consultation-service/ai-secrets.yml。
+      # 在该文件填写 base-url、api-key、model；也支持环境变量 / Nacos。
       api-key: ${AI_API_KEY:}
       model: ${AI_MODEL:qwen3-vl-32b-thinking}
       # thinking 模型的推理 token 也计入该上限,给小了会出现推理占满、content 为空

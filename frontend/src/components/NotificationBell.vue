@@ -1,13 +1,13 @@
 <template>
   <el-popover
     placement="bottom-end"
-    :width="380"
+    width="min(380px, calc(100vw - 24px))"
     trigger="click"
     @show="loadList"
   >
     <template #reference>
       <el-badge :value="pendingCount > 0 ? pendingCount : ''" :max="99" class="notify-badge">
-        <el-button text circle class="bell-btn">
+        <el-button text circle class="bell-btn" aria-label="查看通知">
           <el-icon :size="18"><Bell /></el-icon>
         </el-button>
       </el-badge>
@@ -26,6 +26,10 @@
           v-for="n in list"
           :key="n.notification_id"
           class="notify-item"
+          role="button"
+          tabindex="0"
+          @keydown.enter.prevent="onOpen(n)"
+          @keydown.space.prevent="onOpen(n)"
           :class="{ unread: n.status === 'SENT' }"
           @click="onOpen(n)"
         >

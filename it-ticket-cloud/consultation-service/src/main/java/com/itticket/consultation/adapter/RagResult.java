@@ -2,6 +2,7 @@ package com.itticket.consultation.adapter;
 
 import com.itticket.consultation.dto.KnowledgeCitationDto;
 import com.itticket.consultation.enums.AiReplyType;
+import com.itticket.consultation.enums.AiRefusalReason;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -49,7 +50,16 @@ public record RagResult(
         String errorClass,
         boolean generalAnswer,
         boolean offTopic,
-        boolean highRiskTopic) {
+        boolean highRiskTopic,
+        AiRefusalReason refusalReason) {
+
+    public RagResult(RagStatus status, AiReplyType replyType, String answerText,
+                     List<KnowledgeCitationDto> citations, BigDecimal confidence,
+                     boolean knowledgeConflict, String modelVersion, List<String> retrievedVersionIds,
+                     long latencyMs, String errorClass, boolean generalAnswer, boolean offTopic, boolean highRiskTopic) {
+        this(status, replyType, answerText, citations, confidence, knowledgeConflict, modelVersion,
+                retrievedVersionIds, latencyMs, errorClass, generalAnswer, offTopic, highRiskTopic, null);
+    }
 
     public RagResult(RagStatus status, AiReplyType replyType, String answerText,
                      List<KnowledgeCitationDto> citations, BigDecimal confidence,
@@ -102,6 +112,6 @@ public record RagResult(
     public RagResult withLatency(long totalLatencyMs) {
         return new RagResult(status, replyType, answerText, citations, confidence,
                 knowledgeConflict, modelVersion, retrievedVersionIds, totalLatencyMs, errorClass,
-                generalAnswer, offTopic, highRiskTopic);
+                generalAnswer, offTopic, highRiskTopic, refusalReason);
     }
 }

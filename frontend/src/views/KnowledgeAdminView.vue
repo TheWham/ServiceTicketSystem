@@ -1,31 +1,15 @@
 <template>
   <div class="kb-admin-container">
-    <!-- 顶部导航栏 -->
     <header class="kb-header">
-      <div class="header-left">
-        <div class="logo-icon">📚</div>
-        <div class="header-titles">
-          <h1 class="main-title">知识库管理工作台</h1>
-          <span class="sub-title">RAG 文档解析、智能切片与 Elasticsearch 链路追踪</span>
-        </div>
+      <div class="header-left"><div class="logo-icon"><el-icon aria-hidden="true"><Notebook /></el-icon></div>
+        <div class="header-titles"><span class="page-eyebrow">KNOWLEDGE WORKSPACE</span><h1 class="main-title">{{ activeTab === 'lifecycle' ? '知识管理' : '文档导入' }}</h1><p class="sub-title">{{ activeTab === 'lifecycle' ? '审核知识内容，管理发布与下线，让解答保持准确' : '导入服务文档，检查处理结果，再提交知识审核' }}</p></div>
       </div>
-      <div class="header-right">
-        <el-tag type="danger" effect="dark" round class="role-badge">
-          知识库管理员
-        </el-tag>
-        <el-button type="warning" plain size="small" :loading="isInitEs" @click="handleInitEsIndex">
-          ⚡ 初始化 ES 索引
-        </el-button>
-        <span class="user-name">{{ userStore.currentUser?.name || '知识库管理员' }}</span>
-        <el-button type="info" plain size="small" @click="handleLogout">
-          退出登录
-        </el-button>
-      </div>
+      <el-button v-if="activeTab === 'ingest'" :icon="Connection" :loading="isInitEs" @click="handleInitEsIndex">初始化检索索引</el-button>
     </header>
 
     <main class="kb-main-body">
       <el-tabs v-model="activeTab" class="kb-tabs">
-      <el-tab-pane label="📄 文档上传与链路追踪" name="ingest">
+      <el-tab-pane label="文档导入" name="ingest">
       <el-row :gutter="20">
         <!-- 左侧：文档上传与参数配置 -->
         <el-col :xs="24" :lg="9">
@@ -33,7 +17,7 @@
             <template #header>
               <div class="card-header-title">
                 <el-icon><UploadFilled /></el-icon>
-                <span>上传知识文档 (RAG Ingestion)</span>
+                <span>导入知识文档</span>
               </div>
             </template>
 
@@ -85,12 +69,12 @@
                   <el-radio :value="true">直接发布（快速通道，跳过审核）</el-radio>
                 </el-radio-group>
                 <div v-if="uploadForm.publishNow" class="quick-warn">
-                  ⚠ 直接发布跳过审核并立即进入 RAG 检索，仅建议管理端测试使用（规范 SM-KNOWLEDGE-001 要求审核后发布）
+                  直接发布跳过审核并立即进入 RAG 检索，仅建议管理端测试使用（规范 SM-KNOWLEDGE-001 要求审核后发布）
                 </div>
               </el-form-item>
 
               <el-collapse class="advanced-params">
-                <el-collapse-item title="⚙️ 切片策略高级参数设置">
+                <el-collapse-item title="高级处理参数">
                   <el-row :gutter="12">
                     <el-col :span="12">
                       <el-form-item label="目标切片大小 (字符数)">
@@ -118,6 +102,7 @@
                 </el-collapse-item>
               </el-collapse>
 
+              <el-alert v-if="uploadError" :title="uploadError" type="error" show-icon :closable="false" class="page-error" />
               <div class="upload-action-bar">
                 <el-button
                   type="primary"
@@ -128,7 +113,7 @@
                   @click="submitUploadAndProcess"
                 >
                   <el-icon v-if="!isProcessing"><Cpu /></el-icon>
-                  {{ isProcessing ? '切片与入库处理中...' : '开始切片并写入 ES 知识库' }}
+                  {{ isProcessing ? '文档处理中...' : '开始处理文档' }}
                 </el-button>
               </div>
             </el-form>
@@ -140,21 +125,27 @@
               <div class="card-header-flex">
                 <div class="card-header-title">
                   <el-icon><Clock /></el-icon>
-                  <span>最近执行链路记录</span>
+                  <span>最近处理记录</span>
                 </div>
                 <el-button link type="primary" size="small" @click="fetchRecentTraces">
                   刷新
                 </el-button>
               </div>
             </template>
-            <div v-if="historyTraces.length === 0" class="empty-hint">
+            <el-alert v-if="historyError" :title="historyError" type="error" :closable="false"><el-button link type="primary" @click="fetchRecentTraces">重试</el-button></el-alert>
+            <div v-if="historyLoading" class="empty-hint" role="status">正在加载处理记录…</div>
+            <div v-else-if="!historyError && historyTraces.length === 0" class="empty-hint">
               暂无历史链路记录，请上传文档执行
             </div>
-            <div v-else class="history-list">
+            <div v-else-if="!historyError" class="history-list">
               <div
                 v-for="item in historyTraces"
                 :key="item.traceId"
                 class="history-item"
+                role="button"
+                tabindex="0"
+                @keydown.enter="loadTrace(item)"
+                @keydown.space.prevent="loadTrace(item)"
                 :class="{ active: currentTrace?.traceId === item.traceId }"
                 @click="loadTrace(item)"
               >
@@ -182,7 +173,7 @@
               <div class="card-header-flex">
                 <div class="card-header-title">
                   <el-icon><Connection /></el-icon>
-                  <span>RAG 切片入库全链路追踪 (Pipeline Trace)</span>
+                  <span>文档处理结果</span>
                 </div>
                 <span v-if="currentTrace" class="trace-id-badge">
                   TraceID: <code>{{ currentTrace.traceId }}</code>
@@ -211,13 +202,13 @@
                 </div>
                 <div class="summary-metric">
                   <span class="label">知识库状态</span>
-                  <el-tag type="success" effect="plain">已入库索引</el-tag>
+                  <el-tag :type="getStageTagType(currentTrace.status)" effect="plain">{{ currentTrace.status === 'SUCCESS' ? '处理完成' : currentTrace.status === 'FAILED' ? '处理失败' : '请查看处理步骤' }}</el-tag>
                 </div>
               </div>
 
               <!-- 链路步骤时间线 -->
               <div class="timeline-section">
-                <h3 class="section-heading">📌 链路执行步骤详情</h3>
+                <h3 class="section-heading">处理步骤</h3>
                 <el-timeline>
                   <el-timeline-item
                     v-for="(stage, idx) in currentTrace.stages"
@@ -255,11 +246,12 @@
               <!-- 切片详情与内容预览 -->
               <div class="chunks-section">
                 <div class="chunks-header">
-                  <h3 class="section-heading">📑 生成语义切片明细 (Chunks Preview)</h3>
+                  <h3 class="section-heading">内容切片预览</h3>
                   <el-input
                     v-model="chunkSearchKeyword"
                     placeholder="搜索切片文本或标题..."
-                    prefix-icon="Search"
+                    :prefix-icon="Search"
+                    aria-label="搜索切片文本或标题"
                     size="small"
                     clearable
                     style="width: 240px"
@@ -281,9 +273,9 @@
                             <el-tag size="small" type="info">{{ chunk.charCount }} 字</el-tag>
                             <el-tag size="small" type="warning">约 {{ chunk.tokenCountEstimate }} Tokens</el-tag>
                             <el-tag size="small" type="success" effect="plain" v-if="chunk.hasVector || chunk.vectorDimensions">
-                              {{ chunk.vectorDimensions || 1024 }} 维向量
+                              {{ chunk.vectorDimensions ? `${chunk.vectorDimensions} 维向量` : '向量已生成' }}
                             </el-tag>
-                            <el-tag size="small" type="success">ES: {{ chunk.esDocId || '已索引' }}</el-tag>
+                            <el-tag size="small" type="success">ES: {{ chunk.esDocId || '未返回索引编号' }}</el-tag>
                           </div>
                         </div>
                       </template>
@@ -307,7 +299,7 @@
       </el-row>
       </el-tab-pane>
 
-      <el-tab-pane label="🗂 知识生命周期管理" name="lifecycle">
+      <el-tab-pane label="知识管理" name="lifecycle">
         <el-card shadow="hover" class="box-card">
           <template #header>
             <div class="card-header-flex">
@@ -328,12 +320,14 @@
             </div>
           </template>
 
+          <p class="scope-note">符合筛选的知识共 {{ articleTotal }} 篇，当前页已加载 {{ articles.length }} 篇。</p>
+          <el-alert v-if="listError" :title="listError" type="error" :closable="false" show-icon class="page-error"><el-button link type="primary" @click="fetchArticles()">重新加载</el-button></el-alert>
           <el-table
             :data="articles"
             v-loading="listLoading"
             border
             stripe
-            empty-text="暂无知识文章，可先在「文档上传」页落为草稿"
+            :empty-text="listError ? '知识列表加载失败，请重试' : '暂无知识文章，可先在文档导入页存为草稿'"
           >
             <el-table-column prop="articleId" label="文章ID" min-width="210" show-overflow-tooltip />
             <el-table-column prop="categoryId" label="分类" width="90" align="center" />
@@ -383,10 +377,11 @@
     <el-drawer
       v-model="drawerVisible"
       :title="`知识详情 · ${detail?.article?.articleId || ''}`"
-      size="600px"
+      size="min(600px, 100vw)"
       :destroy-on-close="true"
     >
       <div v-loading="detailLoading" class="drawer-body">
+        <el-alert v-if="detailError" :title="detailError" type="error" :closable="false" show-icon />
         <template v-if="detail && detail.article">
           <el-descriptions title="文章信息" :column="2" border size="small">
             <el-descriptions-item label="文章ID" :span="2">{{ detail.article.articleId }}</el-descriptions-item>
@@ -423,7 +418,7 @@
           </template>
 
           <template v-if="detail.currentVersion">
-            <h3 class="section-heading">📄 知识内容（审核对象）</h3>
+            <h3 class="section-heading">知识内容（审核对象）</h3>
             <div class="knowledge-content">
               <template v-if="versionContent.summary">
                 <span class="content-label">摘要</span>
@@ -446,7 +441,7 @@
             </div>
           </template>
 
-          <h3 class="section-heading">🕘 流转审计时间线</h3>
+          <h3 class="section-heading">流转审计时间线</h3>
           <el-empty
             v-if="!detail.transitions || detail.transitions.length === 0"
             description="暂无流转记录"
@@ -485,33 +480,33 @@
             type="primary"
             :loading="actionLoading"
             @click="doSubmit"
-          >📤 提交审核</el-button>
+          ><el-icon><UploadFilled /></el-icon> 提交审核</el-button>
           <el-button
             v-if="detail.article.status === 'PENDING_REVIEW'"
             type="success"
             :loading="actionLoading"
             @click="doPublish"
-          >✅ 审核通过并发布</el-button>
+          ><el-icon><Check /></el-icon> 审核通过并发布</el-button>
           <el-button
             v-if="detail.article.status === 'PENDING_REVIEW'"
             type="danger"
             plain
             :loading="actionLoading"
             @click="doReject"
-          >🚫 驳回</el-button>
+          >驳回</el-button>
           <el-button
             v-if="detail.article.status === 'PUBLISHED'"
             type="danger"
             :loading="actionLoading"
             @click="doOffline"
-          >⛔ 下线（搜索与 RAG 不再返回）</el-button>
+          >下线（搜索与 RAG 不再返回）</el-button>
           <el-button
             v-if="detail.article.status === 'PUBLISHED'"
             type="warning"
             plain
             :loading="actionLoading"
             @click="doReindex"
-          >♻ 重建 RAG 索引</el-button>
+          >重建检索索引</el-button>
           <div v-if="detail.article.status === 'PENDING_REVIEW'" class="self-review-hint">
             作者不得审核自己提交的内容（AC-25）；高风险知识须平台管理员复核
           </div>
@@ -536,7 +531,7 @@
  * @author IT工单系统前端研发组 - RAG专项
  */
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   UploadFilled,
@@ -551,6 +546,7 @@ import { useUserStore } from '../stores/user.js'
 import { ragApi } from '../api/index.js'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
 // ---- 响应式状态定义 ----
@@ -558,12 +554,17 @@ const userStore = useUserStore()
 const selectedFile = ref(null)
 /** 文档上传与切片处理中 Loading 状态 */
 const isProcessing = ref(false)
+const uploadError = ref('')
 /** ES 索引初始化中 Loading 状态 */
 const isInitEs = ref(false)
 /** 当前展示的全链路追踪报告实体 */
 const currentTrace = ref(null)
 /** 历史追踪记录列表 */
 const historyTraces = ref([])
+const historyLoading = ref(false)
+const historyError = ref('')
+const listError = ref('')
+const detailError = ref('')
 /** 切片手风琴展开的切片 ID 集合 */
 const activeChunkNames = ref([])
 /** 切片内容搜索过滤关键词 */
@@ -571,7 +572,10 @@ const chunkSearchKeyword = ref('')
 
 // ---- 生命周期管理状态 ----
 /** 当前页签：ingest 上传工作台 / lifecycle 生命周期管理 */
-const activeTab = ref('ingest')
+const activeTab = computed({
+  get: () => route.query.tab === 'lifecycle' ? 'lifecycle' : 'ingest',
+  set: tab => router.push({ path: route.path, query: { ...route.query, tab } })
+})
 /** 知识列表查询条件 */
 const listQuery = ref({ status: '', page: 1, pageSize: 10 })
 /** 知识文章列表 */
@@ -643,6 +647,7 @@ async function submitUploadAndProcess() {
   }
 
   isProcessing.value = true
+  uploadError.value = ''
   const formData = new FormData()
   formData.append('file', selectedFile.value)
   if (uploadForm.value.title) formData.append('title', uploadForm.value.title)
@@ -667,13 +672,15 @@ async function submitUploadAndProcess() {
       }
     }
   } catch (err) {
-    ElMessage.error(err.message || '文档处理失败')
+    uploadError.value = err.message || '文档处理失败，请重试'
   } finally {
     isProcessing.value = false
   }
 }
 
 async function fetchRecentTraces() {
+  historyLoading.value = true
+  historyError.value = ''
   try {
     const res = await ragApi.listTraces()
     if (res && res.data) {
@@ -683,7 +690,9 @@ async function fetchRecentTraces() {
       }
     }
   } catch (e) {
-    console.warn('获取历史追踪记录失败', e)
+    historyError.value = e.message || '处理记录加载失败，请重试'
+  } finally {
+    historyLoading.value = false
   }
 }
 
@@ -721,6 +730,7 @@ function eventLabel(code) {
 async function fetchArticles(page) {
   if (page) listQuery.value.page = page
   listLoading.value = true
+  listError.value = ''
   try {
     const res = await ragApi.listArticles({
       status: listQuery.value.status || undefined,
@@ -732,7 +742,7 @@ async function fetchArticles(page) {
       articleTotal.value = res.data.total || 0
     }
   } catch (e) {
-    ElMessage.error('加载知识列表失败: ' + (e.message || '网络错误'))
+    listError.value = '知识列表加载失败：' + (e.message || '网络错误')
   } finally {
     listLoading.value = false
   }
@@ -741,11 +751,13 @@ async function fetchArticles(page) {
 async function openDetail(articleId) {
   drawerVisible.value = true
   detailLoading.value = true
+  detail.value = null
+  detailError.value = ''
   try {
     const res = await ragApi.getArticle(articleId)
     if (res?.data) detail.value = res.data
   } catch (e) {
-    ElMessage.error('加载知识详情失败: ' + (e.message || '网络错误'))
+    detailError.value = '知识详情加载失败：' + (e.message || '网络错误')
   } finally {
     detailLoading.value = false
   }
@@ -973,18 +985,19 @@ function handleLogout() {
 
 <style scoped>
 .kb-admin-container {
-  min-height: 100vh;
-  background-color: #f5f7fa;
+  min-width: 0;
+  background-color: var(--el-bg-color-page);
 }
 
 .kb-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 28px;
-  background: #ffffff;
-  border-bottom: 1px solid #e4e7ed;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 0;
+  margin-bottom: 24px;
+  background: var(--el-bg-color);
+  border-bottom: 0;
+  box-shadow: none;
 }
 
 .header-left {
@@ -1001,12 +1014,12 @@ function handleLogout() {
   margin: 0;
   font-size: 18px;
   font-weight: 700;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .sub-title {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .header-right {
@@ -1017,12 +1030,12 @@ function handleLogout() {
 
 .user-name {
   font-weight: 600;
-  color: #606266;
+  color: var(--el-text-color-regular);
   font-size: 14px;
 }
 
 .kb-main-body {
-  padding: 20px 24px;
+  padding: 0;
 }
 
 .card-header-title {
@@ -1031,7 +1044,7 @@ function handleLogout() {
   gap: 8px;
   font-weight: 600;
   font-size: 15px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .card-header-flex {
@@ -1041,8 +1054,8 @@ function handleLogout() {
 }
 
 .trace-id-badge code {
-  background: #ecf5ff;
-  color: #409eff;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
   padding: 3px 8px;
   border-radius: 4px;
   font-size: 12px;
@@ -1054,7 +1067,7 @@ function handleLogout() {
 
 .advanced-params {
   margin: 12px 0;
-  border: 1px dashed #dcdfe6;
+  border: 1px dashed var(--el-border-color);
   border-radius: 6px;
   padding: 0 12px;
 }
@@ -1079,20 +1092,20 @@ function handleLogout() {
 .history-item {
   padding: 10px 12px;
   border-radius: 6px;
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--el-border-color);
   cursor: pointer;
-  background: #fafafa;
+  background: var(--el-fill-color-light);
   transition: all 0.2s;
 }
 
 .history-item:hover {
-  background: #ecf5ff;
-  border-color: #b3d8ff;
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary-light-5);
 }
 
 .history-item.active {
-  background: #ecf5ff;
-  border-color: #409eff;
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary);
 }
 
 .history-item-top {
@@ -1105,7 +1118,7 @@ function handleLogout() {
 .history-name {
   font-size: 13px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1114,13 +1127,13 @@ function handleLogout() {
 .history-item-meta {
   display: flex;
   gap: 12px;
-  font-size: 11px;
-  color: #909399;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .empty-hint {
   text-align: center;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   padding: 24px 0;
   font-size: 13px;
 }
@@ -1132,8 +1145,8 @@ function handleLogout() {
 .trace-summary-banner {
   display: flex;
   justify-content: space-between;
-  background: #f0f9eb;
-  border: 1px solid #e1f3d8;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: 8px;
   padding: 14px 20px;
   margin-bottom: 20px;
@@ -1147,14 +1160,14 @@ function handleLogout() {
 
 .summary-metric .label {
   font-size: 12px;
-  color: #67c23a;
+  color: var(--el-color-success);
   font-weight: 500;
 }
 
 .summary-metric .value {
   font-size: 16px;
   font-weight: 700;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .summary-metric .value.doc-title {
@@ -1165,35 +1178,35 @@ function handleLogout() {
 }
 
 .summary-metric .value.highlight {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 .section-heading {
   margin: 16px 0 12px 0;
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 /* ---- 详情抽屉：知识内容（审核对象） ---- */
 .knowledge-content {
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--el-border-color);
   border-radius: 6px;
   padding: 12px;
-  background: #fafbfc;
+  background: var(--el-fill-color-light);
 }
 
 .content-label {
   display: block;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-bottom: 4px;
 }
 
 .content-summary {
   margin: 0 0 10px 0;
   font-size: 13px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   line-height: 1.6;
 }
 
@@ -1208,12 +1221,12 @@ function handleLogout() {
 .content-body {
   margin: 0;
   padding: 10px;
-  background: #fff;
-  border: 1px solid #ebeef5;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: 4px;
   font-size: 13px;
   line-height: 1.6;
-  color: #303133;
+  color: var(--el-text-color-primary);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 340px;
@@ -1223,7 +1236,7 @@ function handleLogout() {
 
 .stage-inner-card {
   border-radius: 6px;
-  background: #fafbfc;
+  background: var(--el-fill-color-light);
 }
 
 .stage-title-row {
@@ -1235,13 +1248,13 @@ function handleLogout() {
 
 .stage-name {
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
   font-size: 14px;
 }
 
 .stage-desc {
   font-size: 12px;
-  color: #606266;
+  color: var(--el-text-color-regular);
   margin: 4px 0 8px 0;
 }
 
@@ -1250,11 +1263,11 @@ function handleLogout() {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #67c23a;
-  background: #fff;
+  color: var(--el-color-success);
+  background: var(--el-bg-color);
   padding: 6px 10px;
   border-radius: 4px;
-  border-left: 3px solid #67c23a;
+  border-left: 3px solid var(--el-color-success);
   margin-bottom: 8px;
 }
 
@@ -1265,21 +1278,21 @@ function handleLogout() {
 }
 
 .metric-chip {
-  background: #ffffff;
-  border: 1px solid #ebeef5;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
   border-radius: 4px;
   padding: 3px 8px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .m-key {
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-right: 4px;
 }
 
 .m-val {
   font-weight: 600;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .chunks-header {
@@ -1297,18 +1310,18 @@ function handleLogout() {
 }
 
 .chunk-index {
-  background: #409eff;
-  color: #fff;
+  background: var(--el-color-primary);
+  color: var(--el-bg-color);
   padding: 2px 8px;
   border-radius: 12px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
 .chunk-section-title {
   font-weight: 600;
   font-size: 13px;
-  color: #303133;
+  color: var(--el-text-color-primary);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1323,9 +1336,9 @@ function handleLogout() {
 
 .chunk-body {
   padding: 10px;
-  background: #fdfdfd;
+  background: var(--el-fill-color-light);
   border-radius: 4px;
-  border: 1px solid #f2f6fc;
+  border: 1px solid var(--el-border-color-lighter);
 }
 
 .chunk-meta-bar {
@@ -1333,7 +1346,7 @@ function handleLogout() {
   justify-content: space-between;
   align-items: center;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-bottom: 8px;
 }
 
@@ -1341,14 +1354,14 @@ function handleLogout() {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  background: #f5f7fa;
+  background: var(--el-bg-color-page);
   padding: 12px;
   border-radius: 6px;
   font-size: 13px;
   line-height: 1.6;
-  color: #2c3e50;
+  color: var(--el-text-color-primary);
   font-family: Consolas, Monaco, "Courier New", monospace;
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--el-border-color);
 }
 
 /* ===== 生命周期管理 ===== */
@@ -1373,7 +1386,7 @@ function handleLogout() {
 .quick-warn {
   margin-top: 6px;
   font-size: 12px;
-  color: #e6a23c;
+  color: var(--el-color-warning);
   line-height: 1.5;
 }
 
@@ -1399,7 +1412,7 @@ function handleLogout() {
 .self-review-hint {
   width: 100%;
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
   margin-top: 6px;
 }
 
@@ -1413,20 +1426,65 @@ function handleLogout() {
 .transition-flow {
   font-weight: 600;
   font-size: 13px;
-  color: #303133;
+  color: var(--el-text-color-primary);
 }
 
 .transition-meta {
   font-size: 12px;
-  color: #909399;
+  color: var(--el-text-color-secondary);
 }
 
 .transition-reason {
   font-size: 12px;
-  color: #606266;
-  background: #f5f7fa;
+  color: var(--el-text-color-regular);
+  background: var(--el-bg-color-page);
   border-radius: 4px;
   padding: 4px 8px;
   margin-top: 4px;
+}
+
+.page-eyebrow { display:block; color:var(--el-color-primary); font-size:12px; font-weight:700; letter-spacing:1.4px; margin-bottom:8px; }
+.main-title { font-size:28px; line-height:1.3; }
+.sub-title { display:block; margin:8px 0 0; font-size:14px; line-height:1.6; }
+.kb-header { gap:16px; flex-wrap:wrap; background:transparent; }
+.logo-icon { width:48px; height:48px; border-radius:14px; background:var(--el-color-primary-light-9); color:var(--el-color-primary); display:grid; place-items:center; flex-shrink:0; }
+:deep(.el-card) { border-radius:16px; box-shadow:none; }
+.card-header-title { font-size:18px; }
+.card-header-flex { gap:12px; flex-wrap:wrap; }
+.scope-note { margin:0 0 16px; color:var(--el-text-color-secondary); font-size:13px; line-height:1.6; }
+.page-error { margin-bottom:16px; }
+.trace-id-badge { color:var(--el-text-color-secondary); font-size:12px; overflow-wrap:anywhere; }
+.trace-summary-banner { gap:16px; flex-wrap:wrap; }
+.summary-metric .label { color:var(--el-text-color-secondary); }
+.timeline-section { margin-top:24px; }
+.stage-inner-card { border-radius:10px; }
+.history-item:focus-visible { outline:2px solid var(--el-color-primary); outline-offset:2px; }
+.chunk-collapse-title { min-width:0; flex-wrap:wrap; padding:10px 0; }
+.chunk-tags { flex-wrap:wrap; }
+:deep(.el-collapse-item__header) { height:auto; min-height:48px; line-height:1.5; }
+.drawer-body { min-height:100px; }
+:deep(.el-radio) { white-space:normal; height:auto; min-height:36px; }
+:deep(.el-radio__label) { white-space:normal; line-height:1.6; }
+:deep(.el-radio-group) { gap:8px; }
+@media(max-width:767px) {
+  .main-title { font-size:24px; }
+  .header-left { align-items:flex-start; }
+  .logo-icon { display:none; }
+  .kb-main-body :deep(.el-col) { margin-bottom:16px; }
+  :deep(.el-card__body), :deep(.el-card__header) { padding:16px; }
+  .list-toolbar { width:100%; }
+  .list-toolbar :deep(.el-radio-group) { display:flex; flex-wrap:wrap; gap:6px; }
+  .list-toolbar :deep(.el-radio-button__inner) { border:1px solid var(--el-border-color); border-radius:8px; min-height:40px; display:flex; align-items:center; }
+  .pager-row { justify-content:center; }
+  .pager-row :deep(.el-pagination) { flex-wrap:wrap; justify-content:center; gap:8px; }
+  .chunks-header, .chunk-meta-bar { flex-wrap:wrap; gap:8px; }
+  .chunks-header :deep(.el-input) { width:100% !important; }
+  .chunk-tags { width:100%; margin:0; }
+  .history-item-meta { flex-wrap:wrap; gap:6px 12px; }
+  .trace-summary-banner { padding:16px; }
+  .summary-metric { width:calc(50% - 8px); min-width:0; }
+  .stage-title-row { gap:8px; align-items:flex-start; }
+  :deep(.el-drawer__body) { padding:16px; }
+  :deep(.el-descriptions__table) { overflow-wrap:anywhere; }
 }
 </style>

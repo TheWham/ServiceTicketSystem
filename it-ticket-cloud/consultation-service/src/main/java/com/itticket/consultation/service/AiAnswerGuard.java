@@ -109,7 +109,8 @@ public final class AiAnswerGuard {
         }
         // 适配器自身已判定无可靠命中(非超范围)
         if (result.replyType() == AiReplyType.REFUSE) {
-            return Verdict.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, result.confidence());
+            return Verdict.refuse(result.refusalReason() == null
+                    ? AiRefusalReason.NO_RELIABLE_KNOWLEDGE : result.refusalReason(), result.confidence());
         }
 
         // 范围不明确时只追问；该问题不是知识结论，不要求来源。

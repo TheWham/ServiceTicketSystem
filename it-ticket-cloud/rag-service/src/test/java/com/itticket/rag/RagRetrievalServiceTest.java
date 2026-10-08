@@ -1,6 +1,7 @@
 package com.itticket.rag;
 
 import com.itticket.common.api.BizException;
+import com.itticket.common.api.ErrorCode;
 import com.itticket.rag.config.RagRetrievalProperties;
 import com.itticket.rag.dto.ai.KnowledgeCitation;
 import com.itticket.rag.entity.KnowledgeArticle;
@@ -17,6 +18,8 @@ import com.itticket.rag.vo.ChunkHit;
 import com.itticket.rag.vo.RagRetrievalResponse;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mockito;
 
 import java.math.BigDecimal;
@@ -103,7 +106,13 @@ public class RagRetrievalServiceTest {
         KnowledgeArticle entity = new KnowledgeArticle();
         entity.setArticleId(articleId);
         entity.setStatus(status);
+        entity.setCurrentVersionId("ver-" + articleId);
         return entity;
+    }
+
+    private void stubPublishedArticle() {
+        Mockito.when(articleMapper.selectBatchIds(any())).thenReturn(
+                List.of(article("a1", KnowledgeStatus.PUBLISHED)));
     }
 
     // ------------------------------------------------------------ 阈值分档
@@ -115,6 +124,7 @@ public class RagRetrievalServiceTest {
     @Test
     public void reliableWhenSimilarityReachesThreshold() {
         stubEmbeddingOk();
+        stubPublishedArticle();
         stubSearch(List.of(hit("c1", "a1", "0.8200")));
 
         RagRetrievalService.RetrievalOutcome outcome = service.retrieve("VPN 连不上怎么办", null, null);
@@ -132,6 +142,7 @@ public class RagRetrievalServiceTest {
     @Test
     public void lowConfidenceBetweenThresholds() {
         stubEmbeddingOk();
+        stubPublishedArticle();
         stubSearch(List.of(hit("c1", "a1", "0.5500")));
 
         RagRetrievalService.RetrievalOutcome outcome = service.retrieve("VPN 连不上怎么办", null, null);
@@ -148,11 +159,13 @@ public class RagRetrievalServiceTest {
     @Test
     public void irrelevantHitDoesNotForceRefusal() {
         stubEmbeddingOk();
+        stubPublishedArticle();
         stubSearch(List.of(hit("c1", "a1", "0.2000")));
 
         RagRetrievalService.RetrievalOutcome outcome = service.retrieve("VPN 连不上怎么办", null, null);
 
         Assertions.assertFalse(outcome.reliable());
+        Assertions.assertEquals(new BigDecimal("0.2000"), outcome.topScore());
         Assertions.assertNull(outcome.suggestedRefusalReason(),
                 "不相关命中不强制拒答，允许上层给出空引用的通用回答（AI-001 冷启动修订）");
     }
@@ -165,10 +178,100 @@ public class RagRetrievalServiceTest {
         stubEmbeddingOk();
         stubSearch(List.of());
 
-        RagRetrievalService.RetrievalOutcome outcome = service.retrieve("完全无关的问题", null, null);
+        RagRetrievalService.RetrievalOutcome outcome = service.retrieve("VPN 连不上怎么办", null, null);
 
+        Assertions.assertEquals(OfficeDomain.OFFICE_IT, outcome.domain());
+        Assertions.assertEquals(AiReplyType.ANSWER, service.toResponse(outcome).suggestedReplyType());
+        Assertions.assertFalse(outcome.dependencyUnavailable());
         Assertions.assertFalse(outcome.reliable());
         Assertions.assertNull(outcome.suggestedRefusalReason(), "无命中不强制拒答（AI-001 冷启动修订）");
+        verifyNoInteractions(articleMapper);
+    }
+
+    @Test
+    public void retrievalReturnsOnlyPublishedCurrentChunks() {
+        stubEmbeddingOk();
+        KnowledgeArticle noCurrentVersion = article("a4", KnowledgeStatus.PUBLISHED);
+        noCurrentVersion.setCurrentVersionId(null);
+        Mockito.when(articleMapper.selectBatchIds(any())).thenReturn(List.of(
+                article("a1", KnowledgeStatus.PUBLISHED), article("a2", KnowledgeStatus.OFFLINE),
+                article("a3", KnowledgeStatus.DRAFT), noCurrentVersion));
+        ChunkHit stale = ChunkHit.raw("old", "a1", "ver-old", "ver-old", "旧版", "旧版正文",
+                "C_NET", new BigDecimal("0.9900"));
+        ChunkHit current = hit("current", "a1", "0.8200");
+        ChunkHit secondCurrent = hit("current-2", "a1", "0.7500");
+        stubSearch(List.of(stale, hit("offline", "a2", "0.9800"), current,
+                hit("draft", "a3", "0.9600"), hit("no-version", "a4", "0.9500"),
+                hit("missing", "missing", "0.9400"), secondCurrent));
+
+        RagRetrievalService.RetrievalOutcome outcome = service.retrieve("VPN 连不上怎么办", "C_NET", 10);
+        RagRetrievalResponse response = service.toResponse(outcome);
+
+        Assertions.assertEquals(List.of(current, secondCurrent), outcome.hits());
+        Assertions.assertEquals(List.of("current", "current-2"),
+                response.items().stream().map(item -> item.chunkId()).toList());
+        Assertions.assertEquals(new BigDecimal("0.8200"), response.topScore());
+        Assertions.assertTrue(response.reliable());
+        Assertions.assertEquals(AiReplyType.ANSWER, response.suggestedReplyType());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"0.2000, ANSWER, false", "0.4500, REFUSE, false", "0.5500, REFUSE, false",
+            "0.7000, ANSWER, true"})
+    public void staleScoresCannotInfluenceThresholds(String score, AiReplyType replyType, boolean reliable) {
+        stubEmbeddingOk();
+        stubPublishedArticle();
+        ChunkHit stale = ChunkHit.raw("old", "a1", "ver-old", "ver-old", "旧版", "旧版正文",
+                "C_NET", new BigDecimal("0.9900"));
+        ChunkHit current = hit("current", "a1", score);
+        stubSearch(List.of(stale, current));
+
+        RagRetrievalService.RetrievalOutcome outcome = service.retrieve("VPN 连不上怎么办", null, null);
+        RagRetrievalResponse response = service.toResponse(outcome);
+
+        Assertions.assertEquals(List.of(current), outcome.hits());
+        Assertions.assertEquals(new BigDecimal(score), response.topScore());
+        Assertions.assertEquals(replyType, response.suggestedReplyType());
+        Assertions.assertEquals(reliable, response.reliable());
+        Assertions.assertEquals(replyType == AiReplyType.REFUSE ? AiRefusalReason.LOW_CONFIDENCE : null,
+                response.suggestedRefusalReason());
+    }
+
+    @Test
+    public void allInvalidHitsFollowOfficeItColdStartPolicy() {
+        stubEmbeddingOk();
+        KnowledgeArticle newerVersion = article("a1", KnowledgeStatus.PUBLISHED);
+        newerVersion.setCurrentVersionId("ver-new");
+        Mockito.when(articleMapper.selectBatchIds(any())).thenReturn(List.of(
+                newerVersion, article("a2", KnowledgeStatus.OFFLINE)));
+        stubSearch(List.of(hit("old", "a1", "0.9900"), hit("offline", "a2", "0.9800")));
+
+        RagRetrievalService.RetrievalOutcome outcome = service.retrieve("VPN 连不上怎么办", null, null);
+        RagRetrievalResponse response = service.toResponse(outcome);
+
+        Assertions.assertTrue(outcome.hits().isEmpty());
+        Assertions.assertTrue(response.items().isEmpty());
+        Assertions.assertEquals(OfficeDomain.OFFICE_IT, response.domain());
+        Assertions.assertEquals(new BigDecimal("0.0000"), response.topScore());
+        Assertions.assertFalse(response.reliable());
+        Assertions.assertFalse(outcome.dependencyUnavailable());
+        Assertions.assertEquals(AiReplyType.ANSWER, response.suggestedReplyType());
+        Assertions.assertNull(response.suggestedRefusalReason());
+    }
+
+    @Test
+    public void missingHitIdentifiersCannotReachGeneration() {
+        stubEmbeddingOk();
+        stubSearch(List.of(
+                ChunkHit.raw("no-article", null, "ver-a1", "ver-a1", "标题", "正文", "C_NET", BigDecimal.ONE),
+                ChunkHit.raw("no-version", "a1", null, null, "标题", "正文", "C_NET", BigDecimal.ONE)));
+
+        RagRetrievalService.RetrievalOutcome outcome = service.retrieve("VPN 连不上怎么办", null, null);
+
+        Assertions.assertTrue(outcome.hits().isEmpty());
+        Assertions.assertTrue(service.toResponse(outcome).items().isEmpty());
+        Assertions.assertFalse(outcome.dependencyUnavailable());
+        verifyNoInteractions(articleMapper);
     }
 
     // ------------------------------------------------------------ 依赖降级
@@ -189,6 +292,41 @@ public class RagRetrievalServiceTest {
         verifyNoInteractions(indexService);
     }
 
+    @Test
+    public void publicationLookupFailureDegradesInsteadOfAllowingColdStartAnswer() {
+        stubEmbeddingOk();
+        stubSearch(List.of(hit("c1", "a1", "0.8200")));
+        Mockito.when(articleMapper.selectBatchIds(any())).thenThrow(new IllegalStateException("db unavailable"));
+
+        RagRetrievalService.RetrievalOutcome outcome = service.retrieve("VPN 连不上怎么办", null, null);
+
+        assertDependencyUnavailable(outcome);
+        Assertions.assertFalse(outcome.failureReason().contains("db unavailable"));
+    }
+
+    @Test
+    public void searchFailureStillDegradesToModelUnavailable() {
+        stubEmbeddingOk();
+        Mockito.when(indexService.searchTopKChunks(anyList(), anyString(), any(), anyInt()))
+                .thenThrow(new BizException(ErrorCode.SYSTEM_ERROR, "ES unavailable"));
+
+        assertDependencyUnavailable(service.retrieve("VPN 连不上怎么办", null, null));
+        verifyNoInteractions(articleMapper);
+    }
+
+    private void assertDependencyUnavailable(RagRetrievalService.RetrievalOutcome outcome) {
+        RagRetrievalResponse response = service.toResponse(outcome);
+        Assertions.assertTrue(outcome.dependencyUnavailable());
+        Assertions.assertNotNull(outcome.failureReason());
+        Assertions.assertTrue(outcome.hits().isEmpty());
+        Assertions.assertEquals(OfficeDomain.OFFICE_IT, response.domain());
+        Assertions.assertEquals(AiReplyType.REFUSE, response.suggestedReplyType());
+        Assertions.assertEquals(AiRefusalReason.MODEL_UNAVAILABLE, response.suggestedRefusalReason());
+        Assertions.assertFalse(response.reliable());
+        Assertions.assertEquals(new BigDecimal("0.0000"), response.topScore());
+        Assertions.assertTrue(response.items().isEmpty());
+    }
+
     // ------------------------------------------------------------ 领域判定（MR-004）
 
     /**
@@ -201,7 +339,8 @@ public class RagRetrievalServiceTest {
 
         Assertions.assertEquals(OfficeDomain.HIGH_RISK, outcome.domain());
         Assertions.assertEquals(AiRefusalReason.HIGH_RISK_TOPIC, outcome.suggestedRefusalReason());
-        verifyNoInteractions(embeddingService, indexService);
+        Assertions.assertEquals(AiReplyType.REFUSE, service.toResponse(outcome).suggestedReplyType());
+        verifyNoInteractions(embeddingService, indexService, articleMapper);
     }
 
     /**
@@ -213,7 +352,8 @@ public class RagRetrievalServiceTest {
 
         Assertions.assertEquals(OfficeDomain.OFF_TOPIC, outcome.domain());
         Assertions.assertEquals(AiRefusalReason.OFF_TOPIC, outcome.suggestedRefusalReason());
-        verifyNoInteractions(embeddingService, indexService);
+        Assertions.assertEquals(AiReplyType.REFUSE, service.toResponse(outcome).suggestedReplyType());
+        verifyNoInteractions(embeddingService, indexService, articleMapper);
     }
 
     /**
@@ -223,6 +363,7 @@ public class RagRetrievalServiceTest {
     @Test
     public void ordinaryAccountIssueIsOfficeItNotHighRisk() {
         stubEmbeddingOk();
+        stubPublishedArticle();
         stubSearch(List.of(hit("c1", "a1", "0.8200")));
 
         RagRetrievalService.RetrievalOutcome outcome = service.retrieve("账号登录失败怎么办", null, null);
@@ -240,7 +381,8 @@ public class RagRetrievalServiceTest {
         RagRetrievalService.RetrievalOutcome outcome = service.retrieve("你好", null, null);
 
         Assertions.assertEquals(OfficeDomain.UNCERTAIN, outcome.domain());
-        verifyNoInteractions(embeddingService, indexService);
+        Assertions.assertEquals(AiReplyType.CLARIFY, service.toResponse(outcome).suggestedReplyType());
+        verifyNoInteractions(embeddingService, indexService, articleMapper);
     }
 
     // ------------------------------------------------------------ 引用校验
@@ -264,6 +406,44 @@ public class RagRetrievalServiceTest {
         Assertions.assertEquals(1, citations.size(), "同一文章只保留一条，已下线文章必须被丢弃");
         Assertions.assertEquals("a1", citations.get(0).articleId());
         Assertions.assertEquals(new BigDecimal("0.9000"), citations.get(0).score());
+    }
+
+    @Test
+    public void citationsFilterVersionsBeforeChoosingBestChunk() {
+        stubPublishedArticle();
+        ChunkHit stale = ChunkHit.raw("old", "a1", "ver-old", "ver-old", "旧版", "旧版正文",
+                "C_NET", new BigDecimal("0.9900"));
+
+        List<KnowledgeCitation> citations = service.buildVerifiedCitations(List.of(stale,
+                hit("current-low", "a1", "0.7500"), hit("current-best", "a1", "0.8200")));
+
+        Assertions.assertEquals(1, citations.size());
+        Assertions.assertEquals("ver-a1", citations.get(0).versionId());
+        Assertions.assertEquals(new BigDecimal("0.8200"), citations.get(0).score());
+    }
+
+    @Test
+    public void citationsDropStaleMissingAndUnversionedArticles() {
+        KnowledgeArticle newerVersion = article("a1", KnowledgeStatus.PUBLISHED);
+        newerVersion.setCurrentVersionId("ver-new");
+        KnowledgeArticle noCurrentVersion = article("a2", KnowledgeStatus.PUBLISHED);
+        noCurrentVersion.setCurrentVersionId(null);
+        Mockito.when(articleMapper.selectBatchIds(any())).thenReturn(List.of(newerVersion, noCurrentVersion));
+
+        Assertions.assertTrue(service.buildVerifiedCitations(List.of(
+                hit("old", "a1", "0.9900"), hit("no-version", "a2", "0.9800"),
+                hit("missing", "missing", "0.9700"))).isEmpty());
+    }
+
+    @Test
+    public void citationLookupFailureIsStructuredAndNotAnEmptyCitationList() {
+        Mockito.when(articleMapper.selectBatchIds(any())).thenThrow(new IllegalStateException("db unavailable"));
+
+        BizException exception = Assertions.assertThrows(BizException.class,
+                () -> service.buildVerifiedCitations(List.of(hit("c1", "a1", "0.8200"))));
+
+        Assertions.assertEquals(ErrorCode.SYSTEM_ERROR, exception.getErrorCode());
+        Assertions.assertFalse(exception.getMessage().contains("db unavailable"));
     }
 
     /**
@@ -295,6 +475,7 @@ public class RagRetrievalServiceTest {
     @Test
     public void toResponseMapsHitsWithDomainScoreAndIndexVersion() {
         stubEmbeddingOk();
+        stubPublishedArticle();
         stubSearch(List.of(hit("c1", "a1", "0.8200")));
 
         RagRetrievalResponse response = service.toResponse(service.retrieve("VPN 连不上怎么办", null, null));

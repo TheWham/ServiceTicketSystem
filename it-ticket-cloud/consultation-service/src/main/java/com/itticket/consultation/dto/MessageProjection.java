@@ -21,12 +21,13 @@ import java.util.List;
  * <p>撤回消息只返回占位文案,不返回原文:PRD 5.2 规定撤回原文仅平台管理员的专用审计视图可读。
  */
 @JsonInclude(JsonInclude.Include.ALWAYS)
-@JsonPropertyOrder({"message_id", "sender_type", "content", "citations",
+@JsonPropertyOrder({"message_id", "sender_type", "content", "attachments", "citations",
         "interaction_id", "reply_type", "refusal_reason", "general_answer", "sent_at", "withdrawn_at"})
 public record MessageProjection(
         @JsonProperty("message_id") String messageId,
         @JsonProperty("sender_type") String senderType,
         String content,
+        List<AttachmentProjection> attachments,
         @JsonInclude(JsonInclude.Include.NON_NULL) List<KnowledgeCitationDto> citations,
         @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("interaction_id") String interactionId,
         @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("reply_type") String replyType,
@@ -34,6 +35,10 @@ public record MessageProjection(
         @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("general_answer") Boolean generalAnswer,
         @JsonProperty("sent_at") String sentAt,
         @JsonProperty("withdrawn_at") String withdrawnAt) {
+
+    public MessageProjection {
+        attachments = attachments == null ? List.of() : List.copyOf(attachments);
+    }
 
     private static final String WITHDRAWN_PLACEHOLDER = "该消息已被撤回";
 
@@ -44,6 +49,7 @@ public record MessageProjection(
                 message.getMessageId(),
                 message.getSenderType() == null ? null : message.getSenderType().getValue(),
                 withdrawn ? WITHDRAWN_PLACEHOLDER : message.getContent(),
+                metadata.attachments(),
                 metadata.citations(),
                 metadata.interactionId(),
                 metadata.replyType(),
@@ -54,8 +60,9 @@ public record MessageProjection(
     }
 
     private record Metadata(List<KnowledgeCitationDto> citations, String interactionId,
-                            String replyType, String refusalReason, Boolean generalAnswer) {
-        private static final Metadata EMPTY = new Metadata(null, null, null, null, null);
+                            String replyType, String refusalReason, Boolean generalAnswer,
+                            List<AttachmentProjection> attachments) {
+        private static final Metadata EMPTY = new Metadata(null, null, null, null, null, List.of());
     }
 
     private static Metadata parseMetadata(String citationJson) {
@@ -65,12 +72,13 @@ public record MessageProjection(
         try {
             JsonNode root = Json.read(citationJson, JsonNode.class);
             if (root.isArray()) {
-                return new Metadata(readCitations(root), null, null, null, null);
+                return new Metadata(readCitations(root), null, null, null, null, List.of());
             }
             if (!root.isObject() || root.path("schemaVersion").asInt() != 1) return Metadata.EMPTY;
             return new Metadata(readCitations(root.path("citations")),
                     text(root, "interactionId"), text(root, "replyType"), text(root, "refusalReason"),
-                    root.path("generalAnswer").isBoolean() ? root.path("generalAnswer").asBoolean() : null);
+                    root.path("generalAnswer").isBoolean() ? root.path("generalAnswer").asBoolean() : null,
+                    readAttachments(root.path("attachments")));
         } catch (RuntimeException e) {
             // 旧数据或元数据损坏不影响正文展示，也不猜测引用或交互 ID。
             return Metadata.EMPTY;
@@ -84,5 +92,9 @@ public record MessageProjection(
     private static String text(JsonNode node, String field) {
         JsonNode value = node.path(field);
         return value.isTextual() ? value.asText() : null;
+    }
+
+    private static List<AttachmentProjection> readAttachments(JsonNode node) {
+        return node.isArray() ? List.of(Json.read(node.toString(), AttachmentProjection[].class)) : List.of();
     }
 }

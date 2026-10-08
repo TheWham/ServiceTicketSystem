@@ -30,8 +30,8 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "rag.embedding")
 public class EmbeddingProperties {
 
-    /** OpenAI 兼容接口的基础端点 */
-    private String baseUrl = "https://ws-klculckg6dog3won.cn-beijing.maas.aliyuncs.com/compatible-mode/v1";
+    /** OpenAI 兼容接口的基础端点 —— 一律由 EMBEDDING_BASE_URL 环境变量注入，不提供默认值 */
+    private String baseUrl;
 
     /** 访问密钥 API Key —— 一律由环境变量 EMBEDDING_API_KEY 注入，不提供默认值（MR-002 · specs/10-model-rag-integration.md:40：禁止明文入库） */
     private String apiKey;

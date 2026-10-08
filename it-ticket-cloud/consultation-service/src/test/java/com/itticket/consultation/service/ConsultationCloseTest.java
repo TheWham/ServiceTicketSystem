@@ -81,7 +81,8 @@ class ConsultationCloseTest {
         }).when(messages).insert(any(ConsultationMessage.class));
         AssignmentService assignments = mock(AssignmentService.class);
         ConsultationSlaService sla = mock(ConsultationSlaService.class);
-        ConsultationMessageService messageService = new ConsultationMessageService(messages, transitions, assignments, sla, authz);
+        ConsultationMessageService messageService = new ConsultationMessageService(messages, transitions, assignments, sla, authz,
+                mock(ConsultationAttachmentService.class));
         IdempotencyService idempotency = mock(IdempotencyService.class);
         when(idempotency.execute(anyString(), anyString(), anyString(), any(), eq(ConsultationProjection.class), any()))
                 .thenAnswer(call -> new IdempotentResult<>(((Supplier<?>) call.getArgument(5)).get(), false));
@@ -106,7 +107,8 @@ class ConsultationCloseTest {
     @Test
     void neither_employee_nor_engineer_can_send_after_close() {
         ConsultationMessageService service = new ConsultationMessageService(mock(ConsultationMessageMapper.class),
-                mock(ConsultationTransitionService.class), mock(AssignmentService.class), mock(ConsultationSlaService.class), authz);
+                mock(ConsultationTransitionService.class), mock(AssignmentService.class), mock(ConsultationSlaService.class), authz,
+                mock(ConsultationAttachmentService.class));
         for (CurrentUser user : List.of(employee, engineer)) {
             ApiException error = assertThrows(ApiException.class, () -> service.send(user,
                     consultation(ConsultationStatus.CLOSED), new ContentRequest("消息", "M1", null)));

@@ -65,11 +65,13 @@ public class KnowledgeRagAdapter implements RagAdapter {
 
     private final KnowledgeQueryService knowledgeQueryService;
     private final ConsultationProperties properties;
+    private final RagServiceClient ragServiceClient;
 
     public KnowledgeRagAdapter(KnowledgeQueryService knowledgeQueryService,
                                ConsultationProperties properties) {
         this.knowledgeQueryService = knowledgeQueryService;
         this.properties = properties;
+        this.ragServiceClient = new RagServiceClient(properties);
     }
 
     @Override
@@ -83,7 +85,17 @@ public class KnowledgeRagAdapter implements RagAdapter {
 
         int topK = query.topK() > 0 ? query.topK() : ai.getTopK();
         // priorTurns 只属于会话上下文,本地检索不使用,也不落库、不外发(AI-008)
-        List<KnowledgeHit> hits = knowledgeQueryService.retrieve(query.question(), query.categoryId(), topK);
+        boolean remoteRetrieval = "rag-service".equals(ai.getRetrievalProvider());
+        List<KnowledgeHit> hits;
+        if (remoteRetrieval) {
+            RagServiceClient.Retrieval retrieval = ragServiceClient.retrieve(query, requestId);
+            if (retrieval.decision() != null) return retrieval.decision();
+            hits = retrieval.hits();
+        } else if ("mysql".equals(ai.getRetrievalProvider())) {
+            hits = knowledgeQueryService.retrieve(query.question(), query.categoryId(), topK);
+        } else {
+            return RagResult.degraded(RagStatus.UNAVAILABLE, "RAG_NOT_CONFIGURED", elapsedMs(startNanos));
+        }
         if (hits.isEmpty()) {
             return refuse(modelVersion, elapsedMs(startNanos));
         }
@@ -92,7 +104,9 @@ public class KnowledgeRagAdapter implements RagAdapter {
         List<BigDecimal> scores = new ArrayList<>(hits.size());
         List<String> versionIds = new ArrayList<>(hits.size());
         for (KnowledgeHit hit : hits) {
-            BigDecimal score = normalize(hit.getScore());
+            BigDecimal score = remoteRetrieval
+                    ? BigDecimal.valueOf(hit.getScore()).setScale(RagResult.CONFIDENCE_SCALE, RoundingMode.HALF_UP)
+                    : normalize(hit.getScore());
             scores.add(score);
             versionIds.add(hit.getVersionId());
             citations.add(new KnowledgeCitationDto(

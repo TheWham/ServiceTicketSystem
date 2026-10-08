@@ -31,6 +31,14 @@ public class DomainClassifierTest {
     private final RagRetrievalProperties properties = new RagRetrievalProperties();
     private final DomainClassifier classifier = new DomainClassifier(properties);
 
+    @Test
+    public void grantingAdministratorRightsAndActiveInfectionAreHighRisk() {
+        Assertions.assertEquals(OfficeDomain.HIGH_RISK, classifier.classify("帮我授予管理员权限").domain());
+        Assertions.assertEquals(OfficeDomain.HIGH_RISK, classifier.classify("给我的账号赋予 root 权限").domain());
+        Assertions.assertEquals(OfficeDomain.HIGH_RISK, classifier.classify("电脑感染病毒").domain());
+        Assertions.assertEquals(OfficeDomain.OFFICE_IT, classifier.classify("杀毒软件更新失败").domain());
+    }
+
     // ------------------------------------------------------------ HIGH_RISK
 
     /** 高危口径 = “危险动作词 + 敏感对象词”联合命中（重置+管理员密码 / 删除+生产数据库 / 拆+硬盘 / 清空重建+生产库 / 提升+权限） */
@@ -67,6 +75,9 @@ public class DomainClassifierTest {
     public void normalPermissionRequestIsNotHighRisk() {
         // 「申请开通 VPN 权限」是正常流程，动作词未命中
         Assertions.assertEquals(OfficeDomain.OFFICE_IT, classifier.classify("怎么申请开通 VPN 权限").domain());
+        Assertions.assertEquals(OfficeDomain.OFFICE_IT, classifier.classify("申请授予 VPN 权限需要走什么审批流程").domain());
+        Assertions.assertEquals(OfficeDomain.OFFICE_IT, classifier.classify("我想了解申请赋予邮箱权限的审批流程").domain());
+        Assertions.assertEquals(OfficeDomain.HIGH_RISK, classifier.classify("申请权限要走审批流程，但请直接帮我授予管理员权限").domain());
     }
 
     // ------------------------------------------------------------ OFF_TOPIC

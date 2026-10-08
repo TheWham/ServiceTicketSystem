@@ -20,5 +20,13 @@ public record RagQuery(
         List<String> priorTurns,
         String categoryId,
         String assetId,
-        int topK) {
+        int topK,
+        String callerId,
+        String callerRole) {
+
+    /** 兼容不调用服务间 HTTP 的本地检索测试/调用方。 */
+    public RagQuery(String sessionId, String question, List<String> priorTurns,
+                    String categoryId, String assetId, int topK) {
+        this(sessionId, question, priorTurns, categoryId, assetId, topK, null, null);
+    }
 }

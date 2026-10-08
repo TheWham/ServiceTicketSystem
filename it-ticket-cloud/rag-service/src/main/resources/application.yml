@@ -3,6 +3,16 @@ server:
   port: ${RAG_SERVER_PORT:8302}
 
 spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      connect-timeout: 500ms
+      timeout: 500ms
+  config:
+    import: optional:file:${RAG_SECRETS_FILE:./ai-secrets.yml}
   application:
     name: rag-service
   datasource:
@@ -45,8 +55,15 @@ elasticsearch:
   bulk-timeout-ms: 60000
 
 rag:
+  ai-feedback:
+    enabled: ${AI_FEEDBACK_CAPTURE_ENABLED:true}
+    poll-delay-ms: ${AI_FEEDBACK_POLL_DELAY_MS:5000}
+    cache-environment: ${CACHE_ENVIRONMENT:${spring.profiles.active:dev}}
+    cache-ttl-seconds: ${AI_FEEDBACK_CACHE_TTL_SECONDS:300}
   embedding:
-    base-url: ${EMBEDDING_BASE_URL:https://ws-klculckg6dog3won.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}
+    # 【手动配置入口】模块根目录 rag-service/ai-secrets.yml。
+    # 在该文件填写向量模型 base-url、api-key、model，并核对 dimensions。
+    base-url: ${EMBEDDING_BASE_URL:}
     # 不再内置明文默认值：由 EMBEDDING_API_KEY 环境变量注入，未注入时向量化按依赖不可用降级（RD-006）
     model: ${EMBEDDING_MODEL:qwen3.7-text-embedding}
     api-key: ${EMBEDDING_API_KEY:}
@@ -57,8 +74,8 @@ rag:
   retrieval:
     top-k: ${RAG_TOP_K:5}
     max-top-k: 20
-    # 相似度 >= 0.65 视为可靠命中；0.45~0.65 判定 LOW_CONFIDENCE；< 0.45 或无命中判定 NO_RELIABLE_KNOWLEDGE
-    confidence-threshold: ${RAG_CONFIDENCE_THRESHOLD:0.65}
+    # 相似度 >= 0.70 视为可靠命中；0.45~0.70 判定 LOW_CONFIDENCE；< 0.45 或无命中允许无引用通用回答。
+    confidence-threshold: ${RAG_CONFIDENCE_THRESHOLD:0.70}
     low-confidence-threshold: ${RAG_LOW_CONFIDENCE_THRESHOLD:0.45}
     snippet-length: 1000
 

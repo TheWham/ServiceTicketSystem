@@ -4,8 +4,21 @@
     <div v-if="booting" v-loading="true" element-loading-text="正在进入对话…"
          class="booting"></div>
 
+    <div v-else-if="startupError" class="startup-error" role="alert">
+      <el-icon class="error-icon"><WarningFilled /></el-icon>
+      <h2>暂时无法连接客服</h2>
+      <p>{{ startupError }}</p>
+      <div><el-button type="primary" :icon="RefreshLeft" @click="autoStart">重新连接</el-button><el-button :icon="Tickets" @click="goCreateTicket">提交工单</el-button></div>
+    </div>
+
     <!-- ===== 聊天面板 ===== -->
     <el-card v-else-if="session" shadow="never" class="panel chat-panel">
+        <template #header>
+          <div class="conversation-header">
+            <div class="conversation-identity"><div class="small-assistant"><el-icon><Service /></el-icon></div><div><strong>IT 智能助手</strong><span>办公遇到的问题，在这里聊聊</span></div></div>
+            <el-tag :type="sessionStatus.type" effect="light" round>{{ sessionStatus.label }}</el-tag>
+          </div>
+        </template>
         <!-- 等待工程师的提示 -->
         <el-alert v-if="isWaitingHuman" type="warning" :closable="false"
                   class="state-banner">
@@ -48,8 +61,19 @@
         </el-alert>
 
         <!-- 消息流 -->
-        <div ref="scrollRef" class="chat-body" v-loading="loadingMessages">
-          <div v-for="msg in messages" :key="msg.id" class="msg-row" :class="rowClass(msg)">
+        <div ref="scrollRef" class="chat-body" v-loading="loadingMessages" role="log" aria-label="客服对话记录" aria-live="polite" :aria-busy="aiThinking" @scroll="onChatScroll">
+          <div v-if="showWelcome" class="chat-welcome">
+            <OrbitalCore class="welcome-core" />
+            <h2>你好，有什么可以帮你？</h2>
+            <p>电脑、网络、邮箱或办公软件遇到问题，<br>告诉我具体情况，我们一步步排查。</p>
+            <div class="suggestion-label">你可以从这些问题开始</div>
+            <div class="suggestion-grid">
+              <button v-for="item in suggestions" :key="item.title" class="suggestion-card" type="button" @click="useSuggestion(item.question)">
+                <el-icon><component :is="item.icon" /></el-icon><span><strong>{{ item.title }}</strong><small>{{ item.description }}</small></span><el-icon class="suggestion-arrow"><ArrowRight /></el-icon>
+              </button>
+            </div>
+          </div>
+          <div v-for="msg in visibleMessages" :key="msg.id" class="msg-row" :class="rowClass(msg)">
             <div class="msg-avatar" :class="'avatar-' + msg.senderType.toLowerCase()">
               {{ avatarOf(msg.senderType) }}
             </div>
@@ -93,12 +117,13 @@
 
               <!-- 普通气泡 -->
               <div v-else class="msg-bubble" :class="bubbleClass(msg)">
-                <div class="msg-text">{{ msg.content }}</div>
+                <div v-if="msg.content" class="msg-text">{{ msg.content }}</div>
+                <ChatMessageAttachments v-if="msg.attachments?.length" :session-id="session.sessionId" :attachments="msg.attachments" />
 
                 <!-- 通用能力回答标识(冷启动放宽策略:无知识库依据,提示可沉淀) -->
                 <div v-if="msg.generalAnswer" class="general-answer-note">
                   <el-icon><MagicStick /></el-icon>
-                  这条回答基于 AI 通用知识，暂无知识库依据。点击「已解决」可保存有帮助反馈，供后续知识整理与审核参考。
+                  这条回答基于 AI 通用知识，暂无知识库依据。点击「已解决」后，完整问答将经脱敏检查进入知识库待审核队列，由管理员审核。
                 </div>
 
                 <!-- 有知识依据时展示经过校验的真实引用 -->
@@ -107,9 +132,9 @@
                     <el-icon><Document /></el-icon> 依据以下已发布知识
                   </div>
                   <el-popover v-for="c in msg.citations" :key="c.versionId"
-                              placement="top" :width="340" trigger="hover">
+                              placement="top" :width="280" trigger="click">
                     <template #reference>
-                      <el-tag class="citation-tag" effect="plain" size="small">{{ c.title }}</el-tag>
+                      <el-button class="citation-tag" plain size="small">{{ c.title }}</el-button>
                     </template>
                     <div class="citation-pop">
                       <div class="citation-pop-title">{{ c.title }}</div>
@@ -126,11 +151,11 @@
                   <template v-if="msg.feedback === null">
                     <span class="answer-feedback-label">这个回答解决你的问题了吗？</span>
                     <el-button size="small" type="success" :loading="msg.feedbackPending"
-                               :disabled="closing || cancelingQueue" @click="resolveAnswer(msg)">✅ 已解决</el-button>
+                               :disabled="closing || cancelingQueue" @click="resolveAnswer(msg)">已解决</el-button>
                     <el-button size="small" type="warning" :disabled="msg.feedbackPending || closing || cancelingQueue"
-                               @click="markUnresolved(msg)">❌ 未解决</el-button>
+                               @click="markUnresolved(msg)">未解决</el-button>
                   </template>
-                  <span v-else-if="msg.feedback === 'resolved'" class="feedback-resolved">✅ 已标记为解决</span>
+                  <span v-else-if="msg.feedback === 'resolved'" class="feedback-resolved"><el-icon aria-hidden="true"><CircleCheck /></el-icon> 已标记为解决</span>
                   <div v-else class="feedback-unresolved">
                     <template v-if="msg.transferSubmitted">
                       <span>已提交转人工申请</span>
@@ -157,18 +182,26 @@
           </div>
         </div>
 
+        <button v-if="hasUnreadMessages" type="button" class="new-message-cue" @click="scrollToBottom(true)">有新消息 · 查看最新 ↓</button>
         <!-- 输入区 -->
-        <div v-if="!isTerminal" class="chat-input">
+        <div v-if="!isTerminal" class="chat-input" :class="{ 'attachment-dragging': attachmentDragDepth > 0 }"
+             @dragenter="onAttachmentDragEnter" @dragover="onAttachmentDragOver"
+             @drop.capture="attachmentDragDepth = 0"
+             @dragleave="attachmentDragDepth = Math.max(0, attachmentDragDepth - 1)" @drop="onAttachmentDrop">
+          <div v-if="attachmentDragDepth > 0" class="attachment-drop-hint" role="status">松开即可上传图片或文件</div>
           <div class="input-toolbar">
+            <label for="support-message">描述你的问题</label>
             <el-button text type="danger" :icon="Close" :loading="closing"
                        :disabled="cancelingQueue || transferring" @click="closeSession">
               结束对话
             </el-button>
           </div>
-          <el-input ref="inputRef" v-model="draft" type="textarea" :rows="3" resize="none"
+          <el-input id="support-message" ref="inputRef" v-model="draft" type="textarea" :rows="3" resize="none"
                     :maxlength="inputMaxLength" show-word-limit
                     :placeholder="inputPlaceholder" :disabled="sending || aiThinking || inputDisabled || closing || cancelingQueue"
-                    @keydown.enter.exact.prevent="send" />
+                    @keydown.enter.exact="send" />
+          <ChatAttachmentUploader v-if="canAttach" :key="session.sessionId" ref="attachmentUploaderRef"
+                                  v-model="attachmentDrafts" :session-id="session.sessionId" :disabled="attachmentDisabled" />
           <div class="chat-actions">
             <div class="chat-actions-left">
               <!-- PRD 8.1:AI 对话中必须始终提供转人工和提交工单入口 -->
@@ -176,10 +209,11 @@
               <el-button :icon="Tickets" @click="goCreateTicket">提交工单</el-button>
             </div>
             <el-button type="primary" :icon="Promotion" :loading="sending || aiThinking"
-                       :disabled="!draft.trim() || inputDisabled || closing || cancelingQueue" @click="send">
+                       :disabled="(!draft.trim() && !attachmentDrafts.length) || attachmentBlocked || inputDisabled || closing || cancelingQueue" @click="send">
               发送
             </el-button>
           </div>
+          <div class="input-hint">Enter 发送 · Shift + Enter 换行<span>{{ isAiHandling ? 'AI 建议仅供排查参考' : '支持拖拽图片、文件 · 单个不超过 20MB' }}</span></div>
         </div>
 
         <!-- 终态:开新会话 -->
@@ -191,7 +225,7 @@
       </el-card>
 
     <!-- 转人工对话框 -->
-    <el-dialog v-model="transferVisible" title="转人工咨询" width="460px" append-to-body
+    <el-dialog v-model="transferVisible" title="转人工咨询" width="min(460px, calc(100vw - 32px))" append-to-body
                @closed="pendingTransferMessage = null">
       <el-form label-width="90px">
         <el-form-item label="问题类型" required>
@@ -220,20 +254,24 @@
 </template>
 
 <script setup>
+import ChatAttachmentUploader from './ChatAttachmentUploader.vue'
+import ChatMessageAttachments from './ChatMessageAttachments.vue'
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import OrbitalCore from './OrbitalCore.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ChatDotRound, Service, Close, Promotion, Tickets,
-  Document, WarningFilled, CircleCheck, RefreshLeft, MagicStick
+  Document, WarningFilled, CircleCheck, RefreshLeft, MagicStick,
+  Monitor, Connection, Message, Printer, ArrowRight
 } from '@element-plus/icons-vue'
 import {
-  consultationApi, REFUSAL_REASON, TERMINAL_STATUS, TICKET_ENTRY_MESSAGE
+  consultationApi, REFUSAL_REASON, TERMINAL_STATUS, TICKET_ENTRY_MESSAGE, CONSULTATION_STATUS
 } from '../api/consultation.js'
 
 /**
  * 员工侧智能客服聊天面板(无外部布局假设):
- * 既挂在 App.vue 的全局抽屉里(对话框入口),也挂在 /consultation 整页路由上。
+ * 由 /consultation 整页路由承载。
  * 状态、消息、转人工的领域规则全部在组件内部闭环。
  */
 
@@ -254,11 +292,16 @@ const categories = [
 const session = ref(null)
 const messages = ref([])
 const draft = ref('')
+const attachmentDrafts = ref([])
+const attachmentUploaderRef = ref(null)
+const attachmentDragDepth = ref(0)
+const pendingHumanSend = ref(null)
 const creating = ref(false)
 const sending = ref(false)
 const aiThinking = ref(false)
 const loadingMessages = ref(false)
 const booting = ref(false)
+const startupError = ref('')
 const closing = ref(false)
 const scrollRef = ref(null)
 const inputRef = ref(null)
@@ -283,7 +326,40 @@ const isTerminal = computed(() => TERMINAL_STATUS.includes(session.value?.status
 const isAiHandling = computed(() => ['AI_ACTIVE', 'AI_HANDLING'].includes(session.value?.status))
 const isWaitingHuman = computed(() => ['WAITING_ENGINEER', 'WAITING_HUMAN'].includes(session.value?.status))
 const inputDisabled = computed(() => isWaitingHuman.value)
+const canAttach = computed(() => ['HUMAN_ACTIVE', 'HUMAN_HANDLING', 'PENDING_CONFIRMATION'].includes(session.value?.status))
+const attachmentBlocked = computed(() => attachmentDrafts.value.some(file => file.status !== 'ready' || !file.attachment_id))
+const attachmentDisabled = computed(() => sending.value || aiThinking.value || inputDisabled.value || closing.value || cancelingQueue.value || transferring.value || loadingMessages.value)
+
+function onAttachmentDragEnter(event) {
+  if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return
+  event.preventDefault()
+  if (canAttach.value && !attachmentDisabled.value) attachmentDragDepth.value++
+}
+function onAttachmentDragOver(event) {
+  if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return
+  event.preventDefault()
+  event.dataTransfer.dropEffect = canAttach.value && !attachmentDisabled.value ? 'copy' : 'none'
+}
+function onAttachmentDrop(event) {
+  event.preventDefault()
+  attachmentDragDepth.value = 0
+  if (!canAttach.value || attachmentDisabled.value) return
+  attachmentUploaderRef.value?.addFiles(Array.from(event.dataTransfer?.files || []))
+}
 const canTransfer = computed(() => isAiHandling.value)
+const sessionStatus = computed(() => CONSULTATION_STATUS[session.value?.status] || { label: '咨询中', type: 'info' })
+const showWelcome = computed(() => isAiHandling.value && messages.value.every(m => m.isGreeting))
+const visibleMessages = computed(() => showWelcome.value ? [] : messages.value)
+const suggestions = [
+  { title: '网络与 VPN', description: '无法联网、连接中断', icon: Connection, question: '我的 VPN 无法连接，应该如何排查？' },
+  { title: '电脑运行异常', description: '卡顿、黑屏、启动失败', icon: Monitor, question: '电脑最近运行很卡，应该如何排查？' },
+  { title: '邮箱收发问题', description: '收不到邮件、发送失败', icon: Message, question: '我的办公邮箱收不到邮件，应该如何排查？' },
+  { title: '打印机故障', description: '无法打印、设备离线', icon: Printer, question: '打印机显示离线，无法打印，应该如何排查？' }
+]
+function useSuggestion(question) {
+  draft.value = question
+  focusInput()
+}
 const inputMaxLength = computed(() => (isAiHandling.value ? 8000 : 12000))
 const inputPlaceholder = computed(() => {
   if (isAiHandling.value) return '描述你遇到的问题，回车发送'
@@ -302,6 +378,7 @@ const queueCount = computed(() => queueStatus.value.waitingCount)
  */
 async function autoStart() {
   booting.value = true
+  startupError.value = ''
   try {
     await loadResumable()
     if (resumable.value.length) {
@@ -310,6 +387,7 @@ async function autoStart() {
       await startAi()
     }
   } catch (e) {
+    startupError.value = e.message || '服务连接失败，请稍后重试'
     ElMessage.error(e.message)
   } finally {
     booting.value = false
@@ -319,15 +397,10 @@ async function autoStart() {
 
 /** 挂载时拉取本人进行中的咨询(OpenAPI 05 listConsultations,后端按 creator 过滤)。 */
 async function loadResumable() {
-  try {
     const page = await consultationApi.list(1, 20)
     resumable.value = (page?.items || [])
       .filter(s => !TERMINAL_STATUS.includes(s.status))
       .slice(0, 5)
-  } catch (e) {
-    // 列表失败不阻塞,按无进行中咨询处理
-    resumable.value = []
-  }
 }
 
 /** 继续一个进行中的咨询:恢复完整时间线(含此前 AI 对话,PRD 13.1)。 */
@@ -341,6 +414,7 @@ async function resumeSession(s) {
   } catch (e) {
     ElMessage.error(e.message)
     session.value = null
+    startupError.value = e.message || '恢复咨询失败，请重试'
   } finally {
     creating.value = false
   }
@@ -349,18 +423,23 @@ async function resumeSession(s) {
 async function startAi() {
   if (creating.value) return
   creating.value = true
+  startupError.value = ''
   try {
     session.value = await consultationApi.create('AI')
     sessionRevision++
     draft.value = ''
+    attachmentDrafts.value = []
+    pendingHumanSend.value = null
+    attachmentDragDepth.value = 0
     sending.value = false
     aiThinking.value = false
     queueStatus.value = { assigned: false, waitingCount: 0 }
     messages.value = []
     messages.value.push(createGreeting())
-    scrollToBottom()
+    nextTick(() => { if (scrollRef.value) scrollRef.value.scrollTop = 0 })
     startPolling()
   } catch (e) {
+    startupError.value = e.message || '创建咨询失败，请重试'
     ElMessage.error(e.message)
   } finally {
     creating.value = false
@@ -380,10 +459,10 @@ async function reload() {
                       status: detail.status }
     messages.value = withGreeting((page?.items || []).map(toLocalMessage))
   } catch (e) {
-    ElMessage.error(e.message)
+    throw e
   } finally {
     loadingMessages.value = false
-    scrollToBottom()
+    scrollToBottom(true)
   }
 }
 
@@ -394,6 +473,7 @@ function toLocalMessage(item) {
     serverId: item.message_id,
     senderType: item.sender_type || 'SYSTEM',
     content: item.content,
+    attachments: item.attachments || [],
     citations: item.citations || [],
     interactionId: item.interaction_id || null,
     replyType: item.reply_type || null,
@@ -408,6 +488,13 @@ function toLocalMessage(item) {
 
 // ---------------------------------------------------------------- 消息
 
+function upsertServerMessage(item) {
+  const index = messages.value.findIndex(message => message.serverId === item.message_id)
+  const message = toLocalMessage(item)
+  if (index < 0) messages.value.push(message)
+  else messages.value[index] = message
+}
+
 function pushLocal(senderType, content, extra = {}) {
   messages.value.push({
     id: `local-${++localSeq}`,
@@ -417,7 +504,7 @@ function pushLocal(senderType, content, extra = {}) {
     sentAt: new Date().toISOString(),
     ...extra
   })
-  scrollToBottom()
+  scrollToBottom(senderType === 'EMPLOYEE')
 }
 
 const GREETING_TEXT = '你好，我是 IT 智能助手小 T 👋 我可以帮你解决 VPN 连不上、邮箱收不到邮件、打印机故障、账号权限等常见 IT 问题。请描述你遇到的情况，我会先尝试帮你解决；如果解决不了，可以随时转接人工客服。'
@@ -440,9 +527,12 @@ function withGreeting(items) {
     : [createGreeting(), ...items]
 }
 
-async function send() {
+async function send(event) {
+  if (event?.isComposing || event?.keyCode === 229) return
+  event?.preventDefault?.()
   const text = draft.value.trim()
-  if (!text || !session.value || isTerminal.value || inputDisabled.value || sending.value || aiThinking.value || closing.value || cancelingQueue.value) return
+  if ((!text && !attachmentDrafts.value.length) || attachmentBlocked.value || !session.value || isTerminal.value || inputDisabled.value || sending.value || aiThinking.value || closing.value || cancelingQueue.value) return
+  if (isAiHandling.value && (!text || attachmentDrafts.value.length)) return
   const sessionId = session.value.sessionId
   const revision = sessionRevision
   const stillActive = () => revision === sessionRevision && session.value?.sessionId === sessionId && !isTerminal.value
@@ -465,8 +555,8 @@ async function send() {
           replyType: res.replyType,
           generalAnswer: res.replyType === 'ANSWER' && !hasCitations
         })
-        if (!hasCitations) {
-          pushLocal('SYSTEM', '这条回答来自 AI 的通用知识（暂无知识库依据）。如果对你有帮助，请点「已解决」，它会进入知识库审核队列，帮助更多同事。')
+        if (res.replyType === 'ANSWER' && !hasCitations) {
+          pushLocal('SYSTEM', '这条回答暂无知识库依据，仅供排查参考。你可以继续补充问题、反馈是否解决，或转人工处理。')
         } else if (res.suggestTransfer) {
           pushLocal('SYSTEM', '这个回答的把握不高，如果没解决问题建议转人工。')
         }
@@ -474,6 +564,7 @@ async function send() {
     } catch (e) {
       if (!stillActive()) return
       // AI 故障不阻塞主链路:提示并保留转人工/提单入口(RD-013)
+      draft.value = text
       pushLocal('SYSTEM', `AI 暂时不可用（${e.message}）。你可以转人工或直接提交工单。`)
     } finally {
       if (revision === sessionRevision) aiThinking.value = false
@@ -482,11 +573,23 @@ async function send() {
   }
 
   // 人工咨询消息
+  const attachmentIds = attachmentDrafts.value.map(file => file.attachment_id)
+  const signature = JSON.stringify([sessionId, text, attachmentIds])
+  if (pendingHumanSend.value?.signature !== signature) {
+    pendingHumanSend.value = { signature, id: `cmsg-${Date.now()}-${Math.random().toString(36).slice(2)}` }
+  }
+  const attempt = pendingHumanSend.value
   sending.value = true
   try {
-    await consultationApi.sendMessage(sessionId, text)
+    const message = await consultationApi.sendMessage(sessionId, text, attempt.id, attachmentIds)
     if (!stillActive()) return
-    pushLocal('EMPLOYEE', text)
+    const attachments = message?.attachments || attachmentDrafts.value.map(({ attachment_id, file_name, size, content_type, is_image }) => ({ attachment_id, file_name, size, content_type, is_image }))
+    if (message?.message_id) upsertServerMessage(message)
+    else pushLocal('EMPLOYEE', text, { attachments })
+    attachmentUploaderRef.value?.clear()
+    attachmentDrafts.value = []
+    pendingHumanSend.value = null
+    scrollToBottom(true)
     await refreshStatus()
   } catch (e) {
     if (!stillActive()) return
@@ -634,6 +737,9 @@ function finishSession(status) {
   sessionRevision++
   session.value.status = status
   draft.value = ''
+  attachmentDrafts.value = []
+  pendingHumanSend.value = null
+  attachmentDragDepth.value = 0
   transferVisible.value = false
   pendingTransferMessage.value = null
   assignmentSeconds.value = null
@@ -720,7 +826,11 @@ async function refreshStatus() {
       const page = await consultationApi.listMessages(sessionId)
       if (!isCurrent()) return
       const items = page?.items || []
-      if (items.length !== messages.value.filter(m => m.serverId).length) {
+      const existing = messages.value.filter(m => m.serverId)
+      if (items.length !== existing.length || items.some((item, index) =>
+        item.message_id !== existing[index]?.serverId || item.content !== existing[index]?.content ||
+        item.withdrawn_at !== existing[index]?.withdrawnAt ||
+        JSON.stringify(item.attachments || []) !== JSON.stringify(existing[index]?.attachments || []))) {
         messages.value = withGreeting(items.map(toLocalMessage))
         scrollToBottom()
       }
@@ -740,7 +850,21 @@ function stopPolling() {
   pollTimer = null
 }
 
-function scrollToBottom() {
+const followLatest = ref(true)
+const hasUnreadMessages = ref(false)
+function onChatScroll() {
+  const el = scrollRef.value
+  if (!el) return
+  followLatest.value = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  if (followLatest.value) hasUnreadMessages.value = false
+}
+function scrollToBottom(force = false) {
+  if (!force && !followLatest.value) {
+    hasUnreadMessages.value = true
+    return
+  }
+  hasUnreadMessages.value = false
+  followLatest.value = true
   nextTick(() => {
     const el = scrollRef.value
     if (el) el.scrollTop = el.scrollHeight
@@ -767,6 +891,9 @@ onUnmounted(stopPolling)
 </script>
 
 <style scoped>
+.chat-input { position: relative; }
+.attachment-dragging { outline: 2px dashed var(--el-color-primary); outline-offset: -4px; }
+.attachment-drop-hint { position: absolute; inset: 8px; z-index: 5; display: grid; place-items: center; border: 2px dashed var(--el-color-primary); border-radius: 10px; background: var(--el-color-primary-light-9); color: var(--el-text-color-primary); pointer-events: none; font-weight: 600; }
 .consultation-chat { width: 100%; }
 .panel { border-radius: 10px; }
 
@@ -891,4 +1018,84 @@ onUnmounted(stopPolling)
 .input-toolbar { display: flex; justify-content: flex-end; margin-bottom: 4px; }
 .chat-actions { margin-top: 8px; display: flex; justify-content: space-between; align-items: center; }
 .chat-actions-left { display: flex; gap: 8px; }
+
+/* 独立客服页面：对话流滚动，操作区保持可见。 */
+.chat-panel { border-radius: 16px; }
+.chat-panel :deep(.el-card__header) { padding: 18px 24px; }
+.chat-panel :deep(.el-card__body) { display: flex; flex-direction: column; padding: 0; height: clamp(500px, calc(100dvh - 345px), 850px); }
+.new-message-cue { align-self: center; flex-shrink: 0; padding: 8px 16px; margin: 4px 0 10px; border: 1px solid var(--el-color-primary-light-7); border-radius: 20px; color: var(--el-color-primary); background: var(--el-color-primary-light-9); font: inherit; font-size: 12px; cursor: pointer; }
+.conversation-header, .conversation-identity { display: flex; align-items: center; gap: 12px; }
+.conversation-header { justify-content: space-between; }
+.small-assistant { display: grid; place-items: center; width: 40px; height: 40px; background: var(--el-color-primary-light-9); color: var(--el-color-primary); border-radius: 12px; font-size: 23px; }
+.conversation-identity strong { display: block; font-size: 15px; font-weight: 600; }
+.conversation-identity span { display: block; margin-top: 5px; font-size: 12px; color: var(--el-text-color-regular); }
+.state-banner { flex-shrink: 0; margin: 12px 16px 0; width: auto; }
+.chat-body { flex: 1; min-height: 0; height: auto; border-radius: 0; padding: 24px 20px; background: var(--el-bg-color); overscroll-behavior: contain; }
+.chat-welcome { max-width: 600px; margin: 0 auto; padding: 0 12px 12px; text-align: center; }
+.welcome-mark { width: 44px; height: 44px; display: grid; place-items: center; margin: 0 auto 12px; border-radius: 14px; color: var(--el-color-primary); background: var(--el-color-primary-light-9); font-size: 25px; }
+.chat-welcome h2 { margin: 0 0 12px; font-size: 25px; font-weight: 600; color: var(--el-text-color-primary); }
+.chat-welcome p { margin: 0; color: var(--el-text-color-regular); font-size: 14px; line-height: 1.8; }
+.suggestion-label { margin: 20px 0 12px; font-size: 12px; text-align: left; color: var(--el-text-color-regular); }
+.suggestion-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.suggestion-card { display: flex; align-items: center; gap: 12px; padding: 16px 14px; border: 1px solid var(--el-border-color-lighter); border-radius: 10px; background: var(--el-fill-color-extra-light); color: var(--el-text-color-primary); text-align: left; cursor: pointer; font-family: inherit; transition: border-color .2s, background .2s; }
+.suggestion-card:hover { border-color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
+.suggestion-card:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 3px; }
+.suggestion-card > .el-icon { color: var(--el-color-primary); font-size: 20px; flex-shrink: 0; }
+.suggestion-card span { flex: 1; min-width: 0; }
+.suggestion-card strong { display: block; font-size: 13px; font-weight: 500; }
+.suggestion-card small { display: block; margin-top: 6px; font-size: 12px; line-height: 1.5; color: var(--el-text-color-regular); }
+.suggestion-card > .suggestion-arrow { color: var(--el-text-color-secondary); font-size: 13px; }
+.avatar-ai { background: var(--el-color-primary); border-radius: 10px; }
+.avatar-employee { background: var(--el-color-primary-light-9); color: var(--el-color-primary); border-radius: 10px; }
+.msg-main { max-width: 85%; min-width: 0; }
+.msg-bubble { padding: 12px 16px; }
+.bubble-ai { background: var(--el-fill-color-light); border-color: transparent; }
+.msg-time { font-size: 12px; color: var(--el-text-color-regular); }
+.chat-input { flex-shrink: 0; margin: 0; padding: 10px 24px 16px; border-top: 1px solid var(--el-border-color-lighter); }
+.input-toolbar { justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.input-toolbar label { font-size: 12px; color: var(--el-text-color-regular); }
+.chat-input :deep(.el-textarea__inner) { border-radius: 10px; padding: 12px 14px 24px; font-family: inherit; font-size: 14px; }
+.chat-actions { margin-top: 12px; gap: 10px; }
+.chat-actions .el-button { min-height: 36px; }
+.chat-actions-left { gap: 0; flex-wrap: wrap; }
+.input-hint { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; font-size: 12px; color: var(--el-text-color-regular); }
+.new-topic { flex-shrink: 0; border-top: 1px solid var(--el-border-color-lighter); padding: 16px; margin: 0; }
+.startup-error, .booting { min-height: 560px; border: 1px solid var(--el-border-color-lighter); border-radius: 16px; background: var(--el-bg-color); }
+.startup-error { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; box-sizing: border-box; }
+.error-icon { color: var(--el-color-warning); font-size: 38px; }
+.startup-error h2 { font-size: 20px; margin: 20px 0 10px; }
+.startup-error p { font-size: 14px; line-height: 1.7; color: var(--el-text-color-regular); margin-bottom: 24px; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .chat-panel :deep(.el-card__header) { padding: 14px 12px; }
+  .chat-panel :deep(.el-card__body) { height: max(390px, calc(100dvh - 365px)); }
+  .conversation-header { gap: 8px; }
+  .conversation-identity { gap: 8px; }
+  .conversation-identity span { display: none; }
+  .conversation-identity strong { font-size: 13px; }
+  .small-assistant { width: 32px; height: 32px; }
+  .conversation-header > .el-tag { font-size: 11px; }
+  .chat-body { padding: 16px 10px; }
+  .chat-welcome { padding: 4px; }
+  .chat-welcome h2 { font-size: 18px; margin-bottom: 8px; }
+  .chat-welcome p { font-size: 12px; line-height: 1.6; }
+  .welcome-mark { display: none; }
+  .suggestion-label { margin: 14px 0 8px; }
+  .suggestion-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .suggestion-card { padding: 10px 8px; gap: 7px; min-height: 48px; }
+  .suggestion-card strong { font-size: 12px; }
+  .suggestion-card small, .suggestion-card .suggestion-arrow { display: none; }
+  .msg-row { padding: 0; gap: 6px; }
+  .msg-avatar { width: 28px; height: 28px; font-size: 11px; }
+  .msg-main { max-width: calc(100% - 34px); }
+  .chat-input { padding: 8px 12px 12px; }
+  .chat-actions { flex-wrap: wrap; }
+  .chat-actions .el-button { padding: 8px 10px; min-height: 44px; }
+  .input-hint { flex-direction: column; font-size: 11px; }
+  .refusal-actions { flex-wrap: wrap; }
+  .citation-tag { max-width: 100%; height: auto; min-height: 28px; white-space: normal; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dot { animation: none; opacity: .7; }
+  .suggestion-card { transition: none; }
+}
 </style>

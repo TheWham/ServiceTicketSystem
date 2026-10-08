@@ -1,5 +1,10 @@
 <template>
   <div class="employee-view">
+    <div class="page-head"><div><span class="page-eyebrow">EMPLOYEE SERVICE DESK</span><h1 class="page-title">{{ tab === 'list' ? '我的工单' : '提交工单' }}</h1><p class="page-sub">{{ tab === 'list' ? '查看处理进度，补充问题信息，确认解决结果' : '告诉我们您遇到的问题，我们会安排合适的工程师处理' }}</p></div><el-button v-if="tab === 'list'" :icon="Refresh" :loading="listLoading" @click="loadTickets">刷新工单</el-button></div>
+    <div class="support-entry">
+      <div><strong>遇到 IT 问题？先问问智能客服</strong><span>描述问题，获取排查建议，也可以转接人工。</span></div>
+      <el-button type="primary" plain @click="$router.push('/consultation')">开始咨询 →</el-button>
+    </div>
     <!-- ===== 顶部 Tabs ===== -->
     <el-tabs v-model="tab" class="view-tabs">
       <el-tab-pane name="create">
@@ -16,13 +21,23 @@
     </el-tabs>
 
     <!-- ===== 提单表单 ===== -->
-    <el-card v-if="tab === 'create'" shadow="never" class="panel">
+    <div v-if="tab === 'create'" class="create-layout">
+    <el-card shadow="never" class="panel form-panel">
       <template #header>
         <div class="panel-header">
           <span class="panel-title">提交新工单</span>
         </div>
       </template>
 
+      <div v-if="consultationSession || appliedSession" class="consultation-origin">
+        <div class="origin-heading"><el-icon aria-hidden="true"><ChatDotRound /></el-icon><strong>{{ appliedSession ? '已关联咨询内容' : '来自咨询的工单' }}</strong></div>
+        <p v-if="appliedSession">已关联咨询 {{ appliedSession }}。您可以继续修改表单，确认后再提交。</p>
+        <p v-if="prefillLoading" role="status">正在读取咨询内容，您也可以直接填写表单。</p>
+        <p v-else-if="prefillError" class="origin-error">{{ prefillError }}。您仍可直接填写并提交工单。</p>
+        <p v-else-if="prefillDraft && !prefillDraft.convert_allowed">{{ prefillDraft.status === 'CONVERTED_TO_TICKET' ? '该咨询已转为工单' : '当前咨询状态不支持转为工单' }}，您仍可直接提交新工单。</p>
+        <p v-else-if="prefillDraft && appliedSession !== consultationSession">咨询内容已就绪。点击填入空白内容并关联咨询，现有内容会保留。</p>
+        <div class="origin-actions"><el-button v-if="prefillDraft?.convert_allowed && appliedSession !== consultationSession" type="primary" plain :disabled="categoryLoading || prefillLoading || submitting" @click="applyConsultationPrefill">填入并关联咨询</el-button><el-button v-if="prefillError" :loading="prefillLoading" @click="loadConsultationPrefill">重试读取</el-button></div>
+      </div>
       <!-- 草稿提示 -->
       <el-alert
         v-if="draftBanner"
@@ -31,7 +46,7 @@
         class="draft-alert"
       >
         <template #title>
-          ⚠️ 检测到未提交的草稿，
+          检测到未提交的草稿，
           <el-link type="primary" @click="restoreDraft">点击恢复</el-link>
           <el-link type="info" style="margin-left:12px" @click="clearDraft">忽略</el-link>
         </template>
@@ -44,15 +59,16 @@
         label-position="top"
         class="ticket-form"
       >
+        <section class="form-section"><div class="section-heading"><span class="section-number">01</span><div><h2>问题信息</h2><p>清楚描述现象与影响，便于工程师判断和处理。</p></div></div>
+        <el-alert v-if="categoryError" :title="categoryError" type="error" show-icon :closable="false" class="page-error"><el-button link type="primary" @click="loadCategories">重新加载分类</el-button></el-alert>
         <!-- 工单标题 -->
         <el-form-item prop="title">
           <template #label>
-            工单标题 <span class="required">*</span>
-            <span class="char-count">{{ form.title.length }}/50</span>
+            工单标题
           </template>
           <el-input
             v-model="form.title"
-            maxlength="50"
+            maxlength="100"
             show-word-limit
             placeholder="一句话概括问题，如：市场部打印机无法连接"
             clearable
@@ -61,7 +77,7 @@
 
         <el-row :gutter="16">
           <!-- 工单性质 -->
-          <el-col :span="12">
+          <el-col :xs="24" :sm="12">
             <el-form-item prop="nature" label="工单性质">
               <el-radio-group v-model="form.nature">
                 <el-radio-button v-for="n in natures" :key="n.value" :value="n.value">{{ n.label }}</el-radio-button>
@@ -70,9 +86,9 @@
           </el-col>
 
           <!-- 末级分类 -->
-          <el-col :span="12">
+          <el-col :xs="24" :sm="12">
             <el-form-item prop="category_id" label="问题分类">
-              <el-select v-model="form.category_id" placeholder="选择末级分类" style="width:100%" filterable>
+              <el-select :loading="categoryLoading" v-model="form.category_id" placeholder="选择末级分类" style="width:100%" filterable>
                 <el-option v-for="c in filteredCategories" :key="c.categoryId" :value="c.categoryId" :label="c.name" />
               </el-select>
             </el-form-item>
@@ -82,8 +98,7 @@
         <!-- 问题描述 -->
         <el-form-item prop="description">
           <template #label>
-            问题描述 <span class="required">*</span>
-            <span class="char-count">{{ form.description.length }}/5000</span>
+            问题描述
           </template>
           <el-input
             v-model="form.description"
@@ -97,49 +112,51 @@
 
         <el-row :gutter="16">
           <!-- 影响情况 -->
-          <el-col :span="12">
+          <el-col :xs="24" :sm="12">
             <el-form-item prop="impact_description">
               <template #label>
-                影响情况 <span class="required">*</span>
-                <span class="char-count">{{ form.impact_description.length }}/500</span>
+                影响情况
               </template>
               <el-input v-model="form.impact_description" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="影响了哪些人/业务？如：本人无法打印 / 全部门网络中断" />
             </el-form-item>
           </el-col>
 
           <!-- 紧急说明 -->
-          <el-col :span="12">
+          <el-col :xs="24" :sm="12">
             <el-form-item prop="urgency_description">
               <template #label>
-                紧急说明 <span class="required">*</span>
-                <span class="char-count">{{ form.urgency_description.length }}/500</span>
+                紧急说明
               </template>
               <el-input v-model="form.urgency_description" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="为什么紧急？如：下午有重要会议需投屏" />
             </el-form-item>
           </el-col>
         </el-row>
 
+        </section>
+        <section class="form-section"><div class="section-heading"><span class="section-number">02</span><div><h2>位置与联系信息</h2><p>选填，帮助工程师联系您并找到相关设备。</p></div></div>
         <el-row :gutter="16">
           <!-- 位置（选填） -->
-          <el-col :span="8">
+          <el-col :xs="24" :sm="12">
             <el-form-item label="位置">
               <el-input v-model="form.location" maxlength="200" placeholder="如：3号楼 502 室（选填）" />
             </el-form-item>
           </el-col>
           <!-- 本次联系方式（选填） -->
-          <el-col :span="8">
+          <el-col :xs="24" :sm="12">
             <el-form-item label="本次联系方式">
-              <el-input v-model="form.contact" maxlength="64" placeholder="手机/座机（选填，不反写档案）" />
+              <el-input v-model="form.contact" maxlength="64" placeholder="手机或座机（选填）" />
             </el-form-item>
           </el-col>
           <!-- 资产编号（选填） -->
-          <el-col :span="8">
+          <el-col :xs="24" :sm="12">
             <el-form-item label="资产编号">
               <el-input v-model="form.asset_id" maxlength="64" placeholder="如 PC-2024-001（选填）" />
             </el-form-item>
           </el-col>
         </el-row>
 
+        </section>
+        <section class="form-section"><div class="section-heading"><span class="section-number">03</span><div><h2>照片附件</h2><p>选填，可上传报错截图或设备照片，帮助我们了解现场。</p></div></div>
         <!-- 照片附件（选填，最多 3 张；提交后与工单绑定，工程师/主管可见） -->
         <el-form-item label="照片附件">
           <div class="photo-upload">
@@ -159,6 +176,8 @@
           </div>
         </el-form-item>
 
+        </section>
+        <el-alert v-if="submitError" :title="submitError" type="error" show-icon :closable="false" class="page-error" />
         <!-- 提交区 -->
         <el-form-item>
           <el-button
@@ -180,28 +199,35 @@
         </el-form-item>
       </el-form>
     </el-card>
+    <aside class="service-guide"><el-card shadow="never"><div class="guide-heading"><el-icon aria-hidden="true"><Service /></el-icon><h2>让处理更顺畅</h2></div><p>完整的信息能帮助工程师更快理解问题。</p><ol class="guide-steps"><li><strong>描述发生了什么</strong><span>写明出现时间、报错原文，以及您尝试过的操作。</span></li><li><strong>说明业务影响</strong><span>告知受影响的人员和工作，以及需要完成的时间。</span></li><li><strong>关注工单进展</strong><span>提交后在「我的工单」查看进度，并在处理完成后验收。</span></li></ol><div class="guide-note"><el-icon aria-hidden="true"><InfoFilled /></el-icon><span>请勿在描述或截图中提供密码、验证码等敏感信息。</span></div></el-card></aside>
+    </div>
 
     <!-- ===== 我的工单列表 ===== -->
     <el-card v-if="tab === 'list'" shadow="never" class="panel">
       <template #header>
         <div class="panel-header">
           <span class="panel-title">我的工单</span>
+          <div class="list-filters"><label class="filter-label" for="employee-page-search">本页搜索</label><el-input id="employee-page-search" v-model="pageSearch" :prefix-icon="Search" placeholder="工单号或标题" clearable class="page-search" /><label class="filter-label" for="employee-status-filter">状态</label>
           <el-select
+            id="employee-status-filter"
             v-model="filter.status"
             placeholder="全部状态"
             clearable
             style="width: 160px"
-            @change="loadTickets"
+            @change="applyFilters"
           >
             <el-option v-for="s in statuses" :key="s" :label="statusLabel(s)" :value="s" />
-          </el-select>
+          </el-select></div>
         </div>
       </template>
 
-      <!-- 统计条（简洁商务） -->
+      <el-alert v-if="createdTicketId" type="success" show-icon :closable="false" class="page-error"><template #title>工单 {{ createdTicketId }} 已提交</template><el-button link type="primary" @click="openDetail({ ticket_id: createdTicketId })">查看工单</el-button></el-alert>
+      <p class="scope-note">统计范围：当前页已加载 {{ tickets.length }} 张工单；符合状态筛选的工单共 {{ total }} 张。本页搜索仅检索当前页。</p>
+      <el-alert v-if="listError" :title="listError" type="error" show-icon :closable="false" class="page-error"><el-button link type="primary" @click="loadTickets">重新加载</el-button></el-alert>
+      <!-- 当前页统计 -->
       <div class="stat-row">
         <div v-for="s in listStats" :key="s.label" class="stat-card">
-          <div class="stat-icon" :style="{ background: s.bg, color: s.color }">
+          <div class="stat-icon" :class="s.tone">
             <el-icon :size="18"><component :is="s.icon" /></el-icon>
           </div>
           <div class="stat-info">
@@ -211,14 +237,20 @@
         </div>
       </div>
 
-      <el-empty v-if="tickets.length === 0" description="暂无工单" />
+      <div v-if="listLoading" class="list-loading" role="status"><el-skeleton :rows="4" animated /><span>正在加载工单…</span></div>
+      <el-empty v-else-if="!listError && displayedTickets.length === 0" :description="pageSearch.trim() ? '当前页没有匹配的工单' : '当前筛选下暂无工单'" />
 
-      <div v-else class="ticket-list">
+      <div v-else-if="!listError" class="ticket-list">
         <el-card
-          v-for="t in tickets"
+          v-for="t in displayedTickets"
           :key="t.ticket_id"
           shadow="hover"
           class="ticket-card"
+          role="button"
+          tabindex="0"
+          :aria-label="`查看工单：${t.title}，${statusLabel(t.status)}`"
+          @keydown.enter="openDetail(t)"
+          @keydown.space.prevent="openDetail(t)"
           @click="openDetail(t)"
         >
           <div class="ticket-header">
@@ -255,7 +287,10 @@
       :close-on-click-modal="false"
       destroy-on-close
     >
-      <template v-if="detailTicket">
+      <div v-if="detailLoading" class="detail-loading" role="status"><el-skeleton :rows="5" animated /><p>正在加载工单详情…</p></div>
+      <el-alert v-if="detailError" :title="detailError" type="error" :closable="false" show-icon><el-button link type="primary" @click="openDetail({ ticket_id: detailId })">重新加载</el-button></el-alert>
+      <template v-if="detailTicket && !detailLoading && !detailError">
+        <div class="detail-summary"><h2>{{ detailTicket.title }}</h2><div><el-tag :type="statusTagType(detailTicket.status)">{{ statusLabel(detailTicket.status) }}</el-tag><el-tag :type="priorityTagType(detailTicket.priority)" effect="plain">{{ priorityLabel(detailTicket.priority) }}优先级</el-tag><span>处理人：{{ detailTicket.assignee_name || '等待分配' }}</span></div></div>
         <el-descriptions :column="2" border class="detail-desc">
           <el-descriptions-item label="标题" :span="2">{{ detailTicket.title }}</el-descriptions-item>
           <el-descriptions-item label="分类">{{ detailTicket.category_name }}</el-descriptions-item>
@@ -377,21 +412,29 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  EditPen, List, WarningFilled, SuccessFilled, CircleCheck, CircleClose, Plus
+  EditPen, List, WarningFilled, SuccessFilled, CircleCheck, CircleClose, Plus, Clock, Loading, Finished, Refresh, Search, Service, InfoFilled, ChatDotRound
 } from '@element-plus/icons-vue'
 import { ticketApi, draftApi, categoryApi, attachmentApi } from '../api/index.js'
+import { consultationApi } from '../api/consultation.js'
 import { loadPhotoUrls, revokePhotoUrls } from '../utils/attachmentPhotos.js'
 import { useUserStore } from '../stores/user.js'
 import SlaBadge from '../components/SlaBadge.vue'
 import SlaTimer from '../components/SlaTimer.vue'
 
 const userStore = useUserStore()
-const tab = ref('create')
+const route = useRoute()
+const router = useRouter()
+const tab = computed({
+  get: () => ['create', 'list'].includes(route.query.tab) ? route.query.tab : route.query.ticket ? 'list' : 'create',
+  set: value => router.push({ path: route.path, query: { ...route.query, tab: value } })
+})
 // 末级分类从后端动态加载（PRD §10.1 分类目录）
 const categories = ref([])
+const categoryLoading = ref(false)
+const categoryError = ref('')
 // 按当前工单性质过滤末级分类（PRD §10.1：分类目录按 nature 分组，SPEC 字段为 nature）
 const filteredCategories = computed(() => categories.value.filter(c => (c.nature || c.ticketNature) === form.value.nature))
 const natures = [
@@ -403,8 +446,75 @@ const form = ref({
   nature: 'INCIDENT', category_id: '', title: '', description: '',
   impact_description: '', urgency_description: '', location: '', contact: '', asset_id: ''
 })
+// Consultation content is fetched separately and only applied on explicit user action.
+const consultationSession = computed(() => route.query.from === 'consultation' && typeof route.query.session === 'string' ? route.query.session : '')
+const prefillLoading = ref(false)
+const prefillError = ref('')
+const prefillDraft = ref(null)
+const appliedSession = ref('')
+let prefillRequest = 0
+
+function mapConsultationDraft(draft, leaves) {
+  if (draft?.convert_allowed !== true) return null
+  const category = leaves.find(item => item.categoryId === draft.category_id && ['INCIDENT', 'SERVICE_REQUEST'].includes(item.nature || item.ticketNature))
+  return {
+    title: String(draft.title || '').slice(0, 100),
+    description: String(draft.description || draft.summary || '').slice(0, 5000),
+    category_id: category?.categoryId || '',
+    nature: category ? category.nature || category.ticketNature : ''
+  }
+}
+
+function fillEmptyDraftFields(current, prefill) {
+  const result = { ...current }
+  let changed = false
+  for (const field of ['title', 'description', 'category_id']) {
+    if (!String(current[field] || '').trim() && prefill[field]) {
+      result[field] = prefill[field]
+      changed = true
+      if (field === 'category_id' && prefill.nature) result.nature = prefill.nature
+    }
+  }
+  return { form: result, changed }
+}
+
+async function loadConsultationPrefill() {
+  const session = consultationSession.value
+  const request = ++prefillRequest
+  prefillDraft.value = null
+  prefillError.value = ''
+  prefillLoading.value = !!session
+  if (!session) return
+  try {
+    const draft = await consultationApi.ticketDraft(session)
+    if (request !== prefillRequest || consultationSession.value !== session) return
+    if (!draft || draft.session_id !== session) throw new Error('咨询内容与当前咨询不匹配，请重新读取')
+    prefillDraft.value = draft
+  } catch (error) {
+    if (request === prefillRequest) prefillError.value = error.message || '咨询内容读取失败'
+  } finally {
+    if (request === prefillRequest) prefillLoading.value = false
+  }
+}
+
+function applyConsultationPrefill() {
+  if (prefillLoading.value || categoryLoading.value || submitting.value) return
+  const draft = prefillDraft.value
+  const session = consultationSession.value
+  if (!session || draft?.session_id !== session) return
+  const mapped = mapConsultationDraft(draft, categories.value)
+  if (!mapped) return
+  const result = fillEmptyDraftFields(form.value, mapped)
+  if (result.changed) form.value = result.form
+  else ElMessage.info('已关联咨询，保留现有内容')
+  appliedSession.value = session
+  formToken.value = genClientToken()
+}
+
 const formRef = ref(null)
 const submitting = ref(false)
+const submitError = ref('')
+const createdTicketId = ref('')
 const draftBanner = ref(false)
 const draftSaved = ref(false)
 const draftTime = ref('')
@@ -434,6 +544,14 @@ const formRules = {
 
 // 工单列表
 const tickets = ref([])
+const listLoading = ref(false)
+const listError = ref('')
+const pageSearch = ref('')
+const displayedTickets = computed(() => {
+  const keyword = pageSearch.value.trim().toLocaleLowerCase()
+  if (!keyword) return tickets.value
+  return tickets.value.filter(ticket => `${ticket.ticket_id || ''} ${ticket.title || ''}`.toLocaleLowerCase().includes(keyword))
+})
 const total = ref(0)
 const page = ref(1)
 const pageSize = 10
@@ -446,10 +564,10 @@ const listStats = computed(() => {
   const t = tickets.value
   const count = (s) => t.filter(x => x.status === s).length
   return [
-    { label: '待处理', value: count('NEW') + count('ASSIGNED'), icon: 'Clock', bg: '#fdf6ec', color: '#e6a23c' },
-    { label: '处理中', value: count('IN_PROGRESS') + count('PENDING_EXTERNAL') + count('PENDING_SUPPLEMENT'), icon: 'Loading', bg: '#ecf5ff', color: '#409eff' },
-    { label: '待验收', value: count('PENDING_ACCEPTANCE'), icon: 'CircleCheck', bg: '#e6f7f7', color: '#13a8a8' },
-    { label: '已完成', value: count('COMPLETED'), icon: 'Finished', bg: '#f0f9eb', color: '#67c23a' }
+    { label: '当前页待处理', value: count('NEW') + count('ASSIGNED'), icon: Clock, tone: 'warning' },
+    { label: '当前页处理中', value: count('IN_PROGRESS') + count('PENDING_EXTERNAL') + count('PENDING_SUPPLEMENT'), icon: Loading, tone: 'primary' },
+    { label: '当前页待验收', value: count('PENDING_ACCEPTANCE'), icon: CircleCheck, tone: 'primary' },
+    { label: '当前页已完成', value: count('COMPLETED'), icon: Finished, tone: 'success' }
   ]
 })
 const filter = ref({ status: '' })
@@ -458,6 +576,9 @@ const filter = ref({ status: '' })
 const detailTicket = ref(null)
 const detailFlows = ref([])
 const detailVisible = ref(false)
+const detailLoading = ref(false)
+const detailError = ref('')
+const detailId = ref('')
 const rejectReason = ref('')
 const rejectError = ref('')
 const ratingScore = ref(0)
@@ -567,6 +688,7 @@ function removePhoto(file) {
 // 提交工单
 async function submitTicket() {
   if (submitting.value) return
+  submitError.value = ''
   // PRD §3.2：防重复点击 Debounce 3 秒
   if (Date.now() - lastSubmitAt.value < 3000) return
 
@@ -585,7 +707,7 @@ async function submitTicket() {
   submitting.value = true
   lastSubmitAt.value = Date.now()
   try {
-    await ticketApi.create({
+    const created = await ticketApi.create({
       nature: form.value.nature,
       category_id: form.value.category_id,
       title: form.value.title.trim(),
@@ -596,12 +718,15 @@ async function submitTicket() {
       contact: form.value.contact.trim() || null,
       asset_id: form.value.asset_id.trim() || null,
       attachments: photoIds.value.length ? photoIds.value : undefined,
+      source_session_id: appliedSession.value || undefined,
       idempotency_key: formToken.value
     })
     form.value = {
       nature: 'INCIDENT', category_id: '', title: '', description: '',
       impact_description: '', urgency_description: '', location: '', contact: '', asset_id: ''
     }
+    createdTicketId.value = created.data?.ticket_id || ''
+    clearTimeout(draftTimer)
     photoList.value = []
     photoIds.value = []
     formToken.value = genClientToken()
@@ -609,10 +734,15 @@ async function submitTicket() {
     draftBanner.value = false
     draftSaved.value = false
     ElMessage.success('工单提交成功！')
-    tab.value = 'list'
+    appliedSession.value = ''
+    prefillDraft.value = null
+    const nextQuery = { ...route.query, tab: 'list' }
+    delete nextQuery.session
+    delete nextQuery.from
+    await router.push({ path: route.path, query: nextQuery })
     loadTickets()
   } catch (e) {
-    ElMessage.error('提交失败：' + e.message)
+    submitError.value = '提交失败：' + (e.message || '请稍后重试')
   } finally {
     submitting.value = false
   }
@@ -638,6 +768,7 @@ async function saveDraft() {
 function restoreDraft() {
   draftApi.get().then(res => {
     if (res.data) {
+      appliedSession.value = ''
       form.value = {
         nature: res.data.nature || 'INCIDENT',
         category_id: res.data.category_id || '',
@@ -651,35 +782,74 @@ function restoreDraft() {
       }
       draftBanner.value = false
     }
-  })
+  }).catch(error => ElMessage.error(error.message || '草稿读取失败，请重试'))
 }
 function clearDraft() { draftApi.delete().catch(() => {}); draftBanner.value = false }
 
+// 筛选变更返回第一页；刷新保留当前页。
+function applyFilters() {
+  page.value = 1
+  pageSearch.value = ''
+  loadTickets()
+}
+
+let listRequest = 0
 // 加载工单列表
 async function loadTickets() {
+  const request = ++listRequest
+  listLoading.value = true
+  listError.value = ''
   try {
     const params = { creator_id: userStore.userId, page: page.value, page_size: pageSize }
     if (filter.value.status) params.status = filter.value.status
     const res = await ticketApi.list(params)
+    if (request !== listRequest) return
     tickets.value = res.data.list
     total.value = res.data.total
-  } catch (e) { console.error(e) }
+  } catch (e) {
+    if (request === listRequest) listError.value = e.message || '工单加载失败，请稍后重试'
+  } finally {
+    if (request === listRequest) listLoading.value = false
+  }
 }
 
 // 查看详情
+let detailRequest = 0
+function invalidateDetailRequest() {
+  detailRequest++
+  detailLoading.value = false
+  detailTicket.value = null
+  detailError.value = ''
+  revokePhotoUrls(detailPhotos.value)
+  detailPhotos.value = []
+}
+watch(detailVisible, visible => { if (!visible) invalidateDetailRequest() }, { flush: 'sync' })
+
 async function openDetail(ticket) {
+  const request = ++detailRequest
+  detailId.value = ticket.ticket_id
+  detailTicket.value = null
+  detailVisible.value = true
+  detailLoading.value = true
+  detailError.value = ''
   try {
     const res = await ticketApi.detail(ticket.ticket_id)
+    if (request !== detailRequest) return
     detailTicket.value = res.data.ticket
     detailFlows.value = res.data.flow_logs
     revokePhotoUrls(detailPhotos.value)
-    detailPhotos.value = await loadPhotoUrls(res.data.ticket.attachments)
+    const photos = await loadPhotoUrls(res.data.ticket.attachments)
+    if (request !== detailRequest) { revokePhotoUrls(photos); return }
+    detailPhotos.value = photos
     rejectReason.value = ''
     rejectError.value = ''
     ratingScore.value = 0
     ratingComment.value = ''
-    detailVisible.value = true
-  } catch (e) { ElMessage.error('加载详情失败：' + e.message) }
+  } catch (e) {
+    if (request === detailRequest) detailError.value = '详情加载失败：' + (e.message || '请稍后重试')
+  } finally {
+    if (request === detailRequest) detailLoading.value = false
+  }
 }
 
 // 验收通过
@@ -732,16 +902,19 @@ watch(form, () => {
   draftTimer = setTimeout(saveDraft, 30000)
 }, { deep: true })
 
-const route = useRoute()
-
-onMounted(async () => {
+async function loadCategories() {
+  categoryLoading.value = true
+  categoryError.value = ''
   try {
     const res = await categoryApi.leaf()
     categories.value = res.data || []
   } catch (e) {
-    console.error('加载分类失败', e)
-    ElMessage.error('分类加载失败，请刷新重试；若持续失败请联系管理员')
-  }
+    categoryError.value = e.message || '分类加载失败，请重试'
+  } finally { categoryLoading.value = false }
+}
+
+onMounted(async () => {
+  await loadCategories()
   try {
     const draft = await draftApi.get()
     if (draft.data) draftBanner.value = true
@@ -753,22 +926,28 @@ onMounted(async () => {
   }
 })
 
+watch(consultationSession, loadConsultationPrefill, { immediate: true })
+
 // 关键：同页内点击通知只改 query，组件不重挂载、onMounted 不触发——需 watch query 变化
 watch(() => route.query.ticket, (tid) => {
   if (tid) openDetail({ ticket_id: tid })
 })
 
-onUnmounted(() => clearTimeout(draftTimer))
+onUnmounted(() => { clearTimeout(draftTimer); revokePhotoUrls(detailPhotos.value) })
 </script>
 
 <style scoped>
+.support-entry { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 22px; margin-bottom: 20px; border: 1px solid var(--el-color-primary-light-7); border-radius: 12px; background: var(--el-color-primary-light-9); }
+.support-entry strong { display: block; font-size: 15px; color: var(--el-text-color-primary); }
+.support-entry span { display: block; margin-top: 6px; font-size: 13px; color: var(--el-text-color-regular); }
+@media (max-width: 760px) { .support-entry { align-items: flex-start; flex-direction: column; } }
 /* 照片附件上传提示 */
-.upload-tip { font-size: 12px; color: #909399; margin-top: 4px; line-height: 1.4; }
+.upload-tip { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 4px; line-height: 1.4; }
 
 .view-tabs :deep(.el-tabs__header) { margin-bottom: 16px; }
 .tab-badge { margin-left: 6px; }
 
-.panel { border-radius: 8px; }
+.panel { border-radius: 16px; }
 .panel-header {
   display: flex;
   align-items: center;
@@ -783,8 +962,6 @@ onUnmounted(() => clearTimeout(draftTimer))
   color: var(--el-text-color-primary);
 }
 
-.required { color: var(--el-color-danger); }
-.char-count { float: right; font-weight: 400; color: var(--el-text-color-secondary); font-size: 12px; }
 
 .priority-hint {
   color: var(--el-color-warning);
@@ -872,4 +1049,78 @@ onUnmounted(() => clearTimeout(draftTimer))
 }
 .flow-operator { font-size: 13px; color: var(--el-text-color-secondary); }
 .flow-remark { font-size: 13px; color: var(--el-text-color-regular); }
+
+.employee-view { min-width:0; }
+.page-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:24px; }
+.page-eyebrow { display:block; font-size:12px; font-weight:700; letter-spacing:1.4px; color:var(--el-color-primary); margin-bottom:8px; }
+.page-title { margin:0; font-size:28px; line-height:1.3; color:var(--el-text-color-primary); }
+.page-sub { margin:8px 0 0; font-size:14px; line-height:1.6; color:var(--el-text-color-secondary); }
+.create-layout { display:grid; grid-template-columns:minmax(0,1fr) 280px; gap:24px; align-items:start; }
+.form-panel { min-width:0; }
+.panel-title { font-size:18px; }
+.panel-header { gap:16px; flex-wrap:wrap; }
+.form-section { padding-bottom:12px; margin-bottom:24px; border-bottom:1px solid var(--el-border-color-lighter); }
+.section-heading { display:flex; gap:12px; align-items:flex-start; margin:0 0 24px; }
+.section-number { display:grid; place-items:center; width:34px; height:34px; flex-shrink:0; font-size:13px; font-weight:700; background:var(--el-color-primary-light-9); color:var(--el-color-primary); border-radius:10px; }
+.section-heading h2 { margin:0; font-size:18px; font-weight:650; color:var(--el-text-color-primary); }
+.section-heading p { margin:5px 0 0; font-size:13px; line-height:1.6; color:var(--el-text-color-secondary); }
+.service-guide { position:sticky; top:24px; }
+.service-guide :deep(.el-card) { border-radius:16px; }
+.guide-heading { display:flex; align-items:center; gap:8px; color:var(--el-color-primary); }
+.guide-heading h2 { margin:0; font-size:17px; color:var(--el-text-color-primary); }
+.service-guide p { font-size:13px; line-height:1.7; color:var(--el-text-color-secondary); }
+.guide-steps { list-style:none; counter-reset:step; padding:0; margin:24px 0; }
+.guide-steps li { position:relative; counter-increment:step; padding-left:34px; margin-bottom:24px; }
+.guide-steps li::before { content:counter(step); position:absolute; left:0; top:0; display:grid; place-items:center; width:24px; height:24px; border:1px solid var(--el-border-color); border-radius:50%; font-size:12px; color:var(--el-text-color-secondary); }
+.guide-steps strong { display:block; font-size:14px; color:var(--el-text-color-primary); }
+.guide-steps span { display:block; margin-top:6px; font-size:13px; line-height:1.7; color:var(--el-text-color-secondary); }
+.guide-note { display:flex; gap:8px; background:var(--el-fill-color-light); padding:12px; border-radius:10px; color:var(--el-text-color-secondary); font-size:12px; line-height:1.7; }
+.guide-note .el-icon { flex-shrink:0; margin-top:3px; }
+.list-filters { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.filter-label { font-size:13px; color:var(--el-text-color-secondary); }
+.page-search { width:200px; }
+.scope-note { margin:0 0 16px; font-size:13px; color:var(--el-text-color-secondary); line-height:1.7; }
+.page-error { margin-bottom:20px; }
+.stat-icon.warning { color:var(--el-color-warning); background:var(--el-color-warning-light-9); }
+.stat-icon.primary { color:var(--el-color-primary); background:var(--el-color-primary-light-9); }
+.stat-icon.success { color:var(--el-color-success); background:var(--el-color-success-light-9); }
+.list-loading { padding:24px 0; color:var(--el-text-color-secondary); font-size:13px; }
+.list-loading > span { display:block; text-align:center; margin-top:16px; }
+.ticket-card { border-radius:12px; }
+.ticket-card:focus-visible { outline:2px solid var(--el-color-primary); outline-offset:3px; }
+.ticket-title { font-size:16px; font-weight:600; line-height:1.6; overflow-wrap:anywhere; }
+.ticket-header, .ticket-meta { flex-wrap:wrap; }
+.detail-summary { margin-bottom:24px; }
+.detail-summary h2 { margin:0 0 12px; font-size:22px; line-height:1.5; overflow-wrap:anywhere; color:var(--el-text-color-primary); }
+.detail-summary > div { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.detail-summary span { font-size:13px; color:var(--el-text-color-secondary); }
+.detail-loading { min-height:200px; color:var(--el-text-color-secondary); }
+@media(max-width:1199px) { .create-layout { grid-template-columns:minmax(0,1fr); } .service-guide { position:static; } .guide-steps { display:flex; gap:24px; } .guide-steps li { flex:1; margin:0; } }
+@media(max-width:767px) {
+  .page-head { flex-wrap:wrap; }
+  .page-title { font-size:24px; }
+  .support-entry { padding:16px; }
+  :deep(.el-card__body), :deep(.el-card__header) { padding:16px; }
+  .stat-row { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+  .stat-card { padding:12px; gap:8px; }
+  .stat-icon { width:32px; height:32px; }
+  .stat-label { font-size:12px; }
+  .list-filters { display:grid; grid-template-columns:auto minmax(0,1fr); width:100%; }
+  .list-filters :deep(.el-select), .page-search { width:100% !important; }
+  .ticket-meta { gap:8px 12px; }
+  .guide-steps { display:block; }
+  .guide-steps li { margin-bottom:20px; }
+  .reject-area { flex-direction:column; }
+  .pagination { flex-wrap:wrap; gap:8px; }
+  .ticket-form :deep(.el-form-item__content) { gap:8px; }
+  .ticket-form :deep(.el-text) { margin-left:0 !important; }
+}
+
+.consultation-origin { padding:16px; margin-bottom:20px; border:1px solid var(--el-color-primary-light-7); border-radius:12px; background:var(--el-color-primary-light-9); }
+.origin-heading { display:flex; align-items:center; gap:8px; color:var(--el-text-color-primary); font-size:14px; }
+.origin-heading .el-icon { color:var(--el-color-primary); }
+.consultation-origin p { font-size:13px; line-height:1.7; color:var(--el-text-color-regular); margin:8px 0; overflow-wrap:anywhere; }
+.consultation-origin .origin-error { color:var(--el-color-danger); }
+.origin-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.origin-actions :deep(.el-button + .el-button) { margin-left:0; }
 </style>

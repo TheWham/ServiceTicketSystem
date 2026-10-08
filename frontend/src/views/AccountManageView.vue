@@ -1,14 +1,18 @@
 <template>
   <div class="account-page">
+    <div class="page-head">
+      <div><span class="page-eyebrow">ACCESS MANAGEMENT</span><h1 class="page-title">账号管理</h1><p class="page-sub">维护员工账号与角色权限，让每位成员进入对应工作台</p></div>
+      <div class="heading-actions"><el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button><el-button type="primary" :icon="Plus" @click="openCreate">新建账号</el-button></div>
+    </div>
+    <el-alert v-if="loadError" :title="loadError" type="error" show-icon :closable="false" class="page-error"><el-button link type="primary" @click="load">重新加载</el-button></el-alert>
     <el-card shadow="never">
       <template #header>
         <div class="card-header">
-          <span class="title">账号管理</span>
-          <el-button type="primary" :icon="Plus" @click="openCreate">新建账号</el-button>
+          <span class="section-title">账号列表</span><span class="scope-note">已加载 {{ accounts.length }} 个账号</span>
         </div>
       </template>
 
-      <el-table :data="accounts" v-loading="loading" border stripe>
+      <el-table :data="accounts" v-loading="loading" stripe :empty-text="loadError ? '账号加载失败，请重试' : '暂无账号，可新建成员账号'">
         <el-table-column prop="user_id" label="用户ID" width="110" />
         <el-table-column prop="employee_no" label="员工号" width="100" />
         <el-table-column prop="name" label="姓名" width="120" />
@@ -37,8 +41,8 @@
     </el-card>
 
     <!-- 新建账号弹窗 -->
-    <el-dialog v-model="createVisible" title="新建账号" width="460px" :close-on-click-modal="false">
-      <el-form :model="createForm" label-width="90px">
+    <el-dialog v-model="createVisible" title="新建账号" width="min(460px, calc(100vw - 32px))" :close-on-click-modal="false">
+      <el-form :model="createForm" label-position="top">
         <el-form-item label="用户ID" required>
           <el-input v-model="createForm.userId" placeholder="登录账号，如 U_EMP02" />
         </el-form-item>
@@ -70,8 +74,8 @@
     </el-dialog>
 
     <!-- 重置密码弹窗 -->
-    <el-dialog v-model="resetVisible" :title="`重置密码 · ${resetTarget?.name || ''}`" width="400px" :close-on-click-modal="false">
-      <el-form label-width="90px">
+    <el-dialog v-model="resetVisible" :title="`重置密码 · ${resetTarget?.name || ''}`" width="min(400px, calc(100vw - 32px))" :close-on-click-modal="false">
+      <el-form label-position="top">
         <el-form-item label="新密码" required>
           <el-input v-model="resetPwd" type="password" show-password placeholder="6-32位，含字母和数字" />
         </el-form-item>
@@ -83,8 +87,8 @@
     </el-dialog>
 
     <!-- 修改角色弹窗 -->
-    <el-dialog v-model="roleVisible" :title="`修改角色 · ${roleTarget?.name || ''}`" width="440px" :close-on-click-modal="false">
-      <el-form label-width="90px">
+    <el-dialog v-model="roleVisible" :title="`修改角色 · ${roleTarget?.name || ''}`" width="min(440px, calc(100vw - 32px))" :close-on-click-modal="false">
+      <el-form label-position="top">
         <el-form-item label="当前角色">
           <el-tag>{{ roleLabel(roleTarget?.role) }}</el-tag>
         </el-form-item>
@@ -113,14 +117,15 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Refresh } from '@element-plus/icons-vue'
 import { userApi } from '../api/index.js'
 
-const roleMap = { EMPLOYEE: '员工', ENGINEER: '工程师', PLATFORM_ADMIN: '平台管理员', KB_ADMIN: '知识库管理员' }
-const roleTagType = (r) => ({ EMPLOYEE: 'success', ENGINEER: 'primary', PLATFORM_ADMIN: 'warning', KB_ADMIN: 'danger' }[r] || 'info')
+const roleMap = { EMPLOYEE: '员工', ENGINEER: '工程师', PLATFORM_ADMIN: '平台管理员', KB_ADMIN: '知识库管理员', KNOWLEDGE_ADMIN: '知识库管理员' }
+const roleTagType = (r) => ({ EMPLOYEE: 'success', ENGINEER: 'primary', PLATFORM_ADMIN: 'warning', KB_ADMIN: 'danger', KNOWLEDGE_ADMIN: 'danger' }[r] || 'info')
 
 const accounts = ref([])
 const loading = ref(false)
+const loadError = ref('')
 
 const createVisible = ref(false)
 const creating = ref(false)
@@ -133,11 +138,12 @@ const resetPwd = ref('')
 
 async function load() {
   loading.value = true
+  loadError.value = ''
   try {
     const res = await userApi.listAccounts()
     accounts.value = res.data
   } catch (e) {
-    ElMessage.error(e.message || '加载失败')
+    loadError.value = e.message || '账号加载失败，请稍后重试'
   } finally {
     loading.value = false
   }
@@ -226,7 +232,31 @@ onMounted(load)
 </script>
 
 <style scoped>
-.account-page { padding: 20px; }
+.account-page { min-width:0; }
 .card-header { display: flex; justify-content: space-between; align-items: center; }
 .title { font-weight: 600; font-size: 16px; }
+
+.page-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:24px; }
+.page-eyebrow { display:block; color:var(--el-color-primary); font-size:12px; font-weight:700; letter-spacing:1.4px; margin-bottom:8px; }
+.page-title { margin:0; font-size:28px; line-height:1.3; color:var(--el-text-color-primary); }
+.page-sub { margin:8px 0 0; font-size:14px; line-height:1.6; color:var(--el-text-color-secondary); }
+.section-title { font-size:18px; font-weight:650; color:var(--el-text-color-primary); }
+.scope-note { margin:8px 0 16px; font-size:13px; color:var(--el-text-color-secondary); line-height:1.6; }
+.page-error { margin-bottom:16px; }
+:deep(.el-card) { border-radius:16px; }
+:deep(.el-table .cell) { line-height:1.6; }
+:deep(.el-dialog) { max-width:calc(100vw - 32px); border-radius:16px; }
+:deep(.el-form-item__label) { color:var(--el-text-color-regular); }
+@media(max-width:767px) {
+  .page-head { flex-wrap:wrap; margin-bottom:20px; }
+  .page-title { font-size:24px; }
+  :deep(.el-card__body) { padding:16px; }
+  :deep(.el-dialog) { margin-top:5vh; }
+  :deep(.el-pagination) { flex-wrap:wrap; gap:8px; justify-content:center; }
+}
+
+.heading-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.heading-actions :deep(.el-button + .el-button) { margin-left:0; }
+.card-header { gap:12px; flex-wrap:wrap; }
+.card-header .scope-note { margin:0; }
 </style>

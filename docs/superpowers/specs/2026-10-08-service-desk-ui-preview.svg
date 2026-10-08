@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1120" viewBox="0 0 1600 1120" role="img" aria-labelledby="title desc">
+  <title id="title">IT 服务台 · 员工智能咨询页面设计预览</title>
+  <desc id="desc">深蓝导航、浅灰背景、白色会话卡片。所有会话和工单内容均为设计示例。</desc>
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%"><feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#12223D" flood-opacity="0.08"/></filter>
+    <clipPath id="screen"><rect x="64" y="144" width="1472" height="816" rx="20"/></clipPath>
+    <g id="chat" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18v13H9l-6 4V4Z"/><path d="M8 9h8M8 13h5"/></g>
+    <g id="ticket" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="3" width="16" height="19" rx="3"/><path d="M8 8h8M8 12h8M8 16h5"/></g>
+    <g id="plus" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></g>
+    <g id="arrow" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15m-5-5 5 5-5 5"/></g>
+  </defs>
+  <rect width="1600" height="1120" fill="#EDF1F7"/>
+  <g font-family="Microsoft YaHei, PingFang SC, Arial, sans-serif">
+    <text x="64" y="63" font-size="13" font-weight="700" letter-spacing="3" fill="#52627A">IT SERVICE DESK / DESIGN DIRECTION 01</text>
+    <text x="64" y="110" font-size="32" font-weight="700" fill="#172B4D">让每一次求助，都有清晰的下一步。</text>
+    <rect x="1300" y="69" width="236" height="36" rx="18" fill="#FFFFFF"/>
+    <text x="1418" y="92" text-anchor="middle" font-size="13" fill="#52627A">方案 A · 设计预览 / 内容为示例</text>
+    <rect x="64" y="144" width="1472" height="816" rx="20" fill="#FFF" filter="url(#shadow)"/>
+    <g clip-path="url(#screen)">
+      <rect x="64" y="144" width="224" height="816" fill="#12223D"/>
+      <rect x="288" y="144" width="1248" height="816" fill="#F5F7FB"/>
+      <rect x="88" y="172" width="40" height="40" rx="12" fill="#2563EB"/>
+      <text x="108" y="199" text-anchor="middle" font-size="20" font-weight="700" fill="white">IT</text>
+      <text x="140" y="188" font-size="19" font-weight="700" fill="white">智能服务台</text>
+      <text x="141" y="208" font-size="10" letter-spacing="1.5" fill="#A8B9D1">SERVICE DESK</text>
+      <text x="90" y="263" font-size="12" fill="#A8B9D1">员工服务</text>
+      <rect x="80" y="282" width="192" height="48" rx="10" fill="#2563EB"/>
+      <use href="#chat" x="96" y="294" color="white"/>
+      <text x="134" y="312" font-size="15" font-weight="700" fill="white">智能客服</text>
+      <use href="#plus" x="96" y="354" color="#CBD5E1"/>
+      <text x="134" y="372" font-size="15" fill="#CBD5E1">提交工单</text>
+      <use href="#ticket" x="96" y="414" color="#CBD5E1"/>
+      <text x="134" y="432" font-size="15" fill="#CBD5E1">我的工单</text>
+      <rect x="236" y="410" width="24" height="24" rx="8" fill="#31415C"/>
+      <text x="248" y="427" text-anchor="middle" font-size="12" fill="white">2</text>
+      <rect x="80" y="760" width="192" height="106" rx="12" fill="#1E304C"/>
+      <text x="96" y="790" font-size="14" font-weight="700" fill="#F8FAFC">需要工程师帮助？</text>
+      <text x="96" y="815" font-size="12" fill="#CBD5E1">随时转人工，继续处理问题</text>
+      <text x="96" y="844" font-size="13" fill="#BFDBFE">发起人工咨询</text>
+      <use href="#arrow" x="231" y="827" color="#BFDBFE"/>
+      <path d="M88 892h176" stroke="#31415C"/>
+      <circle cx="108" cy="925" r="17" fill="#31415C"/><text x="108" y="931" text-anchor="middle" font-size="14" fill="white">张</text>
+      <text x="136" y="921" font-size="14" fill="white">张同学</text><text x="136" y="940" font-size="11" fill="#A8B9D1">员工工作空间</text>
+      <rect x="288" y="144" width="1248" height="64" fill="white"/>
+      <path d="M288 208h1248" stroke="#E2E8F0"/>
+      <text x="320" y="183" font-size="13" fill="#52627A">员工服务</text><text x="393" y="183" font-size="13" fill="#64748B">/</text>
+      <text x="416" y="183" font-size="13" font-weight="700" fill="#172B4D">智能客服</text>
+      <g transform="translate(1393 162)" fill="none" stroke="#52627A" stroke-width="1.7"><path d="M4 18h17l-3-4V9a5.5 5.5 0 0 0-11 0v5Zm5 4h7"/><circle cx="21" cy="4" r="3" fill="#2563EB" stroke="white"/></g>
+      <path d="M1442 163v25" stroke="#E2E8F0"/>
+      <circle cx="1480" cy="176" r="18" fill="#EFF6FF"/><text x="1480" y="182" text-anchor="middle" font-size="14" font-weight="700" fill="#2563EB">张</text>
+      <text x="320" y="264" font-size="28" font-weight="700" fill="#172B4D">工作遇到问题？我们来帮你。</text>
+      <text x="320" y="295" font-size="14" fill="#52627A">描述你遇到的 IT 问题，获取处理建议，或直接联系工程师。</text>
+      <rect x="1340" y="244" width="164" height="44" rx="9" fill="white" stroke="#CBD5E1"/>
+      <use href="#plus" x="1353" y="254" color="#172B4D"/><text x="1390" y="272" font-size="14" fill="#172B4D">直接提交工单</text>
+      <rect x="320" y="324" width="836" height="604" rx="16" fill="white" stroke="#E2E8F0"/>
+      <rect x="344" y="346" width="42" height="42" rx="12" fill="#EFF6FF"/>
+      <use href="#chat" x="353" y="355" color="#2563EB"/>
+      <text x="399" y="363" font-size="16" font-weight="700" fill="#172B4D">IT 智能助手</text>
+      <text x="399" y="385" font-size="12" fill="#52627A">提供企业知识库中的处理建议</text>
+      <rect x="1038" y="351" width="92" height="30" rx="15" fill="#EFF6FF"/>
+      <text x="1084" y="371" text-anchor="middle" font-size="12" fill="#1D4ED8">AI 咨询中</text>
+      <path d="M320 409h836" stroke="#E2E8F0"/>
+      <text x="738" y="439" text-anchor="middle" font-size="11" fill="#64748B">今天 09:41 · 示例会话</text>
+      <circle cx="359" cy="480" r="16" fill="#EFF6FF"/>
+      <use href="#chat" x="347" y="468" color="#2563EB"/>
+      <rect x="390" y="462" width="578" height="67" rx="12" fill="#F5F7FB"/>
+      <text x="410" y="489" font-size="14" fill="#172B4D">你好，我是你的 IT 助手。</text>
+      <text x="410" y="512" font-size="14" fill="#172B4D">告诉我发生了什么，也可以附上报错信息。</text>
+      <rect x="675" y="552" width="423" height="46" rx="12" fill="#2563EB"/>
+      <text x="695" y="581" font-size="14" fill="white">我的电脑连不上公司 VPN，提示错误 809。</text>
+      <circle cx="1124" cy="575" r="16" fill="#E2E8F0"/><text x="1124" y="580" text-anchor="middle" font-size="12" fill="#172B4D">张</text>
+      <circle cx="359" cy="644" r="16" fill="#EFF6FF"/><use href="#chat" x="347" y="632" color="#2563EB"/>
+      <rect x="390" y="622" width="640" height="127" rx="12" fill="#F5F7FB"/>
+      <text x="410" y="651" font-size="14" fill="#172B4D">已找到相关知识，可以先查看以下排查文档。</text>
+      <rect x="410" y="670" width="598" height="54" rx="8" fill="white" stroke="#DDE5EF"/>
+      <use href="#ticket" x="424" y="685" color="#2563EB"/>
+      <text x="463" y="693" font-size="13" font-weight="700" fill="#172B4D">VPN 连接问题排查指南</text>
+      <text x="463" y="713" font-size="11" fill="#52627A">知识库文档 · 点击查看来源（设计示例）</text>
+      <use href="#arrow" x="970" y="686" color="#52627A"/>
+      <text x="395" y="778" font-size="12" fill="#52627A">有帮助</text><text x="467" y="778" font-size="12" fill="#52627A">未解决</text><text x="544" y="778" font-size="12" fill="#2563EB">转人工处理 →</text>
+      <path d="M320 803h836" stroke="#E2E8F0"/>
+      <rect x="344" y="822" width="788" height="64" rx="10" fill="#FFFFFF" stroke="#94A3B8"/>
+      <text x="362" y="860" font-size="14" fill="#52627A">继续描述问题，或补充报错信息…</text>
+      <rect x="1032" y="834" width="88" height="40" rx="8" fill="#2563EB"/>
+      <text x="1063" y="859" font-size="14" font-weight="700" fill="white">发送</text><use href="#arrow" x="1090" y="842" color="white"/>
+      <text x="346" y="909" font-size="11" fill="#52627A">Enter 发送 · Shift + Enter 换行</text>
+      <text x="1128" y="909" text-anchor="end" font-size="11" fill="#52627A">你也可以随时转人工或提交工单</text>
+      <rect x="1180" y="324" width="324" height="182" rx="16" fill="white" stroke="#E2E8F0"/>
+      <text x="1204" y="359" font-size="16" font-weight="700" fill="#172B4D">我的待办</text>
+      <text x="1204" y="384" font-size="12" fill="#52627A">当前需要你关注的服务请求</text>
+      <rect x="1204" y="403" width="132" height="79" rx="10" fill="#EFF6FF"/>
+      <text x="1220" y="435" font-size="25" font-weight="700" fill="#1D4ED8">2</text><text x="1220" y="462" font-size="12" fill="#1D4ED8">进行中的工单</text>
+      <rect x="1348" y="403" width="132" height="79" rx="10" fill="#FFFBEB"/>
+      <text x="1364" y="435" font-size="25" font-weight="700" fill="#92400E">1</text><text x="1364" y="462" font-size="12" fill="#92400E">待我验收</text>
+      <rect x="1180" y="526" width="324" height="234" rx="16" fill="white" stroke="#E2E8F0"/>
+      <text x="1204" y="563" font-size="16" font-weight="700" fill="#172B4D">接下来会怎样</text>
+      <path d="M1216 600v109" stroke="#E2E8F0" stroke-width="2"/>
+      <circle cx="1216" cy="602" r="12" fill="#2563EB"/><text x="1216" y="606" text-anchor="middle" font-size="11" fill="white">1</text>
+      <text x="1240" y="607" font-size="13" font-weight="700" fill="#172B4D">描述问题，获取建议</text>
+      <text x="1240" y="628" font-size="11" fill="#52627A">先尝试知识库中的处理方法</text>
+      <circle cx="1216" cy="655" r="12" fill="#E9EFF8"/><text x="1216" y="659" text-anchor="middle" font-size="11" fill="#52627A">2</text>
+      <text x="1240" y="661" font-size="13" fill="#172B4D">工程师继续帮你处理</text>
+      <text x="1240" y="682" font-size="11" fill="#52627A">未解决时可携带记录转人工</text>
+      <circle cx="1216" cy="709" r="12" fill="#E9EFF8"/><text x="1216" y="713" text-anchor="middle" font-size="11" fill="#52627A">3</text>
+      <text x="1240" y="715" font-size="13" fill="#172B4D">需要维修时，提交工单</text>
+      <text x="1240" y="736" font-size="11" fill="#52627A">确认信息后，随时跟进进度</text>
+      <rect x="1180" y="780" width="324" height="148" rx="16" fill="#EFF6FF" stroke="#DBEAFE"/>
+      <text x="1204" y="815" font-size="14" font-weight="700" fill="#1E3A8A">不确定怎么描述？</text>
+      <text x="1204" y="844" font-size="12" fill="#334D76">可以说说：遇到什么问题、何时发生，</text>
+      <text x="1204" y="865" font-size="12" fill="#334D76">以及已经尝试过哪些处理方法。</text>
+      <text x="1204" y="900" font-size="12" fill="#1D4ED8">例如：打印机显示离线，重启后仍无效</text>
+    </g>
+    <text x="64" y="1010" font-size="14" font-weight="700" fill="#172B4D">统一设计语言</text>
+    <circle cx="81" cy="1048" r="13" fill="#12223D"/><text x="106" y="1053" font-size="12" fill="#52627A">深蓝导航</text>
+    <circle cx="229" cy="1048" r="13" fill="#2563EB"/><text x="254" y="1053" font-size="12" fill="#52627A">主操作蓝</text>
+    <circle cx="377" cy="1048" r="13" fill="#15803D"/><text x="402" y="1053" font-size="12" fill="#52627A">成功状态</text>
+    <circle cx="525" cy="1048" r="13" fill="#92400E"/><text x="550" y="1053" font-size="12" fill="#52627A">等待提醒</text>
+    <text x="790" y="1010" font-size="14" font-weight="700" fill="#172B4D">从咨询到处理，保持同一套体验</text>
+    <text x="790" y="1053" font-size="13" fill="#52627A">员工求助 → 工程师处理 → 员工验收 → 知识审核</text>
+    <text x="1536" y="1090" text-anchor="end" font-size="11" fill="#64748B">Vue 3 + Element Plus · 可实施设计草案 · 2026.10</text>
+  </g>
+</svg>

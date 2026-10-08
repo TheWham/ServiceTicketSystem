@@ -12,6 +12,7 @@ const HOME = {
 const routes = [
   { path: '/login', name: 'Login', component: () => import('../views/LoginView.vue') },
   { path: '/employee', name: 'Employee', component: () => import('../views/EmployeeView.vue'), meta: { role: ['EMPLOYEE', 'employee'] } },
+  { path: '/consultation', name: 'Consultation', component: () => import('../views/ConsultationView.vue'), meta: { role: ['EMPLOYEE', 'employee'] } },
   { path: '/engineer', name: 'Engineer', component: () => import('../views/EngineerView.vue'), meta: { role: ['ENGINEER', 'engineer'] } },
   { path: '/supervisor', name: 'Supervisor', component: () => import('../views/SupervisorView.vue'), meta: { role: ['PLATFORM_ADMIN', 'KB_ADMIN'] } },
   { path: '/knowledge-admin', name: 'KnowledgeAdmin', component: () => import('../views/KnowledgeAdminView.vue'), meta: { role: ['KNOWLEDGE_ADMIN', 'KB_ADMIN'] } },

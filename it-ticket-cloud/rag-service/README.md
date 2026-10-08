@@ -2,6 +2,8 @@
 
 本项目为 IT 服务工单系统的 RAG 知识库微服务模块，负责文档摄入解析、智能切片、Elasticsearch 向量/全文索引构建与全链路追踪。
 
+AI 客服对接契约见 [INTEGRATION.md](INTEGRATION.md)，客服侧配置及验收方式见 [RAG-INTEGRATION.md](../consultation-service/RAG-INTEGRATION.md)。
+
 ---
 
 ## 📦 架构与技术栈
@@ -11,7 +13,7 @@
 * **全文与向量检索**：Elasticsearch 8.11.3
 * **可视化控制台**：Kibana 8.11.3 (简体中文)
 * **服务端口**：
-  * `rag-service`：`8301`
+  * `rag-service`：`8302`
   * `Elasticsearch`：`9200`
   * `Kibana`：`5601`
 

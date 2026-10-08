@@ -3,25 +3,32 @@
     <!-- 页头 -->
     <div class="page-head">
       <div>
-        <h2 class="page-title">工程师工作台</h2>
-        <p class="page-sub">我负责的工单 + 待领取工单 · 每 15 秒自动刷新</p>
+        <span class="page-eyebrow">ENGINEER WORKSPACE</span>
+        <h1 class="page-title">{{ viewTitle }}</h1>
+        <p class="page-sub">{{ viewDescription }}</p>
       </div>
-      <div class="head-actions">
+      <div class="head-actions" v-if="activeView !== 'consultations'">
         <el-input
           v-model="keyword"
-          placeholder="搜索工单号 / 标题"
+          placeholder="工单号、标题或提单人"
+          aria-label="搜索已加载工单"
           :prefix-icon="Search"
           clearable
           class="head-search"
         />
-        <el-button :icon="Refresh" circle @click="loadTickets" />
+        <el-button :icon="Refresh" :loading="ticketsLoading" aria-label="刷新工单" @click="loadTickets">刷新</el-button>
       </div>
     </div>
 
+    <nav class="view-tabs" aria-label="工单视图">
+      <router-link v-for="item in views" :key="item.key" :to="{ path: '/engineer', query: { view: item.key } }" :class="{ active: activeView === item.key }" :aria-current="activeView === item.key ? 'page' : undefined">{{ item.label }}</router-link>
+    </nav>
+    <template v-if="activeView !== 'consultations'">
+    <p class="scope-note">统计范围：已加载的 {{ allTickets.length }} 条本人及待领取工单（最多 100 条） · 每 15 秒刷新</p>
     <!-- 统计卡片条 -->
     <div class="stat-row">
       <div v-for="s in stats" :key="s.label" class="stat-card">
-        <div class="stat-icon" :style="{ background: s.bg, color: s.color }">
+        <div class="stat-icon" >
           <el-icon :size="20"><component :is="s.icon" /></el-icon>
         </div>
         <div class="stat-info">
@@ -31,11 +38,16 @@
       </div>
     </div>
 
-    <!-- 看板 -->
-    <div class="kanban">
+    <el-alert v-if="ticketsError" type="error" :closable="false" class="load-error" role="alert">
+      <template #title>{{ ticketsError }}</template>
+      <el-button size="small" @click="loadTickets">重试加载</el-button>
+    </el-alert>
+    <div v-if="ticketsLoading && !allTickets.length" class="loading-state" role="status"><el-skeleton :rows="5" animated /></div>
+    <el-empty v-else-if="!ticketsError && !filteredTickets.length" :description="keyword ? '未找到匹配的工单，试试其他关键词' : '当前视图暂无工单'" :image-size="90" />
+    <div v-else-if="allTickets.length" class="kanban" :aria-busy="ticketsLoading">
       <div v-for="col in columns" :key="col.status" class="kanban-col">
         <div class="col-header">
-          <span class="col-dot" :style="{ background: col.dotColor }"></span>
+          <span class="col-dot"  :class="'dot-' + col.status.toLowerCase()"></span>
           <span class="col-label">{{ col.label }}</span>
           <span class="col-count">{{ col.tickets.length }}</span>
         </div>
@@ -51,7 +63,12 @@
             shadow="hover"
             class="kanban-card"
             :class="{ high: t.priority === 'HIGH' }"
+            tabindex="0"
+            role="button"
+            :aria-label="`查看工单 ${t.ticket_id}：${t.title}`"
             @click="openDetail(t)"
+            @keydown.enter.self.prevent="openDetail(t)"
+            @keydown.space.self.prevent="openDetail(t)"
           >
             <div class="card-top">
               <span class="card-id">{{ t.ticket_id }}</span>
@@ -79,11 +96,19 @@
       </div>
     </div>
 
+    </template>
+    <section v-else class="consultation-entry">
+      <el-icon :size="36"><ChatDotRound /></el-icon>
+      <h2>人工咨询工作区</h2>
+      <p>查看员工与 AI 的对话上下文，回复咨询并提交解决结论。</p>
+      <el-button type="primary" :icon="ChatDotRound" @click="consultationVisible = true">打开咨询工作区</el-button>
+    </section>
+    <EngineerConsultation v-model:visible="consultationVisible" />
     <!-- ===== 工单详情弹窗 ===== -->
     <el-dialog
       v-model="detailVisible"
       :title="`工单处理 · ${detail?.ticket_id || ''}`"
-      width="720px"
+      width="min(720px, calc(100vw - 32px))"
       :close-on-click-modal="false"
       destroy-on-close
     >
@@ -140,9 +165,9 @@
               show-word-limit
             />
             <el-button-group>
-              <el-button type="primary" @click="doAction('progress')">记录进展</el-button>
-              <el-button type="warning" @click="doAction('need_info')">申请补充</el-button>
-              <el-button type="warning" @click="doAction('external')">需外部支持</el-button>
+              <el-button type="primary" :disabled="acting" @click="doAction('progress')">记录进展</el-button>
+              <el-button type="warning" :disabled="acting" @click="doAction('need_info')">申请补充</el-button>
+              <el-button type="warning" :disabled="acting" @click="doAction('external')">需外部支持</el-button>
             </el-button-group>
           </div>
 
@@ -154,7 +179,7 @@
           <!-- 外部等待 → 外部解除 -->
           <div v-if="detail.status === 'PENDING_EXTERNAL'" class="action-row">
             <el-text type="info" size="small">等待外部支持中...</el-text>
-            <el-button type="success" :icon="CircleCheck" @click="doAction('external_resolved')">
+            <el-button type="success" :disabled="acting" :icon="CircleCheck" @click="doAction('external_resolved')">
               外部已解除
             </el-button>
           </div>
@@ -164,7 +189,7 @@
             <el-button
               type="success"
               size="large"
-              :disabled="!canDone"
+              :disabled="!canDone || acting"
               :icon="Promotion"
               @click="doAction('done')"
             >
@@ -177,7 +202,7 @@
 
           <!-- 待验收 -->
           <el-alert v-if="detail.status === 'PENDING_ACCEPTANCE'" type="warning" :closable="false">
-            <template #title>⏳ 已提交方案，等待员工验收（48h 未操作自动验收）...</template>
+            <template #title>已提交方案，等待员工验收（48h 未操作自动验收）...</template>
           </el-alert>
 
           <el-text v-if="actionError" type="danger" size="small" class="action-error">
@@ -211,12 +236,12 @@
     <el-dialog
       v-model="claimDialogVisible"
       title="接单确认 · 优先级矩阵"
-      width="520px"
+      width="min(520px, calc(100vw - 32px))"
       :close-on-click-modal="false"
       destroy-on-close
     >
       <el-alert type="info" :closable="false" style="margin-bottom:16px">
-        <template #title>接单需确认「影响范围 × 紧急程度」，系统按矩阵计算正式优先级（PRD §11.4）</template>
+        <template #title>接单需确认「影响范围 × 紧急程度」，系统按矩阵计算正式优先级</template>
       </el-alert>
       <el-form label-position="top">
         <el-form-item label="影响范围" required>
@@ -255,14 +280,16 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-  Tools, Refresh, Pointer, CircleCheck, Promotion, Search
+  Refresh, Pointer, CircleCheck, Promotion, Search, Loading, Tickets, ChatDotRound
 } from '@element-plus/icons-vue'
 import { ticketApi } from '../api/index.js'
 import { loadPhotoUrls, revokePhotoUrls } from '../utils/attachmentPhotos.js'
 import { useUserStore } from '../stores/user.js'
+import EngineerConsultation from '../components/EngineerConsultation.vue'
+import { engineerView, engineerStatuses, filterEngineerTickets } from '../utils/engineerViews.js'
 import SlaBadge from '../components/SlaBadge.vue'
 import SlaTimer from '../components/SlaTimer.vue'
 
@@ -274,20 +301,22 @@ const detailPhotos = ref([])
 const detailVisible = ref(false)
 const progressRemark = ref('')
 const actionError = ref('')
+const acting = ref(false)
 let pollTimer = null
 
 // 搜索关键词
 const keyword = ref('')
 
-const filteredTickets = computed(() => {
-  const k = keyword.value.trim().toLowerCase()
-  if (!k) return allTickets.value
-  return allTickets.value.filter(t =>
-    (t.ticket_id || '').toLowerCase().includes(k) ||
-    (t.title || '').toLowerCase().includes(k) ||
-    (t.creator_name || '').toLowerCase().includes(k)
-  )
-})
+const route = useRoute()
+const router = useRouter()
+const activeView = computed(() => engineerView(route.query.view))
+const views = [{ key: 'pool', label: '工单池' }, { key: 'tasks', label: '我的任务' }, { key: 'completed', label: '已完成' }, { key: 'consultations', label: '人工咨询' }]
+const viewTitle = computed(() => views.find(v => v.key === activeView.value)?.label || '工程师工作台')
+const viewDescription = computed(() => ({ pool: '确认影响与紧急程度，领取待处理工单', tasks: '跟进处理进度、补充材料与员工验收', completed: '检索已完成、已取消和已关闭的工单', consultations: '保留对话上下文，协助员工解决问题', all: '查看本人任务与待领取工单' }[activeView.value]))
+const ticketsLoading = ref(false)
+const ticketsError = ref('')
+const consultationVisible = computed({ get: () => activeView.value === 'consultations', set: open => { if (!open && activeView.value === 'consultations') router.push({ path: '/engineer', query: { ...route.query, view: 'tasks' } }) } })
+const filteredTickets = computed(() => filterEngineerTickets(allTickets.value, activeView.value, keyword.value))
 
 const columns = computed(() => {
   const statusMap = {
@@ -300,7 +329,7 @@ const columns = computed(() => {
     'CANCELLED':          { label: '已取消', dotColor: '#c0c4cc' },
     'CLOSED':             { label: '已关闭', dotColor: '#c0c4cc' }
   }
-  const result = Object.keys(statusMap).map(s => ({ status: s, ...statusMap[s], tickets: [] }))
+  const result = engineerStatuses(activeView.value).map(s => ({ status: s, ...statusMap[s], tickets: [] }))
   filteredTickets.value.forEach(t => {
     const col = result.find(c => c.status === t.status)
     if (col) col.tickets.push(t)
@@ -314,10 +343,10 @@ const stats = computed(() => {
   const count = (s) => t.filter(x => x.status === s).length
   const active = t.filter(x => ['ASSIGNED','IN_PROGRESS','PENDING_SUPPLEMENT','PENDING_EXTERNAL','PENDING_ACCEPTANCE'].includes(x.status)).length
   return [
-    { label: '待接单', value: count('ASSIGNED'), icon: 'Pointer', bg: '#fdf6ec', color: '#e6a23c' },
-    { label: '处理中', value: count('IN_PROGRESS'), icon: 'Loading', bg: '#ecf5ff', color: '#409eff' },
-    { label: '待验收', value: count('PENDING_ACCEPTANCE'), icon: 'CircleCheck', bg: '#e6f7f7', color: '#13a8a8' },
-    { label: '进行中合计', value: active, icon: 'Tickets', bg: '#f0f9eb', color: '#67c23a' }
+    { label: '待接单', value: count('ASSIGNED'), icon: Pointer },
+    { label: '处理中', value: count('IN_PROGRESS'), icon: Loading },
+    { label: '待验收', value: count('PENDING_ACCEPTANCE'), icon: CircleCheck },
+    { label: '进行中合计', value: active, icon: Tickets }
   ]
 })
 
@@ -361,10 +390,14 @@ function formatTime(t) { return t ? new Date(t).toLocaleString('zh-CN') : '' }
 function operatorLabel(operatorId) { return operatorId === 'SYSTEM' ? '系统' : (operatorId || '—') }
 
 async function loadTickets() {
+  if (ticketsLoading.value) return
+  ticketsLoading.value = true
   try {
     const res = await ticketApi.list({ mine_or_pool: userStore.userId, page_size: 100 })
-    allTickets.value = res.data.list
-  } catch (e) { console.error(e) }
+    allTickets.value = res.data.list || []
+    ticketsError.value = ''
+  } catch (e) { ticketsError.value = '工单加载失败，请重试。' }
+  finally { ticketsLoading.value = false }
 }
 
 // 接单矩阵确认弹窗
@@ -422,6 +455,7 @@ async function openDetail(t) {
 }
 
 async function doAction(action) {
+  if (acting.value || !detail.value) return
   actionError.value = ''
   const input = progressRemark.value.trim()
 
@@ -443,6 +477,7 @@ async function doAction(action) {
     done: input || '已完成处理'
   }
 
+  acting.value = true
   try {
     await ticketApi.action(detail.value.ticket_id, { action, remark: remarkMap[action] })
     await loadTickets()
@@ -455,9 +490,8 @@ async function doAction(action) {
       detailVisible.value = false
     }
   } catch (e) { actionError.value = e.message }
+  finally { acting.value = false }
 }
-
-const route = useRoute()
 
 onMounted(async () => {
   await loadTickets()
@@ -467,7 +501,7 @@ onMounted(async () => {
   }
   pollTimer = setInterval(loadTickets, 15000)
 })
-onUnmounted(() => clearInterval(pollTimer))
+onUnmounted(() => { clearInterval(pollTimer); revokePhotoUrls(detailPhotos.value) })
 
 // 同页点击通知只改 query，组件不重挂载——watch query 变化自动打开详情
 watch(() => route.query.ticket, (tid) => {
@@ -493,7 +527,7 @@ watch(() => userStore.userId, (id) => {
   margin-bottom: 18px;
 }
 .page-title {
-  font-size: 20px;
+  font-size: 28px;
   font-weight: 700;
   color: var(--el-text-color-primary);
 }
@@ -519,13 +553,13 @@ watch(() => userStore.userId, (id) => {
   padding: 16px 18px;
   background: var(--el-bg-color);
   border: 1px solid var(--el-border-color-lighter);
-  border-radius: 10px;
+  border-radius: 16px;
   transition: box-shadow .2s;
 }
 .stat-card:hover { box-shadow: 0 4px 16px rgba(31,45,61,.08); }
 .stat-icon {
   width: 44px; height: 44px;
-  border-radius: 10px;
+  border-radius: 16px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
@@ -534,17 +568,17 @@ watch(() => userStore.userId, (id) => {
 
 /* ===== 看板（简洁商务） ===== */
 .kanban {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 16px;
   padding-bottom: 8px;
 }
 .kanban-col {
-  min-width: 250px;
+  min-width: 0;
   flex: 1;
   background: var(--el-fill-color-lighter);
   border: 1px solid var(--el-border-color-extra-light);
-  border-radius: 10px;
+  border-radius: 16px;
   padding: 10px;
   display: flex;
   flex-direction: column;
@@ -565,7 +599,7 @@ watch(() => userStore.userId, (id) => {
   min-width: 22px; height: 20px;
   padding: 0 6px;
   background: var(--el-fill-color-darker);
-  border-radius: 10px;
+  border-radius: 16px;
   font-size: 12px; font-weight: 600;
   display: flex; align-items: center; justify-content: center;
   color: var(--el-text-color-secondary);
@@ -613,7 +647,7 @@ watch(() => userStore.userId, (id) => {
   align-items: center;
 }
 .card-time {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--el-text-color-placeholder);
   margin-top: 6px;
 }
@@ -648,4 +682,23 @@ watch(() => userStore.userId, (id) => {
 }
 .flow-operator { font-size: 13px; color: var(--el-text-color-secondary); }
 .flow-remark { font-size: 13px; color: var(--el-text-color-regular); }
+
+.page-title { margin: 6px 0; }
+.page-eyebrow { color: var(--el-color-primary); font-size: 12px; font-weight: 700; letter-spacing: .12em; }
+.view-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.view-tabs a { min-height: 44px; display: inline-flex; align-items: center; padding: 0 16px; border: 1px solid var(--el-border-color); border-radius: 10px; color: var(--el-text-color-regular); text-decoration: none; background: var(--el-bg-color); }
+.view-tabs a.active { color: var(--el-color-primary); background: var(--el-color-primary-light-9); border-color: var(--el-color-primary); font-weight: 600; }
+.scope-note { font-size: 12px; color: var(--el-text-color-secondary); margin: 0 0 12px; }
+.stat-icon { color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
+.col-dot { background: var(--el-color-primary); }
+.dot-assigned, .dot-pending_external { background: var(--el-color-warning); }
+.dot-completed { background: var(--el-color-success); }
+.load-error, .loading-state { margin-bottom: 20px; }
+.consultation-entry { text-align: center; padding: 48px 24px; background: var(--el-bg-color); border: 1px solid var(--el-border-color); border-radius: 16px; color: var(--el-text-color-primary); }
+.consultation-entry p { color: var(--el-text-color-secondary); line-height: 1.6; }
+.consultation-entry > .el-icon { color: var(--el-color-primary); }
+.kanban-card:focus-visible, .view-tabs a:focus-visible { outline: 3px solid var(--el-color-primary); outline-offset: 3px; }
+@media (max-width: 900px) { .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } .page-head { align-items: flex-start; gap: 16px; flex-direction: column; } .head-actions { width: 100%; } .head-search { width: auto; flex: 1; } }
+@media (max-width: 540px) { .page-title { font-size: 24px; } .stat-card { gap: 8px; padding: 12px; } .stat-icon { width: 32px; height: 36px; } .stat-value { font-size: 22px; } .card-meta { flex-wrap: wrap; } .col-body { max-height: none; } .remark-input { min-width: 0; flex-basis: 100%; } .action-row :deep(.el-button-group) { display: flex; flex-wrap: wrap; gap: 8px; } .detail-desc :deep(.el-descriptions__label) { word-break: keep-all; } }
+@media (prefers-reduced-motion: reduce) { .kanban-card, .stat-card { transition: none; } .kanban-card:hover { transform: none; } }
 </style>

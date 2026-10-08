@@ -1,6 +1,7 @@
 <template>
-  <el-drawer :model-value="visible" title="当前咨询" size="760px"
+  <el-drawer :model-value="visible" title="人工咨询工作区" size="min(1060px, 100vw)" class="engineer-consultation-drawer"
              :append-to-body="true" :close-on-click-modal="false"
+             :close-on-press-escape="!attachmentPreviewOpen"
              @update:model-value="v => emit('update:visible', v)">
     <div class="eng-consult">
       <!-- ===== 左:咨询列表 ===== -->
@@ -9,10 +10,13 @@
           <span>进行中</span>
           <el-tag size="small" effect="plain" type="primary">{{ activeSessions.length }}</el-tag>
         </div>
-        <el-scrollbar class="pane-body">
-          <el-empty v-if="activeSessions.length === 0" description="暂无进行中的咨询" :image-size="56" />
+        <el-alert v-if="sessionsError" type="error" :closable="false" role="alert" :title="sessionsError"><el-button @click="loadSessions">重试</el-button></el-alert>
+        <el-scrollbar class="pane-body" v-loading="loadingSessions">
+          <el-empty v-if="!loadingSessions && !sessionsError && activeSessions.length === 0" description="暂无进行中的咨询" :image-size="56" />
           <div v-for="s in activeSessions" :key="s.session_id"
                class="session-item" :class="{ selected: selectedId === s.session_id }"
+               role="button" tabindex="0" :aria-pressed="selectedId === s.session_id"
+               @keydown.enter.prevent="openSession(s.session_id)" @keydown.space.prevent="openSession(s.session_id)"
                @click="openSession(s.session_id)">
             <div class="applicant">{{ applicantLabel(s) }}</div>
             <div class="session-top">
@@ -31,6 +35,8 @@
             </div>
             <div v-for="s in endedSessions" :key="s.session_id"
                  class="session-item ended" :class="{ selected: selectedId === s.session_id }"
+                 role="button" tabindex="0" :aria-pressed="selectedId === s.session_id"
+                 @keydown.enter.prevent="openSession(s.session_id)" @keydown.space.prevent="openSession(s.session_id)"
                  @click="openSession(s.session_id)">
               <div class="applicant">{{ applicantLabel(s) }}</div>
               <div class="session-top">
@@ -47,6 +53,7 @@
 
       <!-- ===== 右:聊天窗 ===== -->
       <div class="chat-pane">
+        <el-alert v-if="messagesError" type="error" :closable="false" role="alert" :title="messagesError"><el-button @click="reloadSelected">重试加载当前咨询</el-button></el-alert>
         <template v-if="selected">
           <div class="chat-head">
             <div>
@@ -58,7 +65,7 @@
               </el-tag>
               </div>
             </div>
-            <el-button text :icon="Refresh" :loading="loadingMessages" @click="reloadSelected" />
+            <el-button text :icon="Refresh" aria-label="刷新当前对话" :loading="loadingMessages" @click="reloadSelected" />
           </div>
 
           <!-- 状态横幅 -->
@@ -86,7 +93,7 @@
           </el-alert>
 
           <!-- 消息流(含员工与 AI 的此前对话,PRD 13.1) -->
-          <div ref="scrollRef" class="chat-body" v-loading="loadingMessages">
+          <div ref="scrollRef" class="chat-body" v-loading="loadingMessages" @scroll="onChatScroll">
             <div v-for="msg in messages" :key="msg.id" class="msg-row" :class="rowClass(msg)">
               <div class="msg-avatar" :class="'avatar-' + msg.senderType.toLowerCase()">
                 {{ avatarOf(msg.senderType) }}
@@ -105,7 +112,9 @@
                     </div>
                   </template>
                   <template v-else>
-                    <div class="msg-text">{{ msg.content }}</div>
+                    <div v-if="msg.content" class="msg-text">{{ msg.content }}</div>
+                    <ChatMessageAttachments v-if="msg.attachments?.length" :session-id="selected.session_id" :attachments="msg.attachments"
+                                            @preview-change="attachmentPreviewOpen = $event" />
                     <div v-if="msg.generalAnswer" class="general-answer-note">AI 通用建议 · 无知识库引用</div>
                     <!-- AI 回答的引用来源(人工接手后可查看) -->
                     <div v-if="msg.citations && msg.citations.length" class="citations">
@@ -113,9 +122,9 @@
                         <el-icon><Document /></el-icon> 依据以下已发布知识
                       </div>
                       <el-popover v-for="c in msg.citations" :key="c.versionId"
-                                  placement="top" :width="340" trigger="hover">
+                                  placement="top" :width="340" trigger="click">
                         <template #reference>
-                          <el-tag class="citation-tag" effect="plain" size="small">{{ c.title }}</el-tag>
+                          <el-button class="citation-tag" size="small">{{ c.title }}</el-button>
                         </template>
                         <div class="citation-pop">
                           <div class="citation-pop-title">{{ c.title }}</div>
@@ -130,27 +139,35 @@
           </div>
 
           <!-- 输入区 -->
-          <div v-if="!isTerminal" class="chat-input">
+          <el-button v-if="hasNewMessages" class="new-messages" @click="scrollToBottom(true)">有新消息，查看最新</el-button>
+          <div v-if="!isTerminal" class="chat-input" :class="{ 'attachment-dragging': attachmentDragDepth > 0 }"
+               @dragenter="onAttachmentDragEnter" @dragover="onAttachmentDragOver"
+               @drop.capture="attachmentDragDepth = 0"
+               @dragleave="attachmentDragDepth = Math.max(0, attachmentDragDepth - 1)" @drop="onAttachmentDrop">
+            <div v-if="attachmentDragDepth > 0" class="attachment-drop-hint" role="status">松开即可上传图片或文件</div>
+            <label for="engineer-reply" class="reply-label">回复员工</label>
             <el-input v-model="draft" type="textarea" :rows="3" resize="none"
-                      maxlength="12000" show-word-limit :disabled="sending"
+                      maxlength="12000" show-word-limit :disabled="sending || conversationBlocked"
                       :placeholder="inputPlaceholder"
-                      @keydown.enter.exact.prevent="send" />
+                      id="engineer-reply" @keydown="onReplyKeydown" />
+            <ChatAttachmentUploader :key="selected.session_id" ref="attachmentUploaderRef" v-model="attachmentDrafts"
+                                    :session-id="selected.session_id" :disabled="sending || conversationBlocked" />
             <div class="chat-actions">
               <div class="chat-actions-left">
                 <el-button v-if="selected.status === 'HUMAN_ACTIVE'" type="success"
-                           :icon="CircleCheck" :disabled="sending"
+                           :icon="CircleCheck" :disabled="sending || conversationBlocked"
                            @click="submitResolution">
                   提交解决结论
                 </el-button>
                 <!-- PRD 9.1:人工咨询中由工程师发送提单快捷入口,员工确认表单后提交 -->
                 <el-button v-if="canSendTicketEntry" :icon="Tickets"
-                           :disabled="sending" @click="sendTicketEntry">
+                           :disabled="sending || conversationBlocked" @click="sendTicketEntry">
                   发送提单入口
                 </el-button>
                 <span v-if="hint" class="input-hint">{{ hint }}</span>
               </div>
               <el-button type="primary" :icon="Promotion" :loading="sending"
-                         :disabled="!draft.trim()" @click="send">
+                         :disabled="(!draft.trim() && !attachmentDrafts.length) || attachmentBlocked || conversationBlocked" @click="send">
                 发送
               </el-button>
             </div>
@@ -163,6 +180,8 @@
 </template>
 
 <script setup>
+import ChatAttachmentUploader from './ChatAttachmentUploader.vue'
+import ChatMessageAttachments from './ChatMessageAttachments.vue'
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Promotion, CircleCheck, Document, Tickets } from '@element-plus/icons-vue'
@@ -197,19 +216,49 @@ const previews = ref({})
 const selected = ref(null)
 const messages = ref([])
 const draft = ref('')
+const attachmentDrafts = ref([])
+const attachmentUploaderRef = ref(null)
+const attachmentDragDepth = ref(0)
+const attachmentPreviewOpen = ref(false)
+const pendingHumanSend = ref(null)
+const attachmentBlocked = computed(() => attachmentDrafts.value.some(file => file.status !== 'ready' || !file.attachment_id))
 const sending = ref(false)
 const loadingMessages = ref(false)
+const loadingSessions = ref(false)
+const sessionsError = ref('')
+const messagesError = ref('')
+const attemptedSessionId = ref(null)
+const conversationBlocked = computed(() => loadingMessages.value || Boolean(messagesError.value) || Boolean(attemptedSessionId.value && attemptedSessionId.value !== selected.value?.session_id))
+const nearBottom = ref(true)
+const hasNewMessages = ref(false)
 const scrollRef = ref(null)
 const applicants = ref({})
 const finalMessagesLoaded = ref(false)
 
 let listTimer = null
 let pollTimer = null
+let sessionRequest = 0
 
 const activeSessions = computed(() => sessions.value.filter(s => !TERMINAL_STATUS.includes(s.status)))
 const endedSessions = computed(() => sessions.value.filter(s => TERMINAL_STATUS.includes(s.status)))
 const selectedId = computed(() => selected.value?.session_id)
 const isTerminal = computed(() => TERMINAL_STATUS.includes(selected.value?.status))
+function onAttachmentDragEnter(event) {
+  if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return
+  event.preventDefault()
+  if (selected.value && !sending.value && !conversationBlocked.value && !isTerminal.value) attachmentDragDepth.value++
+}
+function onAttachmentDragOver(event) {
+  if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return
+  event.preventDefault()
+  event.dataTransfer.dropEffect = !sending.value && !conversationBlocked.value && !isTerminal.value ? 'copy' : 'none'
+}
+function onAttachmentDrop(event) {
+  event.preventDefault()
+  attachmentDragDepth.value = 0
+  if (!selected.value || sending.value || conversationBlocked.value || isTerminal.value) return
+  attachmentUploaderRef.value?.addFiles(Array.from(event.dataTransfer?.files || []))
+}
 const inputPlaceholder = computed(() => {
   if (selected.value?.status === 'WAITING_ENGINEER') return '发送第一条回复即完成接入，回车发送'
   return '回复员工，回车发送'
@@ -248,7 +297,12 @@ function updateSelected(detail) {
     finalMessagesLoaded.value = false
   }
   selected.value = { ...selected.value, ...detail }
-  if (isTerminal.value) draft.value = ''
+  if (isTerminal.value) {
+    draft.value = ''
+    attachmentDrafts.value = []
+    pendingHumanSend.value = null
+    attachmentDragDepth.value = 0
+  }
   sessions.value = sessions.value.map(s => s.session_id === detail.session_id ? { ...s, ...detail } : s)
   emit('count-change', activeSessions.value.length)
 }
@@ -256,15 +310,19 @@ function updateSelected(detail) {
 // ---------------------------------------------------------------- 列表
 
 async function loadSessions() {
+  if (loadingSessions.value) return
+  loadingSessions.value = true
   const snapshot = selected.value
+  const request = sessionRequest
   try {
     const page = await consultationApi.list(1, 100)
     const items = page?.items || []
     sessions.value = items
+    sessionsError.value = ''
     emit('count-change', activeSessions.value.length)
 
     // 列表刷新时同步当前选中会话的状态(员工确认/结束/回复未解决)
-    if (selected.value && selected.value === snapshot) {
+    if (selected.value && selected.value === snapshot && request === sessionRequest && !conversationBlocked.value) {
       const fresh = items.find(i => i.session_id === selected.value.session_id)
       if (fresh && fresh.status !== selected.value.status) {
         updateSelected(fresh)
@@ -276,7 +334,9 @@ async function loadSessions() {
       if (previews.value[s.session_id] === undefined) await loadPreview(s.session_id)
     }
   } catch (e) {
-    // 轮询失败静默,不打断工作
+    sessionsError.value = '咨询列表加载失败，请重试。'
+  } finally {
+    loadingSessions.value = false
   }
 }
 
@@ -285,7 +345,7 @@ async function loadPreview(sessionId) {
     const page = await consultationApi.listMessages(sessionId)
     const items = (page?.items || []).filter(m => m.sender_type !== 'SYSTEM')
     const last = items[items.length - 1]
-    previews.value[sessionId] = last ? last.content : '暂无消息'
+    previews.value[sessionId] = last ? (last.content || (last.attachments?.length ? '[附件] ' + last.attachments[0].file_name : '')) : '暂无消息'
   } catch (e) {
     previews.value[sessionId] = ''
   }
@@ -314,41 +374,44 @@ function applyStatusChange(before, after) {
 // ---------------------------------------------------------------- 会话与消息
 
 async function openSession(sessionId) {
-  if (selectedId.value === sessionId) return
-  loadingMessages.value = true
-  try {
-    const detail = await consultationApi.get(sessionId)
-    // 先观察状态，再取历史，确保终态通知已提交后才读取最后一批消息。
-    const page = await consultationApi.listMessages(sessionId)
-    selected.value = { ...detail, session_id: detail.session_id || sessionId }
-    messages.value = (page?.items || []).map(toLocalMessage)
-    finalMessagesLoaded.value = isTerminal.value
-    draft.value = ''
-    scrollToBottom()
-  } catch (e) {
-    ElMessage.error(e.message)
-  } finally {
-    loadingMessages.value = false
-  }
+  if (selectedId.value === sessionId && !messagesError.value && !conversationBlocked.value) return
+  return loadConversation(sessionId, false)
 }
 
 async function reloadSelected() {
-  if (!selected.value) return
-  const snapshot = selected.value
+  const sessionId = attemptedSessionId.value || selectedId.value
+  if (!sessionId) return
+  return loadConversation(sessionId, sessionId === selectedId.value)
+}
+
+async function loadConversation(sessionId, preserveDraft) {
+  const request = ++sessionRequest
+  attemptedSessionId.value = sessionId
   loadingMessages.value = true
+  messagesError.value = ''
   try {
-    const detail = await consultationApi.get(snapshot.session_id)
-    if (selected.value !== snapshot) return
-    const page = await consultationApi.listMessages(snapshot.session_id)
-    if (selected.value !== snapshot) return
-    updateSelected(detail)
+    const detail = await consultationApi.get(sessionId)
+    if (request !== sessionRequest) return
+    // 先观察状态，再取历史，确保终态通知已提交后才读取最后一批消息。
+    const page = await consultationApi.listMessages(sessionId)
+    if (request !== sessionRequest) return
+    if (preserveDraft && selectedId.value === sessionId) updateSelected(detail)
+    else selected.value = { ...detail, session_id: detail.session_id || sessionId }
     messages.value = (page?.items || []).map(toLocalMessage)
     finalMessagesLoaded.value = isTerminal.value
+    if (!preserveDraft) {
+      draft.value = ''
+      attachmentDrafts.value = []
+      pendingHumanSend.value = null
+      attachmentDragDepth.value = 0
+    }
+    scrollToBottom(!preserveDraft)
   } catch (e) {
+    if (request !== sessionRequest) return
+    messagesError.value = `咨询 ${sessionId} 加载失败，请重试。`
     ElMessage.error(e.message)
   } finally {
-    loadingMessages.value = false
-    scrollToBottom()
+    if (request === sessionRequest) loadingMessages.value = false
   }
 }
 
@@ -358,6 +421,7 @@ function toLocalMessage(item) {
     serverId: item.message_id,
     senderType: item.sender_type || 'SYSTEM',
     content: item.content,
+    attachments: item.attachments || [],
     citations: item.citations || [],
     generalAnswer: item.general_answer === true,
     sentAt: item.sent_at,
@@ -365,21 +429,41 @@ function toLocalMessage(item) {
   }
 }
 
+function upsertServerMessage(item) {
+  const index = messages.value.findIndex(message => message.serverId === item.message_id)
+  const message = toLocalMessage(item)
+  if (index < 0) messages.value.push(message)
+  else messages.value[index] = message
+}
+
 async function send() {
   const text = draft.value.trim()
-  if (!text || !selected.value || isTerminal.value || sending.value) return
+  if ((!text && !attachmentDrafts.value.length) || attachmentBlocked.value || !selected.value || isTerminal.value || sending.value || conversationBlocked.value) return
   const sessionId = selected.value.session_id
   const wasWaiting = selected.value.status === 'WAITING_ENGINEER'
+  const attachmentIds = attachmentDrafts.value.map(file => file.attachment_id)
+  const signature = JSON.stringify([sessionId, text, attachmentIds])
+  if (pendingHumanSend.value?.signature !== signature) {
+    pendingHumanSend.value = { signature, id: `cmsg-${Date.now()}-${Math.random().toString(36).slice(2)}` }
+  }
+  const attempt = pendingHumanSend.value
+  const stillActive = () => selected.value?.session_id === sessionId && !isTerminal.value && pendingHumanSend.value === attempt
   sending.value = true
   try {
-    await consultationApi.sendMessage(sessionId, text)
-    if (selected.value?.session_id !== sessionId || isTerminal.value) return
-    messages.value.push({
+    const message = await consultationApi.sendMessage(sessionId, text, attempt.id, attachmentIds)
+    if (!stillActive()) return
+    const attachments = message?.attachments || attachmentDrafts.value.map(({ attachment_id, file_name, size, content_type, is_image }) => ({ attachment_id, file_name, size, content_type, is_image }))
+    if (message?.message_id) upsertServerMessage(message)
+    else messages.value.push({
       id: `local-${Date.now()}`,
       senderType: 'ENGINEER',
       content: text,
+      attachments,
       sentAt: new Date().toISOString()
     })
+    attachmentUploaderRef.value?.clear()
+    attachmentDrafts.value = []
+    pendingHumanSend.value = null
     draft.value = ''
     scrollToBottom()
     if (wasWaiting) {
@@ -390,7 +474,7 @@ async function send() {
     }
   } catch (e) {
     ElMessage.error(e.message)
-    if (selected.value?.session_id === sessionId && !isTerminal.value) {
+    if (stillActive()) {
       draft.value = text
       await reloadSelected()
     }
@@ -408,7 +492,7 @@ const isTicketEntry = (msg) =>
  * 渲染成可点击卡片,点击跳转到提单界面由员工本人确认提交。
  */
 async function sendTicketEntry() {
-  if (!selected.value || !canSendTicketEntry.value || sending.value) return
+  if (!selected.value || !canSendTicketEntry.value || sending.value || conversationBlocked.value) return
   const sessionId = selected.value.session_id
   sending.value = true
   try {
@@ -430,7 +514,7 @@ async function sendTicketEntry() {
 }
 
 async function submitResolution() {
-  if (!selected.value || isTerminal.value || sending.value) return
+  if (!selected.value || isTerminal.value || sending.value || conversationBlocked.value) return
   const sessionId = selected.value.session_id
   let conclusion = ''
   try {
@@ -485,17 +569,22 @@ async function submitResolution() {
 // ---------------------------------------------------------------- 轮询
 
 async function pollSelected() {
-  if (!selected.value || (isTerminal.value && finalMessagesLoaded.value)) return
+  if (!selected.value || conversationBlocked.value || (isTerminal.value && finalMessagesLoaded.value)) return
   const snapshot = selected.value
+  const request = sessionRequest
   try {
     const detail = await consultationApi.get(snapshot.session_id)
-    if (selected.value !== snapshot) return
+    if (selected.value !== snapshot || request !== sessionRequest || conversationBlocked.value) return
     updateSelected(detail)
     const updated = selected.value
     const page = await consultationApi.listMessages(snapshot.session_id)
-    if (selected.value !== updated) return
+    if (selected.value !== updated || request !== sessionRequest || conversationBlocked.value) return
     const items = page?.items || []
-    if (items.length !== messages.value.filter(m => m.serverId).length) {
+    const existing = messages.value.filter(m => m.serverId)
+    if (items.length !== existing.length || items.some((item, index) =>
+      item.message_id !== existing[index]?.serverId || item.content !== existing[index]?.content ||
+      item.withdrawn_at !== existing[index]?.withdrawnAt ||
+      JSON.stringify(item.attachments || []) !== JSON.stringify(existing[index]?.attachments || []))) {
       messages.value = items.map(toLocalMessage)
       scrollToBottom()
     }
@@ -515,7 +604,7 @@ watch(() => props.visible, (open) => {
     clearInterval(pollTimer)
     pollTimer = null
   }
-})
+}, { immediate: true })
 
 onMounted(() => {
   // 抽屉关闭时也保持低频刷新,让外层徽标反映新分配的咨询
@@ -529,7 +618,21 @@ onUnmounted(() => {
 
 // ---------------------------------------------------------------- 渲染工具
 
-function scrollToBottom() {
+function onReplyKeydown(event) {
+  if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey || event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  send()
+}
+function onChatScroll() {
+  const el = scrollRef.value
+  if (!el) return
+  nearBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  if (nearBottom.value) hasNewMessages.value = false
+}
+function scrollToBottom(force = false) {
+  if (!force && !nearBottom.value) { hasNewMessages.value = true; return }
+  nearBottom.value = true
+  hasNewMessages.value = false
   nextTick(() => {
     const el = scrollRef.value
     if (el) el.scrollTop = el.scrollHeight
@@ -548,6 +651,9 @@ const formatTime = (iso) => {
 </script>
 
 <style scoped>
+.chat-input { position: relative; }
+.attachment-dragging { outline: 2px dashed var(--el-color-primary); outline-offset: -4px; }
+.attachment-drop-hint { position: absolute; inset: 8px; z-index: 5; display: grid; place-items: center; border: 2px dashed var(--el-color-primary); border-radius: 10px; background: var(--el-color-primary-light-9); color: var(--el-text-color-primary); pointer-events: none; font-weight: 600; }
 .eng-consult { display: flex; gap: 12px; height: calc(100vh - 110px); }
 
 /* 左:列表 */
@@ -647,4 +753,39 @@ const formatTime = (iso) => {
 }
 .chat-actions-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .input-hint { font-size: 12px; color: var(--el-text-color-placeholder); }
+.eng-consult { height: calc(100dvh - 116px); gap: 20px; min-height: 0; }
+.session-pane { width: 290px; padding: 16px; border: 1px solid var(--el-border-color); border-radius: 16px; }
+.session-item { padding: 14px; border-radius: 12px; min-height: 64px; }
+.session-item.selected { background: var(--el-color-primary-light-9); }
+.session-item.ended { opacity: 1; }
+.session-item:focus-visible { outline: 3px solid var(--el-color-primary); outline-offset: 2px; }
+.pane-head { font-size: 14px; }
+.pane-tip, .msg-time, .input-hint { font-size: 12px; color: var(--el-text-color-secondary); line-height: 1.6; }
+.chat-pane { overflow: hidden; border: 1px solid var(--el-border-color); border-radius: 16px; padding: 16px; background: var(--el-bg-color); }
+.chat-head { gap: 12px; }
+.chat-body { padding: 20px 8px; border-radius: 12px; min-height: 120px; }
+.msg-main { min-width: 0; }
+.msg-meta { flex-wrap: wrap; }
+.msg-bubble { font-size: 14px; }
+.bubble-engineer { background: var(--el-color-primary); border-color: var(--el-color-primary); }
+.avatar-engineer, .avatar-ai { background: var(--el-color-primary); }
+.reply-label { display: block; font-size: 14px; font-weight: 600; color: var(--el-text-color-primary); margin-bottom: 8px; }
+.new-messages { align-self: center; margin-top: 8px; }
+.citation-tag { margin-bottom: 6px; max-width: 100%; white-space: normal; height: auto; min-height: 32px; }
+.ticket-entry-sent { color: inherit; }
+@media (max-width: 767px) {
+  .eng-consult { flex-direction: column; height: calc(100dvh - 100px); gap: 12px; }
+  .session-pane { box-sizing: border-box; width: 100%; max-height: 220px; min-height: 130px; padding: 10px; }
+  .pane-tip { display: none; }
+  .chat-pane { flex: 1; padding: 12px; min-height: 0; }
+  .chat-actions { flex-wrap: wrap; }
+  .chat-actions > .el-button { margin-left: auto; }
+  .chat-actions-left { width: 100%; }
+  .msg-main { max-width: 85%; }
+  .msg-avatar { width: 28px; height: 28px; }
+  .msg-row { gap: 6px; padding: 0; }
+  .msg-bubble { padding: 10px; }
+  .state-banner { flex: none; }
+}
+@media (prefers-reduced-motion: reduce) { .session-item { transition: none; } }
 </style>

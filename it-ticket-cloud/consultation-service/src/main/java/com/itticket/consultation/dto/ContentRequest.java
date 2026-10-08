@@ -10,13 +10,12 @@ import java.util.List;
 
 /**
  * OpenAPI 05 Content(字段名为 snake_case,与 AI-003 的 camelCase DTO 不同,两者各自遵循所属契约)。
- * Schema 的 anyOf 要求 content 与 attachment_ids 至少有一个;附件由附件域负责,
- * 本服务收到 attachment_ids 时显式报错而不是静默丢弃(RD-013)。
+ * Schema 的 anyOf 要求 content 与 attachment_ids 至少有一个；附件仅支持人工会话。
  */
 public record ContentRequest(
         @Size(min = 1, max = 12000) String content,
         @NotBlank @Size(max = 64) @JsonProperty("client_message_id") String clientMessageId,
-        @Size(min = 1, max = 10) @JsonProperty("attachment_ids") List<@Size(max = 64) String> attachmentIds) {
+        @Size(min = 1, max = 10) @JsonProperty("attachment_ids") List<@NotBlank @Size(max = 64) String> attachmentIds) {
 
     /** Schema 的 anyOf:content 与 attachment_ids 至少提供一个,两者皆空必须拒绝。 */
     @JsonIgnore

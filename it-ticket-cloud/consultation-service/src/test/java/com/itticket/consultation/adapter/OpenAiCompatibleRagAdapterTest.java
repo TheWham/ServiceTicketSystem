@@ -63,6 +63,7 @@ class OpenAiCompatibleRagAdapterTest {
         ConsultationProperties config = new ConsultationProperties();
         config.getAi().setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
         config.getAi().setApiKey("test-only");
+        config.getAi().setRetrievalProvider("mysql");
         knowledge = mock(KnowledgeQueryService.class);
         when(knowledge.retrieve(anyString(), nullable(String.class), anyInt())).thenReturn(List.of());
         adapter = new OpenAiCompatibleRagAdapter(knowledge, config);

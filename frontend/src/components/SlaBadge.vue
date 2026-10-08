@@ -71,8 +71,8 @@ defineExpose({ load })
   font-variant-numeric: tabular-nums;
 }
 .sla-icon { font-size: 12px; }
-.sla-badge.normal { background: #ecf5ff; color: #409eff; }
-.sla-badge.near { background: #fdf6ec; color: #e6a23c; }
-.sla-badge.paused { background: #f4f4f5; color: #909399; }
-.sla-badge.breached { background: #fef0f0; color: #f56c6c; font-weight: 600; }
+.sla-badge.normal { background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
+.sla-badge.near { background: var(--el-color-warning-light-9); color: var(--el-color-warning); }
+.sla-badge.paused { background: var(--el-fill-color); color: var(--el-text-color-secondary); }
+.sla-badge.breached { background: var(--el-color-danger-light-9); color: var(--el-color-danger); font-weight: 600; }
 </style>
