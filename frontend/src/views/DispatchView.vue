@@ -1,32 +1,37 @@
 <template>
-  <div class="dispatch-view">
+  <div class="supervisor-view">
     <!-- 页头 -->
     <div class="page-head">
       <div>
-        <h1 class="page-title">工单调度</h1>
-        <p class="page-sub">分配处理人，跟进工单进展。</p>
+        <span class="page-eyebrow">SERVICE OPERATIONS</span><h1 class="page-title">工单管理</h1>
+        <p class="page-sub">查看工单进度，分配处理工程师，跟进需要协调的问题</p>
       </div>
-      <el-button :icon="Refresh" :loading="listLoading" aria-label="刷新工单" circle @click="loadTickets" />
+      <el-button :icon="Refresh" :loading="loading" @click="loadTickets">刷新工单</el-button>
     </div>
 
-    <div class="dispatch-summary" aria-label="当前列表摘要">
-      <span>筛选结果 <strong>{{ listLoading || listError ? '—' : total }}</strong></span>
-      <span v-for="s in stats" :key="s.label">{{ s.label }} <strong>{{ listLoading || listError ? '—' : s.count }}</strong></span>
+    <p class="scope-note">统计仅涵盖当前筛选下已加载的 {{ tickets.length }} 张工单；符合筛选的工单共 {{ total }} 张。</p>
+    <div class="stat-row">
+      <div v-for="s in stats" :key="s.label" class="stat-card">
+        <div class="stat-icon" :class="s.tone">
+          <el-icon :size="20"><component :is="s.icon" /></el-icon>
+        </div>
+        <div class="stat-info">
+          <div class="stat-value">{{ s.count }}</div>
+          <div class="stat-label">{{ s.label }}</div>
+        </div>
+      </div>
     </div>
 
     <!-- 筛选栏 -->
-    <section class="filter-card">
+    <el-card shadow="never" class="filter-card">
       <el-form inline>
-        <el-form-item label="搜索本页">
-          <el-input v-model="search" clearable placeholder="工单号、标题或人员" :prefix-icon="Search" />
-        </el-form-item>
         <el-form-item label="状态">
           <el-select
             v-model="filter.status"
             placeholder="全部状态"
             clearable
             style="width: 140px"
-            @change="resetFilters"
+            @change="applyFilters"
           >
             <el-option v-for="s in statuses" :key="s" :label="statusLabel(s)" :value="s" />
           </el-select>
@@ -37,9 +42,9 @@
             placeholder="全部分类"
             clearable
             style="width: 140px"
-            @change="resetFilters"
+            @change="applyFilters"
           >
-            <el-option v-for="c in categories" :key="c.category_id" :label="c.name" :value="c.category_id" />
+            <el-option v-for="c in categories" :key="c.categoryId" :label="c.name" :value="c.categoryId" />
           </el-select>
         </el-form-item>
         <el-form-item label="处理人">
@@ -48,27 +53,26 @@
             placeholder="全部处理人"
             clearable
             style="width: 140px"
-            @change="resetFilters"
+            @change="applyFilters"
           >
             <el-option v-for="e in engineers" :key="e.user_id" :label="e.name" :value="e.user_id" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="!listLoading && !listError" class="filter-total">
+        <el-form-item class="filter-total">
           <el-text type="info">共 {{ total }} 张工单</el-text>
         </el-form-item>
       </el-form>
-    </section>
-    <div v-if="referenceError" class="error-state" role="alert">{{ referenceError }} <el-button @click="loadReferences">重试选项</el-button></div>
+    </el-card>
 
+    <el-alert v-if="loadError" :title="loadError" type="error" show-icon :closable="false" class="page-error"><el-button link type="primary" @click="loadTickets">重新加载</el-button></el-alert>
     <!-- 工单列表 -->
-    <section class="ticket-list" :aria-busy="listLoading">
-      <div v-if="listError" class="error-state" role="alert">{{ listError }} <el-button @click="loadTickets">重试</el-button></div>
+    <el-card shadow="never">
+      <template #header><span class="section-title">工单列表</span></template>
       <el-table
-        v-if="!listError"
-        :data="filteredTickets"
-        v-loading="listLoading"
-        :empty-text="listLoading ? '正在加载工单…' : search.trim() ? '本页没有匹配的工单' : '暂无符合条件的工单'"
-        row-key="ticket_id"
+        v-loading="loading"
+        :empty-text="loadError ? '工单加载失败，请重试' : '当前筛选下暂无工单'"
+        :data="tickets"
+        stripe
         highlight-current-row
         @row-click="openDetail"
         style="width: 100%"
@@ -99,19 +103,25 @@
             <SlaBadge :ticket-id="row.ticket_id" mode="card" />
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="['NEW','ASSIGNED','IN_PROGRESS','PENDING_EXTERNAL'].includes(row.status)"
               size="small"
               @click.stop="showReassign(row)"
-            >{{ row.assignee_id ? '改派' : '派单' }}</el-button>
+            >改派</el-button>
+            <el-button
+              size="small"
+              type="danger"
+              plain
+              @click.stop="deleteTicket(row)"
+            >删除</el-button>
           </template>
         </el-table-column>
       </el-table>
 
       <el-pagination
-        v-if="!listError && total > pageSize"
+        v-if="total > pageSize"
         v-model:current-page="page"
         :page-size="pageSize"
         :total="total"
@@ -119,7 +129,7 @@
         class="pagination"
         @current-change="loadTickets"
       />
-    </section>
+    </el-card>
 
     <!-- ===== 派单/改派弹窗 ===== -->
     <el-dialog
@@ -163,24 +173,21 @@
         <el-button
           type="primary"
           :disabled="!selectedEngineer"
-          :loading="assignLoading"
+          :loading="assigning"
           @click="doAssign"
         >确认{{ assignTicket?.assignee_id ? '改派' : '派单' }}</el-button>
       </template>
     </el-dialog>
 
-    <!-- 工单详情 -->
-    <el-drawer
-      :model-value="detailVisible"
-      @update:model-value="value => { if (!value) closeDetail() }"
+    <!-- ===== 工单详情弹窗 ===== -->
+    <el-dialog
+      v-model="detailVisible"
       :title="`工单详情 · ${detailTicket?.ticket_id || ''}`"
-      size="min(720px, 100vw)"
+      width="min(720px, calc(100vw - 32px))"
       :close-on-click-modal="false"
       destroy-on-close
     >
-      <div v-if="detailLoading" role="status"><el-skeleton :rows="6" animated /></div>
-      <div v-else-if="detailError" class="error-state" role="alert">{{ detailError }} <el-button @click="loadDetail(selectedTicketId)">重试</el-button></div>
-      <template v-else-if="detailTicket">
+      <template v-if="detailTicket">
         <el-descriptions :column="2" border class="detail-desc">
           <el-descriptions-item label="标题" :span="2">{{ detailTicket.title }}</el-descriptions-item>
           <el-descriptions-item label="分类">{{ detailTicket.category_name }}</el-descriptions-item>
@@ -196,12 +203,24 @@
           <el-descriptions-item label="问题描述" :span="2">{{ detailTicket.description }}</el-descriptions-item>
           <el-descriptions-item label="影响情况" :span="2">{{ detailTicket.impact_description }}</el-descriptions-item>
           <el-descriptions-item label="紧急说明" :span="2">{{ detailTicket.urgency_description }}</el-descriptions-item>
+          <el-descriptions-item v-if="detailPhotos.length" label="照片附件" :span="2">
+            <el-image
+              v-for="(u, i) in detailPhotos"
+              :key="i"
+              :src="u"
+              :preview-src-list="detailPhotos"
+              :initial-index="i"
+              fit="cover"
+              preview-teleported
+              style="width:96px;height:96px;margin-right:8px;border-radius:4px"
+            />
+          </el-descriptions-item>
         </el-descriptions>
 
-        <!-- 平台管理员强制恢复 -->
+        <!-- 主管强制恢复 -->
         <el-card v-if="detailTicket.status === 'PENDING_EXTERNAL'" shadow="never" class="action-card">
-          <template #header><span class="action-title">平台管理员操作</span></template>
-          <el-button type="warning" :icon="RefreshRight" :loading="resolveLoading" @click="forceResolve(detailTicket)">
+          <template #header><span class="action-title">主管操作</span></template>
+          <el-button type="warning" :icon="RefreshRight" @click="forceResolve(detailTicket)">
             强制恢复处理中
           </el-button>
         </el-card>
@@ -226,18 +245,23 @@
           </el-timeline>
         </el-card>
       </template>
-    </el-drawer>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, RefreshRight, Search } from '@element-plus/icons-vue'
+import {
+  DataAnalysis, Refresh, RefreshRight,
+  Clock, Loading, CircleCheck, Finished, Document
+} from '@element-plus/icons-vue'
 import { ticketApi, userApi, categoryApi } from '../api/index.js'
+import { loadPhotoUrls, revokePhotoUrls } from '../utils/attachmentPhotos.js'
 import SlaBadge from '../components/SlaBadge.vue'
 
+// 状态/优先级映射（PRD §9.2 九态 + HIGH/MEDIUM/LOW）
 const STATUS_LABEL = {
   NEW: '新建', ASSIGNED: '已分配', IN_PROGRESS: '处理中',
   PENDING_SUPPLEMENT: '待补充', PENDING_EXTERNAL: '外部等待',
@@ -255,218 +279,298 @@ const PRIORITY_TYPE = { HIGH: 'danger', MEDIUM: 'warning', LOW: 'info' }
 function statusLabel(s) { return STATUS_LABEL[s] || s }
 function priorityLabel(p) { return PRIORITY_LABEL[p] || p }
 
-
-const route = useRoute()
-const router = useRouter()
 const categories = ref([])
-const engineers = ref([])
 const statuses = Object.keys(STATUS_LABEL)
+
+const loading = ref(false)
+const loadError = ref('')
+const assigning = ref(false)
 const tickets = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = 15
 const filter = ref({ status: '', category: '', assignee: '' })
-const search = ref('')
-const listLoading = ref(false)
-const listError = ref('')
-const referenceError = ref('')
-let listRequest = 0
-let referenceRequest = 0
-let disposed = false
-const filteredTickets = computed(() => {
-  const keyword = search.value.trim().toLocaleLowerCase()
-  return tickets.value.filter(t => !keyword || [t.ticket_id, t.title, t.creator_name, t.assignee_name]
-    .some(value => String(value || '').toLocaleLowerCase().includes(keyword)))
+const engineers = ref([])
+
+// 统计
+const stats = computed(() => {
+  const counts = {}
+  statuses.forEach(s => counts[s] = tickets.value.filter(t => t.status === s).length)
+  return [
+    { label: '处理中', count: (counts['ASSIGNED'] || 0) + (counts['IN_PROGRESS'] || 0), icon: Loading, tone: 'primary' },
+    { label: '待验收', count: counts['PENDING_ACCEPTANCE'], icon: CircleCheck, tone: 'warning' },
+    { label: '已完成', count: counts['COMPLETED'], icon: Finished, tone: 'success' },
+    { label: '当前页工单', count: tickets.value.length, icon: Document, tone: 'neutral' }
+  ]
 })
-const stats = computed(() => [
-  { label: '本页待分配', count: tickets.value.filter(t => t.status === 'NEW').length },
-  { label: '本页处理中', count: tickets.value.filter(t => ['ASSIGNED', 'IN_PROGRESS'].includes(t.status)).length },
-  { label: '本页待验收', count: tickets.value.filter(t => t.status === 'PENDING_ACCEPTANCE').length }
-])
+
+// 派单
 const assignTicket = ref(null)
 const assignVisible = ref(false)
 const selectedEngineer = ref('')
 const reassignReason = ref('')
-const assignLoading = ref(false)
-const resolveLoading = ref(false)
+
+// 详情
 const detailTicket = ref(null)
 const detailFlows = ref([])
+const detailPhotos = ref([])
 const detailVisible = ref(false)
-const detailLoading = ref(false)
-const detailError = ref('')
-const selectedTicketId = ref('')
-let detailRequest = 0
-let detailPromise = Promise.resolve()
 
 function statusTagType(s) { return STATUS_TYPE[s] || 'info' }
 function priorityTagType(p) { return PRIORITY_TYPE[p] || 'info' }
-function flowTimelineType(status) { return STATUS_TYPE[status] || 'primary' }
-function formatTime(t) { return t ? new Date(t).toLocaleString('zh-CN') : '' }
-function operatorLabel(id) { return id === 'SYSTEM' ? '系统' : (id || '—') }
-
-async function loadReferences() {
-  const request = ++referenceRequest
-  referenceError.value = ''
-  const results = await Promise.allSettled([userApi.listUsers({ role: 'engineer' }), categoryApi.leaf()])
-  if (request !== referenceRequest) return
-  const errors = []
-  for (const [index, result] of results.entries()) {
-    const target = index === 0 ? engineers : categories
-    if (result.status === 'fulfilled' && Array.isArray(result.value?.data)) {
-      target.value = index === 0 ? result.value.data : result.value.data.filter(category => category.status === 'ACTIVE')
-    }
-    else {
-      target.value = []
-      errors.push(result.reason?.message || (index === 0 ? '工程师选项加载失败' : '分类选项加载失败'))
-    }
+function flowTimelineType(status) {
+  const map = {
+    COMPLETED: 'success', PENDING_ACCEPTANCE: 'primary', IN_PROGRESS: 'primary',
+    NEW: 'warning', ASSIGNED: 'primary', CANCELLED: 'info', CLOSED: 'info'
   }
-  referenceError.value = errors.join('；')
+  return map[status] || 'primary'
 }
 
+function formatTime(t) { return t ? new Date(t).toLocaleString('zh-CN') : '' }
+
+// 操作人兜底：流转记录里 SYSTEM（系统自动路由）无用户档案，显示为「系统」
+function operatorLabel(operatorId) { return operatorId === 'SYSTEM' ? '系统' : (operatorId || '—') }
+
+async function loadEngineers() {
+  try {
+    const res = await userApi.listUsers({ role: 'engineer' })
+    engineers.value = res.data
+  } catch (e) { console.error(e) }
+}
+
+function applyFilters() {
+  page.value = 1
+  loadTickets()
+}
+
+let ticketRequest = 0
 async function loadTickets() {
-  const request = ++listRequest
-  listLoading.value = true
-  listError.value = ''
-  tickets.value = []
-  total.value = 0
+  const request = ++ticketRequest
+  loading.value = true
+  loadError.value = ''
   try {
     const params = { page: page.value, page_size: pageSize }
     if (filter.value.status) params.status = filter.value.status
     if (filter.value.category) params.category = filter.value.category
     if (filter.value.assignee) params.assignee_id = filter.value.assignee
     const res = await ticketApi.list(params)
-    if (request !== listRequest) return
-    if (!Array.isArray(res?.data?.list) || !Number.isFinite(res.data.total)) throw new Error('工单列表数据异常')
+    if (request !== ticketRequest) return
     tickets.value = res.data.list
     total.value = res.data.total
   } catch (e) {
-    if (request === listRequest) listError.value = e.message || '工单加载失败'
+    if (request === ticketRequest) loadError.value = e.message || '工单加载失败，请稍后重试'
   } finally {
-    if (request === listRequest) listLoading.value = false
+    if (request === ticketRequest) loading.value = false
   }
 }
-function resetFilters() {
-  page.value = 1
-  return loadTickets()
+
+// 删除工单（PLATFORM_ADMIN）：物理删除不可恢复，需二次确认
+async function deleteTicket(row) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除工单 ${row.ticket_id}（${row.title}）吗？删除后不可恢复，流转记录与附件将一并清除。`,
+      '删除确认',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch { return }
+  try {
+    await ticketApi.remove(row.ticket_id)
+    ElMessage.success('工单已删除')
+    if (detailTicket.value?.ticket_id === row.ticket_id) detailVisible.value = false
+    await loadTickets()
+  } catch (e) { ElMessage.error(e.message || '删除失败') }
 }
-function showReassign(ticket) {
-  if (assignLoading.value) return
+function showAssign(ticket) {
   assignTicket.value = { ...ticket }
   selectedEngineer.value = ''
   reassignReason.value = ''
   assignVisible.value = true
 }
+function showReassign(ticket) {
+  assignTicket.value = { ...ticket }
+  selectedEngineer.value = ''
+  reassignReason.value = ''
+  assignVisible.value = true
+}
+
 async function doAssign() {
-  if (assignLoading.value || !assignTicket.value || !selectedEngineer.value) return
-  const id = assignTicket.value.ticket_id
-  assignLoading.value = true
+  if (assigning.value) return
+  assigning.value = true
   try {
-    await ticketApi.assign(id, { assignee_id: selectedEngineer.value, reason: reassignReason.value || undefined })
-    if (disposed) return
-    ElMessage.success('分配成功')
+    await ticketApi.assign(assignTicket.value.ticket_id, {
+      assignee_id: selectedEngineer.value,
+      reason: reassignReason.value || undefined
+    })
+    ElMessage.success('改派成功！')
     assignVisible.value = false
-    await loadTickets()
-    if (detailVisible.value && selectedTicketId.value === id) await loadDetail(id)
-  } catch (e) { if (!disposed) ElMessage.error(e.message || '分配失败') }
-  finally { assignLoading.value = false }
+    loadTickets()
+  } catch (e) { ElMessage.error(e.message) }
+  finally { assigning.value = false }
 }
+
 async function openDetail(ticket) {
-  const id = ticket.ticket_id
-  if (!id || disposed) return
-  const navigate = route.query.ticket ? router.replace : router.push
-  await navigate({ query: { ...route.query, ticket: id } })
-  if (!disposed && route.query.ticket === id) return detailPromise
-}
-async function loadDetail(id) {
-  if (!id || disposed) return
-  const request = ++detailRequest
-  selectedTicketId.value = id
-  detailVisible.value = true
-  detailTicket.value = null
-  detailFlows.value = []
-  detailError.value = ''
-  detailLoading.value = true
   try {
-    const res = await ticketApi.detail(id)
-    if (request !== detailRequest) return
-    if (!res?.data?.ticket) throw new Error('工单详情数据异常')
+    const res = await ticketApi.detail(ticket.ticket_id)
     detailTicket.value = res.data.ticket
-    detailFlows.value = res.data.flow_logs || []
-  } catch (e) {
-    if (request === detailRequest) detailError.value = e.message || '加载详情失败'
-  } finally {
-    if (request === detailRequest) detailLoading.value = false
-  }
+    detailFlows.value = res.data.flow_logs
+    revokePhotoUrls(detailPhotos.value)
+    detailPhotos.value = await loadPhotoUrls(res.data.ticket.attachments)
+    detailVisible.value = true
+  } catch (e) { ElMessage.error('加载详情失败：' + e.message) }
 }
-function resetDetail() {
-  ++detailRequest
-  selectedTicketId.value = ''
-  detailVisible.value = false
-  detailTicket.value = null
-  detailFlows.value = []
-  detailError.value = ''
-  detailLoading.value = false
-}
-async function closeDetail() {
-  resetDetail()
-  const query = { ...route.query }
-  delete query.ticket
-  await router.replace({ query })
-}
+
 async function forceResolve(ticket) {
-  if (resolveLoading.value) return
-  const id = ticket.ticket_id
-  resolveLoading.value = true
   try {
     await ElMessageBox.confirm('确认强制解除外部挂起状态？', '强制恢复', {
-      confirmButtonText: '确认恢复', cancelButtonText: '取消', type: 'warning'
+      confirmButtonText: '确认恢复',
+      cancelButtonText: '取消',
+      type: 'warning'
     })
-  } catch { resolveLoading.value = false; return }
-  if (disposed) { resolveLoading.value = false; return }
+  } catch { return }
+
   try {
-    await ticketApi.action(id, { action: 'external_resolved', remark: '平台管理员强制恢复' })
-    if (disposed) return
+    await ticketApi.action(ticket.ticket_id, { action: 'external_resolved', remark: '主管强制恢复' })
     ElMessage.success('已恢复处理中')
-    await loadTickets()
-    if (detailVisible.value && selectedTicketId.value === id) await loadDetail(id)
-  } catch (e) { if (!disposed) ElMessage.error(e.message || '恢复失败') }
-  finally { resolveLoading.value = false }
+    detailVisible.value = false
+    loadTickets()
+  } catch (e) { ElMessage.error(e.message) }
 }
-onMounted(() => {
-  loadReferences()
-  loadTickets()
+
+const route = useRoute()
+
+onMounted(async () => {
+  loadEngineers()
+  try {
+    const res = await categoryApi.leaf()
+    categories.value = res.data || []
+  } catch (e) { console.error('加载分类失败', e) }
+  await loadTickets()
+  // 通知跳转：URL 带 ?ticket=xxx 时自动打开该工单详情
+  if (route.query.ticket) {
+    openDetail({ ticket_id: route.query.ticket })
+  }
 })
-watch(() => route.query.ticket, id => {
-  if (typeof id === 'string' && id) detailPromise = loadDetail(id)
-  else resetDetail()
-}, { immediate: true, flush: 'sync' })
-onUnmounted(() => {
-  disposed = true
-  ++listRequest
-  ++referenceRequest
-  resetDetail()
+
+// 同页点击通知只改 query，组件不重挂载——watch query 变化自动打开详情
+watch(() => route.query.ticket, (tid) => {
+  if (tid) openDetail({ ticket_id: tid })
 })
 </script>
 
 <style scoped>
-.dispatch-view { min-width: 0; color: var(--ws-ink); }
-.page-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
-.page-title { margin: 0; font-size: 24px; font-weight: 600; }
-.page-sub { color: var(--ws-muted); font-size: 13px; margin: 8px 0 0; }
-.dispatch-summary { display: flex; flex-wrap: wrap; gap: 14px 28px; padding: 16px 0; border-block: 1px solid var(--ws-line); color: var(--ws-muted); font-size: 12px; }
-.dispatch-summary strong { color: var(--ws-ink); font-size: 17px; margin-left: 8px; font-weight: 600; }
-.filter-card { padding: 20px 0 4px; }
-.filter-card :deep(.el-form) { display: flex; flex-wrap: wrap; }
-.filter-card :deep(.el-form-item) { margin: 0 16px 16px 0; }
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.page-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.page-sub {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+/* ===== 统计卡片条（简洁商务） ===== */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 16px;
+  transition: box-shadow .2s;
+}
+.stat-card:hover { box-shadow: 0 4px 16px rgba(31,45,61,.08); }
+.stat-icon {
+  width: 44px; height: 44px;
+  border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.stat-value { font-size: 24px; font-weight: 700; color: var(--el-text-color-primary); line-height: 1.1; }
+.stat-label { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 2px; }
+
+/* 筛选 */
+.filter-card { margin-bottom: 16px; }
+.filter-card :deep(.el-form-item) { margin-bottom: 0; margin-right: 16px; }
 .filter-total { margin-left: auto; }
-.error-state { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 20px 0; color: var(--el-color-danger); }
-.ticket-id { font-family: monospace; font-size: 12px; }
-.pagination { margin-top: 20px; justify-content: flex-end; }
-.assign-info, .detail-desc, .action-card { margin-bottom: 20px; }
-.assign-ticket-title { margin-top: 6px; }
+
+/* 表格 */
+.ticket-id {
+  font-family: monospace;
+  color: var(--el-color-primary);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.pagination { margin-top: 16px; justify-content: center; }
+
+/* 弹窗 */
+.assign-info { margin-bottom: 16px; }
+.assign-ticket-id { font-family: monospace; color: var(--el-color-primary); font-weight: 600; }
+.assign-ticket-title { margin-top: 4px; color: var(--el-text-color-regular); }
+
+.detail-desc { margin-bottom: 16px; }
+
+.action-card { margin-bottom: 16px; background: var(--el-fill-color-light); }
 .action-title { font-weight: 600; }
-.flow-card { border: 0; border-top: 1px solid var(--ws-line); border-radius: 0; }
-.flow-content { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.flow-operator, .flow-remark { color: var(--ws-muted); font-size: 12px; }
-@media (max-width: 640px) { .page-title { font-size: 21px; } .dispatch-summary { gap: 12px 18px; } }
+
+.flow-card { background: var(--el-fill-color-light); }
+.flow-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.flow-operator { font-size: 13px; color: var(--el-text-color-secondary); }
+.flow-remark { font-size: 13px; color: var(--el-text-color-regular); }
+
+.page-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:24px; }
+.page-eyebrow { display:block; color:var(--el-color-primary); font-size:12px; font-weight:700; letter-spacing:1.4px; margin-bottom:8px; }
+.page-title { margin:0; font-size:28px; line-height:1.3; color:var(--el-text-color-primary); }
+.page-sub { margin:8px 0 0; font-size:14px; line-height:1.6; color:var(--el-text-color-secondary); }
+.section-title { font-size:18px; font-weight:650; color:var(--el-text-color-primary); }
+.scope-note { margin:8px 0 16px; font-size:13px; color:var(--el-text-color-secondary); line-height:1.6; }
+.page-error { margin-bottom:16px; }
+:deep(.el-card) { border-radius:16px; }
+:deep(.el-table .cell) { line-height:1.6; }
+:deep(.el-dialog) { max-width:calc(100vw - 32px); border-radius:16px; }
+:deep(.el-form-item__label) { color:var(--el-text-color-regular); }
+@media(max-width:767px) {
+  .page-head { flex-wrap:wrap; margin-bottom:20px; }
+  .page-title { font-size:24px; }
+  :deep(.el-card__body) { padding:16px; }
+  :deep(.el-dialog) { margin-top:5vh; }
+  :deep(.el-pagination) { flex-wrap:wrap; gap:8px; justify-content:center; }
+}
+
+.stat-icon.primary { color:var(--el-color-primary); background:var(--el-color-primary-light-9); }
+.stat-icon.warning { color:var(--el-color-warning); background:var(--el-color-warning-light-9); }
+.stat-icon.success { color:var(--el-color-success); background:var(--el-color-success-light-9); }
+.stat-icon.neutral { color:var(--el-text-color-secondary); background:var(--el-fill-color-light); }
+.filter-card :deep(.el-form) { display:flex; flex-wrap:wrap; gap:16px; }
+.filter-card :deep(.el-form-item) { margin:0; }
+@media(max-width:767px) {
+  .stat-row { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+  .stat-card { padding:14px; gap:10px; }
+  .stat-icon { width:36px; height:36px; }
+  .filter-card :deep(.el-form-item) { width:100%; }
+  .filter-card :deep(.el-form-item__content), .filter-card :deep(.el-select) { width:100% !important; }
+  .filter-total { margin-left:0; }
+}
 </style>

@@ -70,7 +70,7 @@ public class RagRetrievalService {
      * @param domain                 MR-004 领域判定（独立于生成结果）
      * @param dependencyUnavailable  向量或检索依赖不可用（RD-006：不得用常识补写）
      * @param failureReason          依赖不可用原因（不含内部堆栈）
-     * @param hits                   融合后的 Top-K 切片
+     * @param hits                   融合后经已发布当前版本校验的 Top-K 切片
      * @param topScore               命中最高余弦相似度
      * @param suggestedRefusalReason 建议拒答原因；为 null 表示不拒答
      * @param reliable               是否达到可靠命中阈值（可据此生成带引用的回答）
@@ -153,7 +153,16 @@ public class RagRetrievalService {
             return outcome(domain, true, "检索服务不可用", List.of(), zero(), AiRefusalReason.MODEL_UNAVAILABLE, false);
         }
 
-        // 4) 阈值分档（AI-001 · specs/02-ai-api-json-schema.md:14：
+        // 4) ES 可能尚未同步下线/版本切换，先按数据库当前发布版本过滤，
+        //    避免旧版本进入生成上下文或抬高可靠性评分。
+        try {
+            hits = filterPublishedCurrentHits(hits);
+        } catch (BizException e) {
+            return outcome(domain, true, "知识状态校验服务不可用", List.of(), zero(),
+                    AiRefusalReason.MODEL_UNAVAILABLE, false);
+        }
+
+        // 5) 阈值分档（AI-001 · specs/02-ai-api-json-schema.md:14：
         //    无命中/不相关不强制拒答；置信度不足仍拒答）
         BigDecimal topScore = maxSimilarity(hits);
         boolean reliable;
@@ -176,8 +185,11 @@ public class RagRetrievalService {
     /**
      * 组装并校验知识引用（AI-008 · specs/02-ai-api-json-schema.md:96）。
      *
-     * <p>同一文章只保留相似度最高的一条切片；引用前复核文章仍为 PUBLISHED，已下线版本一律丢弃
+     * <p>先复核文章仍为 PUBLISHED 且切片属于 currentVersionId，再为同一文章保留最高分切片；
+     * 已下线及历史版本一律丢弃
      * （AC-27 · specs/09-prd-spec-test-traceability.md:93）。</p>
+     *
+     * @throws BizException 状态校验依赖不可用，不能伪装为空引用
      */
     public List<KnowledgeCitation> buildVerifiedCitations(List<ChunkHit> hits) {
         if (hits == null || hits.isEmpty()) {
@@ -185,34 +197,14 @@ public class RagRetrievalService {
         }
 
         Map<String, ChunkHit> bestPerArticle = new LinkedHashMap<>();
-        for (ChunkHit hit : hits) {
-            if (hit.articleId() == null || hit.versionId() == null) {
-                continue;
-            }
+        for (ChunkHit hit : filterPublishedCurrentHits(hits)) {
             ChunkHit current = bestPerArticle.get(hit.articleId());
             if (current == null || scoreOf(hit).compareTo(scoreOf(current)) > 0) {
                 bestPerArticle.put(hit.articleId(), hit);
             }
         }
-        if (bestPerArticle.isEmpty()) {
-            return List.of();
-        }
-
-        Set<String> articleIds = new LinkedHashSet<>(bestPerArticle.keySet());
-        Set<String> stillPublished = new LinkedHashSet<>();
-        for (KnowledgeArticle article : articleMapper.selectBatchIds(articleIds)) {
-            if (article.getStatus() == KnowledgeStatus.PUBLISHED) {
-                stillPublished.add(article.getArticleId());
-            }
-        }
-
         List<KnowledgeCitation> citations = new ArrayList<>();
-        for (Map.Entry<String, ChunkHit> entry : bestPerArticle.entrySet()) {
-            if (!stillPublished.contains(entry.getKey())) {
-                log.warn("引用校验丢弃非发布状态知识: articleId={}", entry.getKey());
-                continue;
-            }
-            ChunkHit hit = entry.getValue();
+        for (ChunkHit hit : bestPerArticle.values()) {
             citations.add(new KnowledgeCitation(
                     hit.articleId(),
                     hit.versionId(),
@@ -223,7 +215,42 @@ public class RagRetrievalService {
         return citations;
     }
 
-    /** 转为对外检索响应（MR-004 · specs/10-model-rag-integration.md:70：只返回 PUBLISHED 版本，携带 score 与 indexVersion） */
+    /** 批量复核当前发布版本，保留检索顺序及同一文章的多个有效切片。 */
+    private List<ChunkHit> filterPublishedCurrentHits(List<ChunkHit> hits) {
+        if (hits == null || hits.isEmpty()) {
+            return List.of();
+        }
+        List<ChunkHit> candidates = hits.stream()
+                .filter(hit -> hit != null && hit.articleId() != null && !hit.articleId().isBlank()
+                        && hit.versionId() != null && !hit.versionId().isBlank())
+                .toList();
+        Set<String> articleIds = new LinkedHashSet<>();
+        for (ChunkHit hit : candidates) {
+            articleIds.add(hit.articleId());
+        }
+        if (articleIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<KnowledgeArticle> articles;
+        try {
+            articles = articleMapper.selectBatchIds(articleIds);
+        } catch (RuntimeException e) {
+            log.warn("RAG 知识状态校验失败，按依赖不可用处理", e);
+            throw new BizException(ErrorCode.SYSTEM_ERROR, "知识状态校验服务不可用");
+        }
+        Map<String, String> publishedVersions = new LinkedHashMap<>();
+        for (KnowledgeArticle article : articles) {
+            if (article.getStatus() == KnowledgeStatus.PUBLISHED && article.getCurrentVersionId() != null) {
+                publishedVersions.put(article.getArticleId(), article.getCurrentVersionId());
+            }
+        }
+        return candidates.stream()
+                .filter(hit -> hit.versionId().equals(publishedVersions.get(hit.articleId())))
+                .toList();
+    }
+
+    /** 将 retrieve 已校验并分档的结果转为对外响应，携带 score 与 indexVersion（MR-004）。 */
     public RagRetrievalResponse toResponse(RetrievalOutcome outcome) {
         List<RetrievedChunk> items = outcome.hits() == null ? List.of() : outcome.hits().stream()
                 .map(hit -> new RetrievedChunk(

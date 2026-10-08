@@ -6,6 +6,134 @@ import * as vue from 'vue'
 
 const terminal = ['RESOLVED', 'CONVERTED_TO_TICKET', 'CLOSED']
 
+for (const name of ['ConsultationChat', 'EngineerConsultation']) {
+  test(`${name}: replayed send acknowledgement does not duplicate an already loaded message`, async () => {
+    const message = { message_id: 'M1', sender_type: name === 'ConsultationChat' ? 'EMPLOYEE' : 'ENGINEER', content: '已发送', attachments: [] }
+    const { state: c } = component(name, { sendMessage: async () => message,
+      get: async () => ({ session_id: 'S1', status: 'HUMAN_ACTIVE' }), listMessages: async () => ({ items: [message] }) })
+    if (name === 'ConsultationChat') c.session.value = { sessionId: 'S1', status: 'HUMAN_ACTIVE' }
+    else c.selected.value = { session_id: 'S1', status: 'HUMAN_ACTIVE' }
+    c.messages.value = [c.toLocalMessage(message)]
+    c.draft.value = '已发送'
+    await c.send()
+    assert.equal(c.messages.value.filter(m => m.serverId === 'M1').length, 1)
+  })
+
+  test(`${name}: polling detects a different message even if message counts match`, async () => {
+    const first = { message_id: 'M1', sender_type: 'EMPLOYEE', content: '已发送' }
+    const next = { message_id: 'M2', sender_type: 'ENGINEER', content: '新回复' }
+    const { state: c } = component(name, {
+      get: async () => ({ session_id: 'S1', status: 'HUMAN_ACTIVE' }), listMessages: async () => ({ items: [first, next] })
+    })
+    if (name === 'ConsultationChat') c.session.value = { sessionId: 'S1', status: 'HUMAN_ACTIVE' }
+    else c.selected.value = { session_id: 'S1', status: 'HUMAN_ACTIVE' }
+    c.messages.value = [c.toLocalMessage(first), c.toLocalMessage(first)]
+    if (name === 'ConsultationChat') await c.refreshStatus()
+    else await c.pollSelected()
+    assert.deepEqual(c.messages.value.filter(m => m.serverId).map(m => m.serverId), ['M1', 'M2'])
+  })
+
+  test(`${name}: attachment-only messages send IDs and keep attachment metadata`, async () => {
+    const calls = []
+    const file = { attachment_id: 'ATT1', file_name: '报错.png', content_type: 'image/png', size: 200, is_image: true }
+    const { state: c } = component(name, {
+      sendMessage: async (...args) => { calls.push(args); return { message_id: 'M1', sender_type: name === 'ConsultationChat' ? 'EMPLOYEE' : 'ENGINEER', content: '', attachments: [file] } },
+      get: async () => ({ session_id: 'S1', status: 'HUMAN_ACTIVE' })
+    })
+    if (name === 'ConsultationChat') c.session.value = { sessionId: 'S1', status: 'HUMAN_ACTIVE' }
+    else c.selected.value = { session_id: 'S1', status: 'HUMAN_ACTIVE' }
+    c.attachmentDrafts.value = [{ ...file, localId: 'L1', status: 'ready' }]
+    await c.send()
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0][0], 'S1')
+    assert.deepEqual(calls[0][3], ['ATT1'])
+    assert.equal(c.messages.value.at(-1).attachments[0].attachment_id, 'ATT1')
+    assert.deepEqual(c.attachmentDrafts.value, [])
+  })
+
+  test(`${name}: failed attachment send preserves draft and reuses client message ID`, async () => {
+    const attempts = []
+    const { state: c } = component(name, {
+      sendMessage: async (...args) => { attempts.push(args); throw new Error('网络中断') },
+      get: async () => ({ session_id: 'S1', status: 'HUMAN_ACTIVE' }), listMessages: async () => ({ items: [] })
+    })
+    if (name === 'ConsultationChat') c.session.value = { sessionId: 'S1', status: 'HUMAN_ACTIVE' }
+    else c.selected.value = { session_id: 'S1', status: 'HUMAN_ACTIVE' }
+    c.draft.value = '看一下这个文件'
+    c.attachmentDrafts.value = [{ attachment_id: 'ATT1', localId: 'L1', status: 'ready' }]
+    await c.send()
+    assert.equal(c.attachmentDrafts.value.length, 1)
+    assert.equal(c.draft.value, '看一下这个文件')
+    await c.send()
+    assert.equal(attempts.length, 2)
+    assert.ok(attempts[0][2])
+    assert.equal(attempts[0][2], attempts[1][2])
+  })
+
+  test(`${name}: incomplete uploads cannot send messages`, async () => {
+    let calls = 0
+    const { state: c } = component(name, { sendMessage: async () => { calls++ } })
+    if (name === 'ConsultationChat') c.session.value = { sessionId: 'S1', status: 'HUMAN_ACTIVE' }
+    else c.selected.value = { session_id: 'S1', status: 'HUMAN_ACTIVE' }
+    c.draft.value = '还有文件在上传'
+    for (const status of ['uploading', 'error']) {
+      c.attachmentDrafts.value = [{ localId: 'L1', status }]
+      await c.send()
+    }
+    assert.equal(calls, 0)
+  })
+}
+
+test('RAG clarification is not presented as a general answer or feedback ingestion', async () => {
+  const { state: c } = component('ConsultationChat', {
+    aiMessage: async () => ({ replyType: 'CLARIFY', answerText: '请补充具体的设备和报错。', citations: [], interactionId: 'I1' })
+  })
+  c.session.value = { sessionId: 'S1', status: 'AI_ACTIVE' }
+  c.draft.value = '用不了'
+  await c.send()
+  assert.deepEqual(c.messages.value.map(m => m.senderType), ['EMPLOYEE', 'AI'])
+  assert.equal(c.messages.value[1].generalAnswer, false)
+  assert.equal(c.showAnswerFeedback(c.messages.value[1]), false)
+})
+
+test('Chinese input composition Enter does not send or clear the draft', async () => {
+  let calls = 0
+  const { state: c } = component('ConsultationChat', { aiMessage: async () => { calls++ } })
+  c.session.value = { sessionId: 'S1', status: 'AI_ACTIVE' }
+  c.draft.value = '网络无法连接'
+  await c.send({ isComposing: true })
+  assert.equal(calls, 0)
+  assert.equal(c.draft.value, '网络无法连接')
+})
+
+test('failed AI request restores the question for editing and retry', async () => {
+  const { state: c } = component('ConsultationChat', {
+    aiMessage: async () => { throw new Error('服务不可用') }
+  })
+  c.session.value = { sessionId: 'S1', status: 'AI_ACTIVE' }
+  c.draft.value = 'VPN 无法连接'
+  await c.send()
+  assert.equal(c.draft.value, 'VPN 无法连接')
+  assert.equal(c.aiThinking.value, false)
+})
+
+test('startup failure is visible and retry resumes instead of creating duplicate sessions', async () => {
+  let failing = true
+  let created = 0
+  const { state: c } = component('ConsultationChat', {
+    list: async () => { if (failing) throw new Error('连接失败'); return { items: [] } },
+    create: async () => { created++; return { sessionId: 'S1', status: 'AI_ACTIVE' } }
+  })
+  await c.autoStart()
+  assert.equal(created, 0)
+  assert.equal(c.startupError.value, '连接失败')
+  assert.equal(c.booting.value, false)
+  failing = false
+  await c.autoStart()
+  assert.equal(created, 1)
+  assert.equal(c.startupError.value, '')
+})
+
 test('consultation applicant labels prefer canonical names and knowledge-admin roles', async () => {
   const { state: c } = component('EngineerConsultation', {}, [{
     user_id: 'K1', name: 'Canonical Name', display_name: 'Legacy Name', role: 'KNOWLEDGE_ADMIN'
@@ -243,11 +371,16 @@ function component(name, api = {}, users = [], ui = {}) {
       ElMessageBox: { prompt: ui.prompt || (async () => ({ value: '问题复发' })) }
     },
     '@element-plus/icons-vue': {},
+    './OrbitalCore.vue': {}, // Decorative child; its SVG rendering is checked in browser.
+    './ChatAttachmentUploader.vue': {},
+    './ChatMessageAttachments.vue': {},
     '../api/consultation.js': { consultationApi: api, TERMINAL_STATUS: terminal, CONSULTATION_STATUS: {}, REFUSAL_REASON: {}, TICKET_ENTRY_MESSAGE: '[提交工单入口]' },
     '../api/index.js': { userApi: { listUsers: async () => ({ data: users }) }, categoryApi: { leaf: async () => ({ data: [{ category_id: 'C_NET', name: '网络', status: 'ACTIVE' }] }) } }
   }
   const code = compiled.content.replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g,
     (_, names, path) => `const {${names}} = modules[${JSON.stringify(path)}]`)
+    .replace(/import\s+(\w+)\s+from\s*['"]([^'"]+\.vue)['"]/g,
+      (_, name, path) => `const ${name} = modules[${JSON.stringify(path)}]`)
     .replace('export default', 'return')
   const options = new Function('modules', 'setInterval', 'clearInterval', code)(modules,
     fn => { intervals.add(fn); return fn }, fn => intervals.delete(fn))
@@ -458,4 +591,30 @@ test('restored AI messages retain general-answer and off-topic metadata', () => 
   assert.equal(answer.interactionId, 'AI1')
   assert.equal(refusal.refusalReason, 'OFF_TOPIC')
   assert.equal(refusal.replyType, 'REFUSE')
+})
+
+test('incoming messages preserve the reading position and expose a new-message cue', async () => {
+  const { state: c } = component('ConsultationChat')
+  assert.equal(typeof c.onChatScroll, 'function')
+  c.scrollRef.value = { scrollHeight: 1200, clientHeight: 400, scrollTop: 100 }
+  c.onChatScroll()
+  c.scrollToBottom()
+  await vue.nextTick()
+  assert.equal(c.scrollRef.value.scrollTop, 100)
+  assert.equal(c.hasUnreadMessages.value, true)
+  c.scrollToBottom(true)
+  await vue.nextTick()
+  assert.equal(c.scrollRef.value.scrollTop, 1200)
+  assert.equal(c.hasUnreadMessages.value, false)
+})
+
+test('messages follow the bottom when the reader has not scrolled into history', async () => {
+  const { state: c } = component('ConsultationChat')
+  c.scrollRef.value = { scrollHeight: 1200, clientHeight: 400, scrollTop: 800 }
+  assert.equal(typeof c.onChatScroll, 'function')
+  c.onChatScroll()
+  c.scrollToBottom()
+  await vue.nextTick()
+  assert.equal(c.scrollRef.value.scrollTop, 1200)
+  assert.equal(c.hasUnreadMessages.value, false)
 })

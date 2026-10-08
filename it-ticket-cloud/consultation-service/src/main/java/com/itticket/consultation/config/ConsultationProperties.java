@@ -68,6 +68,14 @@ public class ConsultationProperties {
         private long ragRequestTimeoutMs = 5000;
         private BigDecimal localRetrievalMinScore = new BigDecimal("0.60");
 
+        /** 检索来源与生成供应商分开：rag-service 为混合检索，mysql 为显式兼容模式。 */
+        private String retrievalProvider = "rag-service";
+        /** 服务内网地址；调用时透传已认证主体，不发送模型凭据。 */
+        private String ragBaseUrl = "http://127.0.0.1:8302";
+        private long retrievalTimeoutMs = 20000;
+        /** 单条引用门槛，与 RAG_CONFIDENCE_THRESHOLD 保持一致，防止批次可靠性放大弱命中。 */
+        private BigDecimal ragCitationMinScore = new BigDecimal("0.70");
+
         /** OpenAI 兼容端点的基址,例如 https://.../compatible-mode/v1(不含 /chat/completions)。 */
         private String baseUrl;
 

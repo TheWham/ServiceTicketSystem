@@ -112,9 +112,6 @@ public class GuardedRagClient {
      */
     public RagResult answer(RagQuery query, String requestId) {
         long startNanos = System.nanoTime();
-        RagExecutionAudit audit = new RagExecutionAudit();
-        RagCallContext context = new RagCallContext(requestId,
-                startNanos + TimeUnit.MILLISECONDS.toNanos(timeoutMillis()), audit);
         String sessionId = query == null ? null : query.sessionId();
         try {
             if (query == null) {
@@ -130,18 +127,17 @@ public class GuardedRagClient {
                 if (!circuitBreaker.allowRequest()) {
                     // 断路器打开:不调用依赖,也不再重试(重试只会继续被拒)
                     last = RagResult.degraded(
-                            RagStatus.UNAVAILABLE, ERROR_CIRCUIT_OPEN, elapsedMs(startNanos))
-                            .withRetrievedVersionIds(audit.retrievedVersionIds());
+                            RagStatus.UNAVAILABLE, ERROR_CIRCUIT_OPEN, elapsedMs(startNanos));
                     logDegraded(last, requestId, sessionId, attempt);
                     break;
                 }
 
-                last = attemptOnce(query, context);
-                if (last.retrievedVersionIds() != null) {
-                    audit.recordRetrievedVersions(last.retrievedVersionIds());
+                long remainingMs = timeoutMillis() - elapsedMs(startNanos);
+                if (remainingMs <= 0) {
+                    last = RagResult.degraded(RagStatus.TIMEOUT, ERROR_TIMEOUT, elapsedMs(startNanos));
+                    break;
                 }
-                // 汇总各次尝试的审计版本；引用仍仅来自本次实际生成资料。
-                last = last.withRetrievedVersionIds(audit.retrievedVersionIds());
+                last = attemptOnce(query, requestId, remainingMs);
                 if (last.status() == RagStatus.SUCCESS) {
                     circuitBreaker.recordSuccess();
                     log.debug("[rag] 调用成功 dependency={} circuit={} replyType={} citations={} "
@@ -154,7 +150,7 @@ public class GuardedRagClient {
 
                 circuitBreaker.recordFailure();
                 logDegraded(last, requestId, sessionId, attempt);
-                if (!last.retryableFailure() || context.remainingMillis() == 0) {
+                if (!retryable(last)) {
                     // RD-003:不得对业务拒绝重试
                     break;
                 }
@@ -165,9 +161,8 @@ public class GuardedRagClient {
         } catch (Throwable t) {
             // RD-013:主链路不可阻断,任何未预期故障都收敛为降级结果。异常详情只进服务端日志(AI-006)
             log.error("[rag] 隔离壳内部故障 dependency={} requestId={} sessionId={}",
-                    DEPENDENCY, requestId, sessionId);
-            return RagResult.degraded(RagStatus.UNAVAILABLE, ERROR_GUARD_FAILURE, elapsedMs(startNanos))
-                    .withRetrievedVersionIds(audit.retrievedVersionIds());
+                    DEPENDENCY, requestId, sessionId, t);
+            return RagResult.degraded(RagStatus.UNAVAILABLE, ERROR_GUARD_FAILURE, elapsedMs(startNanos));
         }
     }
 
@@ -182,7 +177,7 @@ public class GuardedRagClient {
     }
 
     /** 单次尝试:并发许可 → 线程池执行 → 限时等待 → 输出校验。 */
-    private RagResult attemptOnce(RagQuery query, RagCallContext context) {
+    private RagResult attemptOnce(RagQuery query, String requestId, long remainingMs) {
         long attemptStart = System.nanoTime();
         if (!permits.tryAcquire()) {
             // RD-007:并发已满立即降级,不阻塞排队
@@ -190,14 +185,12 @@ public class GuardedRagClient {
                     RagStatus.UNAVAILABLE, ERROR_CONCURRENCY_LIMIT, elapsedMs(attemptStart));
         }
         // 显式声明 Callable,避免 submit(Runnable) / submit(Callable) 的重载歧义
-        Callable<RagResult> task = () -> adapter.answer(query, context);
+        Callable<RagResult> task = () -> adapter.answer(query, requestId);
         Future<RagResult> future = null;
         try {
             future = executor.submit(task);
-            RagResult result = future.get(context.timeoutMillis(timeoutMillis()), TimeUnit.MILLISECONDS);
-            RagResult validated = validate(result, elapsedMs(attemptStart));
-            return result != null && result.retrievedVersionIds() != null
-                    ? validated.withRetrievedVersionIds(result.retrievedVersionIds()) : validated;
+            RagResult result = future.get(remainingMs, TimeUnit.MILLISECONDS);
+            return validate(result, elapsedMs(attemptStart));
         } catch (TimeoutException e) {
             // cancel(true) 只发中断信号:JDBC 查询未必立即响应中断,
             // 因此许可在 finally 释放后,残留任务仍占着线程池;后续请求最多被有界队列挡住并立即降级,
@@ -206,11 +199,7 @@ public class GuardedRagClient {
             return RagResult.degraded(RagStatus.TIMEOUT, ERROR_TIMEOUT, elapsedMs(attemptStart));
         } catch (RejectedExecutionException e) {
             return RagResult.degraded(RagStatus.UNAVAILABLE, ERROR_QUEUE_FULL, elapsedMs(attemptStart));
-        } catch (DependencyFailure e) {
-            if (future != null) future.cancel(true);
-            return e.result(List.of());
         } catch (ExecutionException e) {
-            if (e.getCause() instanceof DependencyFailure failure) return failure.result(List.of());
             return RagResult.degraded(
                     RagStatus.UNAVAILABLE, classify(e.getCause()), elapsedMs(attemptStart));
         } catch (InterruptedException e) {
@@ -237,15 +226,6 @@ public class GuardedRagClient {
         }
         if (result.status() != RagStatus.SUCCESS) {
             return result;
-        }
-        if (result.replyType() == null || result.answerText() != null && result.answerText().length() > 12000
-                || result.replyType() == AiReplyType.REFUSE && (result.refusalReason() == null
-                    || result.answerText() != null && !result.answerText().isEmpty()
-                    || result.citations() == null || !result.citations().isEmpty())
-                || result.replyType() != AiReplyType.REFUSE && result.refusalReason() != null
-                || result.generalAnswer() && (result.replyType() != AiReplyType.ANSWER
-                    || result.citations() == null || !result.citations().isEmpty())) {
-            return RagResult.degraded(RagStatus.INVALID_RESPONSE, "INVALID_RESPONSE", latencyMs);
         }
         BigDecimal confidence = result.confidence();
         if (confidence == null || confidence.signum() < 0 || confidence.compareTo(BigDecimal.ONE) > 0) {
@@ -277,13 +257,18 @@ public class GuardedRagClient {
                 || isBlank(citation.articleId())
                 || isBlank(citation.versionId())
                 || isBlank(citation.title())
-                || citation.title().length() > 200
-                || isBlank(citation.snippet())
-                || citation.snippet().length() > 1000) {
+                || isBlank(citation.snippet())) {
             return false;
         }
         BigDecimal score = citation.score();
         return score != null && score.signum() >= 0 && score.compareTo(BigDecimal.ONE) <= 0;
+    }
+
+    /** RD-003:只对确认可安全重试的瞬时故障重试。 */
+    private static boolean retryable(RagResult result) {
+        if (result.errorClass() != null && List.of("NOT_CONFIGURED", "RAG_NOT_CONFIGURED", "RAG_AUTH_MISSING", "RAG_AUTH_FAILED",
+                "AUTH_FAILED", "PERMANENT", "RAG_BUSINESS_FAILURE", "RAG_INTERRUPTED").contains(result.errorClass())) return false;
+        return result.status() == RagStatus.TIMEOUT || result.status() == RagStatus.UNAVAILABLE;
     }
 
     /** 错误分类只取异常类型简名,不带消息与堆栈(AI-006 错误不得包含堆栈)。 */

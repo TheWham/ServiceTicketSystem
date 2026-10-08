@@ -1,93 +1,23 @@
 <template>
   <div class="kb-admin-container">
-    <header class="page-head">
-      <div><h1>知识库</h1><p>维护知识文章，审核内容并管理发布。</p></div>
-      <el-button type="primary" :icon="UploadFilled" @click="activeTab = 'ingest'">上传文档</el-button>
+    <header class="kb-header">
+      <div class="header-left"><div class="logo-icon"><el-icon aria-hidden="true"><Notebook /></el-icon></div>
+        <div class="header-titles"><span class="page-eyebrow">KNOWLEDGE WORKSPACE</span><h1 class="main-title">{{ activeTab === 'lifecycle' ? '知识管理' : '文档导入' }}</h1><p class="sub-title">{{ activeTab === 'lifecycle' ? '审核知识内容，管理发布与下线，让解答保持准确' : '导入服务文档，检查处理结果，再提交知识审核' }}</p></div>
+      </div>
+      <el-button v-if="activeTab === 'ingest'" :icon="Connection" :loading="isInitEs" @click="handleInitEsIndex">初始化检索索引</el-button>
     </header>
 
     <main class="kb-main-body">
       <el-tabs v-model="activeTab" class="kb-tabs">
-      <el-tab-pane label="知识文章" name="lifecycle">
-        <el-card shadow="never" class="box-card">
-          <template #header>
-            <div class="card-header-flex">
-              <div class="card-header-title">
-                <el-icon><Notebook /></el-icon>
-                <span>知识文章列表</span>
-              </div>
-              <div class="list-toolbar">
-                <el-input v-model="articleSearch" :prefix-icon="Search" clearable aria-label="搜索本页文章" placeholder="搜索本页文章" class="article-search" />
-                <el-radio-group v-model="listQuery.status" size="small" @change="fetchArticles(1)">
-                  <el-radio-button value="">全部</el-radio-button>
-                  <el-radio-button value="DRAFT">草稿</el-radio-button>
-                  <el-radio-button value="PENDING_REVIEW">待审核</el-radio-button>
-                  <el-radio-button value="PUBLISHED">已发布</el-radio-button>
-                  <el-radio-button value="OFFLINE">已下线</el-radio-button>
-                </el-radio-group>
-                <el-button size="small" :loading="listLoading" @click="fetchArticles()">刷新</el-button>
-              </div>
-            </div>
-          </template>
-
-          <div v-if="listError" class="error-state" role="alert">{{ listError }} <el-button @click="fetchArticles()">重试</el-button></div>
-          <el-table
-            v-if="!listError"
-            :data="filteredArticles"
-            @row-click="row => openDetail(row.articleId)"
-            v-loading="listLoading"
-            row-key="articleId"
-            :empty-text="listLoading ? '正在加载文章…' : articleSearch.trim() ? '本页没有匹配的文章' : '暂无知识文章，请先上传文档'"
-          >
-            <el-table-column prop="articleId" label="文章ID" min-width="210" show-overflow-tooltip />
-            <el-table-column prop="categoryId" label="分类" width="90" align="center" />
-            <el-table-column label="状态" width="110" align="center">
-              <template #default="{ row }">
-                <el-tag :type="statusTagType(row.status)" effect="plain">{{ statusLabel(row.status) }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="风险等级" width="100" align="center">
-              <template #default="{ row }">
-                <el-tag :type="row.riskLevel === 'HIGH' ? 'danger' : 'info'" size="small" effect="plain">
-                  {{ row.riskLevel === 'HIGH' ? '高风险' : '常规' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="currentVersionId" label="当前版本" min-width="190" show-overflow-tooltip />
-            <el-table-column prop="updatedAt" label="更新时间" width="150">
-              <template #default="{ row }">{{ formatTime(row.updatedAt) }}</template>
-            </el-table-column>
-            <el-table-column label="操作" width="120" align="center" fixed="right">
-              <template #default="{ row }">
-                <el-button link type="primary" size="small" @click.stop="openDetail(row.articleId)">
-                  查看详情
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-
-          <div v-if="!listError" class="pager-row">
-            <el-pagination
-              v-model:current-page="listQuery.page"
-              v-model:page-size="listQuery.pageSize"
-              :total="articleTotal"
-              :page-sizes="[10, 20, 50]"
-              layout="total, sizes, prev, pager, next"
-              background
-              @size-change="fetchArticles(1)"
-              @current-change="fetchArticles()"
-            />
-          </div>
-        </el-card>
-      </el-tab-pane>
-      <el-tab-pane label="上传与处理记录" name="ingest">
+      <el-tab-pane label="文档导入" name="ingest">
       <el-row :gutter="20">
         <!-- 左侧：文档上传与参数配置 -->
         <el-col :xs="24" :lg="9">
-          <el-card shadow="never" class="box-card upload-card">
+          <el-card shadow="hover" class="box-card upload-card">
             <template #header>
               <div class="card-header-title">
                 <el-icon><UploadFilled /></el-icon>
-                <span>上传文档</span>
+                <span>导入知识文档</span>
               </div>
             </template>
 
@@ -115,36 +45,36 @@
                 </el-upload>
               </el-form-item>
 
-              <el-form-item label="文档标题（选填）">
+              <el-form-item label="文档自定义标题 (选填)">
                 <el-input
                   v-model="uploadForm.title"
-                  placeholder="留空则使用文档标题或文件名"
+                  placeholder="留空则自动从 Markdown 一级标题或文件名提取"
                   clearable
                 />
               </el-form-item>
 
-              <el-form-item label="所属知识分类" required>
-                <div v-if="categoryLoading" role="status" class="category-state">正在加载分类…</div>
-                <div v-else-if="categoryError" role="alert" class="error-state">{{ categoryError }} <el-button @click="fetchCategories">重试分类</el-button></div>
-                <div v-else-if="!categories.length" class="category-state">暂无可用分类 <el-button @click="fetchCategories">刷新分类</el-button></div>
-                <el-select v-else v-model="uploadForm.categoryId" placeholder="请选择分类" style="width: 100%">
-                  <el-option v-for="category in categories" :key="category.category_id" :label="category.name" :value="category.category_id" />
+              <el-form-item label="所属知识分类">
+                <el-select v-model="uploadForm.categoryId" placeholder="请选择分类" style="width: 100%">
+                  <el-option label="网络与连接 (C_NET)" value="C_NET" />
+                  <el-option label="软件与系统 (C_SW)" value="C_SW" />
+                  <el-option label="硬件与外设 (C_HW)" value="C_HW" />
+                  <el-option label="账号与权限 (C_ACC)" value="C_ACC" />
+                  <el-option label="其他分类 (C_OTH)" value="C_OTH" />
                 </el-select>
               </el-form-item>
 
-              <el-collapse class="advanced-params">
-                <el-collapse-item title="高级设置">
               <el-form-item label="入库方式">
                 <el-radio-group v-model="uploadForm.publishNow">
-                  <el-radio :value="false">存为草稿</el-radio>
-                  <el-radio :value="true">直接发布</el-radio>
+                  <el-radio :value="false">存为草稿（标准流程：提审 → 发布）</el-radio>
+                  <el-radio :value="true">直接发布（快速通道，跳过审核）</el-radio>
                 </el-radio-group>
                 <div v-if="uploadForm.publishNow" class="quick-warn">
-                  直接发布后，文章立即可供搜索和客服引用。
+                  直接发布跳过审核并立即进入 RAG 检索，仅建议管理端测试使用（规范 SM-KNOWLEDGE-001 要求审核后发布）
                 </div>
               </el-form-item>
 
-                  <el-button :loading="isInitEs" @click="handleInitEsIndex">初始化 ES 索引</el-button>
+              <el-collapse class="advanced-params">
+                <el-collapse-item title="高级处理参数">
                   <el-row :gutter="12">
                     <el-col :span="12">
                       <el-form-item label="目标切片大小 (字符数)">
@@ -172,25 +102,25 @@
                 </el-collapse-item>
               </el-collapse>
 
-              <div v-if="uploadError" class="error-state" role="alert">{{ uploadError }}</div>
+              <el-alert v-if="uploadError" :title="uploadError" type="error" show-icon :closable="false" class="page-error" />
               <div class="upload-action-bar">
                 <el-button
                   type="primary"
                   size="large"
                   :loading="isProcessing"
-                  :disabled="!selectedFile || categoryLoading || !!categoryError || !uploadForm.categoryId"
+                  :disabled="!selectedFile"
                   class="submit-btn"
                   @click="submitUploadAndProcess"
                 >
                   <el-icon v-if="!isProcessing"><Cpu /></el-icon>
-                  {{ isProcessing ? '正在处理…' : '上传并处理' }}
+                  {{ isProcessing ? '文档处理中...' : '开始处理文档' }}
                 </el-button>
               </div>
             </el-form>
           </el-card>
 
           <!-- 历史处理记录列表 -->
-          <el-card shadow="never" class="box-card history-card" style="margin-top: 16px;">
+          <el-card shadow="hover" class="box-card history-card" style="margin-top: 16px;">
             <template #header>
               <div class="card-header-flex">
                 <div class="card-header-title">
@@ -202,24 +132,27 @@
                 </el-button>
               </div>
             </template>
+            <el-alert v-if="historyError" :title="historyError" type="error" :closable="false"><el-button link type="primary" @click="fetchRecentTraces">重试</el-button></el-alert>
             <div v-if="historyLoading" class="empty-hint" role="status">正在加载处理记录…</div>
-            <div v-else-if="historyError" class="error-state" role="alert">{{ historyError }} <el-button @click="fetchRecentTraces">重试</el-button></div>
-            <div v-else-if="historyTraces.length === 0" class="empty-hint">
-              暂无处理记录
+            <div v-else-if="!historyError && historyTraces.length === 0" class="empty-hint">
+              暂无历史链路记录，请上传文档执行
             </div>
-            <div v-else class="history-list">
-              <button
-                type="button"
+            <div v-else-if="!historyError" class="history-list">
+              <div
                 v-for="item in historyTraces"
                 :key="item.traceId"
                 class="history-item"
+                role="button"
+                tabindex="0"
+                @keydown.enter="loadTrace(item)"
+                @keydown.space.prevent="loadTrace(item)"
                 :class="{ active: currentTrace?.traceId === item.traceId }"
                 @click="loadTrace(item)"
               >
                 <div class="history-item-top">
                   <span class="history-name">{{ item.documentName }}</span>
-                  <el-tag :type="getStageTagType(item.status)" size="small">
-                    {{ traceStatusLabel(item.status) }}
+                  <el-tag :type="item.status === 'SUCCESS' ? 'success' : 'danger'" size="small">
+                    {{ item.status }}
                   </el-tag>
                 </div>
                 <div class="history-item-meta">
@@ -227,7 +160,7 @@
                   <span>耗时 {{ item.totalDurationMs }}ms</span>
                   <span>{{ formatTime(item.startTime) }}</span>
                 </div>
-              </button>
+              </div>
             </div>
           </el-card>
         </el-col>
@@ -235,21 +168,21 @@
         <!-- 右侧：链路过程与切片明细 -->
         <el-col :xs="24" :lg="15">
           <!-- 链路总览卡片 -->
-          <el-card shadow="never" class="box-card trace-card">
+          <el-card shadow="hover" class="box-card trace-card">
             <template #header>
               <div class="card-header-flex">
                 <div class="card-header-title">
                   <el-icon><Connection /></el-icon>
-                  <span>文档处理详情</span>
+                  <span>文档处理结果</span>
                 </div>
                 <span v-if="currentTrace" class="trace-id-badge">
-                  记录编号：<code>{{ currentTrace.traceId }}</code>
+                  TraceID: <code>{{ currentTrace.traceId }}</code>
                 </span>
               </div>
             </template>
 
             <div v-if="!currentTrace" class="empty-trace-container">
-              <el-empty description="上传文档或选择一条记录，查看处理结果" />
+              <el-empty description="请在左侧上传文档，或选择历史记录查看全链路处理过程" />
             </div>
 
             <div v-else>
@@ -264,16 +197,15 @@
                   <span class="value highlight">{{ currentTrace.chunks?.length || 0 }} 块</span>
                 </div>
                 <div class="summary-metric">
-                  <span class="label">处理耗时</span>
+                  <span class="label">全链路总耗时</span>
                   <span class="value">{{ currentTrace.totalDurationMs }} ms</span>
                 </div>
                 <div class="summary-metric">
-                  <span class="label">处理状态</span>
-                  <el-tag :type="getStageTagType(currentTrace.status)" effect="plain">{{ traceStatusLabel(currentTrace.status) }}</el-tag>
+                  <span class="label">知识库状态</span>
+                  <el-tag :type="getStageTagType(currentTrace.status)" effect="plain">{{ currentTrace.status === 'SUCCESS' ? '处理完成' : currentTrace.status === 'FAILED' ? '处理失败' : '请查看处理步骤' }}</el-tag>
                 </div>
               </div>
 
-              <details class="advanced-trace"><summary>高级处理明细</summary>
               <!-- 链路步骤时间线 -->
               <div class="timeline-section">
                 <h3 class="section-heading">处理步骤</h3>
@@ -289,12 +221,12 @@
                       <div class="stage-title-row">
                         <span class="stage-name">【步骤 {{ idx + 1 }}】{{ stage.stageName }}</span>
                         <el-tag :type="getStageTagType(stage.status)" size="small">
-                          {{ traceStatusLabel(stage.status) }}
+                          {{ stage.status }}
                         </el-tag>
                       </div>
                       <p class="stage-desc">{{ stage.description }}</p>
-                      <div class="stage-msg" :class="stage.status?.toLowerCase()">
-                        <el-icon v-if="stage.status === 'SUCCESS'"><Check /></el-icon>
+                      <div class="stage-msg">
+                        <el-icon><Check /></el-icon>
                         <span>{{ stage.message }}</span>
                       </div>
                       <!-- 指标卡 -->
@@ -314,11 +246,12 @@
               <!-- 切片详情与内容预览 -->
               <div class="chunks-section">
                 <div class="chunks-header">
-                  <h3 class="section-heading">内容分段</h3>
+                  <h3 class="section-heading">内容切片预览</h3>
                   <el-input
                     v-model="chunkSearchKeyword"
                     placeholder="搜索切片文本或标题..."
-                    prefix-icon="Search"
+                    :prefix-icon="Search"
+                    aria-label="搜索切片文本或标题"
                     size="small"
                     clearable
                     style="width: 240px"
@@ -326,7 +259,7 @@
                 </div>
 
                 <div class="chunk-list-container">
-                  <el-collapse v-model="activeChunkNames">
+                  <el-collapse v-model="activeChunkNames" accordion>
                     <el-collapse-item
                       v-for="(chunk, cIdx) in filteredChunks"
                       :key="chunk.chunkId"
@@ -340,9 +273,9 @@
                             <el-tag size="small" type="info">{{ chunk.charCount }} 字</el-tag>
                             <el-tag size="small" type="warning">约 {{ chunk.tokenCountEstimate }} Tokens</el-tag>
                             <el-tag size="small" type="success" effect="plain" v-if="chunk.hasVector || chunk.vectorDimensions">
-                              {{ chunk.vectorDimensions || 1024 }} 维向量
+                              {{ chunk.vectorDimensions ? `${chunk.vectorDimensions} 维向量` : '向量已生成' }}
                             </el-tag>
-                            <el-tag size="small" :type="chunk.esDocId ? 'success' : 'info'">ES: {{ chunk.esDocId || '未确认' }}</el-tag>
+                            <el-tag size="small" type="success">ES: {{ chunk.esDocId || '未返回索引编号' }}</el-tag>
                           </div>
                         </div>
                       </template>
@@ -360,27 +293,95 @@
                   </el-collapse>
                 </div>
               </div>
-              </details>
             </div>
           </el-card>
         </el-col>
       </el-row>
       </el-tab-pane>
 
+      <el-tab-pane label="知识管理" name="lifecycle">
+        <el-card shadow="hover" class="box-card">
+          <template #header>
+            <div class="card-header-flex">
+              <div class="card-header-title">
+                <el-icon><Notebook /></el-icon>
+                <span>知识文章列表</span>
+              </div>
+              <div class="list-toolbar">
+                <el-radio-group v-model="listQuery.status" size="small" @change="fetchArticles(1)">
+                  <el-radio-button value="">全部</el-radio-button>
+                  <el-radio-button value="DRAFT">草稿</el-radio-button>
+                  <el-radio-button value="PENDING_REVIEW">待审核</el-radio-button>
+                  <el-radio-button value="PUBLISHED">已发布</el-radio-button>
+                  <el-radio-button value="OFFLINE">已下线</el-radio-button>
+                </el-radio-group>
+                <el-button size="small" :loading="listLoading" @click="fetchArticles()">刷新</el-button>
+              </div>
+            </div>
+          </template>
+
+          <p class="scope-note">符合筛选的知识共 {{ articleTotal }} 篇，当前页已加载 {{ articles.length }} 篇。</p>
+          <el-alert v-if="listError" :title="listError" type="error" :closable="false" show-icon class="page-error"><el-button link type="primary" @click="fetchArticles()">重新加载</el-button></el-alert>
+          <el-table
+            :data="articles"
+            v-loading="listLoading"
+            border
+            stripe
+            :empty-text="listError ? '知识列表加载失败，请重试' : '暂无知识文章，可先在文档导入页存为草稿'"
+          >
+            <el-table-column prop="articleId" label="文章ID" min-width="210" show-overflow-tooltip />
+            <el-table-column prop="categoryId" label="分类" width="90" align="center" />
+            <el-table-column label="状态" width="110" align="center">
+              <template #default="{ row }">
+                <el-tag :type="statusTagType(row.status)" effect="plain">{{ statusLabel(row.status) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="风险等级" width="100" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.riskLevel === 'HIGH' ? 'danger' : 'info'" size="small" effect="plain">
+                  {{ row.riskLevel === 'HIGH' ? '高风险' : '常规' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="currentVersionId" label="当前版本" min-width="190" show-overflow-tooltip />
+            <el-table-column prop="updatedAt" label="更新时间" width="150">
+              <template #default="{ row }">{{ formatTime(row.updatedAt) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="120" align="center" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" size="small" @click="openDetail(row.articleId)">
+                  详情 / 操作
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <div class="pager-row">
+            <el-pagination
+              v-model:current-page="listQuery.page"
+              v-model:page-size="listQuery.pageSize"
+              :total="articleTotal"
+              :page-sizes="[10, 20, 50]"
+              layout="total, sizes, prev, pager, next"
+              background
+              @size-change="fetchArticles(1)"
+              @current-change="fetchArticles()"
+            />
+          </div>
+        </el-card>
+      </el-tab-pane>
       </el-tabs>
     </main>
 
     <!-- 知识详情与生命周期操作抽屉 -->
     <el-drawer
-      :model-value="drawerVisible"
-      @update:model-value="value => { if (!value) closeDetail() }"
+      v-model="drawerVisible"
       :title="`知识详情 · ${detail?.article?.articleId || ''}`"
-      size="min(680px, 100vw)"
+      size="min(600px, 100vw)"
       :destroy-on-close="true"
     >
-      <div class="drawer-body">
-        <div v-if="detailLoading" role="status"><el-skeleton :rows="6" animated /></div>
-        <div v-else-if="detailError" class="error-state" role="alert">{{ detailError }} <el-button @click="loadDetail(selectedArticleId)">重试</el-button></div>
+      <div v-loading="detailLoading" class="drawer-body">
+        <el-alert v-if="detailError" :title="detailError" type="error" :closable="false" show-icon />
         <template v-if="detail && detail.article">
           <el-descriptions title="文章信息" :column="2" border size="small">
             <el-descriptions-item label="文章ID" :span="2">{{ detail.article.articleId }}</el-descriptions-item>
@@ -393,6 +394,7 @@
               {{ detail.article.riskLevel === 'HIGH' ? '高风险' : '常规' }}
             </el-descriptions-item>
             <el-descriptions-item label="分类">{{ detail.article.categoryId }}</el-descriptions-item>
+            <el-descriptions-item label="乐观锁版本">{{ detail.article.version }}</el-descriptions-item>
             <el-descriptions-item label="创建时间">{{ formatTime(detail.article.createdAt) }}</el-descriptions-item>
             <el-descriptions-item label="更新时间">{{ formatTime(detail.article.updatedAt) }}</el-descriptions-item>
           </el-descriptions>
@@ -416,7 +418,7 @@
           </template>
 
           <template v-if="detail.currentVersion">
-            <h3 class="section-heading">📄 知识内容（审核对象）</h3>
+            <h3 class="section-heading">知识内容（审核对象）</h3>
             <div class="knowledge-content">
               <template v-if="versionContent.summary">
                 <span class="content-label">摘要</span>
@@ -439,7 +441,7 @@
             </div>
           </template>
 
-          <h3 class="section-heading">🕘 流转审计时间线</h3>
+          <h3 class="section-heading">流转审计时间线</h3>
           <el-empty
             v-if="!detail.transitions || detail.transitions.length === 0"
             description="暂无流转记录"
@@ -457,7 +459,7 @@
                 <el-tag size="small" effect="plain">{{ eventLabel(t.eventCode) }}</el-tag>
                 <span class="transition-flow">{{ statusLabel(t.fromStatus) }} → {{ statusLabel(t.toStatus) }}</span>
               </div>
-              <div class="transition-meta">操作人：{{ t.operatorId }}（{{ roleLabel(t.operatorRole) }}）</div>
+              <div class="transition-meta">操作人：{{ t.operatorId }}（{{ t.operatorRole }}）</div>
               <div v-if="t.reason" class="transition-reason">原因：{{ t.reason }}</div>
             </el-timeline-item>
           </el-timeline>
@@ -470,45 +472,43 @@
             v-if="detail.article.status === 'OFFLINE'"
             type="info"
             :closable="false"
-            title="已下线文章需发布新版本后才能重新使用。"
+            title="已下线知识不可恢复，只能发布新版本（规范 PRD §16.4）"
             class="mb-12"
           />
           <el-button
-            v-if="canSubmitReview"
+            v-if="detail.article.status === 'DRAFT'"
             type="primary"
             :loading="actionLoading"
             @click="doSubmit"
-          >提交审核</el-button>
+          ><el-icon><UploadFilled /></el-icon> 提交审核</el-button>
           <el-button
-            v-if="canManageKnowledge && detail.article.status === 'PENDING_REVIEW'"
+            v-if="detail.article.status === 'PENDING_REVIEW'"
             type="success"
             :loading="actionLoading"
-            :disabled="!canPublish"
-            aria-describedby="knowledge-review-hint"
             @click="doPublish"
-          >{{ publishLabel }}</el-button>
+          ><el-icon><Check /></el-icon> 审核通过并发布</el-button>
           <el-button
-            v-if="canReject"
+            v-if="detail.article.status === 'PENDING_REVIEW'"
             type="danger"
             plain
             :loading="actionLoading"
             @click="doReject"
           >驳回</el-button>
           <el-button
-            v-if="canManagePublished"
+            v-if="detail.article.status === 'PUBLISHED'"
             type="danger"
             :loading="actionLoading"
             @click="doOffline"
-          >下线</el-button>
+          >下线（搜索与 RAG 不再返回）</el-button>
           <el-button
-            v-if="canManagePublished"
+            v-if="detail.article.status === 'PUBLISHED'"
             type="warning"
             plain
             :loading="actionLoading"
             @click="doReindex"
-          >修复检索</el-button>
-          <div v-if="detail.article.status === 'PENDING_REVIEW'" id="knowledge-review-hint" class="self-review-hint" role="status">
-            {{ reviewHint }}
+          >重建检索索引</el-button>
+          <div v-if="detail.article.status === 'PENDING_REVIEW'" class="self-review-hint">
+            作者不得审核自己提交的内容（AC-25）；高风险知识须平台管理员复核
           </div>
         </div>
       </template>
@@ -517,9 +517,21 @@
 </template>
 
 <script setup>
-
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+/**
+ * ============================================================================
+ * 知识库管理工作台组件 (KnowledgeAdminView.vue)
+ * ============================================================================
+ *
+ * 【业务定位与界面设计】：
+ * 1. 提供 RAG 知识库管理员专用的文档摄入（Ingestion）操作台。
+ * 2. 具备 Markdown/TXT 拖拽上传、切片滑动窗口参数实时微调能力。
+ * 3. 实时可观测性（Observability）：以时间线（Timeline）展示文档解析、切片、ES 写入各环节耗时与指标。
+ * 4. 切片预览与检索：展示每一个 Chunk 的字符数、Token 估算、所属章节与 ES Document ID。
+ *
+ * @author IT工单系统前端研发组 - RAG专项
+ */
+import { ref, computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   UploadFilled,
@@ -530,8 +542,8 @@ import {
   Search,
   Notebook
 } from '@element-plus/icons-vue'
-import { ragApi, categoryApi } from '../api/index.js'
 import { useUserStore } from '../stores/user.js'
+import { ragApi } from '../api/index.js'
 
 const router = useRouter()
 const route = useRoute()
@@ -542,12 +554,17 @@ const userStore = useUserStore()
 const selectedFile = ref(null)
 /** 文档上传与切片处理中 Loading 状态 */
 const isProcessing = ref(false)
+const uploadError = ref('')
 /** ES 索引初始化中 Loading 状态 */
 const isInitEs = ref(false)
 /** 当前展示的全链路追踪报告实体 */
 const currentTrace = ref(null)
 /** 历史追踪记录列表 */
 const historyTraces = ref([])
+const historyLoading = ref(false)
+const historyError = ref('')
+const listError = ref('')
+const detailError = ref('')
 /** 切片手风琴展开的切片 ID 集合 */
 const activeChunkNames = ref([])
 /** 切片内容搜索过滤关键词 */
@@ -555,7 +572,10 @@ const chunkSearchKeyword = ref('')
 
 // ---- 生命周期管理状态 ----
 /** 当前页签：ingest 上传工作台 / lifecycle 生命周期管理 */
-const activeTab = ref('lifecycle')
+const activeTab = computed({
+  get: () => route.query.tab === 'lifecycle' ? 'lifecycle' : 'ingest',
+  set: tab => router.push({ path: route.path, query: { ...route.query, tab } })
+})
 /** 知识列表查询条件 */
 const listQuery = ref({ status: '', page: 1, pageSize: 10 })
 /** 知识文章列表 */
@@ -572,62 +592,12 @@ const detailLoading = ref(false)
 const actionLoading = ref(false)
 /** 当前详情（文章 + 当前版本 + 流转审计） */
 const detail = ref(null)
-const canManageKnowledge = computed(() => !!userStore.currentUser?.user_id &&
-  ['KNOWLEDGE_ADMIN', 'PLATFORM_ADMIN'].includes(userStore.currentUser.role))
-const isPlatformAdmin = computed(() => userStore.currentUser?.role === 'PLATFORM_ADMIN')
-const isHighRisk = computed(() => detail.value?.article?.riskLevel === 'HIGH')
-const isCurrentAuthor = computed(() => !!userStore.currentUser?.user_id &&
-  detail.value?.currentVersion?.authorId === userStore.currentUser.user_id)
-const canSubmitReview = computed(() => detail.value?.article?.status === 'DRAFT' &&
-  !!userStore.currentUser?.user_id && ['KNOWLEDGE_ADMIN', 'PLATFORM_ADMIN', 'ENGINEER'].includes(userStore.currentUser.role))
-const canReject = computed(() => canManageKnowledge.value && detail.value?.article?.status === 'PENDING_REVIEW')
-const canManagePublished = computed(() => canManageKnowledge.value && detail.value?.article?.status === 'PUBLISHED')
-const publishBlockedReason = computed(() => {
-  if (!canManageKnowledge.value) return '需要知识库管理员或平台管理员权限。'
-  if (detail.value?.article?.status !== 'PENDING_REVIEW') return '仅待审核文章可以发布。'
-  if (!detail.value.currentVersion) return '当前版本信息不完整，请刷新详情后重试。'
-  if (isCurrentAuthor.value) return isHighRisk.value
-    ? '你是当前版本的作者，不能自审。请由其他平台管理员复核发布。'
-    : '你是当前版本的作者，不能自审。请由其他管理员审核发布。'
-  if (isHighRisk.value && !isPlatformAdmin.value) return '高风险文章须由平台管理员复核发布，请移交平台管理员处理。'
-  return ''
-})
-const canPublish = computed(() => !publishBlockedReason.value)
-const publishLabel = computed(() => {
-  if (isCurrentAuthor.value) return '不可自审'
-  if (isHighRisk.value) return isPlatformAdmin.value ? '平台复核并发布' : '等待平台管理员复核'
-  return '审核发布'
-})
-const reviewHint = computed(() => publishBlockedReason.value || (isHighRisk.value
-  ? '请核对高风险内容，确认后以平台管理员身份复核发布。'
-  : '作者不能发布自己编写的当前版本。'))
-const listError = ref('')
-const detailError = ref('')
-const historyError = ref('')
-const historyLoading = ref(false)
-const uploadError = ref('')
-const articleSearch = ref('')
-const selectedArticleId = ref('')
-const categories = ref([])
-const categoryLoading = ref(false)
-const categoryError = ref('')
-let categoryRequest = 0
-let listRequest = 0
-let detailRequest = 0
-let historyRequest = 0
-let detailPromise = Promise.resolve()
-let disposed = false
-const filteredArticles = computed(() => {
-  const keyword = articleSearch.value.trim().toLocaleLowerCase()
-  return articles.value.filter(article => !keyword || [article.articleId, article.title, article.categoryId, article.currentVersionId]
-    .some(value => String(value || '').toLocaleLowerCase().includes(keyword)))
-})
 
 /** 上传表单及切片策略配置 */
 const uploadForm = ref({
   title: '',           // 自定义文档标题（留空自动解析）
-  categoryId: '',     // 由当前有效的叶子分类选择，不预设历史分类 ID
-  publishNow: false,   // 默认存为草稿；直接发布跳过审核，仅供快速验证
+  categoryId: 'C_NET', // 默认分类：网络与连接
+  publishNow: false,   // 默认存为草稿（标准流程：提审 → 发布）；直接发布跳过审核，仅供快速验证
   chunkSize: 500,      // 目标切片大小（字符）
   chunkOverlap: 50     // 切片重叠大小（字符）
 })
@@ -636,7 +606,6 @@ const uploadForm = ref({
  * 手动触发初始化/重建 ES 知识库索引
  */
 async function handleInitEsIndex() {
-  if (isInitEs.value) return
   isInitEs.value = true
   try {
     const res = await ragApi.initIndex(false)
@@ -668,46 +637,17 @@ function handleFileRemove() {
   selectedFile.value = null
 }
 
-async function fetchCategories() {
-  const request = ++categoryRequest
-  categoryLoading.value = true
-  categoryError.value = ''
-  categories.value = []
-  try {
-    const res = await categoryApi.leaf()
-    if (request !== categoryRequest) return
-    if (!Array.isArray(res?.data) || res.data.some(category => !category.category_id || !category.name || !category.status)) {
-      throw new Error('分类数据异常，请重试')
-    }
-    categories.value = res.data.filter(category => category.status === 'ACTIVE')
-    if (!categories.value.some(category => category.category_id === uploadForm.value.categoryId)) uploadForm.value.categoryId = ''
-  } catch (e) {
-    if (request === categoryRequest) {
-      categoryError.value = e.message || '分类加载失败'
-      uploadForm.value.categoryId = ''
-    }
-  } finally {
-    if (request === categoryRequest) categoryLoading.value = false
-  }
-}
-watch(activeTab, tab => { if (tab === 'ingest') fetchCategories() })
-
 /**
  * 提交文档上传并触发切片与 ES 入库全流程
  */
 async function submitUploadAndProcess() {
-  if (isProcessing.value) return
-  uploadError.value = ''
   if (!selectedFile.value) {
     ElMessage.warning('请先选择要上传的文档')
     return
   }
-  if (categoryLoading.value || categoryError.value || !categories.value.some(category => category.category_id === uploadForm.value.categoryId)) {
-    ElMessage.warning('请选择当前可用的知识分类')
-    return
-  }
 
   isProcessing.value = true
+  uploadError.value = ''
   const formData = new FormData()
   formData.append('file', selectedFile.value)
   if (uploadForm.value.title) formData.append('title', uploadForm.value.title)
@@ -718,17 +658,12 @@ async function submitUploadAndProcess() {
 
   try {
     const res = await ragApi.uploadDocument(formData)
-    if (disposed) return
-    if (!res?.data?.trace) throw new Error('文档处理结果异常，请查看处理记录后重试')
-    if (res.data) {
-      loadTrace(res.data.trace)
-      if (res.data.trace.status === 'FAILED') throw new Error(res.data.message || '文档处理失败，请查看处理明细')
-      if (res.data.trace.status !== 'SUCCESS') {
-        ElMessage.warning(res.data.message || '文档处理尚未完成，请查看处理记录')
-      } else if (res.data.article?.status === 'DRAFT') {
-        ElMessage.success('已存为草稿，可在知识文章中提交审核')
+    if (res && res.data) {
+      currentTrace.value = res.data.trace
+      if (res.data.article?.status === 'DRAFT') {
+        ElMessage.success('已存为草稿，请到「知识生命周期管理」页提交审核')
       } else {
-        ElMessage.success('文档处理完成')
+        ElMessage.success('文档切片并写入 ES 成功！')
       }
       fetchRecentTraces()
       fetchArticles(1)
@@ -737,38 +672,35 @@ async function submitUploadAndProcess() {
       }
     }
   } catch (err) {
-    if (!disposed) {
-      uploadError.value = err.message || '文档处理失败'
-      fetchRecentTraces()
-    }
+    uploadError.value = err.message || '文档处理失败，请重试'
   } finally {
     isProcessing.value = false
   }
 }
 
 async function fetchRecentTraces() {
-  const request = ++historyRequest
   historyLoading.value = true
   historyError.value = ''
   try {
     const res = await ragApi.listTraces()
-    if (request !== historyRequest) return
-    if (!Array.isArray(res?.data)) throw new Error('处理记录数据异常')
-    historyTraces.value = res.data
-    if (!currentTrace.value && res.data.length) loadTrace(res.data[0])
+    if (res && res.data) {
+      historyTraces.value = res.data
+      if (!currentTrace.value && res.data.length > 0) {
+        currentTrace.value = res.data[0]
+      }
+    }
   } catch (e) {
-    if (request === historyRequest) historyError.value = e.message || '处理记录加载失败'
+    historyError.value = e.message || '处理记录加载失败，请重试'
   } finally {
-    if (request === historyRequest) historyLoading.value = false
+    historyLoading.value = false
   }
 }
+
 function loadTrace(trace) {
   currentTrace.value = trace
-  activeChunkNames.value = trace.chunks?.length ? [trace.chunks[0].chunkId] : []
-  chunkSearchKeyword.value = ''
-}
-function traceStatusLabel(status) {
-  return { SUCCESS: '处理完成', WARNING: '需要关注', FAILED: '处理失败', RUNNING: '处理中', PENDING: '等待处理', SKIPPED: '已跳过' }[status] || status || '状态未确认'
+  if (trace.chunks?.length > 0) {
+    activeChunkNames.value = [trace.chunks[0].chunkId]
+  }
 }
 
 // ================= 知识生命周期管理 =================
@@ -795,105 +727,57 @@ function eventLabel(code) {
   return map[code] || code
 }
 
-function roleLabel(role) {
-  return { PLATFORM_ADMIN: '平台管理员', KNOWLEDGE_ADMIN: '知识库管理员', ENGINEER: '工程师', EMPLOYEE: '员工', SYSTEM: '系统' }[role] || role
-}
-
 async function fetchArticles(page) {
   if (page) listQuery.value.page = page
-  const request = ++listRequest
   listLoading.value = true
   listError.value = ''
-  articles.value = []
-  articleTotal.value = 0
   try {
     const res = await ragApi.listArticles({
       status: listQuery.value.status || undefined,
-      page: listQuery.value.page, pageSize: listQuery.value.pageSize
+      page: listQuery.value.page,
+      pageSize: listQuery.value.pageSize
     })
-    if (request !== listRequest) return
-    if (!Array.isArray(res?.data?.records) || !Number.isFinite(res.data.total)) throw new Error('知识列表数据异常')
-    articles.value = res.data.records
-    articleTotal.value = res.data.total
+    if (res?.data) {
+      articles.value = res.data.records || []
+      articleTotal.value = res.data.total || 0
+    }
   } catch (e) {
-    if (request === listRequest) listError.value = e.message || '加载知识列表失败'
+    listError.value = '知识列表加载失败：' + (e.message || '网络错误')
   } finally {
-    if (request === listRequest) listLoading.value = false
+    listLoading.value = false
   }
 }
-async function openDetail(id) {
-  if (!id || disposed) return
-  if (selectedArticleId.value !== id) {
-    ++detailRequest
-    detail.value = null
-    detailError.value = ''
-    detailLoading.value = true
-    drawerVisible.value = true
-  }
-  const navigate = route.query.article ? router.replace : router.push
-  await navigate({ query: { ...route.query, article: id } })
-  if (!disposed && route.query.article === id) return detailPromise
-}
-async function loadDetail(id) {
-  if (!id || disposed) return
-  const request = ++detailRequest
-  selectedArticleId.value = id
-  activeTab.value = 'lifecycle'
+
+async function openDetail(articleId) {
   drawerVisible.value = true
   detailLoading.value = true
   detail.value = null
   detailError.value = ''
   try {
-    const res = await ragApi.getArticle(id)
-    if (request !== detailRequest) return
-    if (!res?.data?.article) throw new Error('知识详情数据异常')
-    detail.value = res.data
+    const res = await ragApi.getArticle(articleId)
+    if (res?.data) detail.value = res.data
   } catch (e) {
-    if (request === detailRequest) detailError.value = e.message || '加载知识详情失败'
+    detailError.value = '知识详情加载失败：' + (e.message || '网络错误')
   } finally {
-    if (request === detailRequest) detailLoading.value = false
+    detailLoading.value = false
   }
 }
-function resetDetail() {
-  ++detailRequest
-  selectedArticleId.value = ''
-  drawerVisible.value = false
-  detailLoading.value = false
-  detail.value = null
-  detailError.value = ''
-}
-async function closeDetail() {
-  resetDetail()
-  const query = { ...route.query }
-  delete query.article
-  await router.replace({ query })
-}
-async function refreshAfterAction(id) {
-  if (disposed) return
+
+async function refreshAfterAction() {
   await fetchArticles()
-  if (!disposed && drawerVisible.value && selectedArticleId.value === id) await loadDetail(id)
+  if (detail.value?.article?.articleId) {
+    await openDetail(detail.value.article.articleId)
+  }
 }
-watch(() => route.query.article, id => {
-  if (typeof id === 'string' && id) detailPromise = loadDetail(id)
-  else resetDetail()
-}, { immediate: true, flush: 'sync' })
-onUnmounted(() => {
-  disposed = true
-  ++listRequest
-  ++historyRequest
-  ++categoryRequest
-  resetDetail()
-})
 
 /** 提交审核：DRAFT ➔ PENDING_REVIEW */
 async function doSubmit() {
-  if (actionLoading.value || !canSubmitReview.value) return
   const id = detail.value.article.articleId
   actionLoading.value = true
   try {
     const res = await ragApi.submitArticle(id, { remark: '工作台提交审核' })
     if (res?.data) ElMessage.success(res.data.message || '已提交审核')
-    await refreshAfterAction(id)
+    await refreshAfterAction()
   } catch (e) {
     ElMessage.error(e.message || '提审失败')
   } finally {
@@ -903,15 +787,7 @@ async function doSubmit() {
 
 /** 审核通过并发布：PENDING_REVIEW ➔ PUBLISHED，联动 ES 入库 */
 async function doPublish() {
-  if (actionLoading.value || !detail.value?.article) return
-  if (!canPublish.value) {
-    ElMessage.warning(publishBlockedReason.value)
-    return
-  }
   const id = detail.value.article.articleId
-  const versionId = detail.value.currentVersion.versionId
-  const operatorId = userStore.currentUser.user_id
-  actionLoading.value = true
   let note = ''
   try {
     const { value } = await ElMessageBox.prompt('请输入发布变更说明（可选）', '审核通过并发布', {
@@ -922,25 +798,19 @@ async function doPublish() {
     })
     note = value || ''
   } catch {
-    actionLoading.value = false
     return
   }
-  if (disposed || !canPublish.value || detail.value?.article?.articleId !== id ||
-      detail.value?.currentVersion?.versionId !== versionId || userStore.currentUser?.user_id !== operatorId) {
-    actionLoading.value = false
-    if (!disposed) ElMessage.warning(publishBlockedReason.value || '文章或登录身份已变化，请重新确认。')
-    return
-  }
+  actionLoading.value = true
   try {
     const res = await ragApi.publishArticle(id, { changeNote: note })
     if (res?.data) {
-      if (res.data.indexStatus !== 'INDEXED') {
-        ElMessage.warning(res.data.message || '已发布，但检索更新未完成，请稍后使用「修复检索」重试')
+      if (res.data.indexStatus === 'PENDING_COMPENSATION') {
+        ElMessage.warning(res.data.message || '已发布，但 RAG 索引未完成，可稍后「重建索引」补偿')
       } else {
-        ElMessage.success(res.data.message || '发布成功，文章已可检索')
+        ElMessage.success(res.data.message || '发布成功，已写入 RAG 索引')
       }
     }
-    await refreshAfterAction(id)
+    await refreshAfterAction()
   } catch (e) {
     // 作者自审 / 高风险非平台管理员复核会由服务端 403 拦截，这里原样提示
     ElMessage.error(e.message || '发布失败')
@@ -951,9 +821,7 @@ async function doPublish() {
 
 /** 驳回：PENDING_REVIEW ➔ DRAFT（原因必填，写入版本驳回记录） */
 async function doReject() {
-  if (actionLoading.value || !canReject.value) return
   const id = detail.value.article.articleId
-  actionLoading.value = true
   let reason = ''
   try {
     const { value } = await ElMessageBox.prompt('请输入驳回原因（必填，写入版本驳回记录）', '驳回', {
@@ -965,14 +833,13 @@ async function doReject() {
     })
     reason = value
   } catch {
-    actionLoading.value = false
     return
   }
-  if (disposed) { actionLoading.value = false; return }
+  actionLoading.value = true
   try {
     const res = await ragApi.rejectArticle(id, { reason })
     if (res?.data) ElMessage.success(res.data.message || '已驳回并退回草稿')
-    await refreshAfterAction(id)
+    await refreshAfterAction()
   } catch (e) {
     ElMessage.error(e.message || '驳回失败')
   } finally {
@@ -982,12 +849,10 @@ async function doReject() {
 
 /** 下线：PUBLISHED ➔ OFFLINE，同步 ES 状态（AC-27：搜索与 RAG 不再返回） */
 async function doOffline() {
-  if (actionLoading.value || !canManagePublished.value) return
   const id = detail.value.article.articleId
-  actionLoading.value = true
   let reason = ''
   try {
-    const { value } = await ElMessageBox.prompt('请输入下线原因。下线后，文章不再用于搜索和客服回答。', '下线知识', {
+    const { value } = await ElMessageBox.prompt('请输入下线原因（必填）。下线后搜索与 RAG 索引均不再返回该版本（AC-27）。', '下线知识', {
       confirmButtonText: '确认下线',
       cancelButtonText: '取消',
       inputPlaceholder: '必填',
@@ -996,14 +861,13 @@ async function doOffline() {
     })
     reason = value
   } catch {
-    actionLoading.value = false
     return
   }
-  if (disposed) { actionLoading.value = false; return }
+  actionLoading.value = true
   try {
     const res = await ragApi.offlineArticle(id, { reason })
     if (res?.data) ElMessage.success(res.data.message || '已下线')
-    await refreshAfterAction(id)
+    await refreshAfterAction()
   } catch (e) {
     ElMessage.error(e.message || '下线失败')
   } finally {
@@ -1013,21 +877,20 @@ async function doOffline() {
 
 /** 重建 RAG 索引（发布后索引失败等场景的补偿入口，RD-008） */
 async function doReindex() {
-  if (actionLoading.value || !canManagePublished.value) return
   const id = detail.value.article.articleId
   actionLoading.value = true
   try {
     const res = await ragApi.reindexArticle(id)
     if (res?.data) {
       if (res.data.indexStatus === 'INDEXED') {
-        ElMessage.success(res.data.message || '检索修复完成')
+        ElMessage.success(res.data.message || '索引重建完成')
       } else {
-        ElMessage.warning(res.data.message || '检索修复未完成')
+        ElMessage.warning(res.data.message || '索引重建返回异常状态')
       }
     }
-    await refreshAfterAction(id)
+    await refreshAfterAction()
   } catch (e) {
-    ElMessage.error(e.message || '检索修复失败')
+    ElMessage.error(e.message || '重建索引失败')
   } finally {
     actionLoading.value = false
   }
@@ -1114,74 +977,514 @@ function copyText(text) {
   }
 }
 
-
+function handleLogout() {
+  userStore.logout()
+  router.push('/login')
+}
 </script>
 
 <style scoped>
-.kb-admin-container { min-width: 0; color: var(--ws-ink); }
-.page-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
-.page-head h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -.6px; }
-.page-head p { margin: 8px 0 0; color: var(--ws-muted); font-size: 13px; }
-.kb-main-body { min-width: 0; }
-.kb-tabs :deep(.el-tabs__item) { font-size: 13px; }
-.box-card { border: 0; border-radius: 0; background: transparent; }
-.box-card :deep(.el-card__header) { padding: 18px 0; }
-.box-card :deep(.el-card__body) { padding: 18px 0; }
-.card-header-title, .card-header-flex, .list-toolbar, .chunks-header { display: flex; align-items: center; gap: 10px; }
-.card-header-title { font-size: 14px; font-weight: 600; }
-.card-header-flex, .chunks-header { justify-content: space-between; flex-wrap: wrap; }
-.list-toolbar { flex-wrap: wrap; }
-.article-search { width: 200px; }
-.pager-row { display: flex; justify-content: flex-end; margin-top: 18px; }
-.error-state { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 16px 0; color: var(--el-color-danger); font-size: 13px; }
-.category-state { color: var(--ws-muted); font-size: 13px; }
-.kb-uploader, .submit-btn { width: 100%; }
-.advanced-params { margin: 16px 0; }
-.upload-action-bar { margin-top: 18px; }
-.quick-warn { font-size: 12px; color: var(--el-color-warning); margin-top: 6px; }
-.history-list { display: flex; flex-direction: column; max-height: 340px; overflow-y: auto; }
-.history-item { display: block; width: 100%; font: inherit; text-align: left; padding: 14px 12px; border: 0; border-bottom: 1px solid var(--ws-line); background: transparent; color: var(--ws-ink); cursor: pointer; }
-.history-item:hover, .history-item.active { background: var(--ws-accent-soft); }
-.history-item:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: -2px; }
-.history-item-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.history-name { font-size: 13px; overflow-wrap: anywhere; }
-.history-item-meta { display: flex; flex-wrap: wrap; gap: 12px; color: var(--ws-muted); font-size: 11px; margin-top: 8px; }
-.empty-hint { text-align: center; padding: 28px 0; font-size: 13px; color: var(--ws-muted); }
-.trace-id-badge { font-size: 11px; color: var(--ws-muted); overflow-wrap: anywhere; }
-.trace-summary-banner { display: flex; flex-wrap: wrap; gap: 16px 24px; padding: 0 0 20px; border-bottom: 1px solid var(--ws-line); }
-.summary-metric { display: flex; flex-direction: column; gap: 8px; }
-.summary-metric .label { color: var(--ws-muted); font-size: 12px; }
-.summary-metric .value { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
-.doc-title { max-width: 240px; }
-.advanced-trace summary { cursor: pointer; padding: 18px 0; color: var(--ws-muted); font-size: 13px; }
-.section-heading { font-size: 13px; margin: 12px 0; }
-.stage-inner-card { background: var(--el-fill-color-light); }
-.stage-title-row { display: flex; justify-content: space-between; gap: 10px; }
-.stage-name { font-weight: 600; font-size: 13px; }
-.stage-desc, .stage-msg { font-size: 12px; color: var(--ws-muted); margin: 10px 0; }
-.stage-msg.failed { color: var(--el-color-danger); }
-.stage-msg.warning { color: var(--el-color-warning); }
-.stage-msg.success { color: var(--el-color-success); }
-.stage-metrics-grid, .chunk-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.metric-chip { font-size: 11px; border: 1px solid var(--ws-line); border-radius: 4px; padding: 3px 6px; }
-.m-key { color: var(--ws-muted); margin-right: 4px; }
-.chunk-collapse-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; line-height: 1.5; padding: 8px 0; }
-.chunk-section-title { font-size: 13px; overflow-wrap: anywhere; }
-.chunk-index { color: var(--el-color-primary); font-size: 11px; }
-.chunk-meta-bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: var(--ws-muted); font-size: 11px; margin-bottom: 10px; }
-.chunk-content-view { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--el-fill-color-light); color: var(--ws-ink); padding: 14px; border: 1px solid var(--ws-line); border-radius: 6px; font-size: 13px; line-height: 1.7; }
-.mt-16 { margin-top: 16px; }.mb-12 { margin-bottom: 12px; }
-.drawer-actions { display: flex; flex-wrap: wrap; gap: 10px; }
-.self-review-hint { width: 100%; color: var(--ws-muted); font-size: 12px; line-height: 1.6; }
-.transition-title { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
-.transition-flow { font-size: 13px; }.transition-meta, .transition-reason { font-size: 12px; color: var(--ws-muted); }
-.transition-reason { background: var(--el-fill-color-light); padding: 8px; margin-top: 6px; }
-@media (max-width: 640px) { .page-head h1 { font-size: 21px; }.page-head { align-items: flex-start; }.article-search { width: 100%; }.trace-summary-banner { gap: 16px; }.list-toolbar :deep(.el-radio-group) { flex-wrap: wrap; gap: 4px 0; } }
+.kb-admin-container {
+  min-width: 0;
+  background-color: var(--el-bg-color-page);
+}
+
+.kb-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0;
+  margin-bottom: 24px;
+  background: var(--el-bg-color);
+  border-bottom: 0;
+  box-shadow: none;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-icon {
+  font-size: 28px;
+}
+
+.main-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+}
+
+.sub-title {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.user-name {
+  font-weight: 600;
+  color: var(--el-text-color-regular);
+  font-size: 14px;
+}
+
+.kb-main-body {
+  padding: 0;
+}
+
+.card-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--el-text-color-primary);
+}
+
+.card-header-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.trace-id-badge code {
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.kb-uploader {
+  width: 100%;
+}
+
+.advanced-params {
+  margin: 12px 0;
+  border: 1px dashed var(--el-border-color);
+  border-radius: 6px;
+  padding: 0 12px;
+}
+
+.upload-action-bar {
+  margin-top: 18px;
+}
+
+.submit-btn {
+  width: 100%;
+  font-weight: 600;
+}
+
+.history-list {
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-item {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--el-border-color);
+  cursor: pointer;
+  background: var(--el-fill-color-light);
+  transition: all 0.2s;
+}
+
+.history-item:hover {
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary-light-5);
+}
+
+.history-item.active {
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary);
+}
+
+.history-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.history-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-item-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.empty-hint {
+  text-align: center;
+  color: var(--el-text-color-secondary);
+  padding: 24px 0;
+  font-size: 13px;
+}
+
+.empty-trace-container {
+  padding: 60px 0;
+}
+
+.trace-summary-banner {
+  display: flex;
+  justify-content: space-between;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  padding: 14px 20px;
+  margin-bottom: 20px;
+}
+
+.summary-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-metric .label {
+  font-size: 12px;
+  color: var(--el-color-success);
+  font-weight: 500;
+}
+
+.summary-metric .value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+}
+
+.summary-metric .value.doc-title {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary-metric .value.highlight {
+  color: var(--el-color-primary);
+}
+
+.section-heading {
+  margin: 16px 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
 /* ---- 详情抽屉：知识内容（审核对象） ---- */
-.knowledge-content { border: 1px solid var(--ws-line, #e4e7ed); border-radius: 6px; padding: 12px; background: var(--el-fill-color-light, #fafbfc); }
-.content-label { display: block; font-size: 12px; color: var(--ws-muted, #909399); margin-bottom: 4px; }
-.content-summary { margin: 0 0 10px 0; font-size: 13px; color: var(--el-text-color-regular, #606266); line-height: 1.6; }
-.content-keywords { margin-bottom: 10px; }
-.keyword-tag { margin-right: 6px; }
-.content-body { margin: 0; padding: 10px; background: var(--el-bg-color, #fff); border: 1px solid var(--ws-line, #ebeef5); border-radius: 4px; font-size: 13px; line-height: 1.6; color: var(--ws-ink, #303133); white-space: pre-wrap; word-break: break-word; max-height: 340px; overflow-y: auto; font-family: inherit; }
+.knowledge-content {
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  padding: 12px;
+  background: var(--el-fill-color-light);
+}
+
+.content-label {
+  display: block;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 4px;
+}
+
+.content-summary {
+  margin: 0 0 10px 0;
+  font-size: 13px;
+  color: var(--el-text-color-regular);
+  line-height: 1.6;
+}
+
+.content-keywords {
+  margin-bottom: 10px;
+}
+
+.keyword-tag {
+  margin-right: 6px;
+}
+
+.content-body {
+  margin: 0;
+  padding: 10px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--el-text-color-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 340px;
+  overflow-y: auto;
+  font-family: inherit;
+}
+
+.stage-inner-card {
+  border-radius: 6px;
+  background: var(--el-fill-color-light);
+}
+
+.stage-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.stage-name {
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  font-size: 14px;
+}
+
+.stage-desc {
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+  margin: 4px 0 8px 0;
+}
+
+.stage-msg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--el-color-success);
+  background: var(--el-bg-color);
+  padding: 6px 10px;
+  border-radius: 4px;
+  border-left: 3px solid var(--el-color-success);
+  margin-bottom: 8px;
+}
+
+.stage-metrics-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.metric-chip {
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.m-key {
+  color: var(--el-text-color-secondary);
+  margin-right: 4px;
+}
+
+.m-val {
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.chunks-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.chunk-collapse-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.chunk-index {
+  background: var(--el-color-primary);
+  color: var(--el-bg-color);
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chunk-section-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chunk-tags {
+  display: flex;
+  gap: 6px;
+  margin-right: 12px;
+}
+
+.chunk-body {
+  padding: 10px;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+  border: 1px solid var(--el-border-color-lighter);
+}
+
+.chunk-meta-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 8px;
+}
+
+.chunk-content-view {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--el-bg-color-page);
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--el-text-color-primary);
+  font-family: Consolas, Monaco, "Courier New", monospace;
+  border: 1px solid var(--el-border-color);
+}
+
+/* ===== 生命周期管理 ===== */
+.kb-tabs :deep(.el-tabs__item) {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pager-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.quick-warn {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--el-color-warning);
+  line-height: 1.5;
+}
+
+.mt-16 {
+  margin-top: 16px;
+}
+
+.mb-12 {
+  margin-bottom: 12px;
+}
+
+.drawer-body {
+  padding: 0 4px;
+}
+
+.drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.self-review-hint {
+  width: 100%;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-top: 6px;
+}
+
+.transition-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.transition-flow {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--el-text-color-primary);
+}
+
+.transition-meta {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.transition-reason {
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+  background: var(--el-bg-color-page);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-top: 4px;
+}
+
+.page-eyebrow { display:block; color:var(--el-color-primary); font-size:12px; font-weight:700; letter-spacing:1.4px; margin-bottom:8px; }
+.main-title { font-size:28px; line-height:1.3; }
+.sub-title { display:block; margin:8px 0 0; font-size:14px; line-height:1.6; }
+.kb-header { gap:16px; flex-wrap:wrap; background:transparent; }
+.logo-icon { width:48px; height:48px; border-radius:14px; background:var(--el-color-primary-light-9); color:var(--el-color-primary); display:grid; place-items:center; flex-shrink:0; }
+:deep(.el-card) { border-radius:16px; box-shadow:none; }
+.card-header-title { font-size:18px; }
+.card-header-flex { gap:12px; flex-wrap:wrap; }
+.scope-note { margin:0 0 16px; color:var(--el-text-color-secondary); font-size:13px; line-height:1.6; }
+.page-error { margin-bottom:16px; }
+.trace-id-badge { color:var(--el-text-color-secondary); font-size:12px; overflow-wrap:anywhere; }
+.trace-summary-banner { gap:16px; flex-wrap:wrap; }
+.summary-metric .label { color:var(--el-text-color-secondary); }
+.timeline-section { margin-top:24px; }
+.stage-inner-card { border-radius:10px; }
+.history-item:focus-visible { outline:2px solid var(--el-color-primary); outline-offset:2px; }
+.chunk-collapse-title { min-width:0; flex-wrap:wrap; padding:10px 0; }
+.chunk-tags { flex-wrap:wrap; }
+:deep(.el-collapse-item__header) { height:auto; min-height:48px; line-height:1.5; }
+.drawer-body { min-height:100px; }
+:deep(.el-radio) { white-space:normal; height:auto; min-height:36px; }
+:deep(.el-radio__label) { white-space:normal; line-height:1.6; }
+:deep(.el-radio-group) { gap:8px; }
+@media(max-width:767px) {
+  .main-title { font-size:24px; }
+  .header-left { align-items:flex-start; }
+  .logo-icon { display:none; }
+  .kb-main-body :deep(.el-col) { margin-bottom:16px; }
+  :deep(.el-card__body), :deep(.el-card__header) { padding:16px; }
+  .list-toolbar { width:100%; }
+  .list-toolbar :deep(.el-radio-group) { display:flex; flex-wrap:wrap; gap:6px; }
+  .list-toolbar :deep(.el-radio-button__inner) { border:1px solid var(--el-border-color); border-radius:8px; min-height:40px; display:flex; align-items:center; }
+  .pager-row { justify-content:center; }
+  .pager-row :deep(.el-pagination) { flex-wrap:wrap; justify-content:center; gap:8px; }
+  .chunks-header, .chunk-meta-bar { flex-wrap:wrap; gap:8px; }
+  .chunks-header :deep(.el-input) { width:100% !important; }
+  .chunk-tags { width:100%; margin:0; }
+  .history-item-meta { flex-wrap:wrap; gap:6px 12px; }
+  .trace-summary-banner { padding:16px; }
+  .summary-metric { width:calc(50% - 8px); min-width:0; }
+  .stage-title-row { gap:8px; align-items:flex-start; }
+  :deep(.el-drawer__body) { padding:16px; }
+  :deep(.el-descriptions__table) { overflow-wrap:anywhere; }
+}
 </style>

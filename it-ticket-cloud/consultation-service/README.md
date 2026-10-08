@@ -3,6 +3,8 @@
 对应 PRD-v2 的 **F-02(咨询入口与知识搜索)、F-03(转人工及人工咨询)、F-13(RAG/AI 回答、引用、拒答、反馈)**。
 本服务是**咨询会话状态的唯一写入方**，与用户、工单服务共用规范数据库 `it_ticket_system`；共享表按业务类型隔离。
 
+2026-10-08：默认已接入 rag-service 混合检索。联调配置、降级语义和验证命令见 [RAG-INTEGRATION.md](RAG-INTEGRATION.md)，接口契约见 [RAG 对接说明](../rag-service/INTEGRATION.md)。
+
 端口 `8301`,通过 gateway 的 `/api/v1/consultations/**`、`/api/v1/knowledge/**` 路由访问。
 
 ---
@@ -17,8 +19,7 @@
 | 知识搜索 `controller/KnowledgeSearchController` | AI-API-005(只返回 `PUBLISHED` 当前版本) |
 | AI 输出闸门 `service/AiAnswerGuard` | AI-001 能力边界、AI-008 输出校验 |
 | RAG 隔离壳 `adapter/GuardedRagClient` | RD-003 超时重试、RD-007 断路器与并发隔离 |
-| 组合编排 `adapter/ComposedRagAdapter` | 独立领域判定、检索策略、生成与引用重建 |
-| 模型传输 `adapter/model/OpenAiCompatibleModelClient` | AX-003 / AX-007 分类器和生成器共用受限 JSON 传输 |
+| 模型接入 `adapter/OpenAiCompatibleRagAdapter` | AX-003 / AX-007 外部适配器,受约束生成 |
 | 转人工分配 `service/AssignmentService` | PRD 8.4 / 12.1 / 12.2、RD-005 |
 | 响应 SLA `service/ConsultationSlaService` + `WorkCalendar` | PRD 11.1 / 11.2 / 11.3、AX-002、AX-008 |
 | 幂等 `service/IdempotencyService` | RD-002 |
@@ -45,13 +46,13 @@ POST /api/v1/consultations/{id}/feedback                     → 持久化待处
 
 1. 会话状态必须是 `AI_ACTIVE`,否则 `AI_SESSION_NOT_ACTIVE`;
 2. 员工提问先落库 —— 即便后续 AI 降级,对话历史仍然完整;
-3. `openai-compatible` 先独立进行语义范围/风险分类：`OFFICE_IT` 才进入检索生成，`OFF_TOPIC` 明确拒答，`HIGH_RISK` 转人工，`UNCERTAIN` 追问。按实际意图判断，不用 IT 关键词白名单；普通登录排障可答；
+3. 默认由 rag-service 返回领域和知识策略：`OFFICE_IT` 才进入生成，`OFF_TOPIC` 明确拒答，`HIGH_RISK` 转人工，`UNCERTAIN` 追问；显式配置 `retrieval-provider=mysql` 时保留模型分类与 SQL 检索的兼容链路；
 4. `ai.answer-enabled=false`(评测未达 PRD 17.3 上线门槛)→ `REFUSE / POLICY_BLOCKED`;
 5. 否则经 `GuardedRagClient` 调用 RAG:超时、并发上限、连续 5 次失败打开断路器;
 6. **输出闸门 `AiAnswerGuard`** 按固定优先级判定,任一条不过即结构化拒答:
    `POLICY_BLOCKED → HIGH_RISK_TOPIC → MODEL_UNAVAILABLE → NO_RELIABLE_KNOWLEDGE(Schema)
    → CONFLICTING_KNOWLEDGE → NO_RELIABLE_KNOWLEDGE(引用失效)→ LOW_CONFIDENCE`;
-7. 可靠依据先检查当前发布版本再进入生成；生成输出前再复核一次。只有正常无命中或不相关检索可以提供无引用办公 IT 通用建议，并由服务追加“无知识库依据”说明。`LOW_CONFIDENCE` 与依赖失败均明确拒答；
+7. 有依据时优先引用已发布知识；无命中或命中不足时可提供办公 IT 通用建议。通用回答引用为空，不能冒充内部政策或编造地址/来源；任何实际引用都必须仍为 `PUBLISHED` 当前版本，失效即整体拒答；
 8. 写 `ai_interaction`(模型版本、命中知识版本、置信度、耗时)，消息的 `citation_json` 写 schemaVersion=1 元数据（引用、interactionId、replyType、refusalReason、generalAnswer），历史读取兼容旧引用数组，不写提示词与推理过程。
 
 员工可主动确认 `AI_ACTIVE → RESOLVED`；AI 不自动确认、建单或修改企业系统。调用模型期间关闭咨询后，原有写锁复核仍会阻止迟到回答落库。
@@ -73,12 +74,7 @@ RD-006 允许两者二选一,选拒答是因为会话保持可用、客户端只
 | `openai-compatible` | 走 OpenAI 兼容端点做受约束生成(当前默认) |
 | `local` | 不调外部模型,只按检索结果拼装答案。离线、演示或评测未上线时使用 |
 
-`local` 不具备语义模型或通用知识能力，只做保守规则分类与已验证正文拼装，无依据时拒答。规则要求技术对象及现象/技术求助意图，同时识别敏感对象与危险动作组合；模糊请求追问。普通登录与密码排障不直接等同危险操作。该模式不能替代真实语义评测。
-
-本地摘录不具备语义知识冲突检测能力，不把同分类、标题不同且分数接近的资料直接判为冲突。
-外部模型明确返回 `knowledgeConflict=true` 时，仍按 `CONFLICTING_KNOWLEDGE` 拒答。
-
-`AI_RETRIEVAL_PROVIDER` 独立选择 `rag-service`（应用默认）或 `local`，可与两种生成策略任意组合。配置选择集中在 `AiCompositionConfig`；业务链路没有供应商判断分支。旧包办适配器与旧内部构造器已删除。
+`local` 不具备模型通用知识能力，无命中仍拒答；冷启动通用回答策略需使用 `openai-compatible`。检索独立由 `retrieval-provider=rag-service|mysql` 决定，默认使用 RAG；关键词高风险兜底仅用于 `local + mysql` 兼容模式。
 
 **两种模式下检索都只读 `PUBLISHED` 当前版本**,模型拿不到数据库、未发布案例、原始工单或聊天正文。
 
@@ -86,23 +82,13 @@ RD-006 允许两者二选一,选拒答是因为会话保持可用、客户端只
 
 1. **引用不可由模型编造** —— 模型只回答"用了哪几个 `versionId`",引用条目的
    `articleId/versionId/title/snippet/score` 全部由服务端用检索结果重建。
-   模型给出的 `versionId` 只要有一个不在本次实际生成资料内,整次输出判为无效(AI-008)。
+   模型给出的 `versionId` 只要有一个不在本次检索集合内,整次输出判为无效(AI-008)。
 2. **内部推理不外泄** —— thinking 类模型会返回 `reasoning_content`,本服务只读
    `choices[0].message.content`,推理字段不解析、不落库、不写日志(AI-001、AI-008)。
-3. **检索策略不能被生成覆盖** —— 远端拒答原因原样保留；`MODEL_UNAVAILABLE`（包括 HTTP 200 内的依赖故障）与正常空检索分开。HTTP、非法 JSON/字段、非零包络码均明确降级，不静默切回 MySQL。
+3. **先范围判定再受约束生成** —— 无命中仍可生成办公 IT 通用建议；即使无命中，模型给出的任何虚构 versionId 也会导致整次输出无效。有命中但不相关时允许不引用，不把不相关来源挂到通用答案上。
 
-生成前及输出前的版本复核使用 MySQL `FOR SHARE NOWAIT` 当前读，并禁用 MyBatis 查询缓存。
-输出复核复用回答落库事务的连接，共享锁保持到提交，避免旧事务快照漏掉生成期间已提交的下线或版本切换。
-竞争写锁时立即按依赖不可用拒答；不增加独立事务连接，也不等待数据库默认锁超时。
-
-远端余弦分数直接保留，BM25 的 `score=null` 合法但不能成为引用。只选 `score == topScore` 的最高分资料；同版本同分以 `chunkId` 稳定选择，索引版本必须等于知识版本。正文截断到 1200 字符，引用片段从这份实际传入生成器的正文重建。远端运行 YAML 当前可靠阈值为 0.65、低置信度下界为 0.45（属性类默认可靠阈值 0.70）；客服只消费 `reliable/suggestedRefusalReason`，不复制这些阈值。MySQL 原始分数仅在检索边界做 `s/(s+1)` 归一化，本地检索阈值独立配置为 0.60。
-
-外部 `confidence` 只来自模型输出，与检索相似度分开；本地 `modelVersion=local-extractive`，`confidence` 明确定义为依据相关度的保守答案相关度估计，不能声称是模型概率。
-
-分类、检索、生成及有限重试共享同一次 `GuardedRagClient` 的总体截止时间与并发保护，不为每次重试重置预算。401/403、其他永久 HTTP 错误、配置错误和协议错误不重试；瞬时网络故障、429、5xx可在剩余预算内重试。
+检索和生成共享同一次 `GuardedRagClient` 的总超时与并发保护，重试也消耗同一预算。RAG 模式只调用一次生成模型；MySQL 兼容模式另加一次模型分类。
 两次调用都严格验证完整响应、字段类型、置信度范围和引用，不接收工具调用或截断响应。
-每次业务请求独立收集检索版本审计，按首次出现顺序去重；生成失败、后续重试提前失败或外层硬超时均保留已检索版本。
-审计状态与身份、截止时间分别管理，只保存版本 ID，不作为引用候选，也不为等待取消中的调用而延长预算。
 HTTP stub 测试验证流程与边界，不能证明真实模型对自然语言、混合请求和提示注入的分类准确率；上线仍需代表性语义评测。
 
 配置项:
@@ -110,21 +96,12 @@ HTTP stub 测试验证流程与边界，不能证明真实模型对自然语言�
 ```yaml
 itticket.consultation.ai:
   provider: openai-compatible
-  retrieval-provider: ${AI_RETRIEVAL_PROVIDER:rag-service}
-  rag-base-url: ${AI_RAG_BASE_URL:http://127.0.0.1:8302}
-  rag-request-timeout-ms: ${AI_RAG_REQUEST_TIMEOUT_MS:15000}
   base-url: https://<endpoint>/compatible-mode/v1   # 不含 /chat/completions
   api-key: ${AI_API_KEY:}                            # 见下方「凭据」
   model: qwen3-vl-32b-thinking
   max-output-tokens: 8192
   temperature: 0.0
 ```
-
-RAG 端还需注入 `EMBEDDING_API_KEY`、可选 `EMBEDDING_BASE_URL/EMBEDDING_MODEL`。桌面启动脚本为当前端口显式设置 `AI_RAG_BASE_URL` 对应的 `http://127.0.0.1:28302`；其他环境需使用实际服务地址。Nacos 网关模板已包含 `/api/v1/rag/**` 路由。
-
-RAG 请求身份在认证请求线程冻结为 `RagCaller(userId, role)`，只转发 `X-User-Id/X-User-Role/X-Request-Id`；工作线程不读 ThreadLocal，不发送个人资料或模型密钥。该内部地址必须位于受信任网络并阻止客户端直接伪造身份头；服务身份认证升级未在本轮实现。
-
-验收使用本地 HTTP stub 与真实组合组件，覆盖四种装配、拒答/失败区分、身份传递、共享超时与生成前后版本复核。真实 ES、embedding 和生成模型尚未端到端联调；索引指针、Outbox 消费和知识生命周期未在本轮扩展。未自动重启或发布运行中的服务。
 
 **凭据**:`application.yml` 只留 `${AI_API_KEY:}` 占位。本地开发把真实 key 写在模块根目录的
 `ai-secrets.yml`(已 gitignore,不打进 jar),由 `spring.config.import: optional:file:./ai-secrets.yml`
@@ -244,9 +221,8 @@ curl -X POST http://localhost:8080/api/v1/consultations/$SID/transfer \
 - **工单侧负载**:`TicketWorkloadProvider` 默认返回 0,接入 ticket-service 内部接口后替换实现即可。
 - **Outbox 投递到 Redis Streams**:当前技术栈无 Redis,`DomainEventPublisher.Logging` 是接线点;
   接入真实队列前不得宣称满足 EV-003 的端到端投递语义(TR-005)。
-- **向量检索与 Rerank**:远端检索策略调用 `rag-service`，其 ES/embedding 检索与排序由该服务负责；
-  本地检索策略使用 MySQL ngram 全文索引 + LIKE 回退。模型负责范围判定与受约束生成，不承担召回。
-  仅正常检索且无相关依据时允许办公 IT 通用建议；检索拒答与服务故障不能转为通用回答，实际引用始终复核当前发布版本。
+- **向量检索与 Rerank**:当前召回是 MySQL ngram 全文索引 + LIKE 回退,没有 Embedding 与向量库。
+  模型负责范围判定与受约束生成，不承担召回。召回不足时允许办公 IT 通用建议；实际使用的知识引用仍严格校验，并持续改进检索质量。
 
 ## 6. 关键实现约定
 

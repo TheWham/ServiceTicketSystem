@@ -86,6 +86,13 @@ public class ApiExceptionHandler {
         return build(ApiCode.OBJECT_NOT_FOUND, ApiCode.OBJECT_NOT_FOUND.getDefaultMessage(), null, null);
     }
 
+    @ExceptionHandler({org.springframework.web.multipart.MultipartException.class,
+            org.springframework.web.multipart.support.MissingServletRequestPartException.class})
+    public ResponseEntity<ApiEnvelope<Void>> handleMultipart(Exception e) {
+        return build(ApiCode.VALIDATION_ERROR, ApiCode.VALIDATION_ERROR.getDefaultMessage(),
+                List.of(FieldIssue.invalid("file", "请上传有效文件，单文件最多 20MB，请求最多 21MB")), null);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiEnvelope<Void>> handleUnknown(Exception e) {
         log.error("[consultation] 未捕获异常 requestId={}", RequestContext.get(), e);

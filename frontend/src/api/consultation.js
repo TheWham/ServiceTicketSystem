@@ -48,25 +48,19 @@ http.interceptors.request.use(config => {
  * 字段级错误(PRD 21.1 errors 数组)拼进消息,方便直接展示。
  */
 http.interceptors.response.use(
-  res => {
-    const body = res.data
-    if (body?.code !== 'SUCCESS') {
-      const error = new Error(body?.message || '咨询服务返回了无效响应，请重试。')
-      error.code = body?.code || 'INVALID_RESPONSE'
-      error.requestId = body?.request_id
-      error.errors = body?.errors
-      throw error
+  res => res.config?.responseType === 'blob' ? res.data : res.data?.data,
+  async err => {
+    let body = err.response?.data
+    if (typeof Blob !== 'undefined' && body instanceof Blob) {
+      try { body = JSON.parse(await body.text()) } catch { body = null }
     }
-    return body.data
-  },
-  err => {
-    const body = err.response?.data
     let msg = body?.message || err.message || '网络错误'
     if (Array.isArray(body?.errors) && body.errors.length) {
       msg = body.errors.map(e => `${e.field}: ${e.message || e.reason}`).join('；')
     }
     if (err.code === 'ECONNABORTED') {
-      msg = 'AI 响应超时，可以转人工或直接提交工单'
+      msg = err.config?.url?.includes('/ai-messages')
+        ? 'AI 响应超时，可以转人工或直接提交工单' : '请求超时，请稍后重试'
     }
     const error = new Error(msg)
     error.code = body?.code || 'NETWORK_ERROR'
@@ -106,28 +100,29 @@ export const consultationApi = {
     http.post(`/consultations/${id}/transfer`, { categoryId }),
 
   /** OpenAPI 05 人工消息。clientMessageId 用于重发防重(RD-002)。 */
-  sendMessage: (id, content, clientMessageId) =>
+  sendMessage: (id, content, clientMessageId, attachmentIds = []) =>
     http.post(`/consultations/${id}/messages`, {
-      content,
+      ...(content?.trim() ? { content } : {}),
+      ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
       client_message_id: clientMessageId || randomId('cmsg')
     }),
 
-  /** 完整的升序历史；分页属于传输层，调用方只接收消息数组。 */
-  listMessages: async (id, { signal } = {}) => {
-    const messages = []
-    const pageSize = 100
-    for (let page = 1; ; page++) {
-      signal?.throwIfAborted()
-      const result = await http.get(`/consultations/${id}/messages`, { params: { page, pageSize }, signal })
-      signal?.throwIfAborted()
-      if (!Array.isArray(result?.items)) throw new Error('咨询消息响应格式无效，请重试。')
-      messages.push(...result.items)
-      const hasTotal = Number.isFinite(result.total) && result.total >= 0
-      if (!result.items.length || (hasTotal ? messages.length >= result.total : result.items.length < pageSize)) {
-        return messages
-      }
-    }
+  /** 聊天附件先上传为草稿，发送消息时以 attachment_ids 绑定。 */
+  uploadAttachment: (id, file, onProgress, signal) => {
+    const data = new FormData()
+    data.append('file', file)
+    return http.post(`/consultations/${id}/attachments`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000, signal,
+      onUploadProgress: event => onProgress?.(event.total ? Math.round(event.loaded * 100 / event.total) : 0)
+    })
   },
+  removeAttachment: (id, attachmentId) => http.delete(`/consultations/${id}/attachments/${attachmentId}`),
+  attachmentBlob: (id, attachmentId) => http.get(`/consultations/${id}/attachments/${attachmentId}/content`, {
+    responseType: 'blob', timeout: 120000
+  }),
+
+  listMessages: (id, page = 1, pageSize = 100) =>
+    http.get(`/consultations/${id}/messages`, { params: { page, pageSize } }),
 
   /** 工程师提交解决结论 */
   submitResolution: (id, conclusion) =>

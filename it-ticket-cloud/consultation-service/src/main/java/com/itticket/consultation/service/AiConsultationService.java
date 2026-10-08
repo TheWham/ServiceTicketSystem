@@ -3,7 +3,6 @@ package com.itticket.consultation.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.itticket.consultation.adapter.GuardedRagClient;
 import com.itticket.consultation.adapter.RagQuery;
-import com.itticket.consultation.adapter.RagCaller;
 import com.itticket.consultation.adapter.RagResult;
 import com.itticket.consultation.api.ApiCode;
 import com.itticket.consultation.api.ApiException;
@@ -88,11 +87,16 @@ public class AiConsultationService {
         messageService.appendEmployeeMessage(sessionId, user.userId(),
                 "ai-q:" + idempotencyKey, request.message());
 
+        boolean highRisk = !"rag-service".equals(properties.getAi().getRetrievalProvider())
+                && !"openai-compatible".equals(properties.getAi().getProvider())
+                && AiAnswerGuard.matchesHighRisk(
+                request.message(), properties.getAi().getHighRiskKeywords());
+
         RagResult result = null;
-        if (properties.getAi().isAnswerEnabled()) {
-            RagQuery query = new RagQuery(sessionId, request.message(),
+        if (properties.getAi().isAnswerEnabled() && !highRisk) {
+            RagQuery query = new RagQuery(sessionId, request.message(), List.of(),
                     contextCategory(consultation, request), contextAsset(request),
-                    properties.getAi().getTopK(), new RagCaller(user.userId(), user.role().name()));
+                    properties.getAi().getTopK(), user.userId(), user.role().name());
             result = ragClient.answer(query, RequestContext.get());
         }
 
@@ -101,7 +105,7 @@ public class AiConsultationService {
         requireAiActive(transitionService.loadForUpdate(sessionId));
 
         AiAnswerGuard.Verdict verdict = AiAnswerGuard.evaluate(
-                result, properties.getAi(),
+                result, properties.getAi(), highRisk,
                 knowledgeQueryService::isPublishedCurrentVersion);
 
         String interactionId = persistInteraction(sessionId, result, verdict);
@@ -206,8 +210,8 @@ public class AiConsultationService {
      * 冷启动期知识库内容少,员工认可的通用能力回答是高质量沉淀来源,
      * 知识库管理员审核后可发布为正式知识,加速知识库建设。
      * 原始对话不自动训练、不自动入库、不自动发布;本服务只落 {@code ai_interaction.feedback},
-     * queuedForOptimization=true 仅表示持久化的待处理反馈标记；当前尚无知识域消费者、
-     * 脱敏任务或审核入库流程，不代表内容已经进入已实现的队列或完成脱敏入库。
+     * queuedForOptimization=true 表示持久化的待处理反馈标记，不代表审核完成。
+     * rag-service 定时消费 HELPFUL 的通用回答，脱敏后提交知识审核；其他反馈保留供质量分析。
      */
     public AiFeedbackResponse feedback(CurrentUser user, String sessionId, AiFeedbackRequest request,
                                        String idempotencyKey) {
@@ -226,7 +230,7 @@ public class AiConsultationService {
                             .set(AiInteraction::getFeedback, request.feedback())
                             .set(AiInteraction::getUpdatedAt, Times.nowUtc()));
 
-                    // 持久化待处理反馈标记；未来知识域可消费，当前不自动脱敏、发布或训练。
+                    // 持久化反馈由知识域异步消费；不自动发布或训练。
                     boolean queued = true;
                     return new AiFeedbackResponse(request.interactionId(), true, queued);
                 }).value();

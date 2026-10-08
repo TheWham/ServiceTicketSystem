@@ -1,32 +1,27 @@
 <template>
   <div class="account-page">
-    <header class="page-head">
-      <div><h1>账号管理</h1><p>管理成员身份、访问角色与登录凭据。</p></div>
-      <el-button type="primary" :icon="Plus" @click="openCreate">新建账号</el-button>
-    </header>
-    <section class="account-section" aria-label="账号列表">
-      <div class="account-toolbar">
-        <el-input v-model="search" clearable :prefix-icon="Search" placeholder="搜索姓名、账号、员工号或部门" aria-label="搜索账号" class="account-search" />
-        <el-select v-model="roleFilter" clearable placeholder="全部角色" aria-label="按角色筛选" class="role-filter">
-          <el-option v-for="(label, code) in roleMap" :key="code" :label="label" :value="code" />
-        </el-select>
-        <span v-if="!loading && !loadError" class="result-count" role="status">{{ filteredAccounts.length }} / {{ accounts.length }} 个账号</span>
-        <el-button :loading="loading" @click="load">刷新</el-button>
-      </div>
-      <div v-if="loadError" class="error-state" role="alert">
-        <el-alert :title="loadError" type="error" :closable="false" show-icon />
-        <el-button @click="load">重试加载</el-button>
-      </div>
-      <el-table :data="filteredAccounts" v-loading="loading" v-if="!loadError" row-key="user_id" :empty-text="loading ? '正在加载账号…' : (search || roleFilter ? '没有符合条件的账号，请调整搜索或角色' : '暂无账号，点击新建账号添加成员')">
+    <div class="page-head">
+      <div><span class="page-eyebrow">ACCESS MANAGEMENT</span><h1 class="page-title">账号管理</h1><p class="page-sub">维护员工账号与角色权限，让每位成员进入对应工作台</p></div>
+      <div class="heading-actions"><el-button :icon="Refresh" :loading="loading" @click="load">刷新</el-button><el-button type="primary" :icon="Plus" @click="openCreate">新建账号</el-button></div>
+    </div>
+    <el-alert v-if="loadError" :title="loadError" type="error" show-icon :closable="false" class="page-error"><el-button link type="primary" @click="load">重新加载</el-button></el-alert>
+    <el-card shadow="never">
+      <template #header>
+        <div class="card-header">
+          <span class="section-title">账号列表</span><span class="scope-note">已加载 {{ accounts.length }} 个账号</span>
+        </div>
+      </template>
+
+      <el-table :data="accounts" v-loading="loading" stripe :empty-text="loadError ? '账号加载失败，请重试' : '暂无账号，可新建成员账号'">
         <el-table-column prop="user_id" label="用户ID" width="110" />
         <el-table-column prop="employee_no" label="员工号" width="100" />
         <el-table-column prop="name" label="姓名" width="120" />
         <el-table-column prop="department" label="部门" width="120">
-          <template #default="{ row }">{{ row.department || row.department_id || '—' }}</template>
+          <template #default="{ row }">{{ row.department || '—' }}</template>
         </el-table-column>
         <el-table-column label="角色" width="140">
           <template #default="{ row }">
-            <el-tag :type="roleTagType(row.role)" size="small" effect="plain">{{ roleMap[row.role] || row.role }}</el-tag>
+            <el-tag :type="roleTagType(row.role)" size="small" effect="dark">{{ roleMap[row.role] || row.role }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="90">
@@ -43,29 +38,29 @@
           </template>
         </el-table-column>
       </el-table>
-    </section>
+    </el-card>
 
     <!-- 新建账号弹窗 -->
     <el-dialog v-model="createVisible" title="新建账号" width="min(460px, calc(100vw - 32px))" :close-on-click-modal="false">
-      <el-form :model="createForm" label-width="90px">
+      <el-form :model="createForm" label-position="top">
         <el-form-item label="用户ID" required>
-          <el-input v-model="createForm.user_id" placeholder="登录账号，如 U_EMP02" />
+          <el-input v-model="createForm.userId" placeholder="登录账号，如 U_EMP02" />
         </el-form-item>
         <el-form-item label="员工号" required>
-          <el-input v-model="createForm.employee_no" placeholder="如 E1002" />
+          <el-input v-model="createForm.employeeNo" placeholder="如 E1002" />
         </el-form-item>
         <el-form-item label="姓名" required>
           <el-input v-model="createForm.name" placeholder="真实姓名" />
         </el-form-item>
         <el-form-item label="部门">
-          <el-input v-model="createForm.department_id" placeholder="如 D_IT" />
+          <el-input v-model="createForm.departmentId" placeholder="如 D_IT" />
         </el-form-item>
         <el-form-item label="角色" required>
-          <el-select v-model="createForm.role_code" placeholder="选择角色" style="width: 100%">
+          <el-select v-model="createForm.roleCode" placeholder="选择角色" style="width: 100%">
             <el-option label="员工" value="EMPLOYEE" />
             <el-option label="工程师" value="ENGINEER" />
             <el-option label="平台管理员" value="PLATFORM_ADMIN" />
-            <el-option label="知识库管理员" value="KNOWLEDGE_ADMIN" />
+            <el-option label="知识库管理员" value="KB_ADMIN" />
           </el-select>
         </el-form-item>
         <el-form-item label="初始密码" required>
@@ -80,7 +75,7 @@
 
     <!-- 重置密码弹窗 -->
     <el-dialog v-model="resetVisible" :title="`重置密码 · ${resetTarget?.name || ''}`" width="min(400px, calc(100vw - 32px))" :close-on-click-modal="false">
-      <el-form label-width="90px">
+      <el-form label-position="top">
         <el-form-item label="新密码" required>
           <el-input v-model="resetPwd" type="password" show-password placeholder="6-32位，含字母和数字" />
         </el-form-item>
@@ -93,16 +88,16 @@
 
     <!-- 修改角色弹窗 -->
     <el-dialog v-model="roleVisible" :title="`修改角色 · ${roleTarget?.name || ''}`" width="min(440px, calc(100vw - 32px))" :close-on-click-modal="false">
-      <el-form label-width="90px">
+      <el-form label-position="top">
         <el-form-item label="当前角色">
           <el-tag>{{ roleLabel(roleTarget?.role) }}</el-tag>
         </el-form-item>
         <el-form-item label="新角色" required>
-          <el-select v-model="roleForm.role_code" placeholder="选择新角色" style="width: 100%">
-            <el-option label="员工" value="EMPLOYEE" />
-            <el-option label="工程师" value="ENGINEER" />
-            <el-option label="平台管理员" value="PLATFORM_ADMIN" />
-            <el-option label="知识库管理员" value="KNOWLEDGE_ADMIN" />
+          <el-select v-model="roleForm.roleCode" placeholder="选择新角色" style="width: 100%">
+            <el-option label="员工 EMPLOYEE" value="EMPLOYEE" />
+            <el-option label="工程师 ENGINEER" value="ENGINEER" />
+            <el-option label="平台管理员 PLATFORM_ADMIN" value="PLATFORM_ADMIN" />
+            <el-option label="知识库管理员 KB_ADMIN" value="KB_ADMIN" />
           </el-select>
         </el-form-item>
         <el-form-item label="修改原因">
@@ -120,30 +115,21 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Plus, Search } from '@element-plus/icons-vue'
+import { Plus, Refresh } from '@element-plus/icons-vue'
 import { userApi } from '../api/index.js'
 
-const roleMap = { EMPLOYEE: '员工', ENGINEER: '工程师', PLATFORM_ADMIN: '平台管理员', KNOWLEDGE_ADMIN: '知识库管理员' }
-const roleTagType = (r) => ({ EMPLOYEE: 'success', ENGINEER: 'primary', PLATFORM_ADMIN: 'warning', KNOWLEDGE_ADMIN: 'danger' }[r] || 'info')
+const roleMap = { EMPLOYEE: '员工', ENGINEER: '工程师', PLATFORM_ADMIN: '平台管理员', KB_ADMIN: '知识库管理员', KNOWLEDGE_ADMIN: '知识库管理员' }
+const roleTagType = (r) => ({ EMPLOYEE: 'success', ENGINEER: 'primary', PLATFORM_ADMIN: 'warning', KB_ADMIN: 'danger', KNOWLEDGE_ADMIN: 'danger' }[r] || 'info')
 
 const accounts = ref([])
 const loading = ref(false)
 const loadError = ref('')
-const search = ref('')
-const roleFilter = ref('')
-let loadRequest = 0
-const filteredAccounts = computed(() => {
-  const keyword = search.value.trim().toLocaleLowerCase()
-  return accounts.value.filter(account => (!roleFilter.value || account.role === roleFilter.value) &&
-    (!keyword || [account.user_id, account.employee_no, account.name, account.department, account.department_id]
-      .some(value => String(value || '').toLocaleLowerCase().includes(keyword))))
-})
 
 const createVisible = ref(false)
 const creating = ref(false)
-const createForm = ref({ user_id: '', employee_no: '', name: '', department_id: '', role_code: '', password: '' })
+const createForm = ref({ userId: '', employeeNo: '', name: '', departmentId: '', roleCode: '', password: '' })
 
 const resetVisible = ref(false)
 const resetting = ref(false)
@@ -151,31 +137,26 @@ const resetTarget = ref(null)
 const resetPwd = ref('')
 
 async function load() {
-  const request = ++loadRequest
   loading.value = true
   loadError.value = ''
-  accounts.value = []
   try {
     const res = await userApi.listAccounts()
-    if (request !== loadRequest) return
-    if (!Array.isArray(res?.data)) throw new Error('账号数据格式异常，请重试')
     accounts.value = res.data
   } catch (e) {
-    if (request === loadRequest) loadError.value = e.message || '账号加载失败'
+    loadError.value = e.message || '账号加载失败，请稍后重试'
   } finally {
-    if (request === loadRequest) loading.value = false
+    loading.value = false
   }
 }
 
 function openCreate() {
-  createForm.value = { user_id: '', employee_no: '', name: '', department_id: '', role_code: '', password: '' }
+  createForm.value = { userId: '', employeeNo: '', name: '', departmentId: '', roleCode: '', password: '' }
   createVisible.value = true
 }
 
 async function doCreate() {
-  if (creating.value) return
   const f = createForm.value
-  if (!f.user_id || !f.employee_no || !f.name || !f.role_code || !f.password) {
+  if (!f.userId || !f.employeeNo || !f.name || !f.roleCode || !f.password) {
     ElMessage.warning('请填写完整的账号信息')
     return
   }
@@ -199,14 +180,13 @@ function openReset(row) {
 }
 
 async function doReset() {
-  if (resetting.value) return
   if (!resetPwd.value) {
     ElMessage.warning('请输入新密码')
     return
   }
   resetting.value = true
   try {
-    await userApi.resetPassword(resetTarget.value.user_id, { new_password: resetPwd.value })
+    await userApi.resetPassword(resetTarget.value.user_id, { newPassword: resetPwd.value })
     ElMessage.success('密码已重置')
     resetVisible.value = false
   } catch (e) {
@@ -220,17 +200,16 @@ async function doReset() {
 const roleVisible = ref(false)
 const roleSaving = ref(false)
 const roleTarget = ref(null)
-const roleForm = ref({ role_code: '', reason: '' })
+const roleForm = ref({ roleCode: '', reason: '' })
 
 function openRole(row) {
   roleTarget.value = row
-  roleForm.value = { role_code: row.role, reason: '' }
+  roleForm.value = { roleCode: row.role, reason: '' }
   roleVisible.value = true
 }
 
 async function doChangeRole() {
-  if (roleSaving.value) return
-  if (!roleForm.value.role_code) {
+  if (!roleForm.value.roleCode) {
     ElMessage.warning('请选择新角色')
     return
   }
@@ -250,27 +229,34 @@ async function doChangeRole() {
 const roleLabel = (r) => roleMap[r] || r || '-'
 
 onMounted(load)
-onUnmounted(() => { ++loadRequest })
 </script>
 
 <style scoped>
-.account-page { color: var(--el-text-color-primary); min-width: 0; }
-.page-head, .account-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.page-head { justify-content: space-between; margin-bottom: 24px; }
-h1 { margin: 0; font-size: 24px; letter-spacing: -.6px; }
-.page-head p { margin: 8px 0 0; color: var(--el-text-color-secondary); font-size: 14px; }
-.account-section { border-top: 1px solid var(--el-border-color); }
-.account-toolbar { padding: 18px 0; }
-.account-search { width: min(380px, 100%); }
-.role-filter { width: 170px; }
-.result-count { margin-left: auto; color: var(--el-text-color-secondary); font-size: 13px; }
-.error-state { display: flex; align-items: center; gap: 12px; padding: 16px 0; }
-.account-page :deep(.el-table) { --el-table-header-bg-color: var(--el-fill-color-light); }
-@media (max-width: 640px) {
-  h1 { font-size: 21px; }
-  .account-search { width: 100%; }
-  .role-filter { flex: 1; }
-  .result-count { margin-left: 0; }
-  .error-state { flex-wrap: wrap; }
+.account-page { min-width:0; }
+.card-header { display: flex; justify-content: space-between; align-items: center; }
+.title { font-weight: 600; font-size: 16px; }
+
+.page-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:24px; }
+.page-eyebrow { display:block; color:var(--el-color-primary); font-size:12px; font-weight:700; letter-spacing:1.4px; margin-bottom:8px; }
+.page-title { margin:0; font-size:28px; line-height:1.3; color:var(--el-text-color-primary); }
+.page-sub { margin:8px 0 0; font-size:14px; line-height:1.6; color:var(--el-text-color-secondary); }
+.section-title { font-size:18px; font-weight:650; color:var(--el-text-color-primary); }
+.scope-note { margin:8px 0 16px; font-size:13px; color:var(--el-text-color-secondary); line-height:1.6; }
+.page-error { margin-bottom:16px; }
+:deep(.el-card) { border-radius:16px; }
+:deep(.el-table .cell) { line-height:1.6; }
+:deep(.el-dialog) { max-width:calc(100vw - 32px); border-radius:16px; }
+:deep(.el-form-item__label) { color:var(--el-text-color-regular); }
+@media(max-width:767px) {
+  .page-head { flex-wrap:wrap; margin-bottom:20px; }
+  .page-title { font-size:24px; }
+  :deep(.el-card__body) { padding:16px; }
+  :deep(.el-dialog) { margin-top:5vh; }
+  :deep(.el-pagination) { flex-wrap:wrap; gap:8px; justify-content:center; }
 }
+
+.heading-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.heading-actions :deep(.el-button + .el-button) { margin-left:0; }
+.card-header { gap:12px; flex-wrap:wrap; }
+.card-header .scope-note { margin:0; }
 </style>

@@ -24,9 +24,14 @@ import static org.mockito.Mockito.when;
 
 /**
  * 工单列表的姓名回填降级（user-service 故障不阻塞列表）：
- * - Feign 抛错 / 返回 null → 姓名置空，列表仍返回
- * - 脏数据（user_id 为 null 的用户记录）→ 不抛 500，正常记录可回填
- * - 重复 user_id 记录 → 保留第一条，不抛 Duplicate key
+ * - Feign 抛错 / 返回 null -> 姓名置空，列表仍返回
+ * - 脏数据（user_id 为 null 的用户记录）-> 不抛 500，正常记录可回填
+ * - 重复 user_id 记录 -> 保留第一条，不抛 Duplicate key
+ *
+ * 被测的是 TicketService 内部批量查用户姓名的私有方法 batchUsers
+ * （通过反射调用，避免为测试扩大可见性）：它负责把列表里的 creator_id/assignee_id
+ * 批量翻译成姓名。其降级原则：姓名是展示增强信息，缺失时展示单号即可，
+ * 绝不允许姓名回填失败导致整个工单列表 500。
  */
 class UserLookupDegradationTest {
 
@@ -52,12 +57,14 @@ class UserLookupDegradationTest {
         return (Map<String, UserInfo>) batchUsers.invoke(service, ids);
     }
 
+    /** user-service 整体不可用：回填结果为空 Map（列表姓名列显示单号兜底），不向上抛异常 */
     @Test
     void feignFailureDegradesToEmptyNames() throws Exception {
         when(userClient.batch(any(IdsRequest.class))).thenThrow(new RuntimeException("user-service down"));
         assertTrue(invoke(List.of("U1")).isEmpty());
     }
 
+    /** 返回包装为 null、或 data 为 null 的两种空响应形态：同样降级为空 Map */
     @Test
     void nullResultDegradesToEmptyNames() throws Exception {
         when(userClient.batch(any(IdsRequest.class))).thenReturn(null);
@@ -66,6 +73,7 @@ class UserLookupDegradationTest {
         assertTrue(invoke(List.of("U1")).isEmpty());
     }
 
+    /** 响应里混入 user_id=null 的脏行：跳过脏行，正常用户的姓名仍能成功回填 */
     @Test
     void dirtyRowWithNullUserIdDoesNotBreakValidEntries() throws Exception {
         UserInfo broken = new UserInfo();
@@ -78,6 +86,7 @@ class UserLookupDegradationTest {
         assertEquals("张三", result.get("U1").getName());
     }
 
+    /** 同一 user_id 出现两条（理论不应发生）：保留先到者，Collectors.toMap 不得抛 IllegalStateException */
     @Test
     void duplicateUserIdKeepsFirstEntry() throws Exception {
         when(userClient.batch(any(IdsRequest.class))).thenReturn(Result.ok(List.of(
@@ -88,6 +97,7 @@ class UserLookupDegradationTest {
         assertEquals("张三", result.get("U1").getName());
     }
 
+    /** 空 ID 集合（空列表或 null）直接短路，避免一次无意义的远程调用 */
     @Test
     void emptyIdListSkipsRemoteCall() throws Exception {
         assertTrue(invoke(List.of()).isEmpty());

@@ -1,177 +1,122 @@
-<template>
-  <a href="#main-content" class="skip-link">跳转到主要内容</a>
-  <div v-if="!online" class="connection-banner" role="status"><el-icon><Connection /></el-icon>网络已断开。已显示的内容仍可查看，请联网后重试。</div>
+﻿<template>
   <router-view v-if="isLoginPage" />
-  <main v-else-if="!userStore.currentUser" id="main-content" class="session-loading" role="status">正在核验登录身份…</main>
-  <div v-else class="workspace-shell" :class="{ 'nav-open': mobileNav, 'is-offline': !online }">
-    <button v-if="mobileNav" class="nav-backdrop" aria-label="关闭导航" @click="mobileNav = false" />
-    <aside ref="navRef" class="workspace-nav" aria-label="工作区导航">
-      <button class="mobile-nav-close" aria-label="关闭导航" @click="mobileNav = false">关闭 ×</button>
-      <router-link :to="home" class="workspace-brand" @click="mobileNav = false">
-        <span class="brand-symbol" aria-hidden="true">&gt;_</span>
-        <span><strong>IT 服务工单系统</strong><small>IT SERVICE DESK</small></span>
-      </router-link>
-      <button class="workspace-search-trigger" @click="searchOpen = true">
-        <el-icon><Search /></el-icon><span>快速前往</span><kbd>Ctrl K</kbd>
-      </button>
-      <p class="nav-caption">工作空间</p>
-      <el-menu :default-active="activeMenu" class="workspace-menu" @select="onMenuSelect">
-        <el-menu-item index="home"><el-icon><Tickets /></el-icon><template #title>{{ homeLabel }}</template></el-menu-item>
-        <el-menu-item v-if="userStore.isEmployee" index="create"><el-icon><CirclePlus /></el-icon><template #title>提交工单</template></el-menu-item>
-        <el-menu-item v-if="userStore.isEmployee" index="consultation"><el-icon><ChatDotRound /></el-icon><template #title>智能客服</template></el-menu-item>
-        <el-menu-item v-if="isAdmin" index="accounts"><el-icon><User /></el-icon><template #title>账号管理</template></el-menu-item>
-        <el-menu-item v-if="isAdmin" index="knowledge"><el-icon><Reading /></el-icon><template #title>知识审核</template></el-menu-item>
-      </el-menu>
-      <div class="nav-bottom">
-        <div class="workspace-note">
-          <span class="tiny-label">SUPPORT, SIMPLIFIED</span><p>每个问题，都有回应。</p><span>提交 · 协作 · 解决</span>
-        </div>
-        <button class="nav-profile" @click="openPassword" aria-label="账号信息与修改密码">
-          <span class="profile-initial">{{ userStore.currentUser?.name?.[0] || '?' }}</span>
-          <span><strong>{{ userStore.currentUser?.name }}</strong><small>{{ roleLabel }}</small></span>
-          <el-icon><Setting /></el-icon>
-        </button>
-      </div>
+  <div v-else class="desk-app">
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+    <aside class="desk-sidebar" :class="{ compact: collapse }" aria-label="主导航">
+      <RouterLink :to="home" class="desk-brand" aria-label="IT 智能服务台首页">
+        <span class="brand-monogram">IT<span class="brand-dot"></span></span>
+        <span v-if="!collapse" class="brand-copy"><strong>智能服务台</strong><small>SERVICE DESK</small></span>
+      </RouterLink>
+      <div class="nav-section-title">{{ collapse ? '服务' : `${label}工作空间` }}</div>
+      <nav class="desk-nav">
+        <RouterLink v-for="link in links" :key="link.id" :to="link.to" class="desk-nav-link" :class="{ active: active === link.id }" :aria-current="active === link.id ? 'page' : undefined" :aria-label="link.label" :title="collapse ? link.label : undefined">
+          <el-icon aria-hidden="true"><component :is="link.icon" /></el-icon><span v-if="!collapse">{{ link.label }}</span>
+          <span v-if="!collapse && active === link.id" class="nav-active-dot"></span>
+        </RouterLink>
+      </nav>
+      <div v-if="!collapse" class="sidebar-note"><el-icon aria-hidden="true"><Connection /></el-icon><strong>让每一次请求都有回应</strong><p>连接问题与答案<br>让工作顺畅一点</p></div>
+      <div class="sidebar-bottom"><span v-if="!collapse">IT SERVICE DESK</span><el-button text class="sidebar-toggle" :aria-label="collapse ? '展开导航' : '收起导航'" @click="collapse = !collapse"><el-icon><Expand v-if="collapse" /><Fold v-else /></el-icon></el-button></div>
     </aside>
-    <div class="workspace-body" :inert="mobileNav || undefined">
-      <header class="workspace-topbar">
-        <div class="topbar-context">
-          <el-button class="mobile-menu-btn" text circle aria-label="打开导航" @click="mobileNav = !mobileNav">
-            <el-icon><Expand /></el-icon>
-          </el-button>
-          <span class="workspace-context">服务空间</span><span class="context-divider">/</span><strong>{{ breadcrumb }}</strong>
-        </div>
-        <div class="topbar-tools">
-          <span class="local-date">{{ today }}</span>
-          <NotificationBell />
-          <el-button text circle :aria-label="isDark ? '切换浅色主题' : '切换深色主题'"
-                     :title="isDark ? '切换浅色主题' : '切换深色主题'" @click="toggleDark">
-            <el-icon><Sunny v-if="isDark" /><Moon v-else /></el-icon>
-          </el-button>
+    <div class="desk-main-container">
+      <header class="desk-header">
+        <div class="header-location"><el-button text class="mobile-menu" aria-label="打开导航" :aria-expanded="mobileNav" @click="mobileNav = true"><el-icon><Menu /></el-icon></el-button><span class="workspace-label">{{ label }}服务</span><span class="breadcrumb-divider">/</span><span class="current-page">{{ currentTitle }}</span></div>
+        <div class="header-actions"><NotificationBell /><el-button text circle :aria-label="isDark ? '切换亮色' : '切换暗黑'" @click="isDark = !isDark"><el-icon><Sunny v-if="isDark" /><Moon v-else /></el-icon></el-button><span class="header-divider"></span>
           <el-dropdown @command="onUserCommand">
-            <button class="account-trigger" aria-label="账号菜单">
-              <span class="profile-initial small">{{ userStore.currentUser?.name?.[0] || '?' }}</span><el-icon><ArrowDown /></el-icon>
-            </button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item disabled>{{ userStore.currentUser?.name }} · {{ roleLabel }}</el-dropdown-item>
-                <el-dropdown-item command="changePwd">修改密码</el-dropdown-item>
-                <el-dropdown-item v-if="isAdmin" command="accounts">账号管理</el-dropdown-item>
-                <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
+            <button type="button" class="user-entry" aria-label="用户菜单"><el-avatar :size="34">{{ userStore.currentUser?.name?.[0] || '?' }}</el-avatar><span class="user-copy"><strong>{{ userStore.currentUser?.name }}</strong><small>{{ label }}</small></span><el-icon class="user-chevron"><ArrowDown /></el-icon></button>
+            <template #dropdown><el-dropdown-menu><el-dropdown-item disabled>{{ userStore.currentUser?.department || label }}</el-dropdown-item><el-dropdown-item command="changePwd" :icon="Lock">修改密码</el-dropdown-item><el-dropdown-item v-if="isAdmin" command="accounts" :icon="Setting">账号管理</el-dropdown-item><el-dropdown-item divided command="logout" :icon="SwitchButton">退出登录</el-dropdown-item></el-dropdown-menu></template>
           </el-dropdown>
         </div>
       </header>
-      <main id="main-content" class="workspace-main" tabindex="-1"><router-view /></main>
-      <footer class="workspace-footer"><span>IT 服务工单系统</span><span>IT SERVICE DESK</span></footer>
+      <main id="main-content" class="desk-main" tabindex="-1"><router-view /></main>
     </div>
-    <WorkspaceSearch v-model="searchOpen" :items="searchItems" @select="onMenuSelect" />
+    <el-drawer v-model="mobileNav" title="工作空间" direction="ltr" size="280px" class="mobile-navigation" :append-to-body="true">
+      <div class="mobile-brand"><span class="brand-monogram">IT</span><strong>智能服务台</strong></div>
+      <nav aria-label="移动端导航"><RouterLink v-for="link in links" :key="link.id" :to="link.to" class="mobile-nav-link" :class="{ active: active === link.id }" :aria-current="active === link.id ? 'page' : undefined" @click="mobileNav = false"><el-icon aria-hidden="true"><component :is="link.icon" /></el-icon>{{ link.label }}</RouterLink></nav>
+    </el-drawer>
     <ChangePasswordDialog v-model="pwdVisible" />
-    <template v-if="userStore.isEmployee && route.path !== '/consultation'">
-      <button class="chat-fab" title="智能客服 / 转人工" aria-label="智能客服 / 转人工" @click="consultOpen = true"><el-icon :size="20"><ChatDotRound /></el-icon><span>寻求帮助</span></button>
-      <el-drawer v-model="consultOpen" title="智能客服" size="min(540px, 100vw)" :append-to-body="true" :close-on-click-modal="false" destroy-on-close class="consult-drawer"><ConsultationChat :key="userStore.userId" @navigate="consultOpen = false" /></el-drawer>
-    </template>
   </div>
 </template>
-
 <script setup>
-import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { Expand, Fold, Sunny, Moon, Menu, Lock, Setting, SwitchButton, Connection, ArrowDown } from '@element-plus/icons-vue'
 import { useUserStore } from './stores/user.js'
-import { Tickets, CirclePlus, Expand, Sunny, Moon, User, Setting, ChatDotRound, Search, ArrowDown, Connection, Reading } from '@element-plus/icons-vue'
+import { roleHome, roleLabel, navigationFor, activeNavigation } from './utils/navigation.js'
 import NotificationBell from './components/NotificationBell.vue'
 import ChangePasswordDialog from './components/ChangePasswordDialog.vue'
-import ConsultationChat from './components/ConsultationChat.vue'
-import WorkspaceSearch from './components/WorkspaceSearch.vue'
 const userStore = useUserStore()
 const router = useRouter()
 const route = useRoute()
-const consultOpen = ref(false)
-const searchOpen = ref(false)
+const collapse = ref(false)
 const mobileNav = ref(false)
-const navRef = ref(null)
-let navFocusFrame = 0
-let mobileBreakpoint
 const pwdVisible = ref(false)
-const online = ref(typeof navigator === 'undefined' || navigator.onLine !== false)
-const isDark = ref(localStorage.getItem('app_theme') === 'dark' || (!localStorage.getItem('app_theme') && typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches))
-watch(isDark, value => { document.documentElement.classList.toggle('dark', value); localStorage.setItem('app_theme', value ? 'dark' : 'light') }, { immediate: true })
-const isLoginPage = computed(() => route.path === '/login')
-const home = computed(() => ({ EMPLOYEE: '/employee', ENGINEER: '/engineer', PLATFORM_ADMIN: '/dispatch', KNOWLEDGE_ADMIN: '/knowledge-admin' }[userStore.currentUser?.role] || '/login'))
-const homeLabel = computed(() => ({ EMPLOYEE: '我的工单', ENGINEER: '处理队列', PLATFORM_ADMIN: '工单调度', KNOWLEDGE_ADMIN: '知识管理' }[userStore.currentUser?.role] || '工作台'))
-const activeMenu = computed(() => route.path === '/accounts' ? 'accounts' : route.path === '/knowledge-admin' && isAdmin.value ? 'knowledge' : route.path === '/consultation' ? 'consultation' : route.query.view === 'create' ? 'create' : 'home')
-const breadcrumb = computed(() => ({ '/employee': '我的工单', '/engineer': '处理队列', '/dispatch': '工单调度', '/accounts': '账号管理', '/consultation': '智能客服', '/knowledge-admin': '知识管理' }[route.path] || '工作台'))
-const roleLabel = computed(() => ({ EMPLOYEE: '员工', ENGINEER: '工程师', PLATFORM_ADMIN: '平台管理员', KNOWLEDGE_ADMIN: '知识库管理员' }[userStore.currentUser?.role] || ''))
-const isAdmin = computed(() => userStore.currentUser?.role === 'PLATFORM_ADMIN')
-const today = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }).format(new Date())
-const searchItems = computed(() => [
-  { id: 'home', label: homeLabel.value, description: '查看与你相关的工作', keywords: '工作台 工单 列表 知识' },
-  ...(userStore.isEmployee ? [{ id: 'create', label: '提交工单', description: '描述问题并跟进处理', keywords: '新建 问题' }, { id: 'consultation', label: '智能客服', description: '获取帮助或转接人工', keywords: '咨询 AI 人工 帮助' }] : []),
-  ...(isAdmin.value ? [
-    { id: 'accounts', label: '账号管理', description: '查找账号、调整角色与重置密码', keywords: '用户 人员 角色' },
-    { id: 'knowledge', label: '知识审核', description: '审核并发布知识文章', keywords: '知识库 高风险 发布' }
-  ] : []),
-  { id: 'theme', label: isDark.value ? '切换浅色主题' : '切换深色主题', description: '调整工作台外观', keywords: '亮色 暗色 主题' },
-  { id: 'password', label: '修改密码', description: '更新你的登录密码', keywords: '安全 账号' }
-])
-function toggleDark() { isDark.value = !isDark.value }
-async function openPassword() { mobileNav.value = false; await nextTick(); pwdVisible.value = true }
-function onMenuSelect(index) {
-  mobileNav.value = false; searchOpen.value = false
-  if (index === 'consultation') { if (route.path !== '/consultation') consultOpen.value = true; return }
-  if (index === 'theme') return toggleDark()
-  if (index === 'password') return openPassword()
-  if (index === 'accounts' && isAdmin.value) return router.push('/accounts')
-  if (index === 'knowledge' && isAdmin.value) return router.push('/knowledge-admin')
-  if (index === 'create' && userStore.isEmployee) return router.push({ path: '/employee', query: { view: 'create' } })
-  router.push({ path: home.value, query: userStore.isEmployee ? { view: 'list' } : {} })
-}
-watch(() => userStore.userId, () => { consultOpen.value = false; searchOpen.value = false })
+const isDark = ref(localStorage.getItem('app_theme') === 'dark')
+watch(isDark, value => {
+  document.documentElement.classList.toggle('dark', value)
+  localStorage.setItem('app_theme', value ? 'dark' : 'light')
+}, { immediate: true })
 watch(() => route.fullPath, () => { mobileNav.value = false })
-watch(mobileNav, async open => {
-  cancelAnimationFrame(navFocusFrame)
-  await nextTick()
-  if (open) focusVisibleNavigation()
-  else document.querySelector('.mobile-menu-btn')?.focus()
-})
-function focusVisibleNavigation() {
-  if (!mobileNav.value) return
-  const button = navRef.value?.querySelector('.mobile-nav-close')
-  if (button && getComputedStyle(button).visibility === 'visible' && button.getClientRects().length) button.focus()
-  else navFocusFrame = requestAnimationFrame(focusVisibleNavigation)
+const isLoginPage = computed(() => route.path === '/login')
+const role = computed(() => userStore.currentUser?.role)
+const home = computed(() => roleHome(role.value))
+const label = computed(() => roleLabel(role.value))
+const links = computed(() => navigationFor(role.value))
+const active = computed(() => activeNavigation(role.value, route))
+const currentTitle = computed(() => links.value.find(link => link.id === active.value)?.label || '工作台')
+const isAdmin = computed(() => ['PLATFORM_ADMIN', 'KB_ADMIN'].includes(role.value))
+function onUserCommand(command) {
+  if (command === 'logout') { userStore.logout(); router.push('/login') }
+  else if (command === 'changePwd') pwdVisible.value = true
+  else if (command === 'accounts') router.push('/accounts')
 }
-function syncMobileBreakpoint() {
-  if (!mobileBreakpoint.matches) mobileNav.value = false
-}
-function onUserCommand(cmd) {
-  if (cmd === 'logout') { consultOpen.value = false; userStore.logout(); router.push('/login') }
-  else if (cmd === 'changePwd') openPassword()
-  else if (cmd === 'accounts' && isAdmin.value) router.push('/accounts')
-}
-function syncConnection() { online.value = navigator.onLine }
-function keyboard(event) {
-  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k' && !isLoginPage.value) { event.preventDefault(); searchOpen.value = !searchOpen.value }
-  if (event.key === 'Escape' && !searchOpen.value) mobileNav.value = false
-  if (mobileNav.value && !searchOpen.value && event.key === 'Tab') {
-    const items = [...navRef.value.querySelectorAll('a[href], button:not([disabled]), [tabindex="0"]')].filter(item => item.getClientRects().length)
-    const first = items[0], last = items.at(-1)
-    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
-    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
-  }
-}
-onMounted(() => {
-  mobileBreakpoint = window.matchMedia('(max-width: 760px)')
-  mobileBreakpoint.addEventListener('change', syncMobileBreakpoint)
-  window.addEventListener('online', syncConnection)
-  window.addEventListener('offline', syncConnection)
-  window.addEventListener('keydown', keyboard, true)
-})
-onUnmounted(() => {
-  cancelAnimationFrame(navFocusFrame)
-  mobileBreakpoint?.removeEventListener('change', syncMobileBreakpoint)
-  window.removeEventListener('online', syncConnection)
-  window.removeEventListener('offline', syncConnection)
-  window.removeEventListener('keydown', keyboard, true)
-})
 </script>
+<style scoped>
+.desk-app { height: 100dvh; display: flex; overflow: hidden; }
+.desk-sidebar { flex: 0 0 224px; width: 224px; display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; background: var(--desk-nav); color: #cbd5e1; }
+.desk-sidebar.compact { flex-basis: 76px; width: 76px; }
+.desk-brand { display: flex; gap: 12px; align-items: center; min-height: 96px; padding: 24px; text-decoration: none; color: white; }
+.compact .desk-brand { padding: 20px 16px; }
+.brand-monogram { width: 40px; height: 40px; display: grid; place-items: center; flex-shrink: 0; position: relative; background: #2563eb; color: white; font-size: 21px; font-weight: 800; border-radius: 12px; letter-spacing: -1px; }
+.brand-dot { width: 6px; height: 6px; background: #93c5fd; position: absolute; right: 7px; top: 7px; border-radius: 50%; }
+.brand-copy strong { display: block; font-size: 18px; letter-spacing: .5px; }
+.brand-copy small { display: block; font-size: 9px; letter-spacing: 2px; margin-top: 4px; color: #a8b9d1; }
+.nav-section-title { padding: 24px 26px 14px; font-size: 11px; letter-spacing: 1px; color: #a8b9d1; white-space: nowrap; }
+.compact .nav-section-title { padding-left: 24px; }
+.desk-nav { padding: 0 14px; display: flex; flex-direction: column; gap: 8px; }
+.desk-nav-link { display: flex; align-items: center; gap: 13px; min-height: 48px; padding: 12px 14px; border-radius: 9px; text-decoration: none; color: #cbd5e1; font-size: 14px; transition: background .18s, color .18s; }
+.desk-nav-link .el-icon { font-size: 20px; flex-shrink: 0; }
+.desk-nav-link:hover { background: #263955; color: white; }
+.desk-nav-link.active { background: #2563eb; color: white; font-weight: 600; box-shadow: 0 4px 12px #07163040; }
+.nav-active-dot { margin-left: auto; width: 5px; height: 5px; border-radius: 50%; background: #bfdbfe; }
+.sidebar-note { margin: auto 18px 24px; padding: 20px 16px; border: 1px solid #31415c; border-radius: 12px; background: #1b2d48; }
+.sidebar-note > .el-icon { font-size: 22px; color: #93c5fd; margin-bottom: 12px; }
+.sidebar-note strong { display: block; font-size: 12px; color: #f1f5f9; }
+.sidebar-note p { margin: 10px 0 0; font-size: 12px; line-height: 1.8; color: #a8b9d1; }
+.sidebar-bottom { margin-top: auto; display: flex; justify-content: space-between; align-items: center; min-height: 68px; padding: 10px 20px; border-top: 1px solid #31415c; }
+.sidebar-bottom span { font-size: 9px; letter-spacing: 1.8px; color: #a8b9d1; }
+.sidebar-toggle { color: #cbd5e1; }
+.sidebar-toggle:hover { color: white; background: #263955; }
+.compact .sidebar-bottom { padding: 10px 16px; }
+.desk-main-container { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.desk-header { height: 72px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--el-bg-color); border-bottom: 1px solid var(--el-border-color-lighter); padding: 0 32px; }
+.header-location, .header-actions { display: flex; align-items: center; gap: 16px; }
+.header-location { font-size: 13px; min-width: 0; }
+.workspace-label { color: var(--el-text-color-secondary); }
+.breadcrumb-divider { color: var(--el-text-color-placeholder); }
+.current-page { font-weight: 600; white-space: nowrap; }
+.header-divider { height: 26px; width: 1px; background: var(--el-border-color-lighter); }
+.user-entry { border: 0; background: none; color: var(--el-text-color-primary); display: flex; align-items: center; gap: 10px; padding: 5px; border-radius: 8px; cursor: pointer; font: inherit; text-align: left; }
+.user-entry:hover { background: var(--el-fill-color-light); }
+.user-entry .el-avatar { background: var(--el-color-primary-light-9); color: var(--el-color-primary); font-weight: 700; }
+.user-copy strong { display: block; font-size: 13px; font-weight: 600; }
+.user-copy small { font-size: 10px; color: var(--el-text-color-secondary); }
+.user-chevron { margin-left: 8px; font-size: 12px; }
+.desk-main { padding: 30px 32px; flex: 1; min-height: 0; overflow-y: auto; background: var(--el-bg-color-page); scroll-padding-top: 24px; }
+.desk-main:focus { outline: none; }
+.mobile-menu { display: none; }
+.mobile-brand { display: flex; align-items: center; gap: 12px; margin: 0 0 28px; }
+.mobile-nav-link { display: flex; align-items: center; gap: 14px; color: var(--el-text-color-regular); text-decoration: none; padding: 14px; margin-bottom: 6px; border-radius: 8px; }
+.mobile-nav-link.active { color: var(--el-color-primary); background: var(--el-color-primary-light-9); font-weight: 600; }
+@media (max-width: 1199px) and (min-width: 768px) { .desk-sidebar:not(.compact) { flex-basis: 196px; width: 196px; } .desk-brand { padding: 24px 18px; gap: 9px; } .brand-copy strong { font-size: 16px; } .desk-main { padding: 24px; } .desk-header { padding: 0 24px; } }
+@media (max-width: 767px) { .desk-sidebar { display: none; } .desk-header { height: 64px; padding: 0 12px; } .mobile-menu { display: inline-flex; margin: 0; } .header-location { gap: 6px; } .workspace-label, .breadcrumb-divider, .user-copy, .user-chevron, .header-divider { display: none; } .header-actions { gap: 4px; } .desk-main { padding: 20px 16px; } }
+</style>

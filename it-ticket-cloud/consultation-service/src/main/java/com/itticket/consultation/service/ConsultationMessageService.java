@@ -19,6 +19,10 @@ import com.itticket.consultation.mapper.ConsultationMessageMapper;
 import com.itticket.consultation.statemachine.ConsultationEvent;
 import com.itticket.consultation.support.Ids;
 import com.itticket.consultation.support.Times;
+import com.itticket.consultation.support.Json;
+import com.itticket.consultation.statemachine.Actor;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -46,26 +50,41 @@ public class ConsultationMessageService {
     private final AssignmentService assignmentService;
     private final ConsultationSlaService slaService;
     private final AuthzService authzService;
+    private final ConsultationAttachmentService attachmentService;
 
     /** 人工咨询消息。仅会话参与者可发送(AX-006 SEND_MESSAGE)。 */
+    @Transactional(propagation = Propagation.MANDATORY)
     public MessageProjection send(CurrentUser user, Consultation consultation, ContentRequest request) {
         authzService.requireParticipant(user, consultation);
         if (consultation.getStatus().isTerminal()) {
             throw new ApiException(ApiCode.ILLEGAL_STATE_TRANSITION, "咨询已处于终态,不能继续发送消息");
+        }
+        if (request.attachmentIds() != null && !request.attachmentIds().isEmpty()) {
+            ConsultationAttachmentService.requireHumanState(consultation);
         }
         validateContent(request);
 
         Optional<ConsultationMessage> replayed =
                 findByClientMessageId(consultation.getSessionId(), request.clientMessageId());
         if (replayed.isPresent()) {
+            if (!user.userId().equals(replayed.get().getSenderId())) {
+                throw new ApiException(ApiCode.IDEMPOTENCY_CONFLICT, "client_message_id 已被其他参与者使用");
+            }
             // RD-002:消息发送不允许用重试覆盖正文,同一 clientMessageId 返回首次结果
             return MessageProjection.of(replayed.get());
         }
 
-        boolean fromEngineer = user.userId().equals(consultation.getCurrentEngineerId());
+        boolean fromEngineer = !user.userId().equals(consultation.getCreatorId())
+                && user.userId().equals(consultation.getCurrentEngineerId());
         MessageSenderType senderType = fromEngineer ? MessageSenderType.ENGINEER : MessageSenderType.EMPLOYEE;
-        ConsultationMessage message = append(consultation.getSessionId(), user.userId(), senderType,
-                request.clientMessageId(), request.content(), null);
+        String messageId = Ids.messageId();
+        String metadata = null;
+        if (request.attachmentIds() != null && !request.attachmentIds().isEmpty()) {
+            var attachments = attachmentService.bind(user, consultation, messageId, request.attachmentIds());
+            metadata = Json.write(Map.of("schemaVersion", 1, "attachments", attachments));
+        }
+        ConsultationMessage message = append(messageId, consultation.getSessionId(), user.userId(), senderType,
+                request.clientMessageId(), request.content() == null ? "" : request.content(), metadata);
 
         applyMessageDrivenTransition(user, consultation, message, fromEngineer);
         return MessageProjection.of(message);
@@ -73,12 +92,8 @@ public class ConsultationMessageService {
 
     /** OpenAPI 05 Content 的 anyOf 要求 content 或 attachment_ids 至少其一。 */
     private void validateContent(ContentRequest request) {
-        if (request.attachmentIds() != null && !request.attachmentIds().isEmpty()) {
-            // 附件属于 F-09 附件域,本服务尚未接入。显式报错而不是静默丢弃(RD-013)。
-            throw ApiException.validation(List.of(FieldIssue.invalid("attachment_ids",
-                    "咨询消息附件由附件服务提供,当前未启用,请勿携带 attachment_ids")));
-        }
-        if (request.content() == null || request.content().isBlank()) {
+        ConsultationAttachmentService.validateIds(request.attachmentIds());
+        if (!request.isPayloadPresent()) {
             throw ApiException.validation(List.of(FieldIssue.required("content", "消息内容不能为空")));
         }
     }
@@ -108,7 +123,8 @@ public class ConsultationMessageService {
         if (!fromEngineer && status == ConsultationStatus.PENDING_CONFIRMATION) {
             transitionService.apply(consultation, TransitionSpec.builder()
                     .event(ConsultationEvent.CONSULTATION_REJECT_RESOLUTION)
-                    .actor(user)
+                    // Only this authenticated session creator acts as its requester, regardless of global role.
+                    .actor(new CurrentUser(user.userId(), user.role(), Actor.EMPLOYEE))
                     .reason("员工回复未解决")
                     .build());
         }
@@ -139,9 +155,14 @@ public class ConsultationMessageService {
 
     private ConsultationMessage append(String sessionId, String senderId, MessageSenderType senderType,
                                        String clientMessageId, String content, String citationJson) {
+        return append(Ids.messageId(), sessionId, senderId, senderType, clientMessageId, content, citationJson);
+    }
+
+    private ConsultationMessage append(String messageId, String sessionId, String senderId, MessageSenderType senderType,
+                                       String clientMessageId, String content, String citationJson) {
         LocalDateTime now = Times.nowUtc();
         ConsultationMessage message = new ConsultationMessage();
-        message.setMessageId(Ids.messageId());
+        message.setMessageId(messageId);
         message.setSessionId(sessionId);
         message.setSenderId(senderId);
         message.setSenderType(senderType);

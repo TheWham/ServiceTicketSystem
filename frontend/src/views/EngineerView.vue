@@ -1,40 +1,117 @@
 <template>
   <div class="engineer-view">
-    <header class="page-head">
-      <div><p class="eyebrow">服务交付</p><h1 class="page-title">工程师工作台</h1><p class="page-sub">我负责的工单与待领取工单 · 每 15 秒自动刷新</p></div>
-      <div class="head-actions"><el-badge :value="consultCount" :hidden="!consultCount" :max="99"><el-button type="primary" :icon="ChatDotRound" @click="consultVisible = true">当前咨询</el-button></el-badge>
-        <el-button :icon="Refresh" :loading="loading" @click="loadTickets">刷新</el-button></div>
-    </header>
-    <el-tabs v-model="activeStatus" class="status-tabs" aria-label="按工单状态筛选" @tab-change="changeStatus">
-      <el-tab-pane label="全部工单" name="" /><el-tab-pane v-for="s in statuses" :key="s" :label="statusLabel(s)" :name="s" />
-    </el-tabs>
-    <section aria-label="工程师工单列表">
-      <div class="list-toolbar"><div class="search-field"><label for="engineer-ticket-search">搜索本页工单</label><el-input id="engineer-ticket-search" v-model="keyword" placeholder="搜索工单号 / 标题 / 提单人" :prefix-icon="Search" clearable /></div><p class="list-caption">共 {{ loading || listError ? '—' : total }} 项 · 第 {{ page }} 页<br>搜索仅匹配当前页已加载的工单</p></div>
-      <div v-if="loading" class="state-panel" role="status">正在加载工单…</div>
-      <div v-else-if="listError" class="state-panel" role="alert"><h2>工单暂时无法加载</h2><p>{{ listError }}</p><el-button @click="loadTickets">重试</el-button></div>
-      <div v-else-if="!allTickets.length" class="state-panel"><h2>当前状态下暂无工单</h2><p>新的分配或待领取工单将在这里显示。</p></div>
-      <div v-else-if="!filteredTickets.length" class="state-panel"><h2>本页没有匹配的工单</h2><el-button @click="keyword = ''">清除搜索</el-button></div>
-      <ul v-else class="ticket-list">
-        <li v-for="t in filteredTickets" :key="t.ticket_id" class="ticket-row" :class="{ 'is-selected': selectedTicketId === t.ticket_id }">
-          <button class="ticket-open" :aria-pressed="selectedTicketId === t.ticket_id" :aria-label="'查看工单 ' + t.ticket_id + ' ' + t.title" @click="openDetail(t)">
-            <span class="ticket-id">{{ t.ticket_id }}</span><span class="ticket-title">{{ t.title }}</span>
-            <span class="ticket-meta"><span>{{ t.category_name }}</span><span>提单人：{{ t.creator_name }}</span><time>{{ formatTime(t.created_at) }}</time></span>
-          </button>
-          <div class="ticket-signals"><el-tag :type="statusTagType(t.status)" size="small">{{ statusLabel(t.status) }}</el-tag><el-tag :type="priorityTagType(t.priority)" size="small" effect="plain">{{ priorityLabel(t.priority) }}优先级</el-tag><SlaBadge :ticket-id="t.ticket_id" mode="card" /></div>
-          <el-button v-if="t.status === 'ASSIGNED'" type="primary" plain :icon="Pointer" @click="openClaimDialog(t)">接单</el-button>
-          <el-button v-else text :aria-label="'查看工单 ' + t.ticket_id" @click="openDetail(t)">查看 →</el-button>
-        </li>
-      </ul>
-      <el-pagination v-if="total > pageSize" v-model:current-page="page" :page-size="pageSize" :total="total" layout="prev, pager, next" class="pagination" @current-change="loadTickets" />
-    </section>
+    <!-- 页头 -->
+    <div class="page-head">
+      <div>
+        <span class="page-eyebrow">ENGINEER WORKSPACE</span>
+        <h1 class="page-title">{{ viewTitle }}</h1>
+        <p class="page-sub">{{ viewDescription }}</p>
+      </div>
+      <div class="head-actions" v-if="activeView !== 'consultations'">
+        <el-input
+          v-model="keyword"
+          placeholder="工单号、标题或提单人"
+          aria-label="搜索已加载工单"
+          :prefix-icon="Search"
+          clearable
+          class="head-search"
+        />
+        <el-button :icon="Refresh" :loading="ticketsLoading" aria-label="刷新工单" @click="loadTickets">刷新</el-button>
+      </div>
+    </div>
 
-    <!-- 工单详情抽屉；选择状态由路由统一管理。 -->
-    <el-drawer :model-value="detailVisible" :before-close="closeDetail" :title="'工单详情 · ' + selectedTicketId" size="min(760px, 100vw)" class="ticket-drawer" destroy-on-close>
-      <template #header>
-        <div class="drawer-heading"><el-button text @click="closeDetail">← 返回列表</el-button><span>工单详情 · {{ selectedTicketId }}</span></div>
-      </template>
-      <div v-if="detailLoading" class="state-panel" role="status">正在加载工单详情…</div>
-      <div v-else-if="detailError" class="state-panel" role="alert"><p>{{ detailError }}</p><el-button @click="loadDetail()">重试详情</el-button></div>
+    <nav class="view-tabs" aria-label="工单视图">
+      <router-link v-for="item in views" :key="item.key" :to="{ path: '/engineer', query: { view: item.key } }" :class="{ active: activeView === item.key }" :aria-current="activeView === item.key ? 'page' : undefined">{{ item.label }}</router-link>
+    </nav>
+    <template v-if="activeView !== 'consultations'">
+    <p class="scope-note">统计范围：已加载的 {{ allTickets.length }} 条本人及待领取工单（最多 100 条） · 每 15 秒刷新</p>
+    <!-- 统计卡片条 -->
+    <div class="stat-row">
+      <div v-for="s in stats" :key="s.label" class="stat-card">
+        <div class="stat-icon" >
+          <el-icon :size="20"><component :is="s.icon" /></el-icon>
+        </div>
+        <div class="stat-info">
+          <div class="stat-value">{{ s.value }}</div>
+          <div class="stat-label">{{ s.label }}</div>
+        </div>
+      </div>
+    </div>
+
+    <el-alert v-if="ticketsError" type="error" :closable="false" class="load-error" role="alert">
+      <template #title>{{ ticketsError }}</template>
+      <el-button size="small" @click="loadTickets">重试加载</el-button>
+    </el-alert>
+    <div v-if="ticketsLoading && !allTickets.length" class="loading-state" role="status"><el-skeleton :rows="5" animated /></div>
+    <el-empty v-else-if="!ticketsError && !filteredTickets.length" :description="keyword ? '未找到匹配的工单，试试其他关键词' : '当前视图暂无工单'" :image-size="90" />
+    <div v-else-if="allTickets.length" class="kanban" :aria-busy="ticketsLoading">
+      <div v-for="col in columns" :key="col.status" class="kanban-col">
+        <div class="col-header">
+          <span class="col-dot"  :class="'dot-' + col.status.toLowerCase()"></span>
+          <span class="col-label">{{ col.label }}</span>
+          <span class="col-count">{{ col.tickets.length }}</span>
+        </div>
+        <el-scrollbar class="col-body">
+          <el-empty
+            v-if="col.tickets.length === 0"
+            description="暂无"
+            :image-size="48"
+          />
+          <el-card
+            v-for="t in col.tickets"
+            :key="t.ticket_id"
+            shadow="hover"
+            class="kanban-card"
+            :class="{ high: t.priority === 'HIGH' }"
+            tabindex="0"
+            role="button"
+            :aria-label="`查看工单 ${t.ticket_id}：${t.title}`"
+            @click="openDetail(t)"
+            @keydown.enter.self.prevent="openDetail(t)"
+            @keydown.space.self.prevent="openDetail(t)"
+          >
+            <div class="card-top">
+              <span class="card-id">{{ t.ticket_id }}</span>
+              <el-tag :type="priorityTagType(t.priority)" size="small" effect="plain">{{ priorityLabel(t.priority) }}</el-tag>
+            </div>
+            <div class="card-title">{{ t.title }}</div>
+            <div class="card-meta">
+              <el-tag size="small" type="info" effect="plain">{{ t.category_name }}</el-tag>
+              <span>{{ t.creator_name }}</span>
+            </div>
+            <div class="card-time">
+              <span>{{ formatTime(t.created_at) }}</span>
+              <SlaBadge :ticket-id="t.ticket_id" mode="card" />
+            </div>
+            <el-button
+              v-if="t.status === 'ASSIGNED'"
+              type="success"
+              size="small"
+              class="claim-btn"
+              :icon="Pointer"
+              @click.stop="openClaimDialog(t)"
+            >接单</el-button>
+          </el-card>
+        </el-scrollbar>
+      </div>
+    </div>
+
+    </template>
+    <section v-else class="consultation-entry">
+      <el-icon :size="36"><ChatDotRound /></el-icon>
+      <h2>人工咨询工作区</h2>
+      <p>查看员工与 AI 的对话上下文，回复咨询并提交解决结论。</p>
+      <el-button type="primary" :icon="ChatDotRound" @click="consultationVisible = true">打开咨询工作区</el-button>
+    </section>
+    <EngineerConsultation v-model:visible="consultationVisible" />
+    <!-- ===== 工单详情弹窗 ===== -->
+    <el-dialog
+      v-model="detailVisible"
+      :title="`工单处理 · ${detail?.ticket_id || ''}`"
+      width="min(720px, calc(100vw - 32px))"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
       <template v-if="detail">
         <el-descriptions :column="2" border class="detail-desc">
           <el-descriptions-item label="标题" :span="2">{{ detail.title }}</el-descriptions-item>
@@ -51,14 +128,26 @@
           <el-descriptions-item label="问题描述" :span="2">{{ detail.description }}</el-descriptions-item>
           <el-descriptions-item label="影响情况" :span="2">{{ detail.impact_description }}</el-descriptions-item>
           <el-descriptions-item label="紧急说明" :span="2">{{ detail.urgency_description }}</el-descriptions-item>
+          <el-descriptions-item v-if="detailPhotos.length" label="照片附件" :span="2">
+            <el-image
+              v-for="(u, i) in detailPhotos"
+              :key="i"
+              :src="u"
+              :preview-src-list="detailPhotos"
+              :initial-index="i"
+              fit="cover"
+              preview-teleported
+              style="width:96px;height:96px;margin-right:8px;border-radius:4px"
+            />
+          </el-descriptions-item>
         </el-descriptions>
 
         <!-- SLA 计时 -->
         <SlaTimer :ticket-id="detail.ticket_id" />
 
         <!-- 状态操作 -->
-        <section class="action-card">
-          <h3 class="action-title">工单操作</h3>
+        <el-card shadow="never" class="action-card">
+          <template #header><span class="action-title">工单操作</span></template>
 
           <!-- 已分配（待接单）→ 接单 -->
           <div v-if="detail.status === 'ASSIGNED'" class="action-row">
@@ -70,15 +159,15 @@
           <div v-if="detail.status === 'IN_PROGRESS'" class="action-row">
             <el-input
               v-model="progressRemark"
-              placeholder="请输入说明（记录进展 ≥5 字；转外部支持 ≥10 字）"
+              placeholder="请输入说明（至少 5 字）"
               class="remark-input"
               maxlength="200"
               show-word-limit
             />
             <el-button-group>
-              <el-button type="primary" :loading="actionBusy" @click="doAction('progress')">记录进展</el-button>
-              <el-button type="warning" :loading="actionBusy" @click="doAction('need_info')">申请补充</el-button>
-              <el-button type="warning" :loading="actionBusy" @click="doAction('external')">需外部支持</el-button>
+              <el-button type="primary" :disabled="acting" @click="doAction('progress')">记录进展</el-button>
+              <el-button type="warning" :disabled="acting" @click="doAction('need_info')">申请补充</el-button>
+              <el-button type="warning" :disabled="acting" @click="doAction('external')">需外部支持</el-button>
             </el-button-group>
           </div>
 
@@ -90,7 +179,7 @@
           <!-- 外部等待 → 外部解除 -->
           <div v-if="detail.status === 'PENDING_EXTERNAL'" class="action-row">
             <el-text type="info" size="small">等待外部支持中...</el-text>
-            <el-button type="success" :icon="CircleCheck" :loading="actionBusy" @click="doAction('external_resolved')">
+            <el-button type="success" :disabled="acting" :icon="CircleCheck" @click="doAction('external_resolved')">
               外部已解除
             </el-button>
           </div>
@@ -100,9 +189,9 @@
             <el-button
               type="success"
               size="large"
-              :disabled="!canDone"
+              :disabled="!canDone || acting"
               :icon="Promotion"
-              :loading="actionBusy" @click="doAction('done')"
+              @click="doAction('done')"
             >
               提交解决方案
             </el-button>
@@ -113,17 +202,17 @@
 
           <!-- 待验收 -->
           <el-alert v-if="detail.status === 'PENDING_ACCEPTANCE'" type="warning" :closable="false">
-            <template #title>⏳ 已提交方案，等待员工验收（48h 未操作自动验收）...</template>
+            <template #title>已提交方案，等待员工验收（48h 未操作自动验收）...</template>
           </el-alert>
 
           <el-text v-if="actionError" type="danger" size="small" class="action-error">
             {{ actionError }}
           </el-text>
-        </section>
+        </el-card>
 
         <!-- 流转日志 -->
-        <section class="flow-card">
-          <h3 class="action-title">流转记录</h3>
+        <el-card shadow="never" class="flow-card">
+          <template #header><span class="action-title">流转记录</span></template>
           <el-empty v-if="detailFlows.length === 0" description="暂无记录" :image-size="60" />
           <el-timeline v-else>
             <el-timeline-item
@@ -139,15 +228,15 @@
               </div>
             </el-timeline-item>
           </el-timeline>
-        </section>
+        </el-card>
       </template>
-    </el-drawer>
+    </el-dialog>
 
     <!-- ===== 接单确认（影响×紧急矩阵）弹窗 ===== -->
     <el-dialog
       v-model="claimDialogVisible"
       title="接单确认 · 优先级矩阵"
-      width="min(520px, 94vw)"
+      width="min(520px, calc(100vw - 32px))"
       :close-on-click-modal="false"
       destroy-on-close
     >
@@ -186,7 +275,6 @@
         </el-button>
       </template>
     </el-dialog>
-    <EngineerConsultation :key="userStore.userId" v-model:visible="consultVisible" @count-change="consultCount = $event" />
   </div>
 </template>
 
@@ -195,55 +283,72 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-  Refresh, Pointer, CircleCheck, Promotion, Search, ChatDotRound
+  Refresh, Pointer, CircleCheck, Promotion, Search, Loading, Tickets, ChatDotRound
 } from '@element-plus/icons-vue'
 import { ticketApi } from '../api/index.js'
+import { loadPhotoUrls, revokePhotoUrls } from '../utils/attachmentPhotos.js'
 import { useUserStore } from '../stores/user.js'
+import EngineerConsultation from '../components/EngineerConsultation.vue'
+import { engineerView, engineerStatuses, filterEngineerTickets } from '../utils/engineerViews.js'
 import SlaBadge from '../components/SlaBadge.vue'
 import SlaTimer from '../components/SlaTimer.vue'
-import EngineerConsultation from '../components/EngineerConsultation.vue'
 
 const userStore = useUserStore()
-const route = useRoute()
 const allTickets = ref([])
 const detail = ref(null)
 const detailFlows = ref([])
-const router = useRouter()
-const selectedTicketId = computed(() => typeof route.query.ticket === 'string' ? route.query.ticket : '')
-const detailVisible = computed(() => !!selectedTicketId.value)
-const detailLoading = ref(false)
-const detailError = ref('')
-const loading = ref(true)
-const listError = ref('')
-let listRequest = 0
-let detailRequest = 0
-let disposed = false
-let identityVersion = 0
+const detailPhotos = ref([])
+const detailVisible = ref(false)
 const progressRemark = ref('')
 const actionError = ref('')
-const actionBusy = ref(false)
-const consultVisible = ref(false)
-const consultCount = ref(0)
+const acting = ref(false)
 let pollTimer = null
 
 // 搜索关键词
 const keyword = ref('')
 
-const filteredTickets = computed(() => {
-  const k = keyword.value.trim().toLowerCase()
-  if (!k) return allTickets.value
-  return allTickets.value.filter(t =>
-    (t.ticket_id || '').toLowerCase().includes(k) ||
-    (t.title || '').toLowerCase().includes(k) ||
-    (t.creator_name || '').toLowerCase().includes(k)
-  )
+const route = useRoute()
+const router = useRouter()
+const activeView = computed(() => engineerView(route.query.view))
+const views = [{ key: 'pool', label: '工单池' }, { key: 'tasks', label: '我的任务' }, { key: 'completed', label: '已完成' }, { key: 'consultations', label: '人工咨询' }]
+const viewTitle = computed(() => views.find(v => v.key === activeView.value)?.label || '工程师工作台')
+const viewDescription = computed(() => ({ pool: '确认影响与紧急程度，领取待处理工单', tasks: '跟进处理进度、补充材料与员工验收', completed: '检索已完成、已取消和已关闭的工单', consultations: '保留对话上下文，协助员工解决问题', all: '查看本人任务与待领取工单' }[activeView.value]))
+const ticketsLoading = ref(false)
+const ticketsError = ref('')
+const consultationVisible = computed({ get: () => activeView.value === 'consultations', set: open => { if (!open && activeView.value === 'consultations') router.push({ path: '/engineer', query: { ...route.query, view: 'tasks' } }) } })
+const filteredTickets = computed(() => filterEngineerTickets(allTickets.value, activeView.value, keyword.value))
+
+const columns = computed(() => {
+  const statusMap = {
+    'ASSIGNED':           { label: '已分配 / 待接单', dotColor: '#e6a23c' },
+    'IN_PROGRESS':        { label: '处理中', dotColor: '#409eff' },
+    'PENDING_SUPPLEMENT': { label: '待补充', dotColor: '#909399' },
+    'PENDING_EXTERNAL':   { label: '外部等待', dotColor: '#b88230' },
+    'PENDING_ACCEPTANCE': { label: '待验收', dotColor: '#13a8a8' },
+    'COMPLETED':          { label: '已完成', dotColor: '#67c23a' },
+    'CANCELLED':          { label: '已取消', dotColor: '#c0c4cc' },
+    'CLOSED':             { label: '已关闭', dotColor: '#c0c4cc' }
+  }
+  const result = engineerStatuses(activeView.value).map(s => ({ status: s, ...statusMap[s], tickets: [] }))
+  filteredTickets.value.forEach(t => {
+    const col = result.find(c => c.status === t.status)
+    if (col) col.tickets.push(t)
+  })
+  return result
 })
 
-const page = ref(1)
-const total = ref(0)
-const pageSize = 20
-const activeStatus = ref('')
-const statuses = ['ASSIGNED', 'IN_PROGRESS', 'PENDING_SUPPLEMENT', 'PENDING_EXTERNAL', 'PENDING_ACCEPTANCE', 'COMPLETED', 'CANCELLED', 'CLOSED']
+// 统计卡片（基于全部工单，不受搜索影响）
+const stats = computed(() => {
+  const t = allTickets.value
+  const count = (s) => t.filter(x => x.status === s).length
+  const active = t.filter(x => ['ASSIGNED','IN_PROGRESS','PENDING_SUPPLEMENT','PENDING_EXTERNAL','PENDING_ACCEPTANCE'].includes(x.status)).length
+  return [
+    { label: '待接单', value: count('ASSIGNED'), icon: Pointer },
+    { label: '处理中', value: count('IN_PROGRESS'), icon: Loading },
+    { label: '待验收', value: count('PENDING_ACCEPTANCE'), icon: CircleCheck },
+    { label: '进行中合计', value: active, icon: Tickets }
+  ]
+})
 
 // 状态/优先级映射（PRD §9.2 九态 + HIGH/MEDIUM/LOW）
 const STATUS_LABEL = {
@@ -285,23 +390,15 @@ function formatTime(t) { return t ? new Date(t).toLocaleString('zh-CN') : '' }
 function operatorLabel(operatorId) { return operatorId === 'SYSTEM' ? '系统' : (operatorId || '—') }
 
 async function loadTickets() {
-  const request = ++listRequest
-  loading.value = true
-  listError.value = ''
+  if (ticketsLoading.value) return
+  ticketsLoading.value = true
   try {
-    const params = { mine_or_pool: userStore.userId, page: page.value, page_size: pageSize }
-    if (activeStatus.value) params.status = activeStatus.value
-    const res = await ticketApi.list(params)
-    if (disposed || request !== listRequest) return
-    allTickets.value = res.data.list
-    total.value = res.data.total
-  } catch (e) {
-    if (!disposed && request === listRequest) listError.value = e.message || '工单加载失败'
-  } finally {
-    if (!disposed && request === listRequest) loading.value = false
-  }
+    const res = await ticketApi.list({ mine_or_pool: userStore.userId, page_size: 100 })
+    allTickets.value = res.data.list || []
+    ticketsError.value = ''
+  } catch (e) { ticketsError.value = '工单加载失败，请重试。' }
+  finally { ticketsLoading.value = false }
 }
-function changeStatus() { page.value = 1; loadTickets() }
 
 // 接单矩阵确认弹窗
 const claimDialogVisible = ref(false)
@@ -318,78 +415,51 @@ const claimPriority = computed(() => {
 })
 
 function openClaimDialog(t) {
-  if (claiming.value) return
   claimTarget.value = t
   claimForm.value = { impact_scope: '', urgency_level: '' }
   claimDialogVisible.value = true
 }
 
 async function confirmClaim() {
-  if (disposed || !claimTarget.value || claiming.value || !claimPriority.value) return
-  const ticketId = claimTarget.value.ticket_id
-  const userId = userStore.userId
-  const identity = identityVersion
-  const request = detailRequest
+  if (!claimTarget.value) return
   claiming.value = true
   try {
-    await ticketApi.claim(ticketId, {
+    await ticketApi.claim(claimTarget.value.ticket_id, {
       impact_scope: claimForm.value.impact_scope,
       urgency_level: claimForm.value.urgency_level
     })
-    if (disposed || userId !== userStore.userId || identity !== identityVersion) return
     ElMessage.success(`接单成功，优先级：${priorityLabel(claimPriority.value)}`)
     claimDialogVisible.value = false
     await loadTickets()
-    if (!disposed && identity === identityVersion && selectedTicketId.value === ticketId && request === detailRequest) {
-      await loadDetail(ticketId)
+    if (detailVisible.value && detail.value?.ticket_id === claimTarget.value.ticket_id) {
+      await openDetail({ ticket_id: claimTarget.value.ticket_id })
     }
   } catch (e) {
-    if (!disposed && identity === identityVersion) ElMessage.error('接单失败：' + e.message)
+    ElMessage.error('接单失败：' + e.message)
   } finally {
-    if (!disposed && identity === identityVersion) claiming.value = false
+    claiming.value = false
   }
 }
 
-function openDetail(ticket) {
-  if (selectedTicketId.value === ticket.ticket_id) return loadDetail(ticket.ticket_id)
-  return router.push({ query: { ...route.query, ticket: ticket.ticket_id } })
-}
-function closeDetail() {
-  if (!selectedTicketId.value) return
-  const { ticket, ...query } = route.query
-  return router.replace({ query })
-}
-async function loadDetail(id = selectedTicketId.value) {
-  const request = ++detailRequest
-  detail.value = null
-  detailFlows.value = []
-  detailError.value = ''
-  detailLoading.value = !!id
-  progressRemark.value = ''; actionError.value = ''
-  if (!id) return
+async function openDetail(t) {
   try {
-    const res = await ticketApi.detail(id)
-    if (disposed || request !== detailRequest || selectedTicketId.value !== id) return
+    const res = await ticketApi.detail(t.ticket_id)
     detail.value = res.data.ticket
-    detailFlows.value = res.data.flow_logs || []
-  } catch (e) {
-    if (!disposed && request === detailRequest) detailError.value = e.message || '详情加载失败'
-  } finally {
-    if (!disposed && request === detailRequest) detailLoading.value = false
-  }
+    detailFlows.value = res.data.flow_logs
+    revokePhotoUrls(detailPhotos.value)
+    detailPhotos.value = await loadPhotoUrls(res.data.ticket.attachments)
+    progressRemark.value = ''
+    actionError.value = ''
+    detailVisible.value = true
+  } catch (e) { ElMessage.error('加载详情失败：' + e.message) }
 }
-watch(selectedTicketId, id => loadDetail(id), { immediate: true, flush: 'sync' })
 
 async function doAction(action) {
-  if (disposed || actionBusy.value || !detail.value || selectedTicketId.value !== detail.value.ticket_id) return
-  const ticketId = detail.value.ticket_id
-  const userId = userStore.userId
-  const identity = identityVersion
-  const request = detailRequest
+  if (acting.value || !detail.value) return
   actionError.value = ''
   const input = progressRemark.value.trim()
 
-  const needRemark = { progress: 5, need_info: 5, external: 10 }
+  const needRemark = { progress: 5, need_info: 5, external: 5 }
   if (needRemark[action]) {
     if (input.length < needRemark[action]) {
       actionError.value = action === 'external'
@@ -407,109 +477,228 @@ async function doAction(action) {
     done: input || '已完成处理'
   }
 
-  actionBusy.value = true
+  acting.value = true
   try {
-    await ticketApi.action(ticketId, { action, remark: remarkMap[action] })
-    if (disposed || userId !== userStore.userId || identity !== identityVersion) return
-    ElMessage.success('操作成功！')
-    if (selectedTicketId.value === ticketId && request === detailRequest) await loadDetail(ticketId)
-    loadTickets()
-  } catch (e) {
-    if (!disposed && selectedTicketId.value === ticketId && request === detailRequest) actionError.value = e.message
-  } finally { if (!disposed && identity === identityVersion) actionBusy.value = false }
+    await ticketApi.action(detail.value.ticket_id, { action, remark: remarkMap[action] })
+    await loadTickets()
+
+    if (action === 'progress') {
+      progressRemark.value = ''
+      await openDetail({ ticket_id: detail.value.ticket_id })
+    } else {
+      ElMessage.success('操作成功！')
+      detailVisible.value = false
+    }
+  } catch (e) { actionError.value = e.message }
+  finally { acting.value = false }
 }
 
-
-
-onMounted(() => {
-  loadTickets()
-  pollTimer = setInterval(() => { if (!loading.value) loadTickets() }, 15000)
+onMounted(async () => {
+  await loadTickets()
+  // 通知跳转：URL 带 ?ticket=xxx 时自动打开该工单详情
+  if (route.query.ticket) {
+    openDetail({ ticket_id: route.query.ticket })
+  }
+  pollTimer = setInterval(loadTickets, 15000)
 })
-onUnmounted(() => { disposed = true; ++listRequest; ++detailRequest; clearInterval(pollTimer) })
+onUnmounted(() => { clearInterval(pollTimer); revokePhotoUrls(detailPhotos.value) })
+
+// 同页点击通知只改 query，组件不重挂载——watch query 变化自动打开详情
+watch(() => route.query.ticket, (tid) => {
+  if (tid) openDetail({ ticket_id: tid })
+})
 
 watch(() => userStore.userId, (id) => {
-  ++identityVersion
-  ++listRequest
-  ++detailRequest
-  claimDialogVisible.value = false
-  claimTarget.value = null
-  claiming.value = false
-  actionBusy.value = false
-  consultVisible.value = false
-  consultCount.value = 0
   allTickets.value = []
-  total.value = 0
-  page.value = 1
   detail.value = null
   detailFlows.value = []
-  closeDetail()
+  detailVisible.value = false
   progressRemark.value = ''
   actionError.value = ''
   if (id) loadTickets()
-}, { flush: 'sync' })
+})
 </script>
 
 <style scoped>
-
-.page-head { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:28px; }
-.eyebrow { margin:0 0 8px; color:var(--el-color-primary); font-size:12px; font-weight:650; letter-spacing:.12em; }
-.page-title { margin:0; font-size:clamp(25px, 2.6vw, 34px); font-weight:650; letter-spacing:-.035em; color:var(--el-text-color-primary); }
-.page-sub { margin:10px 0 0; font-size:14px; line-height:1.6; color:var(--el-text-color-secondary); }
-.head-actions { display:flex; align-items:center; gap:12px; }
-.list-toolbar { display:flex; align-items:flex-end; gap:16px; padding:18px 0; }
-.search-field { width:min(360px, 100%); }
-.filter-field { width:180px; }
-.list-toolbar label { display:block; margin-bottom:7px; font-size:12px; font-weight:600; color:var(--el-text-color-regular); }
-.list-caption { color:var(--el-text-color-secondary); font-size:12px; line-height:1.7; margin:0 0 14px; }
-.ticket-list { padding:0; margin:0; list-style:none; border-top:1px solid var(--el-border-color); }
-.ticket-row { display:flex; align-items:center; gap:20px; padding:20px 12px; border-bottom:1px solid var(--el-border-color-lighter); transition:background .15s; }
-.ticket-row:hover, .ticket-row:focus-within { background:var(--el-fill-color-light); }
-.ticket-row.is-selected { background:var(--el-color-primary-light-9); box-shadow:inset 3px 0 var(--el-color-primary); }
-.ticket-row:focus-visible, .ticket-open:focus-visible { outline:2px solid var(--el-color-primary); outline-offset:3px; border-radius:4px; }
-.ticket-main, .ticket-open { flex:1; min-width:0; }
-.ticket-open { display:block; border:0; padding:0; background:transparent; font:inherit; text-align:left; cursor:pointer; color:inherit; }
-.ticket-id { color:var(--el-color-primary); font-family:ui-monospace,monospace; font-size:12px; font-weight:600; }
-.ticket-title { display:block; margin:7px 0; font-size:15px; font-weight:600; line-height:1.5; overflow-wrap:anywhere; color:var(--el-text-color-primary); }
-.ticket-meta { display:flex; gap:8px 18px; flex-wrap:wrap; color:var(--el-text-color-secondary); font-size:12px; line-height:1.6; }
-.ticket-signals { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:8px; max-width:280px; }
-.row-arrow { color:var(--el-color-primary); }
-.state-panel { padding:54px 20px; text-align:center; border-block:1px solid var(--el-border-color-lighter); color:var(--el-text-color-secondary); font-size:14px; line-height:1.7; }
-.state-panel h2 { margin:0 0 8px; font-size:18px; font-weight:600; color:var(--el-text-color-primary); }
-.state-panel p { margin:8px 0 20px; overflow-wrap:anywhere; }
-.pagination { padding-top:22px; justify-content:flex-end; overflow-x:auto; }
-.status-tabs :deep(.el-tabs__item) { font-size:13px; }
-.drawer-heading { display:flex; gap:12px; align-items:center; flex-wrap:wrap; font-size:13px; color:var(--el-text-color-secondary); }
-.detail-desc { margin-bottom:22px; }
-.detail-desc :deep(.el-descriptions__cell) { overflow-wrap:anywhere; white-space:pre-wrap; }
-.action-card, .flow-card { margin-top:24px; padding-top:22px; border-top:1px solid var(--el-border-color); }
-.action-title { margin:0 0 16px; color:var(--el-text-color-primary); font-size:16px; font-weight:600; }
-.action-row { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; }
-.remark-input { flex:1; min-width:200px; }
-.submit-row { margin-top:20px; }
-.action-error { display:block; margin-top:10px; }
-.flow-content { display:flex; gap:10px; flex-wrap:wrap; align-items:center; font-size:13px; }
-.flow-operator { color:var(--el-text-color-secondary); }
-.flow-remark { overflow-wrap:anywhere; }
-.create-section { max-width:960px; border-top:1px solid var(--el-border-color); padding-top:24px; }
-.draft-alert { margin-bottom:18px; }
-.ticket-form :deep(.el-form-item__label) { font-weight:600; }
-.required { color:var(--el-color-danger); }
-.char-count { margin-left:10px; font-size:12px; font-weight:400; color:var(--el-text-color-secondary); }
-.reject-area { display:flex; gap:10px; }
-@media (max-width:760px) {
-  .page-head { align-items:flex-start; flex-wrap:wrap; margin-bottom:20px; gap:16px; }
-  .head-actions { flex-wrap:wrap; }
-  .list-toolbar { flex-wrap:wrap; gap:12px; }
-  .search-field { width:100%; }
-  .filter-field { flex:1; }
-  .ticket-row { gap:12px; padding:16px 4px; flex-wrap:wrap; }
-  .ticket-main, .ticket-open { flex-basis:100%; }
-  .ticket-signals { justify-content:flex-start; max-width:none; flex:1; }
-  .ticket-meta { gap:6px 12px; }
-  .action-row :deep(.el-button-group) { display:flex; flex-wrap:wrap; gap:8px; }
-  .reject-area { flex-wrap:wrap; }
-  .drawer-heading { gap:6px; }
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
 }
-@media (prefers-reduced-motion:reduce) { .ticket-row { transition:none; } }
+.page-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--el-text-color-primary);
+}
+.page-sub {
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  margin-top: 4px;
+}
+.head-actions { display: flex; align-items: center; gap: 10px; }
+.head-search { width: 240px; }
 
+/* ===== 统计卡片条（简洁商务） ===== */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 16px;
+  transition: box-shadow .2s;
+}
+.stat-card:hover { box-shadow: 0 4px 16px rgba(31,45,61,.08); }
+.stat-icon {
+  width: 44px; height: 44px;
+  border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.stat-value { font-size: 24px; font-weight: 700; color: var(--el-text-color-primary); line-height: 1.1; }
+.stat-label { font-size: 12px; color: var(--el-text-color-secondary); margin-top: 2px; }
+
+/* ===== 看板（简洁商务） ===== */
+.kanban {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 16px;
+  padding-bottom: 8px;
+}
+.kanban-col {
+  min-width: 0;
+  flex: 1;
+  background: var(--el-fill-color-lighter);
+  border: 1px solid var(--el-border-color-extra-light);
+  border-radius: 16px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+}
+.col-header {
+  font-weight: 600;
+  font-size: 13px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--el-text-color-primary);
+}
+.col-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.col-label { flex: 1; }
+.col-count {
+  min-width: 22px; height: 20px;
+  padding: 0 6px;
+  background: var(--el-fill-color-darker);
+  border-radius: 16px;
+  font-size: 12px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--el-text-color-secondary);
+}
+.col-body { flex: 1; min-height: 200px; max-height: calc(100vh - 320px); }
+
+.kanban-card {
+  margin-bottom: 8px;
+  cursor: pointer;
+  border-left: 3px solid var(--el-color-primary);
+  border-radius: 8px;
+  transition: box-shadow .18s, transform .18s;
+}
+.kanban-card:hover { box-shadow: 0 4px 14px rgba(31,45,61,.12); transform: translateY(-1px); }
+.kanban-card.high { border-left-color: var(--el-color-danger); }
+
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.card-id {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--el-color-primary);
+  font-weight: 600;
+}
+.card-title {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 6px;
+  color: var(--el-text-color-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.card-meta {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.card-time {
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+  margin-top: 6px;
+}
+.claim-btn { width: 100%; margin-top: 8px; }
+
+/* 弹窗 */
+.detail-desc { margin-bottom: 16px; }
+
+.action-card { margin-bottom: 16px; background: var(--el-fill-color-light); }
+.action-title { font-weight: 600; }
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.remark-input { flex: 1; min-width: 200px; }
+.submit-row {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--el-border-color);
+}
+.action-error { display: block; margin-top: 8px; }
+
+.flow-card { background: var(--el-fill-color-light); }
+.flow-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.flow-operator { font-size: 13px; color: var(--el-text-color-secondary); }
+.flow-remark { font-size: 13px; color: var(--el-text-color-regular); }
+
+.page-title { margin: 6px 0; }
+.page-eyebrow { color: var(--el-color-primary); font-size: 12px; font-weight: 700; letter-spacing: .12em; }
+.view-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.view-tabs a { min-height: 44px; display: inline-flex; align-items: center; padding: 0 16px; border: 1px solid var(--el-border-color); border-radius: 10px; color: var(--el-text-color-regular); text-decoration: none; background: var(--el-bg-color); }
+.view-tabs a.active { color: var(--el-color-primary); background: var(--el-color-primary-light-9); border-color: var(--el-color-primary); font-weight: 600; }
+.scope-note { font-size: 12px; color: var(--el-text-color-secondary); margin: 0 0 12px; }
+.stat-icon { color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
+.col-dot { background: var(--el-color-primary); }
+.dot-assigned, .dot-pending_external { background: var(--el-color-warning); }
+.dot-completed { background: var(--el-color-success); }
+.load-error, .loading-state { margin-bottom: 20px; }
+.consultation-entry { text-align: center; padding: 48px 24px; background: var(--el-bg-color); border: 1px solid var(--el-border-color); border-radius: 16px; color: var(--el-text-color-primary); }
+.consultation-entry p { color: var(--el-text-color-secondary); line-height: 1.6; }
+.consultation-entry > .el-icon { color: var(--el-color-primary); }
+.kanban-card:focus-visible, .view-tabs a:focus-visible { outline: 3px solid var(--el-color-primary); outline-offset: 3px; }
+@media (max-width: 900px) { .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } .page-head { align-items: flex-start; gap: 16px; flex-direction: column; } .head-actions { width: 100%; } .head-search { width: auto; flex: 1; } }
+@media (max-width: 540px) { .page-title { font-size: 24px; } .stat-card { gap: 8px; padding: 12px; } .stat-icon { width: 32px; height: 36px; } .stat-value { font-size: 22px; } .card-meta { flex-wrap: wrap; } .col-body { max-height: none; } .remark-input { min-width: 0; flex-basis: 100%; } .action-row :deep(.el-button-group) { display: flex; flex-wrap: wrap; gap: 8px; } .detail-desc :deep(.el-descriptions__label) { word-break: keep-all; } }
+@media (prefers-reduced-motion: reduce) { .kanban-card, .stat-card { transition: none; } .kanban-card:hover { transform: none; } }
 </style>
