@@ -12,6 +12,7 @@
 | `base-url` | `DIFY_BASE_URL` | `http://120.92.138.195:18086/v1` | Dify Dataset API 基础地址 |
 | `api-key` | `DIFY_API_KEY` | 空 | **必填**，Dify 知识库页面「服务 API」创建的密钥（`dataset-` 开头） |
 | `dataset-id` | `DIFY_DATASET_ID` | 空 | 目标知识库 ID；留空按 `dataset-name` 自动创建并复用 |
+| `doc-form` | `DIFY_DOC_FORM` | `hierarchical_model` | 文档表单模式，必须与目标知识库的 `doc_form` 一致，否则上传返回 400 |
 | `dataset-name` | `DIFY_DATASET_NAME` | `it-ticket-knowledge` | 自动创建知识库时的名称 |
 | `indexing-technique` | `DIFY_INDEXING_TECHNIQUE` | `high_quality` | 索引技术（向量+关键词混合索引） |
 | `search-method` | `DIFY_SEARCH_METHOD` | `hybrid_search` | 默认检索方式 |
@@ -51,6 +52,14 @@ curl -X POST http://{gateway}/api/v1/rag/dify/retrievals \
 
 - `DifyDatasetClient`：薄 HTTP 客户端（java.net.http），覆盖创建知识库、按文件/文本创建文档、
   索引状态轮询、retrieve 召回四类端点；失败一律抛 `BizException`，不静默吞错（对齐 RD-006）。
+
+## 实测冒烟结论（2026-10-09）
+
+- 目标库：`ee7d757d-8ed1-45b9-aa12-c20d80f30e01`（名称「一组_IT服务工单知识库」，`doc_form=hierarchical_model`，
+  embedding `qwen3-embedding-8b`，混合检索权重 向量0.7/关键词0.3，reranker `qwen3-reranker-8b`）。
+- 文件上传 → 索引 1 秒内 completed → `hybrid_search` 召回命中准确；开启 rerank 后 top 分段分数 0.92。
+- 限定范围 API Key 只能访问其绑定的 dataset-id 路径；`GET/POST /datasets` 会 403（符合最小权限）。
+- curl 冒烟时中文 body 必须走 `--data-binary @file`（UTF-8 文件），直接 `-d` 在 Windows 下会按 GBK 编码导致 400。
 - `DifyKnowledgeService`：编排层，负责启用校验、索引完成等待轮询（2s 间隔，默认最长 60s）与响应映射。
 - 上传 `chunkSize<=0` 时使用 Dify 自动分段；>0 时走 custom `max_tokens`/`chunk_overlap` 分段规则。
 - **边界**：Dify 通道不含 articleId/versionId 映射，未接入 `/api/v1/rag/retrievals` 的

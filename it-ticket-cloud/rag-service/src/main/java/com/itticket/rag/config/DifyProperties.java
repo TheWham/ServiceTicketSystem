@@ -29,7 +29,7 @@ public class DifyProperties {
     private boolean enabled = false;
 
     /** Dify Dataset API 基础地址 */
-    private String baseUrl = "http://120.92.138.195/v1";
+    private String baseUrl = "http://120.92.138.195:18086/v1";
 
     /** 知识库 API 密钥（Bearer），由 DIFY_API_KEY 环境变量注入，禁止明文入库/入 Git/入日志 */
     private String apiKey;
@@ -39,6 +39,12 @@ public class DifyProperties {
 
     /** 自动创建知识库时使用的名称 */
     private String datasetName = "it-ticket-knowledge";
+
+    /**
+     * 文档表单模式，必须与目标知识库的 doc_form 一致，否则创建文档返回 400
+     * （text_model / hierarchical_model / qa_model）。
+     */
+    private String docForm = "hierarchical_model";
 
     /** 索引技术：high_quality（向量+关键词混合索引）或 economy（仅关键词） */
     private String indexingTechnique = "high_quality";

@@ -85,8 +85,10 @@ rag:
     # 不再内置明文默认值：由 DIFY_API_KEY 环境变量注入，未注入时调用按依赖不可用降级
     api-key: ${DIFY_API_KEY:}
     # 目标知识库 ID；留空时按 dataset-name 自动创建并复用
-    dataset-id: ${DIFY_DATASET_ID:}
+    dataset-id: ${DIFY_DATASET_ID:ee7d757d-8ed1-45b9-aa12-c20d80f30e01}
     dataset-name: ${DIFY_DATASET_NAME:it-ticket-knowledge}
+    # 必须与目标知识库 doc_form 一致（text_model / hierarchical_model / qa_model）
+    doc-form: ${DIFY_DOC_FORM:hierarchical_model}
     indexing-technique: ${DIFY_INDEXING_TECHNIQUE:high_quality}
     search-method: ${DIFY_SEARCH_METHOD:hybrid_search}
     top-k: ${DIFY_TOP_K:5}

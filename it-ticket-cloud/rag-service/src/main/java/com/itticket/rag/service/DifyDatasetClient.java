@@ -207,7 +207,7 @@ public class DifyDatasetClient {
         body.put("name", name);
         body.put("text", text);
         body.put("indexing_technique", properties.getIndexingTechnique());
-        body.put("doc_form", "text_model");
+        body.put("doc_form", properties.getDocForm());
         body.set("process_rule", buildProcessRule(chunkSize, chunkOverlap));
 
         JsonNode resp = exchange("POST", path, body, "按文本创建 Dify 文档失败");
@@ -273,18 +273,21 @@ public class DifyDatasetClient {
             for (JsonNode item : data) {
                 JsonNode segment = item.get("segment");
                 RetrievedRecord.RetrievedRecordBuilder builder = RetrievedRecord.builder()
-                        .content(text(item, "content"))
                         .score(doubleOrNull(item, "score"))
                         .hitCountingMethod(text(item, "hit_counting_method"));
                 if (segment != null && !segment.isNull()) {
-                    builder.segmentId(text(segment, "id"))
+                    // 分段正文与文档信息都在 segment 内（实测响应结构）
+                    builder.content(text(segment, "content"))
+                            .segmentId(text(segment, "id"))
+                            .documentId(text(segment, "document_id"))
                             .position(intOrNull(segment, "position"))
                             .keywords(textArray(segment, "keywords"));
                     JsonNode document = segment.get("document");
                     if (document != null && !document.isNull()) {
-                        builder.documentId(text(document, "id"))
-                                .documentName(text(document, "name"));
+                        builder.documentName(text(document, "name"));
                     }
+                } else {
+                    builder.content(text(item, "content"));
                 }
                 records.add(builder.build());
             }
@@ -312,7 +315,7 @@ public class DifyDatasetClient {
     private String buildProcessRuleJson(int chunkSize, int chunkOverlap) {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("indexing_technique", properties.getIndexingTechnique());
-        root.put("doc_form", "text_model");
+        root.put("doc_form", properties.getDocForm());
         root.set("process_rule", buildProcessRule(chunkSize, chunkOverlap));
         try {
             return objectMapper.writeValueAsString(root);
