@@ -18,8 +18,8 @@ import java.util.List;
  * {@link KnowledgeQueryMapper} 的每条 SQL 里,本类不再另开旁路查询,
  * 也不提供按 versionId 直接取内容的方法,避免绕过发布状态。
  *
- * <p>本类只读,不参与咨询主事务:外部依赖(RAG)不得持有主事务数据库连接(RD-013、AX-003)。
- * 因此这里不加 {@code @Transactional},由连接池自动提交的单条查询完成。
+ * <p>本类只读，不开启独立事务。RAG 工作线程的查询按自动提交执行；输出阶段的引用复核
+ * 使用调用方已有的回答落库事务，通过当前读避开旧快照，并将版本共享锁保持到该事务提交。
  *
  * <p>安全:方法内不打印检索词与知识正文(AI-008、RD-013「不得记录令牌、完整聊天正文」)。
  */
@@ -127,7 +127,7 @@ public class KnowledgeQueryService {
         if (article == null || version == null) {
             return false;
         }
-        return knowledgeQueryMapper.countPublishedCurrentVersion(article, version) > 0;
+        return version.equals(knowledgeQueryMapper.selectPublishedCurrentVersion(article, version));
     }
 
     /** 去空白;空白视为「未提供」。 */

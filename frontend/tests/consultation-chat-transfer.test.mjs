@@ -7,7 +7,7 @@ const apiSource = readFileSync(new URL('../src/api/consultation.js', import.meta
 
 test('feedback transfer opens the numbered category picker before submitting', () => {
   assert.match(source, /@click="openTransfer\(msg\)"/)
-  assert.match(source, /el-radio-group v-model="transferForm\.categoryId"/)
+  assert.match(source, /el-radio-group v-else v-model="transferForm\.categoryId"/)
   assert.match(source, /\{\{ index \+ 1 \}\}/)
   assert.doesNotMatch(source, /escalateFromFeedback/)
 })

@@ -1,9 +1,10 @@
 <template>
-  <el-card v-if="sla" shadow="never" class="sla-card">
+  <el-alert v-if="loadError" type="warning" :closable="false" :title="loadError"><el-button text @click="load" :loading="loading">重新加载服务时效</el-button></el-alert>
+  <el-card v-else-if="sla" shadow="never" class="sla-card">
     <template #header>
       <div class="sla-header">
         <span class="sla-title">
-          <el-icon><Timer /></el-icon> SLA 完成计时
+          <el-icon><Timer /></el-icon> 服务时效
         </span>
         <el-tag :type="statusTagType" size="small" effect="dark">{{ statusLabel }}</el-tag>
       </div>
@@ -11,7 +12,7 @@
 
     <div class="sla-body">
       <div class="sla-row">
-        <span class="sla-label">优先级快照</span>
+        <span class="sla-label">处理优先级</span>
         <span class="sla-value">{{ priorityLabel }}</span>
       </div>
       <div class="sla-row">
@@ -28,9 +29,9 @@
           {{ formatDuration(remaining) }}
         </span>
       </div>
-      <div class="sla-row" v-if="sla.breach_at">
+      <div class="sla-row" v-if="breachedAt">
         <span class="sla-label">违约时间</span>
-        <span class="sla-value breach">{{ formatDateTime(sla.breach_at) }}</span>
+        <span class="sla-value breach">{{ formatDateTime(breachedAt) }}</span>
       </div>
 
       <!-- 进度条 -->
@@ -47,7 +48,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { Timer } from '@element-plus/icons-vue'
 import { slaApi } from '../api/index.js'
 
@@ -59,21 +60,26 @@ const sla = ref(null)
 const remaining = ref(0)
 const targetTotal = ref(0)
 let timer = null
+let refreshTimer = null
+let requestVersion = 0
+const loadError = ref('')
+const loading = ref(false)
 
 const statusLabel = computed(() => ({
-  RUNNING: '计时中', PAUSED: '已暂停', STOPPED: '已停止', BREACHED: '已违约'
+  RUNNING: '计时中', PAUSED: '已暂停', MET: '已达标', CANCELLED: '已取消', BREACHED: '已违约'
 }[sla.value?.status] || sla.value?.status || '—'))
 
 const statusTagType = computed(() => ({
-  RUNNING: 'primary', PAUSED: 'info', STOPPED: 'info', BREACHED: 'danger'
+  RUNNING: 'primary', PAUSED: 'info', MET: 'success', CANCELLED: 'info', BREACHED: 'danger'
 }[sla.value?.status] || 'info'))
 
 const priorityLabel = computed(() => ({
   HIGH: '高（4工作小时）', MEDIUM: '中（1工作日）', LOW: '低（3工作日）'
 }[sla.value?.priority_snapshot] || sla.value?.priority_snapshot || '—'))
 
-const isBreached = computed(() => !!sla.value?.breach_at)
-const isNear = computed(() => !isBreached.value && remaining.value < 3600)
+const breachedAt = computed(() => sla.value && Object.hasOwn(sla.value, 'breach_at') ? sla.value.breach_at : sla.value?.breached_at)
+const isBreached = computed(() => !!breachedAt.value || sla.value?.status === 'BREACHED')
+const isNear = computed(() => sla.value?.status === 'RUNNING' && !isBreached.value && remaining.value < 3600)
 
 const progressPct = computed(() => {
   if (!sla.value || targetTotal.value <= 0) return 0
@@ -87,22 +93,29 @@ const progressStatus = computed(() => {
 })
 
 const progressTip = computed(() => {
-  if (isBreached.value) return '已超出 SLA 完成目标（违约记录保留，PRD §11.2）'
+  if (isBreached.value) return '已超出服务时效，记录已保留'
   if (sla.value?.status === 'PAUSED') return '计时已暂停（补充/外部等待期间不计入 SLA）'
-  if (sla.value?.status === 'STOPPED') return '工单已终结，SLA 停止计时'
+  if (sla.value?.status === 'MET') return '已达到 SLA 完成目标'
+  if (sla.value?.status === 'CANCELLED') return '工单已取消，停止计时'
   return `目标 ${formatDuration(targetTotal.value)} 工作时长`
 })
 
 async function load() {
+  const version = ++requestVersion
+  loading.value = true
+  loadError.value = ''
   try {
     const res = await slaApi.byTicket(props.ticketId)
+    if (version !== requestVersion) return
     sla.value = res.data
     if (sla.value) {
       remaining.value = sla.value.remaining_work_seconds || 0
       targetTotal.value = (sla.value.elapsed_work_seconds || 0) + remaining.value
     }
   } catch (e) {
-    sla.value = null
+    if (version === requestVersion) loadError.value = e.message || '服务时效加载失败'
+  } finally {
+    if (version === requestVersion) loading.value = false
   }
 }
 
@@ -123,8 +136,10 @@ function formatDateTime(t) {
   return `${d.getMonth() + 1}-${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+watch(() => props.ticketId, () => { sla.value = null; load() })
 onMounted(() => {
   load()
+  refreshTimer = setInterval(load, 30000)
   timer = setInterval(() => {
     if (sla.value?.status === 'RUNNING' && remaining.value > 0) {
       remaining.value--
@@ -132,7 +147,7 @@ onMounted(() => {
     }
   }, 1000)
 })
-onUnmounted(() => clearInterval(timer))
+onUnmounted(() => { requestVersion++; clearInterval(timer); clearInterval(refreshTimer) })
 
 defineExpose({ load })
 </script>
