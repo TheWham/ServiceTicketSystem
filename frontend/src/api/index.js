@@ -45,6 +45,7 @@ export const userApi = {
 // ---- 工单 API ----
 export const ticketApi = {
   create: (data) => api.post('/tickets', data),
+  update: (id, data) => api.put(`/tickets/${id}`, data),
   list: (params) => api.get('/tickets', { params }),
   detail: (id) => api.get(`/tickets/${id}`),
   assign: (id, data) => api.post(`/tickets/${id}/assign`, data),

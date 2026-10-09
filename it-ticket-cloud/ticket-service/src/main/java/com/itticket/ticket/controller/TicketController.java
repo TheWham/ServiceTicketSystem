@@ -9,6 +9,7 @@ import com.itticket.ticket.dto.CreateTicketRequest;
 import com.itticket.ticket.dto.ContractEnvelope;
 import com.itticket.ticket.dto.TicketProjection;
 import com.itticket.ticket.dto.RatingRequest;
+import com.itticket.ticket.dto.UpdateTicketRequest;
 import com.itticket.ticket.enums.TicketStatus;
 import com.itticket.ticket.service.TicketService;
 import com.itticket.ticket.vo.TicketListVO;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -63,6 +65,14 @@ public class TicketController {
     @GetMapping("/{id}")
     public Result<Map<String, Object>> detail(@PathVariable String id) {
         return Result.ok(ticketService.get(id));
+    }
+
+    /** 提单人编辑工单并重新提交（新建/已分配可改内容；待补充提交后回到处理中） */
+    @PutMapping("/{id}")
+    public Result<Map<String, Object>> update(@PathVariable String id, @RequestBody UpdateTicketRequest request) {
+        Map<String, Object> result = ticketService.update(UserContext.get(), id, request);
+        boolean resubmitted = TicketStatus.IN_PROGRESS.getValue().equals(result.get("status"));
+        return Result.ok(resubmitted ? "已重新提交，工单回到处理中" : "工单已更新", result);
     }
 
     @PostMapping("/{id}/assign")

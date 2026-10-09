@@ -14,6 +14,7 @@ import com.itticket.ticket.dto.AcceptRequest;
 import com.itticket.ticket.dto.ActionRequest;
 import com.itticket.ticket.dto.AssignRequest;
 import com.itticket.ticket.dto.CreateTicketRequest;
+import com.itticket.ticket.dto.UpdateTicketRequest;
 import com.itticket.ticket.dto.RatingRequest;
 import com.itticket.ticket.entity.Attachment;
 import com.itticket.ticket.entity.Category;
@@ -91,38 +92,13 @@ public class TicketService {
         }
         req.setIdempotencyKey(headerKey == null ? bodyKey : headerKey);
         req.setSourceSessionId(trimToNull(req.getSourceSessionId()));
-        // 参数校验（PRD §10.2 固定字段）
+        // 参数校验（PRD §10.2 固定字段；与提单人编辑共用 validateEditableFields）
         List<String> errors = new ArrayList<>();
-        if (!TicketNature.isValid(req.getNature())) errors.add("工单性质无效（INCIDENT/SERVICE_REQUEST）");
-        if (req.getTitle() == null || req.getTitle().trim().isEmpty()) errors.add("工单标题不能为空");
-        if (req.getTitle() != null && req.getTitle().trim().length() > 100) errors.add("工单标题不能超过100字符");
-        if (req.getDescription() == null || req.getDescription().trim().isEmpty()) errors.add("问题描述不能为空");
-        if (req.getDescription() != null && req.getDescription().trim().length() > 5000) errors.add("问题描述不能超过5000字符");
-        if (req.getImpactDescription() == null || req.getImpactDescription().trim().isEmpty()) errors.add("影响情况不能为空");
-        if (req.getUrgencyDescription() == null || req.getUrgencyDescription().trim().isEmpty()) errors.add("紧急说明不能为空");
-        if (req.getAttachments() != null && req.getAttachments().size() > 3) errors.add("附件最多3个");
-
-        // 分类必须为启用的末级分类（§10.2）
-        validateLength(errors, req.getImpactDescription(), 2000, "impact_description");
-        validateLength(errors, req.getUrgencyDescription(), 2000, "urgency_description");
-        validateLength(errors, req.getLocation(), 255, "location");
-        validateLength(errors, req.getContact(), 255, "contact");
-        validateLength(errors, req.getAssetId(), 64, "asset_id");
+        Category category = validateEditableFields(errors, req.getNature(), req.getCategoryId(), req.getTitle(),
+                req.getDescription(), req.getImpactDescription(), req.getUrgencyDescription(),
+                req.getLocation(), req.getContact(), req.getAssetId(), req.getAttachments());
         validateLength(errors, req.getSourceSessionId(), 32, "source_session_id");
         validateLength(errors, req.getIdempotencyKey(), 128, "idempotency_key");
-        Category category = null;
-        if (req.getCategoryId() == null || req.getCategoryId().isBlank()) {
-            errors.add("分类不能为空");
-        } else {
-            category = categoryMapper.selectById(req.getCategoryId());
-            if (category == null) {
-                errors.add("分类不存在");
-            } else if (!"ACTIVE".equals(category.getStatus())) {
-                errors.add("分类已停用");
-            } else if (!isLeafCategory(category)) {
-                errors.add("必须选择末级分类");
-            }
-        }
         if (!errors.isEmpty()) {
             throw new BizException(ErrorCode.PARAM_INVALID, String.join("；", errors));
         }
@@ -234,6 +210,45 @@ public class TicketService {
         if (value != null && value.length() > max) errors.add(field + " exceeds " + max + " characters");
     }
 
+    /**
+     * 可编辑字段公共校验（创建工单与提单人编辑共用）：
+     * 校验标量字段 + 附件数量，并解析「启用的末级分类」（§10.2）。
+     * 返回解析出的分类；校验失败时错误并入 errors（此时可能返回 null）。
+     */
+    private Category validateEditableFields(List<String> errors, String nature, String categoryId, String title,
+            String description, String impactDescription, String urgencyDescription,
+            String location, String contact, String assetId, List<String> attachments) {
+        if (!TicketNature.isValid(nature)) errors.add("工单性质无效（INCIDENT/SERVICE_REQUEST）");
+        if (title == null || title.trim().isEmpty()) errors.add("工单标题不能为空");
+        if (title != null && title.trim().length() > 100) errors.add("工单标题不能超过100字符");
+        if (description == null || description.trim().isEmpty()) errors.add("问题描述不能为空");
+        if (description != null && description.trim().length() > 5000) errors.add("问题描述不能超过5000字符");
+        if (impactDescription == null || impactDescription.trim().isEmpty()) errors.add("影响情况不能为空");
+        if (urgencyDescription == null || urgencyDescription.trim().isEmpty()) errors.add("紧急说明不能为空");
+        if (attachments != null && attachments.size() > 3) errors.add("附件最多3个");
+
+        // 分类必须为启用的末级分类（§10.2）
+        validateLength(errors, impactDescription, 2000, "impact_description");
+        validateLength(errors, urgencyDescription, 2000, "urgency_description");
+        validateLength(errors, location, 255, "location");
+        validateLength(errors, contact, 255, "contact");
+        validateLength(errors, assetId, 64, "asset_id");
+        Category category = null;
+        if (categoryId == null || categoryId.isBlank()) {
+            errors.add("分类不能为空");
+        } else {
+            category = categoryMapper.selectById(categoryId);
+            if (category == null) {
+                errors.add("分类不存在");
+            } else if (!"ACTIVE".equals(category.getStatus())) {
+                errors.add("分类已停用");
+            } else if (!isLeafCategory(category)) {
+                errors.add("必须选择末级分类");
+            }
+        }
+        return category;
+    }
+
     /** 分类快照：停用后仍可读（§10.1），格式 一级/二级/三级 */
     private String buildCategorySnapshot(Category leaf) {
         List<String> names = new ArrayList<>();
@@ -244,6 +259,112 @@ public class TicketService {
             cur = cur.getParentId() == null ? null : categoryMapper.selectById(cur.getParentId());
         }
         return String.join("/", names);
+    }
+
+    // ---------------- 提单人编辑并重新提交 ----------------
+
+    /** 提单人可编辑状态：未被工程师接单（新建/已分配），或工程师请求补充阶段 */
+    private static final java.util.Set<TicketStatus> CREATOR_EDITABLE =
+            java.util.Set.of(TicketStatus.NEW, TicketStatus.ASSIGNED, TicketStatus.PENDING_SUPPLEMENT);
+
+    /**
+     * 提单人编辑工单并重新提交。
+     * NEW/ASSIGNED：原地更新内容；PENDING_SUPPLEMENT：更新后回到 IN_PROGRESS（等同 supply_info）。
+     * attachments 为全量语义：未出现在列表中的原有附件会被撤回；列表中的草稿态附件绑定到工单。
+     */
+    @Transactional
+    public Map<String, Object> update(UserContext.CurrentUser operator, String ticketId, UpdateTicketRequest req) {
+        Ticket ticket = ticketMapper.selectById(ticketId);
+        if (ticket == null) throw new BizException(ErrorCode.TICKET_NOT_FOUND);
+
+        // 仅提单人本人可编辑
+        if (!operator.getUserId().equals(ticket.getCreatorId())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "仅提单人可编辑该工单");
+        }
+        // 工程师开始处理后（IN_PROGRESS 及以后）内容锁定，只能走补充/流转
+        if (!CREATOR_EDITABLE.contains(ticket.getStatus())) {
+            throw new BizException(ErrorCode.ILLEGAL_TRANSITION,
+                    "当前状态「" + ticket.getStatus().getValue() + "」不允许编辑工单");
+        }
+
+        List<String> errors = new ArrayList<>();
+        Category category = validateEditableFields(errors, req.getNature(), req.getCategoryId(), req.getTitle(),
+                req.getDescription(), req.getImpactDescription(), req.getUrgencyDescription(),
+                req.getLocation(), req.getContact(), req.getAssetId(), req.getAttachments());
+        if (!errors.isEmpty()) {
+            throw new BizException(ErrorCode.PARAM_INVALID, String.join("；", errors));
+        }
+
+        boolean resubmit = ticket.getStatus() == TicketStatus.PENDING_SUPPLEMENT;
+        TicketStatus toStatus = resubmit ? TicketStatus.IN_PROGRESS : ticket.getStatus();
+        boolean categoryChanged = !category.getCategoryId().equals(ticket.getCategoryId());
+        boolean assetChanged = !java.util.Objects.equals(req.getAssetId(), ticket.getAssetId());
+
+        LambdaUpdateWrapper<Ticket> uw = new LambdaUpdateWrapper<Ticket>()
+                .eq(Ticket::getTicketId, ticketId)
+                .eq(Ticket::getStatus, ticket.getStatus()) // 乐观并发守卫：状态被并发流转则失败
+                .set(Ticket::getNature, req.getNature())
+                .set(Ticket::getCategoryId, category.getCategoryId())
+                .set(Ticket::getCategorySnapshot, categoryChanged ? buildCategorySnapshot(category) : ticket.getCategorySnapshot())
+                .set(Ticket::getTitle, req.getTitle().trim())
+                .set(Ticket::getDescription, req.getDescription().trim())
+                .set(Ticket::getImpactDescription, req.getImpactDescription().trim())
+                .set(Ticket::getUrgencyDescription, req.getUrgencyDescription().trim())
+                .set(Ticket::getLocation, req.getLocation())
+                .set(Ticket::getContact, req.getContact())
+                .set(Ticket::getAssetId, req.getAssetId())
+                .set(Ticket::getUpdatedAt, LocalDateTime.now(java.time.ZoneOffset.UTC));
+        if (assetChanged) {
+            // 资产编号变化：重新进入待核对状态（§10.2 CMDB 核对语义）
+            uw.set(Ticket::getAssetCheckStatus, req.getAssetId() == null ? null : "PENDING");
+        }
+        if (resubmit) {
+            uw.set(Ticket::getStatus, TicketStatus.IN_PROGRESS);
+        }
+        int rows = ticketMapper.update(null, uw);
+        if (rows == 0) {
+            throw new BizException(ErrorCode.ILLEGAL_TRANSITION, "工单状态已变化，请刷新后重试");
+        }
+
+        // 附件全量对齐（撤回被移除的、绑定新增草稿态的）
+        syncAttachments(ticketId, req.getAttachments(), operator.getUserId());
+
+        // 待补充阶段重新提交：恢复完成 SLA（§11.3，与 supply_info 一致）
+        if (resubmit) {
+            applySlaOnTransition(ticketId, "supply_info", TicketStatus.IN_PROGRESS, operator.getUserId());
+        }
+
+        insertFlowLog(ticketId, ticket.getStatus().getValue(), toStatus.getValue(), "TICKET_EDIT",
+                operator.getUserId(),
+                (resubmit ? "提单人补充信息并重新提交" : "提单人修改工单内容")
+                        + (categoryChanged ? "（变更了问题分类）" : ""));
+
+        // 已分配的工单通知处理人（afterCommit；编辑可多次发生，事件 id 需唯一）
+        String assigneeId = ticket.getAssigneeId();
+        if (assigneeId != null) {
+            afterCommit(() -> notificationService.notifyCreatorEdit(ticketId, assigneeId, resubmit));
+        }
+
+        return Map.of("ticket_id", ticketId, "status", toStatus.getValue());
+    }
+
+    /**
+     * 附件全量同步：desired 为编辑后期望保留的附件 id 列表；
+     * 原有但不在列表中的撤回（仅本人上传），列表中的草稿态附件按创建同款规则绑定到工单。
+     * desired 为 null 表示本次不改动附件。
+     */
+    private void syncAttachments(String ticketId, List<String> desired, String ownerId) {
+        if (desired == null) return;
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneOffset.UTC);
+        for (String attId : listAttachmentIds(ticketId)) {
+            if (!desired.contains(attId)) {
+                attachmentMapper.update(null, new UpdateWrapper<Attachment>()
+                        .eq("attachment_id", attId).eq("biz_type", "TICKET").eq("biz_id", ticketId)
+                        .eq("uploader_id", ownerId).isNull("withdrawn_at")
+                        .set("withdrawn_at", now).set("updated_at", now));
+            }
+        }
+        bindAttachments(ticketId, desired, ownerId);
     }
 
     // ---------------- 工单列表 ----------------

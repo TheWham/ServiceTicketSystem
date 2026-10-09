@@ -324,6 +324,17 @@
         <!-- SLA 计时 -->
         <SlaTimer :ticket-id="detailTicket.ticket_id" />
 
+        <!-- 编辑工单（提单人在工程师开始处理前可自行修改并重新提交） -->
+        <el-card v-if="canEdit(detailTicket)" shadow="never" class="action-card">
+          <template #header><span class="action-title">编辑工单</span></template>
+          <el-button type="primary" plain :icon="EditPen" @click="openEdit(detailTicket)">
+            {{ detailTicket.status === 'PENDING_SUPPLEMENT' ? '补充信息并重新提交' : '编辑并重新提交' }}
+          </el-button>
+          <el-text type="info" size="small" style="margin-left:12px">
+            {{ detailTicket.status === 'PENDING_SUPPLEMENT' ? '提交后工单将回到「处理中」' : '可修改问题描述、分类与附件，工程师开始处理后不可再编辑' }}
+          </el-text>
+        </el-card>
+
         <!-- 验收操作 -->
         <el-card v-if="detailTicket.status === 'PENDING_ACCEPTANCE'" shadow="never" class="action-card">
           <template #header><span class="action-title">验收工单</span></template>
@@ -405,6 +416,99 @@
             </el-timeline-item>
           </el-timeline>
         </el-card>
+      </template>
+    </el-dialog>
+
+    <!-- ===== 编辑工单弹窗 ===== -->
+    <el-dialog
+      v-model="editVisible"
+      :title="`编辑工单 · ${editId}`"
+      width="min(720px, calc(100vw - 32px))"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <el-form :model="editForm" label-position="top" class="ticket-form">
+        <el-row :gutter="16">
+          <el-col :xs="24" :sm="12">
+            <el-form-item label="工单性质" required>
+              <el-radio-group v-model="editForm.nature">
+                <el-radio-button v-for="n in natures" :key="n.value" :value="n.value">{{ n.label }}</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="12">
+            <el-form-item label="问题分类" required>
+              <el-select :loading="categoryLoading" v-model="editForm.category_id" placeholder="选择末级分类" style="width:100%" filterable>
+                <el-option v-for="c in editCategories" :key="c.categoryId" :value="c.categoryId" :label="c.name" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-form-item label="工单标题" required>
+          <el-input v-model="editForm.title" maxlength="100" show-word-limit placeholder="一句话概括问题" clearable />
+        </el-form-item>
+
+        <el-form-item label="问题描述" required>
+          <el-input v-model="editForm.description" type="textarea" :rows="4" maxlength="5000" show-word-limit placeholder="请详细描述问题" />
+        </el-form-item>
+
+        <el-row :gutter="16">
+          <el-col :xs="24" :sm="12">
+            <el-form-item label="影响情况" required>
+              <el-input v-model="editForm.impact_description" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="影响了哪些人/业务？" />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="12">
+            <el-form-item label="紧急说明" required>
+              <el-input v-model="editForm.urgency_description" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="为什么紧急？" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="16">
+          <el-col :xs="24" :sm="8">
+            <el-form-item label="位置">
+              <el-input v-model="editForm.location" maxlength="200" placeholder="如：3号楼 502 室（选填）" />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="8">
+            <el-form-item label="本次联系方式">
+              <el-input v-model="editForm.contact" maxlength="64" placeholder="手机或座机（选填）" />
+            </el-form-item>
+          </el-col>
+          <el-col :xs="24" :sm="8">
+            <el-form-item label="资产编号">
+              <el-input v-model="editForm.asset_id" maxlength="64" placeholder="如 PC-2024-001（选填）" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <!-- 照片附件：已有附件保留/删除 + 新上传；提交时全量对齐，最多 3 张 -->
+        <el-form-item label="照片附件">
+          <div class="photo-upload">
+            <el-upload
+              v-model:file-list="editPhotoList"
+              list-type="picture-card"
+              accept="image/jpeg,image/png,image/gif,image/webp,image/bmp"
+              :limit="3"
+              :http-request="uploadEditPhoto"
+              :before-upload="checkPhoto"
+              :on-remove="removeEditPhoto"
+              :on-exceed="() => ElMessage.warning('最多上传 3 张照片')"
+            >
+              <el-icon><Plus /></el-icon>
+            </el-upload>
+            <div class="upload-tip">删除的照片提交后不再保留；支持 jpg/png/gif/webp/bmp，单张不超过 20MB，最多 3 张</div>
+          </div>
+        </el-form-item>
+      </el-form>
+      <el-alert v-if="editError" :title="editError" type="error" show-icon :closable="false" class="page-error" />
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" :loading="editSaving" @click="submitEdit">
+          {{ editSaving ? '提交中...' : '保存并提交' }}
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -893,6 +997,112 @@ async function submitRating(t) {
     detailVisible.value = false
     loadTickets()
   } catch (e) { ElMessage.error(e.message) }
+}
+
+// ---- 编辑工单并重新提交（提单人；NEW/ASSIGNED/待补充 可编辑）----
+const EDITABLE_STATUSES = ['NEW', 'ASSIGNED', 'PENDING_SUPPLEMENT']
+function canEdit(t) { return !!t && EDITABLE_STATUSES.includes(t.status) }
+
+const editVisible = ref(false)
+const editSaving = ref(false)
+const editError = ref('')
+const editId = ref('')
+const editForm = ref({
+  nature: 'INCIDENT', category_id: '', title: '', description: '',
+  impact_description: '', urgency_description: '', location: '', contact: '', asset_id: ''
+})
+const editCategories = computed(() => categories.value.filter(c => (c.nature || c.ticketNature) === editForm.value.nature))
+const editPhotoList = ref([])
+
+// 打开编辑弹窗：预填工单内容，拉取已绑定照片生成预览（保留 attachment_id 供全量对齐）
+async function openEdit(t) {
+  editId.value = t.ticket_id
+  editForm.value = {
+    nature: t.nature || 'INCIDENT',
+    category_id: t.category_id || '',
+    title: t.title || '',
+    description: t.description || '',
+    impact_description: t.impact_description || '',
+    urgency_description: t.urgency_description || '',
+    location: t.location || '',
+    contact: t.contact || '',
+    asset_id: t.asset_id || ''
+  }
+  editError.value = ''
+  revokeEditPhotoUrls()
+  editPhotoList.value = []
+  editVisible.value = true
+  const photos = []
+  for (const id of t.attachments || []) {
+    try {
+      const blob = await attachmentApi.fetchBlob(id)
+      photos.push({ name: id, url: URL.createObjectURL(blob), attachment_id: id })
+    } catch (e) {
+      console.error('[附件加载失败]', id, e?.message || e)
+    }
+  }
+  if (editVisible.value) editPhotoList.value = photos
+  else revokeEditPhotoUrls(photos)
+}
+
+function revokeEditPhotoUrls(list) {
+  ;(list || editPhotoList.value).forEach(f => { if (f.url && f.url.startsWith('blob:')) URL.revokeObjectURL(f.url) })
+}
+watch(editVisible, visible => { if (!visible) revokeEditPhotoUrls() }, { flush: 'sync' })
+
+async function uploadEditPhoto({ file, onSuccess, onError }) {
+  try {
+    const res = await attachmentApi.upload(file)
+    onSuccess(res.data) // 挂到 file.response.attachment_id，提交时取回
+  } catch (e) {
+    onError(e)
+    ElMessage.error('照片上传失败：' + e.message)
+  }
+}
+
+function removeEditPhoto(file) {
+  // 新上传未提交的草稿附件直接撤回；已绑定工单的附件在提交时由后端全量对齐撤回
+  const attId = file.response?.attachment_id
+  if (attId) attachmentApi.remove(attId).catch(() => {})
+}
+
+async function submitEdit() {
+  if (editSaving.value) return
+  editError.value = ''
+  const f = editForm.value
+  // 与后端同一口径的必填校验
+  if (!f.category_id) { editError.value = '请选择问题分类'; return }
+  if (!f.title.trim() || f.title.trim().length > 100) { editError.value = '工单标题需为 1~100 个字符'; return }
+  if (!f.description.trim() || f.description.trim().length > 5000) { editError.value = '问题描述需为 1~5000 个字符'; return }
+  if (!f.impact_description.trim() || f.impact_description.trim().length > 500) { editError.value = '请填写影响情况（≤500 字）'; return }
+  if (!f.urgency_description.trim() || f.urgency_description.trim().length > 500) { editError.value = '请填写紧急说明（≤500 字）'; return }
+  const attachments = editPhotoList.value
+    .map(item => item.attachment_id || item.response?.attachment_id)
+    .filter(Boolean)
+
+  editSaving.value = true
+  try {
+    const res = await ticketApi.update(editId.value, {
+      nature: f.nature,
+      category_id: f.category_id,
+      title: f.title.trim(),
+      description: f.description.trim(),
+      impact_description: f.impact_description.trim(),
+      urgency_description: f.urgency_description.trim(),
+      location: f.location.trim() || null,
+      contact: f.contact.trim() || null,
+      asset_id: f.asset_id.trim() || null,
+      attachments
+    })
+    ElMessage.success(res.msg || '工单已更新')
+    editVisible.value = false
+    loadTickets()
+    if (detailVisible.value) openDetail({ ticket_id: editId.value })
+  } catch (e) {
+    editError.value = e.message || '提交失败，请稍后重试'
+  } finally {
+    editSaving.value = false
+  }
 }
 
 // 自动保存草稿：每 30s
