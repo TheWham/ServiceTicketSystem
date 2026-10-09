@@ -177,21 +177,17 @@ public class RoutingService {
     @Transactional
     public void assign(Ticket ticket, String engineerId, String endReason) {
         LocalDateTime now = LocalDateTime.now(java.time.ZoneOffset.UTC);
-        // 结束上一条未关闭的 assignment（转派时）
+        // 结束该工单所有未关闭的 assignment（转派时必须全部关闭；
+        // 只关最新一条会让旧的 open 记录被响应超时扫描每分钟反复命中，
+        // 雪崩式产生 assignment / ticket_transition 垃圾行，最终拖垮整库、删工单超时）
         if (endReason != null) {
-            Assignment last = assignmentMapper.selectOne(new QueryWrapper<Assignment>()
+            Assignment close = new Assignment();
+            close.setEndReason(endReason);
+            close.setUpdatedAt(now);
+            assignmentMapper.update(close, new QueryWrapper<Assignment>()
                     .eq("biz_type", "TICKET")
                     .eq("biz_id", ticket.getTicketId())
-                    .isNull("end_reason")
-                    .orderByDesc("assigned_at")
-                    .last("limit 1"));
-            if (last != null) {
-                Assignment close = new Assignment();
-                close.setAssignmentId(last.getAssignmentId());
-                close.setEndReason(endReason);
-                close.setUpdatedAt(now);
-                assignmentMapper.updateById(close);
-            }
+                    .isNull("end_reason"));
         }
         // 新建 assignment
         Assignment a = new Assignment();
@@ -240,6 +236,20 @@ public class RoutingService {
         if (!"TICKET".equals(current.getBizType())) return;
         Ticket ticket = ticketMapper.selectById(current.getBizId());
         if (ticket == null) return;
+        // 终态工单的遗留超时 assignment：全部关闭后不再转派，
+        // 否则 COMPLETED/CLOSED/CANCELLED 工单会被扫描每分钟反复命中
+        TicketStatus st = ticket.getStatus();
+        if (st == TicketStatus.COMPLETED || st == TicketStatus.CLOSED || st == TicketStatus.CANCELLED) {
+            Assignment close = new Assignment();
+            close.setEndReason("TICKET_ENDED");
+            close.setUpdatedAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
+            assignmentMapper.update(close, new QueryWrapper<Assignment>()
+                    .eq("biz_type", "TICKET")
+                    .eq("biz_id", ticket.getTicketId())
+                    .isNull("end_reason"));
+            log.info("[路由] 终态工单遗留 assignment 已关闭: {}", ticket.getTicketId());
+            return;
+        }
         String next = selectEngineer(ticket.getCategoryId(), Set.of(current.getEngineerId()));
         if (next == null) {
             log.warn("[路由] 响应超时但无次优工程师: {}", ticket.getTicketId());

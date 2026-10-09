@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """pytest 公共夹具：FixedClock(2026-09-21 12:00) + 全新 :memory: 库 + CMDB/用户种子数据。
-评测环境对应《验收评测协议书》§1.3：CMDB 已灌入 TC-01/03/05/08 资产编号。"""
+对应《验收评测协议书 V2》§4.1-1 自动化回放口径：CMDB 已灌入 TC-01/03/05/08 资产编号，
+保证 M-09（资产编号校验）的正则与 CMDB 联动断言可控。"""
 import pytest
 
 from ticket_p0.clock import FixedClock
@@ -27,7 +28,7 @@ def service(clock):
     svc.seed_user("E1001", Role.EMPLOYEE)
     svc.seed_user("E2001", Role.ENGINEER)
     svc.seed_user("E9001", Role.SUPERVISOR)
-    # CMDB 模拟数据（协议书 §六-1：评测前必须灌库，否则 M-09 误判）
+    # CMDB 模拟数据（评测前必须灌库，否则 M-09 误判）
     svc.seed_asset("IT-PC-20260901", "办公电脑", "ThinkCentre M920t", "E1001")
     svc.seed_asset("IT-NW-20260815", "VPN 网关", "AnyConnect Gateway", "E2001")
     svc.seed_asset("IT-PR-20240820", "公共打印机", "HP LaserJet Pro", "E1001")

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""SPEC §1.8 枚举值域 / §1.7 校验阈值 / §2.1 超时阈值 / §2.7 错误码（与规格书强一致）"""
+"""SPEC §1.8 枚举值域 / §1.7 校验阈值 / §2.1 超时阈值 / §2.7 错误码
+（对齐《验收评测协议书 V2》：M-06 幂等拦截错误码 40901；description 必填+上限500，取消 10 字下限）"""
 import re
 
 # ---- 错误码（SPEC §2.7）----
@@ -10,7 +11,9 @@ CODE_FORBIDDEN = 40300
 CODE_NOT_FOUND = 40400
 CODE_ASSET_NOT_FOUND = 40401
 CODE_CONFLICT = 40900
+CODE_IDEMPOTENT_CONFLICT = 40901  # V2 §2.2.6：幂等键重复提交拦截码
 CODE_SYSTEM_ERROR = 500
+# 注：V2 §2.2.10 的 40910/40911/40912（状态机/越权/抢单）属 M-10 服务端集成测试范围，本模块提单链路不使用
 
 
 # ---- 枚举值域（SPEC §1.8，DB 存 name() 字符串）----
@@ -41,8 +44,7 @@ DEFAULT_PRIORITY = "MEDIUM"
 
 # ---- 字段校验阈值（SPEC §1.7）----
 TITLE_MAX_LEN = 50
-DESC_MIN_LEN = 10
-DESC_MAX_LEN = 500
+DESC_MAX_LEN = 500  # V2 §2.2.1 / TC-07：description 必填 + 长度上限 500（无下限）
 ATTACH_MAX_COUNT = 3
 ATTACH_MAX_BYTES = 5 * 1024 * 1024  # 单张 ≤5MB
 ATTACH_EXTS = ("jpg", "jpeg", "png")

@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from .attachment import validate_upload
 from .constants import (
     CODE_ASSET_NOT_FOUND, CODE_BIZ_ERROR, CODE_CONFLICT, CODE_FORBIDDEN,
+    CODE_IDEMPOTENT_CONFLICT,
     CODE_NOT_FOUND, CODE_UNAUTHORIZED, DEFAULT_PRIORITY,
     EXTERNAL_REMIND_HOURS, NOTIFY_DEDUP_TTL_SECONDS, Role, SUBMIT_DEDUP_TTL_SECONDS,
     SUPERVISOR_ID, TIME_FMT, TIMEOUT_ALERT_HOURS, TicketStatus,
@@ -94,10 +95,10 @@ class TicketService:
             if url.rsplit("/", 1)[-1] not in self.uploads:
                 raise BizError(CODE_BIZ_ERROR, "附件不存在或已失效，请重新上传")
 
-        # 5. 3s 幂等防重（T1）：宁可拒绝也不产生重复工单
+        # 5. 3s 幂等防重（T1）：宁可拒绝也不产生重复工单（V2 §2.2.6：拦截码 40901）
         lock_key = f"submit:{operator_id}:{java_hashcode(dto['title'])}"
         if not self._acquire_lock(lock_key, SUBMIT_DEDUP_TTL_SECONDS):
-            raise BizError(CODE_CONFLICT, "请勿重复提交")
+            raise BizError(CODE_IDEMPOTENT_CONFLICT, "请勿重复提交")
 
         # 6. 原子发号 + 参数化落库（SQL 注入串仅作文本存储，TC-10）
         now_s = self._fmt(self.clock.now())
