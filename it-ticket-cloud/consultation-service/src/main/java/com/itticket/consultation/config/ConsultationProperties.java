@@ -5,7 +5,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /** 咨询域可配置项。默认值取自 PRD 与 spec,平台管理员可在允许范围内覆盖。 */
@@ -63,8 +62,6 @@ public class ConsultationProperties {
          * 无论哪种,检索都只读 PUBLISHED 知识,生成都必须落在检索到的资料上(AI-001)。
          */
         private String provider = "local";
-        private String retrievalProvider = "rag-service";
-        private String ragBaseUrl = "http://127.0.0.1:8302";
         private long ragRequestTimeoutMs = 5000;
         private BigDecimal localRetrievalMinScore = new BigDecimal("0.60");
 

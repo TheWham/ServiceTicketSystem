@@ -3,6 +3,7 @@ package com.itticket.consultation.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.itticket.consultation.adapter.GuardedRagClient;
 import com.itticket.consultation.adapter.RagQuery;
+import com.itticket.consultation.adapter.RagCaller;
 import com.itticket.consultation.adapter.RagResult;
 import com.itticket.consultation.api.ApiCode;
 import com.itticket.consultation.api.ApiException;
@@ -87,16 +88,11 @@ public class AiConsultationService {
         messageService.appendEmployeeMessage(sessionId, user.userId(),
                 "ai-q:" + idempotencyKey, request.message());
 
-        boolean highRisk = !"rag-service".equals(properties.getAi().getRetrievalProvider())
-                && !"openai-compatible".equals(properties.getAi().getProvider())
-                && AiAnswerGuard.matchesHighRisk(
-                request.message(), properties.getAi().getHighRiskKeywords());
-
         RagResult result = null;
-        if (properties.getAi().isAnswerEnabled() && !highRisk) {
-            RagQuery query = new RagQuery(sessionId, request.message(), List.of(),
+        if (properties.getAi().isAnswerEnabled()) {
+            RagQuery query = new RagQuery(sessionId, request.message(),
                     contextCategory(consultation, request), contextAsset(request),
-                    properties.getAi().getTopK(), user.userId(), user.role().name());
+                    properties.getAi().getTopK(), new RagCaller(user.userId(), user.role().name()));
             result = ragClient.answer(query, RequestContext.get());
         }
 
@@ -105,7 +101,7 @@ public class AiConsultationService {
         requireAiActive(transitionService.loadForUpdate(sessionId));
 
         AiAnswerGuard.Verdict verdict = AiAnswerGuard.evaluate(
-                result, properties.getAi(), highRisk,
+                result, properties.getAi(),
                 knowledgeQueryService::isPublishedCurrentVersion);
 
         String interactionId = persistInteraction(sessionId, result, verdict);
