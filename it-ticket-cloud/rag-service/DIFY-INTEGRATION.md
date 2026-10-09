@@ -9,7 +9,7 @@
 | 配置项（application.yml `rag.dify.*`） | 环境变量 | 默认值 | 说明 |
 |---|---|---|---|
 | `enabled` | `DIFY_ENABLED` | `true` | 通道开关，false 时相关端点直接拒绝 |
-| `base-url` | `DIFY_BASE_URL` | `http://120.92.138.195/v1` | Dify Dataset API 基础地址 |
+| `base-url` | `DIFY_BASE_URL` | `http://120.92.138.195:18086/v1` | Dify Dataset API 基础地址 |
 | `api-key` | `DIFY_API_KEY` | 空 | **必填**，Dify 知识库页面「服务 API」创建的密钥（`dataset-` 开头） |
 | `dataset-id` | `DIFY_DATASET_ID` | 空 | 目标知识库 ID；留空按 `dataset-name` 自动创建并复用 |
 | `dataset-name` | `DIFY_DATASET_NAME` | `it-ticket-knowledge` | 自动创建知识库时的名称 |
