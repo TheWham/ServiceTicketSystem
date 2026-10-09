@@ -78,6 +78,20 @@ rag:
     confidence-threshold: ${RAG_CONFIDENCE_THRESHOLD:0.70}
     low-confidence-threshold: ${RAG_LOW_CONFIDENCE_THRESHOLD:0.45}
     snippet-length: 1000
+  # Dify 知识库通道（文档上传 / 混合索引 / 向量化由 Dify 完成，与自研 ES 链路并行）
+  dify:
+    enabled: ${DIFY_ENABLED:true}
+    base-url: ${DIFY_BASE_URL:http://120.92.138.195/v1}
+    # 不再内置明文默认值：由 DIFY_API_KEY 环境变量注入，未注入时调用按依赖不可用降级
+    api-key: ${DIFY_API_KEY:}
+    # 目标知识库 ID；留空时按 dataset-name 自动创建并复用
+    dataset-id: ${DIFY_DATASET_ID:}
+    dataset-name: ${DIFY_DATASET_NAME:it-ticket-knowledge}
+    indexing-technique: ${DIFY_INDEXING_TECHNIQUE:high_quality}
+    search-method: ${DIFY_SEARCH_METHOD:hybrid_search}
+    top-k: ${DIFY_TOP_K:5}
+    score-threshold: ${DIFY_SCORE_THRESHOLD:0.3}
+    timeout-seconds: ${DIFY_TIMEOUT_SECONDS:30}
 
 logging:
   level:
