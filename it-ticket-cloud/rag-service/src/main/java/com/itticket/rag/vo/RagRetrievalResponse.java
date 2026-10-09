@@ -19,9 +19,9 @@ import java.util.List;
  *       MR-004 · specs/10-model-rag-integration.md:70）；</li>
  *   <li>domain：领域判定（OFFICE_IT / OFF_TOPIC / HIGH_RISK / UNCERTAIN），上层据此决定能否生成；</li>
  *   <li>suggestedReplyType：建议的回答类型（ANSWER / CLARIFY / REFUSE），仅供参考；</li>
- *   <li>suggestedRefusalReason：拒答时为结构化拒答原因（OFF_TOPIC / HIGH_RISK_TOPIC / LOW_CONFIDENCE / ...，
+ *   <li>suggestedRefusalReason：拒答时为结构化拒答原因（OFF_TOPIC / HIGH_RISK_TOPIC / ...，
  *       值域 AI-003 · specs/02-ai-api-json-schema.md:33）；</li>
- *   <li>reliable：是否达到可靠命中阈值 —— true 时可带引用生成；false 时若 domain=OFFICE_IT 且无命中，
+ *   <li>reliable：是否达到引用质量阈值 —— true 时可带引用生成；false 时若 domain=OFFICE_IT 且无其他拒答原因，
  *       按 AI-001（specs/02-ai-api-json-schema.md:14）允许空引用通用回答，不强制拒答。</li>
  * </ul>
  *

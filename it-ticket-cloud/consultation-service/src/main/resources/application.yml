@@ -104,6 +104,10 @@ itticket:
 
       model-version: local-rag-1.0
       top-k: 3
+      # Persisted AI history only; hard caps are 40 messages / 32000 characters.
+      context-max-messages: ${AI_CONTEXT_MAX_MESSAGES:12}
+      context-max-chars: ${AI_CONTEXT_MAX_CHARS:12000}
+      # 兼容旧配置；不再按模型自评分拒答。
       min-confidence: 0.60
       suggest-transfer-below-confidence: 0.75
       # RD-003 规定 AI/RAG 首段 5 秒、完整 15 秒。

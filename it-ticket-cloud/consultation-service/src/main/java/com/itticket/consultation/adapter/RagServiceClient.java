@@ -34,6 +34,15 @@ public final class RagServiceClient {
     public record Retrieval(List<KnowledgeHit> hits, RagResult decision) { }
 
     public Retrieval retrieve(RagQuery query, String requestId) {
+        return retrieve(query, requestId, false);
+    }
+
+    /** 仅供生成适配器完成当前会话语义分类后调用，旧词表/相似度判定不覆盖已确认的 IT 意图。 */
+    Retrieval retrieveForClassifiedIt(RagQuery query, String requestId) {
+        return retrieve(query, requestId, true);
+    }
+
+    private Retrieval retrieve(RagQuery query, String requestId, boolean classifiedIt) {
         long started = System.nanoTime();
         try {
             if (blank(query.callerId()) || blank(query.callerRole())) {
@@ -67,7 +76,7 @@ public final class RagServiceClient {
                 return failure(RagStatus.INVALID_RESPONSE, "RAG_INVALID_RESPONSE", started);
             }
             if (envelope.path("code").asInt() != 0) return failure(RagStatus.UNAVAILABLE, "RAG_BUSINESS_FAILURE", started);
-            return decode(envelope.path("data"), started);
+            return decode(envelope.path("data"), started, classifiedIt);
         } catch (HttpTimeoutException e) {
             return failure(RagStatus.TIMEOUT, "RAG_TIMEOUT", started);
         } catch (InterruptedException e) {
@@ -80,29 +89,42 @@ public final class RagServiceClient {
         }
     }
 
-    private Retrieval decode(JsonNode data, long started) {
+    private Retrieval decode(JsonNode data, long started, boolean classifiedIt) {
         if (!data.isObject() || !data.path("publishedOnly").isBoolean() || !data.path("publishedOnly").asBoolean()
                 || !data.path("reliable").isBoolean() || !data.path("items").isArray()) return invalid(started);
         BigDecimal score = score(data.path("topScore"));
         if (score == null) return invalid(started);
         String domain = data.path("domain").asText();
+        if (!List.of("OFFICE_IT", "OFF_TOPIC", "HIGH_RISK", "UNCERTAIN").contains(domain)) return invalid(started);
+        JsonNode reasonNode = data.path("suggestedRefusalReason");
+        AiRefusalReason reason = null;
+        if (!reasonNode.isMissingNode() && !reasonNode.isNull()) {
+            if (!reasonNode.isTextual()) return invalid(started);
+            try { reason = AiRefusalReason.valueOf(reasonNode.asText()); }
+            catch (IllegalArgumentException e) { return invalid(started); }
+            if (reason == AiRefusalReason.MODEL_UNAVAILABLE) return failure(RagStatus.UNAVAILABLE, "RAG_DEPENDENCY_UNAVAILABLE", started);
+            if (reason == AiRefusalReason.CONFLICTING_KNOWLEDGE) return refuse(reason, score, started);
+        }
+        // 分类已在模型侧结合完整上下文完成。RAG 的旧关键词规则可能将“周报文件打不开”
+        // 或普通自助找回密码误判。此时没有可用知识，允许通用回答，不把被拦截的片段作为引用。
+        if (classifiedIt && (("OFF_TOPIC".equals(domain) && reason == AiRefusalReason.OFF_TOPIC)
+                || ("HIGH_RISK".equals(domain) && reason == AiRefusalReason.HIGH_RISK_TOPIC)
+                || ("OFFICE_IT".equals(domain) && reason == AiRefusalReason.LOW_CONFIDENCE))) {
+            if (!"REFUSE".equals(data.path("suggestedReplyType").asText())) return invalid(started);
+            return new Retrieval(List.of(), null);
+        }
         if ("OFF_TOPIC".equals(domain)) return refuse(AiRefusalReason.OFF_TOPIC, score, started);
         if ("HIGH_RISK".equals(domain)) return refuse(AiRefusalReason.HIGH_RISK_TOPIC, score, started);
         if ("UNCERTAIN".equals(domain)) {
+            if (classifiedIt) {
+                if (reason != null || !"CLARIFY".equals(data.path("suggestedReplyType").asText())) return invalid(started);
+                return new Retrieval(List.of(), null);
+            }
             return new Retrieval(List.of(), new RagResult(RagStatus.SUCCESS, AiReplyType.CLARIFY,
                     "请补充遇到问题的办公设备或应用、具体表现及错误提示，我会根据这些信息继续排查。",
                     List.of(), BigDecimal.ONE, false, null, List.of(), elapsed(started), null));
         }
-        if (!"OFFICE_IT".equals(domain)) return invalid(started);
-        JsonNode reasonNode = data.path("suggestedRefusalReason");
-        if (!reasonNode.isMissingNode() && !reasonNode.isNull()) {
-            if (!reasonNode.isTextual()) return invalid(started);
-            AiRefusalReason reason;
-            try { reason = AiRefusalReason.valueOf(reasonNode.asText()); }
-            catch (IllegalArgumentException e) { return invalid(started); }
-            if (reason == AiRefusalReason.MODEL_UNAVAILABLE) return failure(RagStatus.UNAVAILABLE, "RAG_DEPENDENCY_UNAVAILABLE", started);
-            return refuse(reason, score, started);
-        }
+        if (reason != null) return refuse(reason, score, started);
         if (!"ANSWER".equals(data.path("suggestedReplyType").asText())) return invalid(started);
         // 无命中/不相关资料不进入提示词，更不能挂载成通用回答的来源。
         if (!data.path("reliable").asBoolean()) return new Retrieval(List.of(), null);

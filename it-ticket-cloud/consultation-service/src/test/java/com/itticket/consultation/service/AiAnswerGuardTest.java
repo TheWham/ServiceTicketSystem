@@ -8,6 +8,8 @@ import com.itticket.consultation.enums.AiRefusalReason;
 import com.itticket.consultation.enums.AiReplyType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -24,12 +26,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>契约来源:
  * <ul>
- *   <li>AI-001:无可靠命中、知识冲突、置信度不足或模型无法完成时必须拒答,不得用常识补写未经引用的步骤;
- *       高风险主题必须 REFUSE 并提供转人工和直接提单入口;每个关键结论至少一条 KnowledgeCitation;</li>
+ *   <li>AI-001:合法 IT 问题允许通用回答；知识冲突、风险或依赖不可用仍拒答。
+ *       有效回答不因置信度低而拒答；分数保留用于审计及转人工建议。</li>
  *   <li>AI-003 / AI-004.3:拒答必须给结构化 refusalReason,REFUSE 时 answerText 为空;</li>
  *   <li>AI-008:引用必须指向仍为 PUBLISHED 的当前版本,失效即整体拒答(AC-27 知识下线场景);</li>
  *   <li>RD-006:RAG/模型不可用时返回拒答并保留转人工与直接提单入口,不得生成无来源猜测答案;</li>
- *   <li>PRD 24.2:AC-01 基于知识回答成功并展示来源;AC-02 无可靠知识时明确拒答并展示转人工入口。</li>
+ *   <li>AC-01 基于知识回答成功并展示来源；无可靠知识时允许空引用通用回答并保留转人工入口。</li>
  * </ul>
  */
 class AiAnswerGuardTest {
@@ -127,7 +129,7 @@ class AiAnswerGuardTest {
     }
 
     @Test
-    @DisplayName("AC-01 置信度恰好等于 minConfidence(0.60)时放行,不是「低于等于即拒答」")
+    @DisplayName("旧 minConfidence(0.60)边界不影响回答放行")
     void ac01_confidence_exactly_at_min_threshold_is_allowed() {
         AiAnswerGuard.Verdict verdict = evaluate(perfect("0.60"));
 
@@ -137,7 +139,7 @@ class AiAnswerGuardTest {
     }
 
     @Test
-    @DisplayName("AC-01 CLARIFY(澄清提问)在引用有效且置信度达标时按原样放行")
+    @DisplayName("AC-01 CLARIFY(澄清提问)保留既有协议处理")
     void ac01_clarify_reply_type_is_preserved() {
         RagResult clarify = new RagResult(RagStatus.SUCCESS, AiReplyType.CLARIFY,
                 "请问是内网还是外网无法访问?", CITATIONS, new BigDecimal("0.80"),
@@ -274,7 +276,7 @@ class AiAnswerGuardTest {
     }
 
     @Test
-    @DisplayName("AC-02 引用为空或为 null:NO_RELIABLE_KNOWLEDGE(AI-001 每个结论至少一条引用)")
+    @DisplayName("未标记通用回答且引用为空或 null:NO_RELIABLE_KNOWLEDGE")
     void ac02_missing_citations_map_to_no_reliable_knowledge() {
         assertRefusal(evaluate(withCitations(List.of())), AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
         assertRefusal(evaluate(withCitations(null)), AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
@@ -288,11 +290,12 @@ class AiAnswerGuardTest {
         assertRefusal(evaluate(withCitations(withNull)), AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
     }
 
-    @Test
-    @DisplayName("AC-02 知识已下线(引用不再是当前发布版本):整体拒答 NO_RELIABLE_KNOWLEDGE(AI-008 / AC-27)")
-    void ac02_unpublished_citation_maps_to_no_reliable_knowledge() {
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "0.2", "0.59", "0.95"})
+    @DisplayName("任何置信度都必须校验引用仍为当前发布版本")
+    void ac02_unpublished_citation_maps_to_no_reliable_knowledge(String confidence) {
         AiAnswerGuard.Verdict verdict =
-                AiAnswerGuard.evaluate(perfect("0.95"), properties(), false, NONE_PUBLISHED);
+                AiAnswerGuard.evaluate(perfect(confidence), properties(), false, NONE_PUBLISHED);
 
         assertRefusal(verdict, AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
     }
@@ -312,24 +315,31 @@ class AiAnswerGuardTest {
         assertRefusal(verdict, AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
     }
 
-    @Test
-    @DisplayName("AC-02 置信度 0.59 低于门槛:LOW_CONFIDENCE")
-    void ac02_confidence_below_threshold_maps_to_low_confidence() {
-        AiAnswerGuard.Verdict verdict = evaluate(perfect("0.59"));
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "0.2", "0.59"})
+    @DisplayName("有效知识回答不因低置信度拒答，保留审计分数及转人工建议")
+    void cited_answer_is_allowed_regardless_of_confidence(String confidence) {
+        AiAnswerGuard.Verdict verdict = evaluate(perfect(confidence));
 
-        assertRefusal(verdict, AiRefusalReason.LOW_CONFIDENCE);
-        assertThat(verdict.confidence()).isEqualByComparingTo(new BigDecimal("0.59"));
+        assertThat(verdict.replyType()).isEqualTo(AiReplyType.ANSWER);
+        assertThat(verdict.answerText()).isEqualTo(ANSWER_TEXT);
+        assertThat(verdict.citations()).isEqualTo(CITATIONS);
+        assertThat(verdict.refusalReason()).isNull();
+        assertThat(verdict.suggestTransfer()).isTrue();
+        assertThat(verdict.confidence()).isEqualByComparingTo(new BigDecimal(confidence));
     }
 
     @Test
-    @DisplayName("AC-02 置信度缺失按 0 处理:LOW_CONFIDENCE")
-    void ac02_null_confidence_maps_to_low_confidence() {
+    @DisplayName("置信度缺失按 0 留痕，不作为硬拒答条件")
+    void null_confidence_defaults_to_zero_without_refusal() {
         RagResult noConfidence = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, ANSWER_TEXT,
                 CITATIONS, null, false, "local-rag-1.0", List.of("KV-0001"), 100L, null);
 
         AiAnswerGuard.Verdict verdict = evaluate(noConfidence);
 
-        assertRefusal(verdict, AiRefusalReason.LOW_CONFIDENCE);
+        assertThat(verdict.replyType()).isEqualTo(AiReplyType.ANSWER);
+        assertThat(verdict.refusalReason()).isNull();
+        assertThat(verdict.suggestTransfer()).isTrue();
         assertThat(verdict.confidence()).isEqualByComparingTo(RagResult.ZERO_CONFIDENCE);
     }
 
@@ -366,11 +376,10 @@ class AiAnswerGuardTest {
                 CITATIONS, new BigDecimal("0.90"), true, "local-rag-1.0", List.of(), 10L, null)));
         refusals.add(evaluate(withCitations(List.of())));
         refusals.add(AiAnswerGuard.evaluate(perfect("0.95"), properties(), false, NONE_PUBLISHED));
-        refusals.add(evaluate(perfect("0.59")));
         // 冷启动修订新增:超范围拒答分支(OFF_TOPIC)
         refusals.add(evaluate(offTopicRefusal()));
 
-        assertThat(refusals).hasSize(11);
+        assertThat(refusals).hasSize(10);
 
         Set<AiRefusalReason> reasons = EnumSet.noneOf(AiRefusalReason.class);
         for (AiAnswerGuard.Verdict verdict : refusals) {
@@ -381,8 +390,10 @@ class AiAnswerGuardTest {
             assertThat(verdict.refusalReason()).isNotNull();
             reasons.add(verdict.refusalReason());
         }
-        // 十一个分支恰好覆盖 AiRefusalReason 的全部七个取值(含冷启动修订新增的 OFF_TOPIC)
-        assertThat(reasons).containsExactlyInAnyOrder(AiRefusalReason.values());
+        // 分数不再产生 LOW_CONFIDENCE；枚举保留用于协议兼容。
+        Set<AiRefusalReason> expected = EnumSet.allOf(AiRefusalReason.class);
+        expected.remove(AiRefusalReason.LOW_CONFIDENCE);
+        assertThat(reasons).containsExactlyInAnyOrderElementsOf(expected);
     }
 
     // ------------------------------------------------------------------
@@ -418,10 +429,18 @@ class AiAnswerGuardTest {
         assertThat(verdict.suggestTransfer()).isTrue();
     }
 
-    @Test
-    @DisplayName("冷启动:通用能力回答置信度不足时拒答 LOW_CONFIDENCE,不得无门槛放行")
-    void general_answer_below_confidence_threshold_refuses() {
-        assertRefusal(evaluate(generalAnswer("0.59")), AiRefusalReason.LOW_CONFIDENCE);
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "0.2", "0.59"})
+    @DisplayName("有效通用回答不因低置信度拒答，保留审计分数及转人工建议")
+    void general_answer_is_allowed_regardless_of_confidence(String confidence) {
+        AiAnswerGuard.Verdict verdict = evaluate(generalAnswer(confidence));
+
+        assertThat(verdict.replyType()).isEqualTo(AiReplyType.ANSWER);
+        assertThat(verdict.answerText()).isEqualTo(ANSWER_TEXT);
+        assertThat(verdict.citations()).isEmpty();
+        assertThat(verdict.refusalReason()).isNull();
+        assertThat(verdict.suggestTransfer()).isTrue();
+        assertThat(verdict.confidence()).isEqualByComparingTo(new BigDecimal(confidence));
     }
 
     @Test

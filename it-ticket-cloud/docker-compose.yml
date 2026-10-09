@@ -1,9 +1,10 @@
-# IT 工单系统微服务依赖:Nacos(注册+配置) + MySQL 8
+# IT 工单系统微服务依赖:Nacos(注册+配置) + Redis + MySQL 8
 # 注意:数据库已统一连远程库 120.92.138.195:3306（密码由 MYSQL_PASSWORD 注入）,
 #       本 compose 里的 MySQL 仅为「离线/无远程库时的可选本地库」或 CI 用,
 #       日常联调不需要启动它(服务默认连远程)。
 # 用法:
 #   Nacos:  docker compose up -d nacos
+#   Redis:  docker compose up -d redis
 #   MySQL(可选):docker compose up -d mysql 起来后,注入 MYSQL_HOST=127.0.0.1 MYSQL_PASSWORD=clt123456
 # MySQL 初始化自动执行 db/init/ 下的建库与种子脚本
 
@@ -12,6 +13,34 @@ networks:
     driver: bridge
 
 services:
+  redis:
+    image: redis:8.2.9-alpine
+    container_name: it-ticket-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - it-ticket-redis-data:/data
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    # Host port is loopback-only. Set REDIS_PASSWORD when other containers connect.
+    command:
+      - /bin/sh
+      - -c
+      - |
+        if [ -n "$$REDIS_PASSWORD" ]; then
+          exec redis-server --appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy allkeys-lru --requirepass "$$REDIS_PASSWORD"
+        else
+          exec redis-server --appendonly yes --appendfsync everysec --maxmemory 256mb --maxmemory-policy allkeys-lru
+        fi
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - it-ticket-net
+
   mysql:
     image: mysql:8.0
     container_name: it-ticket-mysql
@@ -49,4 +78,5 @@ services:
       - it-ticket-net
 
 volumes:
+  it-ticket-redis-data:
   it-ticket-mysql-data:

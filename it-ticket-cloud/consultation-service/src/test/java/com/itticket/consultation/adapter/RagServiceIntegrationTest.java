@@ -29,6 +29,10 @@ class RagServiceIntegrationTest {
     private final ConsultationProperties config = new ConsultationProperties();
     private final KnowledgeQueryService knowledge = mock(KnowledgeQueryService.class);
     private final AtomicInteger modelCalls = new AtomicInteger();
+    private final AtomicInteger classificationCalls = new AtomicInteger();
+    private String domainDecision = "OFFICE_IT";
+    private String standaloneQuestion;
+    private String classificationRequest;
     private HttpServer server;
     private String retrievalBody;
     private int retrievalStatus = 200;
@@ -50,10 +54,20 @@ class RagServiceIntegrationTest {
             exchange.close();
         });
         server.createContext("/chat/completions", exchange -> {
-            modelCalls.incrementAndGet();
-            modelRequest = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            String content = "{\"replyType\":\"ANSWER\",\"answerText\":\"检查 VPN 网络连接。\",\"usedVersionIds\":" + usedVersions
-                    + ",\"confidence\":0.9,\"knowledgeConflict\":false,\"offTopic\":false}";
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String content;
+            if (json.readTree(body).path("messages").get(0).path("content").asText().contains("范围与风险分类器")) {
+                classificationCalls.incrementAndGet();
+                classificationRequest = body;
+                var decision = json.createObjectNode().put("decision", domainDecision);
+                if (standaloneQuestion != null) decision.put("retrievalQuestion", standaloneQuestion);
+                content = decision.toString();
+            } else {
+                modelCalls.incrementAndGet();
+                modelRequest = body;
+                content = "{\"replyType\":\"ANSWER\",\"answerText\":\"检查 VPN 网络连接。\",\"usedVersionIds\":" + usedVersions
+                        + ",\"confidence\":0.9,\"knowledgeConflict\":false,\"offTopic\":false}";
+            }
             byte[] bytes = json.writeValueAsBytes(Map.of("choices", List.of(Map.of("finish_reason", "stop", "message", Map.of("content", content)))));
             exchange.sendResponseHeaders(200, bytes.length);
             exchange.getResponseBody().write(bytes);
@@ -82,6 +96,7 @@ class RagServiceIntegrationTest {
             assertThat(c.snippet()).isEqualTo("检查 VPN 网络连接。");
         });
         assertThat(modelCalls).hasValue(1);
+        assertThat(classificationCalls).hasValue(1);
         assertThat(modelRequest).contains("检查 VPN 网络连接", "V1");
         assertThat(callerId).isEqualTo("U_TEST");
         assertThat(callerRole).isEqualTo("EMPLOYEE");
@@ -92,7 +107,7 @@ class RagServiceIntegrationTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"OFF_TOPIC,OFF_TOPIC", "HIGH_RISK,HIGH_RISK_TOPIC", "OFFICE_IT,LOW_CONFIDENCE", "OFFICE_IT,CONFLICTING_KNOWLEDGE", "OFFICE_IT,MODEL_UNAVAILABLE"})
+    @CsvSource({"OFFICE_IT,CONFLICTING_KNOWLEDGE", "OFFICE_IT,MODEL_UNAVAILABLE"})
     void ragRefusalIsPreservedAndNeverCallsGeneration(String domain, String reason) {
         retrievalBody = response(domain, "REFUSE", reason, false, "0.55", "[]");
         RagResult result = ask();
@@ -103,13 +118,52 @@ class RagServiceIntegrationTest {
     }
 
     @Test
-    void uncertainQuestionClarifiesEvenWithoutModelCredentials() {
+    void missingModelCredentialsAreExplicitDependencyFailure() {
         config.getAi().setApiKey("");
         retrievalBody = response("UNCERTAIN", "CLARIFY", null, false, "0", "[]");
         RagResult result = ask();
-        assertThat(result.replyType()).isEqualTo(AiReplyType.CLARIFY);
-        assertThat(result.answerText()).isNotBlank();
+        assertThat(result.status()).isEqualTo(RagStatus.UNAVAILABLE);
+        assertThat(result.answerText()).isNull();
         assertThat(modelCalls).hasValue(0);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"OFF_TOPIC,REFUSE,OFF_TOPIC", "HIGH_RISK,REFUSE,HIGH_RISK_TOPIC", "UNCERTAIN,CLARIFY,", "OFFICE_IT,REFUSE,LOW_CONFIDENCE"})
+    void semanticItDecisionAllowsGeneralAnswerDespiteLegacyKeywordOrScoreDecision(String domain, String type, String reason) {
+        usedVersions = "[]";
+        retrievalBody = response(domain, type, reason, false, "0.55", "[]");
+        RagResult result = new OpenAiCompatibleRagAdapter(knowledge, config).answer(
+                new RagQuery("S1", "周报文件打不开，怎么排查电脑问题", List.of(), null, null, 3, "U_TEST", "EMPLOYEE"), "req-integration");
+        assertThat(result.status()).isEqualTo(RagStatus.SUCCESS);
+        assertThat(result.replyType()).isEqualTo(AiReplyType.ANSWER);
+        assertThat(result.generalAnswer()).isTrue();
+        assertThat(result.citations()).isEmpty();
+        assertThat(classificationCalls).hasValue(1);
+        assertThat(modelCalls).hasValue(1);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"OFF_TOPIC,OFF_TOPIC", "HIGH_RISK,HIGH_RISK_TOPIC"})
+    void semanticRefusalNeverRetrievesOrGenerates(String decision, String reason) {
+        domainDecision = decision;
+        RagResult result = ask();
+        assertThat(AiAnswerGuard.evaluate(result, config.getAi(), false, (a,v) -> true).refusalReason())
+                .isEqualTo(AiRefusalReason.valueOf(reason));
+        assertThat(classificationCalls).hasValue(1);
+        assertThat(modelCalls).hasValue(0);
+        assertThat(retrievalRequest).isNull();
+    }
+
+    @Test
+    void remoteFollowUpRetrievesStandaloneQuestionAndGeneratesWithOriginalHistory() {
+        standaloneQuestion = "Windows 11 VPN 重启后仍无法连接";
+        RagResult result = new OpenAiCompatibleRagAdapter(knowledge, config).answer(new RagQuery(
+                "S1", "重启过了还是不行", List.of(new RagQuery.Turn("user", "Windows 11 VPN 无法连接"),
+                new RagQuery.Turn("assistant", "先重启客户端。")), "C_NET", null, 3, "U_TEST", "EMPLOYEE"), "req-integration");
+        assertThat(result.status()).isEqualTo(RagStatus.SUCCESS);
+        assertThat(retrievalRequest.path("question").asText()).isEqualTo(standaloneQuestion);
+        assertThat(classificationRequest).contains("Windows 11 VPN 无法连接", "先重启客户端", "重启过了还是不行");
+        assertThat(modelRequest).contains("Windows 11 VPN 无法连接", "先重启客户端", "重启过了还是不行");
     }
 
     @Test

@@ -43,7 +43,7 @@ public class NotificationService {
             java.util.Map.entry("ACCEPT_APPROVED", "验收已通过"),
             java.util.Map.entry("ACCEPT_REJECTED", "验收被驳回"),
             java.util.Map.entry("AUTO_ACCEPTED", "工单已自动验收"),
-            java.util.Map.entry("CANCELLED", "工单已撤销"),
+            java.util.Map.entry("CANCELLED", "工单已撤回"),
             java.util.Map.entry("CLOSED", "工单已关闭"),
             java.util.Map.entry("REOPENED", "工单已重新打开"),
             java.util.Map.entry("SUPPLEMENT_TIMEOUT_CLOSED", "逾期未补充,工单已关闭"),

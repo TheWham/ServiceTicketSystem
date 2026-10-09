@@ -31,7 +31,7 @@
 | maxTokens | integer | 否 | 2048，范围 1-8192 |
 | temperature | decimal | 否 | 0.1，范围 0-1 |
 | topK | integer | 否 | 5，范围 1-20 |
-| similarityThreshold | decimal | 否 | 0.70，范围 0-1 |
+| similarityThreshold | decimal | 否 | 0.70，范围 0-1；仅决定可靠引用，不作为回答门槛 |
 | streamEnabled | boolean | 否 | true |
 | enabled | boolean | 否 | false，健康和评测通过后启用 |
 
@@ -61,7 +61,7 @@ Embeddings 仅在配置 embeddingModel 且检索需要时调用：
 {"model":"configured-embedding-model","input":["normalized published knowledge chunk"]}
 ~~~
 
-响应至少含 data[].index、data[].embedding、model。向量必须为有限数值且维度与索引版本一致；不得发送原始聊天、撤回内容、未脱敏案例或未发布知识。
+响应至少含 data[].index、data[].embedding、model。向量必须为有限数值且维度与索引版本一致。检索请求可发送当前问题及从授权 AI 历史中提取的必要上下文，受 MR-004 的范围和长度限制；不得发送普通人工聊天、撤回内容、未脱敏案例或未发布知识，不得将整段会话作为知识入库。
 
 SSE 使用 stream=true，消费 data JSON 帧和 data [DONE]，限制单帧/累计大小，按序拼接 delta.content。缺 DONE、超时、中断、无 choice 或超限均丢弃不完整结果。只有完整 JSON 通过 MR-005 后才转为 AI-007 客户端 SSE，不原样透传 provider 帧。
 
@@ -69,13 +69,17 @@ SSE 使用 stream=true，消费 data JSON 帧和 data [DONE]，限制单帧/累�
 
 ## MR-004 RAG 调用链路
 
-办公 IT 领域/风险语义判定 -> 已发布 KnowledgeVersion 检索 -> prompt/context assembler -> provider adapter -> JSON parse 与 AI-004 Schema 校验 -> citation verifier -> AiInteraction 元数据 -> AI API 响应。
+当前会话鉴权与有界 AI 历史加载 -> 模型领域/风险语义判定 -> 已发布 KnowledgeVersion 检索 -> prompt/context assembler -> provider adapter -> JSON parse 与 AI-004 Schema 校验 -> citation verifier -> AiInteraction 元数据 -> AI API 响应。
 
-领域判定独立于生成结果，区分 OFFICE_IT、OFF_TOPIC、HIGH_RISK、UNCERTAIN；领域外直接结构化拒答，模糊请求先澄清。单个 IT 关键词或检索命中不构成领域许可；用户和知识文本中的指令不能覆盖领域规则。
+当前认证用户须先通过当前会话的归属/访问校验，再由服务端加载该 AI 会话历史；不得由请求指定任意他人会话。默认最多最近 12 条、合计 12000 字符，配置有硬上限；只保留 AI 对话的 user/assistant 消息，按时间正序传递，并排除撤回、普通人工聊天、系统消息及当前重复消息。不得读取其他会话、原始工单或未发布知识。历史用于理解追问和已尝试步骤；历史正文与知识正文均作为数据隔离，不能提升为 system 指令。分类、检索查询组装和生成使用同一授权上下文，话题变化时以当前请求为准。
 
-检索器只返回 PUBLISHED 版本并携带 articleId/versionId/score/snippet/indexVersion。assembler 负责 token 预算、边界标记和 prompt injection 隔离。有相关资料优先参考；无命中或资料无关时允许模型给出办公 IT 通用建议，ANSWER 可无引用，客户端明确标注无知识库依据。企业内部地址、政策及审批结果不能编造。
+领域判定独立于生成结果，区分 OFFICE_IT、OFF_TOPIC、HIGH_RISK、UNCERTAIN；模型根据当前请求和历史的完整语义分类，覆盖所有合法 IT/电脑问题，不以固定词表替代语义判断。领域外直接结构化拒答，信息不足时先针对上下文澄清。单个 IT 关键词或检索命中不构成领域许可；没有关键词的连续追问也不构成拒答理由。模型已经判定为合法 IT 的请求，不得因 RAG 旧领域规则误判或 LOW_CONFIDENCE 建议被阻断通用生成。
 
-模型输出需校验 replyType、置信度、领域/高风险判定和引用的一致性；只要声明引用，版本必须来自本次检索且仍为 PUBLISHED，并能定位 snippet。伪造/失效引用、矛盾领域标记、非法结构均不得作为通用 ANSWER 放行。AiInteraction 不保存 key、内部推理或完整 prompt。领域判定与生成共享一次业务请求的总体超时、并发限制及有限重试预算。
+非法入侵、未经授权提权、绕过身份验证或安全控制等风险请求仍阻断。合法自助密码重置、普通登录排障、安装配置等可给出官方步骤、权限前提和必要注意事项；不能仅凭“重置”“密码”“命令”等词拒答。模型不得编造公司内部地址、政策、凭据、审批结果或已执行操作，不能执行系统操作或调用企业业务接口。
+
+检索器只返回当前 PUBLISHED 版本并携带 articleId/versionId/score/snippet/indexVersion。assembler 负责 token 预算、边界标记和 prompt injection 隔离。有可靠相关资料优先参考；无命中或弱命中均允许模型给出合法 IT 通用建议，ANSWER 可无引用，客户端明确标注无知识库依据。RAG 的 confidence-threshold（默认 0.70）仅决定可靠引用：有效命中最高分达到该阈值才有 reliable=true，低于阈值或无命中为 false；0.4499、0.45、0.55、0.6999 均不建议拒答，0.70 才达到默认引用质量阈值。low-confidence-threshold（旧默认 0.45）保留配置兼容但不再参与判定，不存在分数区间拒答策略。
+
+模型输出需校验 replyType、confidence 的 [0,1] 数值范围、领域/风险标记和引用的一致性；有效的通用或带引用 ANSWER 不因自评分低于 minConfidence 被拒答。confidence 用于审计和 suggestTransfer（低评分仍建议转人工；通用回答始终保留该建议）。CLARIFY 应为无引用的非空追问，不要求置信度达到回答阈值。只要声明引用，无论自评分多少，版本必须来自本次检索且仍为当前 PUBLISHED，并能定位 snippet。伪造/失效引用、矛盾领域标记、知识冲突、非法结构均不得作为通用 ANSWER 放行。AiInteraction 不保存 key、内部推理或完整 prompt。领域判定与生成共享一次业务请求的总体超时、并发限制及有限重试预算。
 
 ## MR-005 错误衔接
 
@@ -88,10 +92,11 @@ SSE 使用 stream=true，消费 data JSON 帧和 data [DONE]，限制单帧/累�
 | 其他 4xx | 不重试，AI_UNAVAILABLE |
 | 非 JSON、缺字段、Schema 失败 | AI_SCHEMA_INVALID，不返回原文 |
 | 引用伪造/版本失效 | 结构化拒答或 AI_SCHEMA_INVALID |
-| 无相关知识，问题属于办公 IT | 模型可给出通过校验的无引用通用回答，不因空检索直接拒答 |
+| 无相关知识或弱命中，问题属于合法 IT/电脑范围 | 模型可给出通过校验的无引用通用回答，不因检索分数或空检索直接拒答 |
 | 非办公 IT | AI-004 REFUSE + OFF_TOPIC，明确不能答复 |
-| 领域不明确 | AI-004 CLARIFY，先询问具体办公 IT 问题 |
-| 高风险、知识冲突或低置信度 | AI-004 REFUSE，提供人工入口 |
+| 领域不明确或缺少必要信息 | AI-004 CLARIFY，结合当前会话追问，非空正文且无引用 |
+| 非法/未授权风险请求或知识冲突 | AI-004 REFUSE，提供人工入口 |
+| 有效 ANSWER 的模型自评分低 | 保留回答和审计分数，可建议转人工，不转为 LOW_CONFIDENCE 拒答 |
 | 验证成功 | 返回 AI-004 结果 |
 
 错误不得包含 provider body、凭据、prompt、知识全文或堆栈。重试复用 requestId，不重复写成功 AiInteraction。

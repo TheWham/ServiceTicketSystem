@@ -329,7 +329,12 @@
             stripe
             :empty-text="listError ? '知识列表加载失败，请重试' : '暂无知识文章，可先在文档导入页存为草稿'"
           >
-            <el-table-column prop="articleId" label="文章ID" min-width="210" show-overflow-tooltip />
+            <el-table-column prop="title" label="文章标题" min-width="320">
+              <template #default="{ row }">
+                <div class="knowledge-title">{{ row.title || '（未命名知识）' }}</div>
+                <div class="knowledge-article-id" :title="row.articleId">ID：{{ row.articleId }}</div>
+              </template>
+            </el-table-column>
             <el-table-column prop="categoryId" label="分类" width="90" align="center" />
             <el-table-column label="状态" width="110" align="center">
               <template #default="{ row }">
@@ -1452,6 +1457,8 @@ function handleLogout() {
 .card-header-title { font-size:18px; }
 .card-header-flex { gap:12px; flex-wrap:wrap; }
 .scope-note { margin:0 0 16px; color:var(--el-text-color-secondary); font-size:13px; line-height:1.6; }
+.knowledge-title { color:var(--el-text-color-primary); font-size:14px; font-weight:600; line-height:1.6; white-space:normal; overflow-wrap:anywhere; }
+.knowledge-article-id { margin-top:4px; color:var(--el-text-color-secondary); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .page-error { margin-bottom:16px; }
 .trace-id-badge { color:var(--el-text-color-secondary); font-size:12px; overflow-wrap:anywhere; }
 .trace-summary-banner { gap:16px; flex-wrap:wrap; }

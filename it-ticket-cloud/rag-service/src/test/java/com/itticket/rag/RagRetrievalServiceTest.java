@@ -39,8 +39,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
  * <p>规范引用（路径相对仓库根目录 docs/）：</p>
  * <ul>
  *   <li>MR-004 · specs/10-model-rag-integration.md:70 —— 领域判定前置于检索，领域外/高风险短路；</li>
- *   <li>AI-001 · specs/02-ai-api-json-schema.md:14 —— 阈值分档：≥0.70 可靠、0.45–0.70 拒答
- *       LOW_CONFIDENCE、&lt;0.45 或无命中不强制拒答（冷启动修订，对应 PRD AC-02 · PRD:886）；</li>
+ *   <li>AI-001 · specs/02-ai-api-json-schema.md:14 —— 相似度仅决定引用质量：≥0.70 可靠，
+ *       所有弱命中或无命中均允许模型通用回答；</li>
  *   <li>RD-006 · specs/04-resilience-degradation.md:67 —— 向量化失败按依赖不可用降级 MODEL_UNAVAILABLE；</li>
  *   <li>AI-008 · specs/02-ai-api-json-schema.md:96 —— 引用复核仍 PUBLISHED，已下线丢弃（AC-27 · specs/09:93）；</li>
  *   <li>AI-004.3 · specs/02-ai-api-json-schema.md:134 —— citation.snippet ≤1000、title 非空。</li>
@@ -51,10 +51,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
  *   1) 领域判定（DomainClassifier，纯本地规则）：HIGH_RISK / OFF_TOPIC 直接拒答、
  *      UNCERTAIN 反问澄清 —— 这三种“短路”，连 embedding 与 ES 调用都不发生；
  *   2) 向量化 + 双路检索（embedding 服务 + Elasticsearch）；
- *   3) 相似度阈值分档决定 reliable 与 suggestedRefusalReason：
+ *   3) 相似度阈值决定 reliable，不产生拒答原因：
  *      top >= reliable 阈值            -> 可靠回答（可挂引用）；
- *      low <= top < reliable           -> LOW_CONFIDENCE 拒答（有沾边内容但不够可信）；
- *      top < low（冷启动修订口径）      -> 不强制拒答，允许上层给无引用的通用答复；
+ *      top < reliable 或无命中         -> 允许上层给无引用的通用答复；
  *   4) 引用校验建 citations：只保留 PUBLISHED 文章、按文章去重、正文截断。
  * 阈值与依赖全部走 RagRetrievalProperties 注入；本测试用默认配置 + mock 外部调用。
  */
@@ -136,11 +135,10 @@ public class RagRetrievalServiceTest {
     }
 
     /**
-     * 阈值中档：0.55 落在 [low, reliable) 之间 -> 强制 LOW_CONFIDENCE 拒答（AI-001），
-     * 宁可拒答转人工，也不输出没把握的内容。
+     * 相似度只决定知识引用质量，所有弱命中均允许通用回答。
      */
     @Test
-    public void lowConfidenceBetweenThresholds() {
+    public void weakHitAllowsGeneralAnswer() {
         stubEmbeddingOk();
         stubPublishedArticle();
         stubSearch(List.of(hit("c1", "a1", "0.5500")));
@@ -148,8 +146,8 @@ public class RagRetrievalServiceTest {
         RagRetrievalService.RetrievalOutcome outcome = service.retrieve("VPN 连不上怎么办", null, null);
 
         Assertions.assertFalse(outcome.reliable());
-        Assertions.assertEquals(AiRefusalReason.LOW_CONFIDENCE, outcome.suggestedRefusalReason(),
-                "置信度不足仍拒答（AI-001）");
+        Assertions.assertNull(outcome.suggestedRefusalReason());
+        Assertions.assertEquals(AiReplyType.ANSWER, service.toResponse(outcome).suggestedReplyType());
     }
 
     /**
@@ -216,8 +214,8 @@ public class RagRetrievalServiceTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"0.2000, ANSWER, false", "0.4500, REFUSE, false", "0.5500, REFUSE, false",
-            "0.7000, ANSWER, true"})
+    @CsvSource({"0.2000, ANSWER, false", "0.4499, ANSWER, false", "0.4500, ANSWER, false",
+            "0.5500, ANSWER, false", "0.6999, ANSWER, false", "0.7000, ANSWER, true"})
     public void staleScoresCannotInfluenceThresholds(String score, AiReplyType replyType, boolean reliable) {
         stubEmbeddingOk();
         stubPublishedArticle();
@@ -233,8 +231,26 @@ public class RagRetrievalServiceTest {
         Assertions.assertEquals(new BigDecimal(score), response.topScore());
         Assertions.assertEquals(replyType, response.suggestedReplyType());
         Assertions.assertEquals(reliable, response.reliable());
-        Assertions.assertEquals(replyType == AiReplyType.REFUSE ? AiRefusalReason.LOW_CONFIDENCE : null,
-                response.suggestedRefusalReason());
+        Assertions.assertNull(response.suggestedRefusalReason());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"0.80, 0.99, 0.7999, false", "0.80, 0.99, 0.8000, true",
+            "0.50, 0.99, 0.5000, true", "0.70, 0.10, 0.5500, false"})
+    public void onlyCitationThresholdControlsReliability(String threshold, String obsoleteThreshold,
+                                                        String score, boolean reliable) {
+        properties.setConfidenceThreshold(new BigDecimal(threshold));
+        properties.setLowConfidenceThreshold(new BigDecimal(obsoleteThreshold));
+        stubEmbeddingOk();
+        stubPublishedArticle();
+        stubSearch(List.of(hit("c1", "a1", score)));
+
+        RagRetrievalResponse response = service.toResponse(service.retrieve("VPN 连不上怎么办", null, null));
+
+        Assertions.assertEquals(reliable, response.reliable());
+        Assertions.assertEquals(AiReplyType.ANSWER, response.suggestedReplyType());
+        Assertions.assertNull(response.suggestedRefusalReason());
+        Assertions.assertEquals(new BigDecimal(score), response.topScore());
     }
 
     @Test

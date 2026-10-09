@@ -211,6 +211,65 @@ class OpenAiCompatibleRagAdapterTest {
         assertThat(ask("打印机问题").status()).isEqualTo(RagStatus.INVALID_RESPONSE);
     }
 
+    @Test
+    void followUpKeepsRolesAndUsesStandaloneQuestionForRetrieval() throws Exception {
+        replies.add("{\"decision\":\"OFFICE_IT\",\"retrievalQuestion\":\"Windows 11 VPN 重启后仍无法连接\"}");
+        replies.add(answer("既然重启没有改善，请提供 VPN 的错误提示。", "[]", false));
+        RagResult result = adapter.answer(new RagQuery("S-1", "重启过了还是不行", List.of(
+                new RagQuery.Turn("user", "Windows 11 的 VPN 连不上"),
+                new RagQuery.Turn("assistant", "请先重启 VPN 客户端。")), null, null, 5), "req-follow-up");
+
+        assertThat(result.status()).isEqualTo(RagStatus.SUCCESS);
+        assertThat(result.answerText()).contains("重启没有改善");
+        assertThat(requests).hasSize(2);
+        for (String request : requests) {
+            var messages = json.readTree(request).path("messages");
+            assertThat(messages.size()).isEqualTo(4);
+            assertThat(messages.get(0).path("role").asText()).isEqualTo("system");
+            assertThat(messages.get(1).path("role").asText()).isEqualTo("user");
+            assertThat(messages.get(1).path("content").asText()).isEqualTo("Windows 11 的 VPN 连不上");
+            assertThat(messages.get(2).path("role").asText()).isEqualTo("assistant");
+            assertThat(messages.get(2).path("content").asText()).isEqualTo("请先重启 VPN 客户端。");
+            assertThat(messages.get(3).path("content").asText()).contains("重启过了还是不行");
+        }
+        verify(knowledge).retrieve("Windows 11 VPN 重启后仍无法连接", null, 5);
+    }
+
+    @Test
+    void generationCanAskTargetedQuestionWithoutCitationOrConfidenceGate() {
+        replies.add("{\"decision\":\"OFFICE_IT\"}");
+        replies.add("{\"replyType\":\"CLARIFY\",\"answerText\":\"是所有网站打不开，还是只有公司内网？\","
+                + "\"usedVersionIds\":[],\"confidence\":0.2,\"knowledgeConflict\":false,\"offTopic\":false}");
+        RagResult result = ask("网络有问题");
+        assertThat(result.status()).isEqualTo(RagStatus.SUCCESS);
+        assertThat(result.replyType()).isEqualTo(AiReplyType.CLARIFY);
+        assertThat(result.answerText()).contains("所有网站");
+        assertThat(result.citations()).isEmpty();
+    }
+
+    @Test
+    void clarificationCannotSmuggleCitationOrEmptyBody() {
+        for (String payload : List.of(
+                "{\"replyType\":\"CLARIFY\",\"answerText\":\"请补充信息\",\"usedVersionIds\":[\"KV-1\"],\"confidence\":0.9,\"knowledgeConflict\":false,\"offTopic\":false}",
+                "{\"replyType\":\"CLARIFY\",\"answerText\":\"  \",\"usedVersionIds\":[],\"confidence\":0.9,\"knowledgeConflict\":false,\"offTopic\":false}")) {
+            replies.add("{\"decision\":\"OFFICE_IT\"}");
+            replies.add(payload);
+            assertThat(ask("网络有问题").status()).isEqualTo(RagStatus.INVALID_RESPONSE);
+        }
+    }
+
+    @Test
+    void newOffTopicQuestionIsClassifiedEvenWhenHistoryWasIt() {
+        replies.add("{\"decision\":\"OFF_TOPIC\"}");
+        RagResult result = adapter.answer(new RagQuery("S-1", "换个话题，帮我写小说", List.of(
+                new RagQuery.Turn("user", "VPN 连接不上"),
+                new RagQuery.Turn("assistant", "检查网络连接。")), null, null, 5), "req-topic-change");
+        assertThat(result.offTopic()).isTrue();
+        assertThat(result.replyType()).isEqualTo(AiReplyType.REFUSE);
+        assertThat(requests).hasSize(1);
+        verifyNoInteractions(knowledge);
+    }
+
     /** 统一入口：向适配器发起一次完整的“分类+（可能）生成”问答 */
     private RagResult ask(String question) {
         return adapter.answer(new RagQuery("S-1", question, List.of(), null, null, 5), "req-test");

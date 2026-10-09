@@ -22,6 +22,7 @@ public class TicketVO {
     private String nature;
     private String categoryId;
     private String categorySnapshot;
+    private String categoryName;
     private String title;
     private String description;
     private String impactDescription;
@@ -60,6 +61,8 @@ public class TicketVO {
         vo.setNature(t.getNature());
         vo.setCategoryId(t.getCategoryId());
         vo.setCategorySnapshot(t.getCategorySnapshot());
+        vo.setCategoryName(t.getCategorySnapshot() == null || t.getCategorySnapshot().isBlank()
+                ? t.getCategoryId() : t.getCategorySnapshot());
         vo.setTitle(t.getTitle());
         vo.setDescription(t.getDescription());
         vo.setImpactDescription(t.getImpactDescription());

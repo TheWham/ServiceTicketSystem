@@ -266,7 +266,7 @@ const STATUS_LABEL = {
   NEW: '新建', ASSIGNED: '已分配', IN_PROGRESS: '处理中',
   PENDING_SUPPLEMENT: '待补充', PENDING_EXTERNAL: '外部等待',
   PENDING_ACCEPTANCE: '待验收', COMPLETED: '已完成',
-  CANCELLED: '已取消', CLOSED: '已关闭'
+  CANCELLED: '已撤回', CLOSED: '已关闭'
 }
 const STATUS_TYPE = {
   NEW: 'warning', ASSIGNED: 'primary', IN_PROGRESS: 'primary',

@@ -120,7 +120,7 @@ public class KnowledgeArticleController {
                 .eq(StringUtils.hasText(status), KnowledgeArticle::getStatus, status)
                 .eq(StringUtils.hasText(category), KnowledgeArticle::getCategoryId, category)
                 .orderByDesc(KnowledgeArticle::getUpdatedAt);
-        return Result.ok(articleMapper.selectPage(pageRequest, wrapper));
+        return Result.ok(articleMapper.selectPageWithTitles(pageRequest, wrapper));
     }
 
     /** 知识详情：文章 + 当前版本 + 流转审计时间线（审计要求 SM-001 · specs/03-business-state-machine.md:12） */

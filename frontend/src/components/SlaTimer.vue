@@ -61,7 +61,7 @@ const targetTotal = ref(0)
 let timer = null
 
 const statusLabel = computed(() => ({
-  RUNNING: '计时中', PAUSED: '已暂停', STOPPED: '已停止', BREACHED: '已违约'
+  RUNNING: '计时中', PAUSED: '已暂停', STOPPED: '已停止', CANCELLED: '已撤回', BREACHED: '已违约'
 }[sla.value?.status] || sla.value?.status || '—'))
 
 const statusTagType = computed(() => ({
@@ -87,6 +87,7 @@ const progressStatus = computed(() => {
 })
 
 const progressTip = computed(() => {
+  if (sla.value?.status === 'CANCELLED') return '工单已撤回，SLA 已停止计时'
   if (isBreached.value) return '已超出 SLA 完成目标（违约记录保留，PRD §11.2）'
   if (sla.value?.status === 'PAUSED') return '计时已暂停（补充/外部等待期间不计入 SLA）'
   if (sla.value?.status === 'STOPPED') return '工单已终结，SLA 停止计时'

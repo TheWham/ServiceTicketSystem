@@ -14,6 +14,7 @@ import com.itticket.ticket.dto.AcceptRequest;
 import com.itticket.ticket.dto.ActionRequest;
 import com.itticket.ticket.dto.AssignRequest;
 import com.itticket.ticket.dto.CreateTicketRequest;
+import com.itticket.ticket.dto.EditTicketRequest;
 import com.itticket.ticket.dto.RatingRequest;
 import com.itticket.ticket.entity.Attachment;
 import com.itticket.ticket.entity.Category;
@@ -45,6 +46,7 @@ import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -248,9 +250,11 @@ public class TicketService {
 
     // ---------------- 工单列表 ----------------
 
-    public TicketListVO list(String status, String categoryId, String assigneeId, String creatorId,
+    public TicketListVO list(UserContext.CurrentUser viewer, String status, String categoryId, String assigneeId, String creatorId,
                              String priority, String unassigned, String mineOrPool, int page, int pageSize) {
         QueryWrapper<Ticket> qw = new QueryWrapper<>();
+        if ("EMPLOYEE".equals(viewer.getRole())) qw.eq("creator_id", viewer.getUserId());
+        else if (!"PLATFORM_ADMIN".equals(viewer.getRole())) qw.ne("status", TicketStatus.CANCELLED.getValue());
         if (status != null && !status.isBlank()) qw.eq("status", status);
         if (categoryId != null && !categoryId.isBlank()) qw.eq("category_id", categoryId);
         if (assigneeId != null && !assigneeId.isBlank()) qw.eq("assignee_id", assigneeId);
@@ -284,11 +288,12 @@ public class TicketService {
 
     // ---------------- 工单详情 ----------------
 
-    public Map<String, Object> get(String ticketId) {
+    public Map<String, Object> get(UserContext.CurrentUser viewer, String ticketId) {
         Ticket ticket = ticketMapper.selectById(ticketId);
         if (ticket == null) {
             throw new BizException(ErrorCode.TICKET_NOT_FOUND);
         }
+        TicketVisibility.checkRead(viewer, ticket);
         List<TicketFlowLog> flows = flowLogMapper.selectList(new QueryWrapper<TicketFlowLog>()
                 .eq("ticket_id", ticketId)
                 .orderByAsc("occurred_at").orderByAsc("transition_id"));
@@ -314,6 +319,109 @@ public class TicketService {
         }).toList();
 
         return Map.of("ticket", vo, "flow_logs", flowVos);
+    }
+
+    // ---------------- 提单人重新编辑（不触发状态迁移和 SLA） ----------------
+
+    @Transactional
+    public void edit(UserContext.CurrentUser operator, String ticketId, EditTicketRequest req) {
+        Ticket ticket = ticketMapper.selectOne(new QueryWrapper<Ticket>()
+                .eq("ticket_id", ticketId).last("FOR UPDATE"));
+        if (ticket == null) throw new BizException(ErrorCode.TICKET_NOT_FOUND);
+        if (!Objects.equals(ticket.getCreatorId(), operator.getUserId())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "只能修改自己提交的工单");
+        }
+        if (ticket.getStatus() == TicketStatus.CANCELLED) {
+            throw new BizException(ErrorCode.ILLEGAL_TRANSITION, "工单已撤回，存档内容不可修改");
+        }
+        if ((req.getNature() != null && !Objects.equals(req.getNature(), ticket.getNature()))
+                || (req.getCategoryId() != null && !Objects.equals(req.getCategoryId(), ticket.getCategoryId()))) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "已提交工单的问题类型不能修改");
+        }
+        List<String> errors = new ArrayList<>();
+        if (trimToNull(req.getTitle()) == null) errors.add("工单标题不能为空");
+        if (trimToNull(req.getDescription()) == null) errors.add("问题描述不能为空");
+        if (trimToNull(req.getImpactDescription()) == null) errors.add("影响情况不能为空");
+        if (trimToNull(req.getUrgencyDescription()) == null) errors.add("紧急说明不能为空");
+        validateLength(errors, req.getTitle(), 100, "title");
+        validateLength(errors, req.getDescription(), 5000, "description");
+        validateLength(errors, req.getImpactDescription(), 2000, "impact_description");
+        validateLength(errors, req.getUrgencyDescription(), 2000, "urgency_description");
+        validateLength(errors, req.getLocation(), 255, "location");
+        validateLength(errors, req.getContact(), 255, "contact");
+        validateLength(errors, req.getAssetId(), 64, "asset_id");
+        List<String> ids = req.getAttachments();
+        if (ids != null && (ids.size() > 3 || ids.stream().anyMatch(id -> id == null || id.isBlank())
+                || new LinkedHashSet<>(ids).size() != ids.size())) errors.add("附件最多3个且不能重复或为空");
+        if (!errors.isEmpty()) throw new BizException(ErrorCode.PARAM_INVALID, String.join("；", errors));
+
+        // 在任何写入前校验最终照片集合，已有照片可保留；新照片只能来自本人草稿。
+        List<String> newIds = new ArrayList<>();
+        List<String> restoreIds = new ArrayList<>();
+        LinkedHashSet<String> finalIds = new LinkedHashSet<>();
+        if (ids != null) {
+            for (String id : ids) {
+                Attachment att = attachmentMapper.selectById(id);
+                if (att == null || !"TICKET".equals(att.getBizType()) || !"PASSED".equals(att.getScanStatus())
+                        || att.getWithdrawnAt() != null
+                        || (!ticketId.equals(att.getBizId()) && !(operator.getUserId().equals(att.getBizId())
+                        && operator.getUserId().equals(att.getUploaderId())))) {
+                    throw new BizException(ErrorCode.PARAM_INVALID, "附件不可用，请重新上传");
+                }
+                if (ticketId.equals(att.getBizId())) {
+                    finalIds.add(id);
+                    continue;
+                }
+                // 已撤回的原照片仍占用 (biz_type,biz_id,hash) 唯一键；同图复用原记录。
+                Attachment previous = att.getHash() == null ? null : attachmentMapper.selectOne(
+                        new QueryWrapper<Attachment>().eq("biz_type", "TICKET").eq("biz_id", ticketId)
+                                .eq("hash", att.getHash()).last("FOR UPDATE"));
+                if (previous != null) {
+                    if (!"PASSED".equals(previous.getScanStatus())
+                            || (previous.getWithdrawnAt() != null && !operator.getUserId().equals(previous.getUploaderId()))) {
+                        throw new BizException(ErrorCode.PARAM_INVALID, "原照片不可恢复，请选择其他照片");
+                    }
+                    finalIds.add(previous.getAttachmentId());
+                    if (previous.getWithdrawnAt() != null) restoreIds.add(previous.getAttachmentId());
+                } else {
+                    finalIds.add(id);
+                    newIds.add(id);
+                }
+            }
+        }
+
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneOffset.UTC);
+        ticketMapper.update(null, new UpdateWrapper<Ticket>().eq("ticket_id", ticketId)
+                .set("title", req.getTitle().trim()).set("description", req.getDescription().trim())
+                .set("impact_description", req.getImpactDescription().trim())
+                .set("urgency_description", req.getUrgencyDescription().trim())
+                .set("location", trimToNull(req.getLocation())).set("contact", trimToNull(req.getContact()))
+                .set("asset_id", trimToNull(req.getAssetId()))
+                // 旧自动流转任务使用 updated_at 起算；显式保留以覆盖数据库 ON UPDATE。
+                // 本次编辑时间由下方 TICKET_EDIT 流水的 occurred_at 记录。
+                .set("updated_at", ticket.getUpdatedAt()));
+        if (ids != null) {
+            UpdateWrapper<Attachment> removed = new UpdateWrapper<Attachment>()
+                    .eq("biz_type", "TICKET").eq("biz_id", ticketId).eq("uploader_id", operator.getUserId())
+                    .isNull("withdrawn_at").set("withdrawn_at", now).set("updated_at", now);
+            if (!finalIds.isEmpty()) removed.notIn("attachment_id", finalIds);
+            attachmentMapper.update(null, removed);
+            for (String id : restoreIds) {
+                attachmentMapper.update(null, new UpdateWrapper<Attachment>()
+                        .eq("attachment_id", id).eq("biz_type", "TICKET").eq("biz_id", ticketId)
+                        .eq("uploader_id", operator.getUserId()).eq("scan_status", "PASSED")
+                        .set("withdrawn_at", null).set("updated_at", now));
+            }
+            for (String id : newIds) {
+                int bound = attachmentMapper.update(null, new UpdateWrapper<Attachment>()
+                        .eq("attachment_id", id).eq("biz_type", "TICKET").eq("biz_id", operator.getUserId())
+                        .eq("uploader_id", operator.getUserId()).eq("scan_status", "PASSED").isNull("withdrawn_at")
+                        .set("biz_id", ticketId).set("updated_at", now));
+                if (bound != 1) throw new BizException(ErrorCode.PARAM_INVALID, "附件状态已变化，请重新上传");
+            }
+        }
+        insertFlowLog(ticketId, ticket.getStatus().getValue(), ticket.getStatus().getValue(),
+                "TICKET_EDIT", operator.getUserId(), "提单人修改工单内容");
     }
 
     // ---------------- 派单 / 改派(仅主管) ----------------
@@ -454,6 +562,34 @@ public class TicketService {
                 "assignee_id", operator.getUserId(), "priority", priority);
     }
 
+    // ---------------- 撤回（作废并存档，不物理删除） ----------------
+
+    @Transactional
+    public Map<String, Object> withdraw(UserContext.CurrentUser operator, String ticketId) {
+        Ticket ticket = ticketMapper.selectOne(new QueryWrapper<Ticket>()
+                .eq("ticket_id", ticketId).last("FOR UPDATE"));
+        if (ticket == null) throw new BizException(ErrorCode.TICKET_NOT_FOUND);
+        if (!"EMPLOYEE".equals(operator.getRole()) || !Objects.equals(ticket.getCreatorId(), operator.getUserId())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "只能撤回自己提交的工单");
+        }
+        if (ticket.getStatus().isTerminal()) {
+            throw new BizException(ErrorCode.ILLEGAL_TRANSITION, "已结束的工单不能撤回");
+        }
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneOffset.UTC);
+        int rows = ticketMapper.update(null, new LambdaUpdateWrapper<Ticket>()
+                .eq(Ticket::getTicketId, ticketId).eq(Ticket::getStatus, ticket.getStatus())
+                .set(Ticket::getStatus, TicketStatus.CANCELLED)
+                .set(Ticket::getClosedAt, now).set(Ticket::getUpdatedAt, now));
+        if (rows != 1) throw new BizException(ErrorCode.ILLEGAL_TRANSITION, "工单状态已变化，请刷新后重试");
+        // 停止计时和分派与撤回同一事务提交；失败时整体回滚。
+        slaService.cancel(ticketId);
+        routingService.cancelAssignments(ticketId);
+        insertFlowLog(ticketId, ticket.getStatus().getValue(), TicketStatus.CANCELLED.getValue(),
+                "TICKET_CANCEL", operator.getUserId(), "用户撤回工单，已作废并保留存档");
+        afterCommit(() -> notificationService.sendNotification(ticketId, "CANCELLED", operator.getUserId()));
+        return Map.of("ticket_id", ticketId, "status", TicketStatus.CANCELLED.getValue());
+    }
+
     // ---------------- 通用状态操作 ----------------
 
     private record ActionSpec(String eventCode, TicketStatus to, List<TicketStatus> froms) {
@@ -466,7 +602,6 @@ public class TicketService {
             "done", new ActionSpec("TICKET_SUBMIT_RESOLUTION", TicketStatus.PENDING_ACCEPTANCE, List.of(TicketStatus.IN_PROGRESS)),
             "accept", new ActionSpec("TICKET_APPROVE_ACCEPTANCE", TicketStatus.COMPLETED, List.of(TicketStatus.PENDING_ACCEPTANCE)),
             "reject", new ActionSpec("TICKET_REJECT_ACCEPTANCE", TicketStatus.IN_PROGRESS, List.of(TicketStatus.PENDING_ACCEPTANCE)),
-            "cancel", new ActionSpec("TICKET_CANCEL", TicketStatus.CANCELLED, List.of(TicketStatus.NEW)),
             "supply_info", new ActionSpec("TICKET_SUBMIT_SUPPLEMENT", TicketStatus.IN_PROGRESS, List.of(TicketStatus.PENDING_SUPPLEMENT)),
             "external_resolved", new ActionSpec("TICKET_RESUME_EXTERNAL", TicketStatus.IN_PROGRESS, List.of(TicketStatus.PENDING_EXTERNAL))
     );
@@ -485,6 +620,7 @@ public class TicketService {
 
     @Transactional
     public Map<String, Object> action(UserContext.CurrentUser operator, String ticketId, ActionRequest req) {
+        if ("cancel".equals(req.getAction())) return withdraw(operator, ticketId);
         Ticket ticket = ticketMapper.selectById(ticketId);
         if (ticket == null) throw new BizException(ErrorCode.TICKET_NOT_FOUND);
 
@@ -537,19 +673,18 @@ public class TicketService {
 
         LambdaUpdateWrapper<Ticket> uw = new LambdaUpdateWrapper<Ticket>()
                 .eq(Ticket::getTicketId, ticketId)
+                .eq(Ticket::getStatus, ticket.getStatus())
                 .set(Ticket::getStatus, mapping.to());
-        if ("done".equals(req.getAction()) || "accept".equals(req.getAction()) || "cancel".equals(req.getAction())) {
+        if ("done".equals(req.getAction()) || "accept".equals(req.getAction())) {
             uw.set(Ticket::getSolvedAt, LocalDateTime.now(java.time.ZoneOffset.UTC));
-        }
-        // 取消时清除处理人
-        if ("cancel".equals(req.getAction())) {
-            uw.set(Ticket::getAssigneeId, null);
         }
         if (mapping.to() == TicketStatus.COMPLETED) uw.set(Ticket::getCompletedAt, LocalDateTime.now(java.time.ZoneOffset.UTC));
         if (mapping.to() == TicketStatus.CANCELLED || mapping.to() == TicketStatus.CLOSED)
             uw.set(Ticket::getClosedAt, LocalDateTime.now(java.time.ZoneOffset.UTC));
         uw.set(Ticket::getUpdatedAt, LocalDateTime.now(java.time.ZoneOffset.UTC));
-        ticketMapper.update(null, uw);
+        if (ticketMapper.update(null, uw) != 1) {
+            throw new BizException(ErrorCode.ILLEGAL_TRANSITION, "工单状态已变化，请刷新后重试");
+        }
 
         // SLA 联动（F-08，§11.3/§11.4）
         applySlaOnTransition(ticketId, req.getAction(), mapping.to(), operator.getUserId());
@@ -560,7 +695,6 @@ public class TicketService {
         // 通知(接收人按「更新后」的工单计算,与旧版 {...ticket, ...updateFields} 一致)
         Ticket updated = copyOf(ticket);
         updated.setStatus(mapping.to());
-        if ("cancel".equals(req.getAction())) updated.setAssigneeId(null);
         String eventAction = EVENT_ACTION_MAP.getOrDefault(req.getAction(), req.getAction());
         String eventType = TicketStateMachine.getEventType(eventAction);
         List<String> receivers = TicketStateMachine.getNotifyReceivers(updated, mapping.to());
@@ -659,11 +793,12 @@ public class TicketService {
                 return; // 路由失败已入异常队列
             }
             // NEW → ASSIGNED
-            ticketMapper.update(null, new LambdaUpdateWrapper<Ticket>()
+            int assigned = ticketMapper.update(null, new LambdaUpdateWrapper<Ticket>()
                     .eq(Ticket::getTicketId, ticketId)
                     .eq(Ticket::getStatus, TicketStatus.NEW)
                     .set(Ticket::getStatus, TicketStatus.ASSIGNED)
                     .set(Ticket::getUpdatedAt, LocalDateTime.now(java.time.ZoneOffset.UTC)));
+            if (assigned != 1) return; // 路由完成后被撤回，不再发送派单通知或记录旧状态。
             insertFlowLog(ticketId, TicketStatus.NEW.getValue(), TicketStatus.ASSIGNED.getValue(),
                     "TICKET_ASSIGN", "SYSTEM", "自动路由分配: " + engineerId);
             notificationService.sendNotification(ticketId, "ASSIGNED", engineerId);

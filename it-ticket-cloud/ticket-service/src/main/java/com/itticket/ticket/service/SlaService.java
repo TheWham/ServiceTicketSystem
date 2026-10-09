@@ -191,6 +191,7 @@ public class SlaService {
 
     /** SLA 扫描（每 1 分钟）：推进计时 → 80% 提醒 → 违约标记+通知+异常队列 */
     @Scheduled(fixedDelay = 60000, initialDelay = 30000)
+    @Transactional
     public void scan() {
         List<SlaInstance> running = slaInstanceMapper.selectList(new QueryWrapper<SlaInstance>()
                 .eq("biz_type", "TICKET").eq("sla_type", "TICKET_COMPLETION").eq("status", "RUNNING"));
@@ -206,6 +207,13 @@ public class SlaService {
     }
 
     private void processOne(SlaInstance sla, LocalDateTime now) {
+        // 与撤回采用相同锁顺序：工单 → SLA。扫描快照可能早于撤回，必须重新读取。
+        Ticket currentTicket = ticketMapper.selectOne(new QueryWrapper<Ticket>()
+                .eq("ticket_id", sla.getBizId()).last("FOR UPDATE"));
+        if (currentTicket == null || currentTicket.getStatus() == null || currentTicket.getStatus().isTerminal()) return;
+        sla = slaInstanceMapper.selectOne(new QueryWrapper<SlaInstance>()
+                .eq("sla_id", sla.getSlaId()).eq("status", "RUNNING").last("FOR UPDATE"));
+        if (sla == null || !"RUNNING".equals(sla.getStatus())) return;
         long elapsed = workCalendarService.workSecondsBetween(sla.getCreatedAt(), now);
         long paused = sla.getPausedSeconds() == null ? 0 : sla.getPausedSeconds();
         long effective = elapsed - paused;

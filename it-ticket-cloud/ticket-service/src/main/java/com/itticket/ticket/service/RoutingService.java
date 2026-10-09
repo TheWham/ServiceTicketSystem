@@ -58,6 +58,9 @@ public class RoutingService {
      */
     @Transactional
     public String route(Ticket ticket) {
+        ticket = ticketMapper.selectOne(new QueryWrapper<Ticket>()
+                .eq("ticket_id", ticket.getTicketId()).last("FOR UPDATE"));
+        if (ticket == null || ticket.getStatus() == null || ticket.getStatus().isTerminal()) return null;
         String engineerId = selectEngineer(ticket.getCategoryId(), Collections.emptySet());
         if (engineerId == null) {
             log.warn("[路由] 路由失败（无候选工程师）: {} 分类={}", ticket.getTicketId(), ticket.getCategoryId());
@@ -177,6 +180,13 @@ public class RoutingService {
     @Transactional
     public void assign(Ticket ticket, String engineerId, String endReason) {
         LocalDateTime now = LocalDateTime.now(java.time.ZoneOffset.UTC);
+        // 先锁定可处理工单，再写分派记录；撤回已提交时禁止旧请求重新分派。
+        int rows = ticketMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<Ticket>()
+                .eq("ticket_id", ticket.getTicketId())
+                .notIn("status", TicketStatus.CANCELLED.getValue(), TicketStatus.COMPLETED.getValue(), TicketStatus.CLOSED.getValue())
+                .set("assignee_id", engineerId).set("updated_at", now));
+        if (rows != 1) throw new com.itticket.common.api.BizException(
+                com.itticket.common.api.ErrorCode.ILLEGAL_TRANSITION, "工单已结束，不能继续分派");
         // 结束上一条未关闭的 assignment（转派时）
         if (endReason != null) {
             Assignment last = assignmentMapper.selectOne(new QueryWrapper<Assignment>()
@@ -205,18 +215,13 @@ public class RoutingService {
         a.setUpdatedAt(now);
         assignmentMapper.insert(a);
 
-        // 更新工单 assignee
-        Ticket upd = new Ticket();
-        upd.setTicketId(ticket.getTicketId());
-        upd.setAssigneeId(engineerId);
-        upd.setUpdatedAt(now);
-        ticketMapper.updateById(upd);
     }
 
     /**
      * 响应超时扫描（每 1 分钟）：assignment 超 response_deadline 未 responded → 转派次优工程师（§12.2）。
      */
     @Scheduled(fixedDelay = 60000, initialDelay = 45000)
+    @Transactional
     public void scanResponseTimeout() {
         List<Assignment> pending = assignmentMapper.selectList(new QueryWrapper<Assignment>()
                 .eq("biz_type", "TICKET")
@@ -238,8 +243,9 @@ public class RoutingService {
     @Transactional
     public void transferOnTimeout(Assignment current) {
         if (!"TICKET".equals(current.getBizType())) return;
-        Ticket ticket = ticketMapper.selectById(current.getBizId());
-        if (ticket == null) return;
+        Ticket ticket = ticketMapper.selectOne(new QueryWrapper<Ticket>()
+                .eq("ticket_id", current.getBizId()).last("FOR UPDATE"));
+        if (ticket == null || ticket.getStatus() == null || ticket.getStatus().isTerminal()) return;
         String next = selectEngineer(ticket.getCategoryId(), Set.of(current.getEngineerId()));
         if (next == null) {
             log.warn("[路由] 响应超时但无次优工程师: {}", ticket.getTicketId());
@@ -259,6 +265,14 @@ public class RoutingService {
         flow.setOccurredAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         flowLogMapper.insert(flow);
         log.warn("[路由] 响应超时转派: {} {} -> {}", ticket.getTicketId(), current.getEngineerId(), next);
+    }
+
+    /** 撤回时结束仍在等待响应的分派记录，保留历史负责人。 */
+    @Transactional
+    public void cancelAssignments(String ticketId) {
+        assignmentMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<Assignment>()
+                .eq("biz_type", "TICKET").eq("biz_id", ticketId).isNull("end_reason")
+                .set("end_reason", "CANCELLED").set("updated_at", LocalDateTime.now(java.time.ZoneOffset.UTC)));
     }
 
     /** 标记工程师已响应（首次接单/首次处理时调用，§12.2 响应 SLA） */

@@ -20,9 +20,9 @@ import java.util.List;
  *   <li>MR-001 · specs/10-model-rag-integration.md:13（similarityThreshold 默认 0.70 见 :34；topK 默认 5）。</li>
  *   <li>MR-004 · specs/10-model-rag-integration.md:70：领域判定四态 OFFICE_IT / OFF_TOPIC / HIGH_RISK / UNCERTAIN；
  *       单个 IT 关键词或检索命中不构成领域许可。</li>
- *   <li>AI-001 · specs/02-ai-api-json-schema.md:14：普通登录排障不能因含「账号」等词被一概拒答——
- *       因此高风险拦截只认「动作 × 敏感对象」组合（如「重置+密码」），而非单词命中；
- *       无命中/不相关命中不强制拒答，置信度不足仍拒答（lowConfidenceThreshold=0.45 为本模块实现值）。</li>
+ *   <li>AI-001 · specs/02-ai-api-json-schema.md:14：本地词表用于检索侧兼容判定，
+ *       AI 最终领域/风险判定依据完整语义，合法自助操作不能仅因含「重置」「密码」等词被拒答；
+ *       相似度只决定引用质量，无命中/弱命中不强制拒答；lowConfidenceThreshold 仅保留配置兼容。</li>
  * </ul>
  *
  * @author IT工单系统研发组 - RAG专项
@@ -38,10 +38,10 @@ public class RagRetrievalProperties {
     /** 单次检索允许的最大 Top-K，防止调用方拉取过量数据（上限 20 为本模块实现值） */
     private Integer maxTopK = 20;
 
-    /** 可靠命中阈值：相似度 ≥ 该值才允许据此生成回答（MR-001 · specs/10-model-rag-integration.md:34 默认 0.70） */
+    /** 引用质量阈值：相似度 ≥ 该值才视为可靠知识依据；不限制通用回答（MR-001，默认 0.70） */
     private BigDecimal confidenceThreshold = new BigDecimal("0.70");
 
-    /** 无可靠知识下限：低于该值或空命中不强制拒答（AI-001 · specs/02-ai-api-json-schema.md:14），属"不相关命中" */
+    /** 旧下限配置，仅保留属性绑定兼容；不再参与可靠性或拒答判定（AI-001）。 */
     private BigDecimal lowConfidenceThreshold = new BigDecimal("0.45");
 
     /** 引用片段长度上限（契约 citation.snippet.maxLength=1000，AI-004.3 · specs/02-ai-api-json-schema.md:134） */

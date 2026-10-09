@@ -1,6 +1,6 @@
 <template>
   <div class="employee-view">
-    <div class="page-head"><div><span class="page-eyebrow">EMPLOYEE SERVICE DESK</span><h1 class="page-title">{{ tab === 'list' ? '我的工单' : '提交工单' }}</h1><p class="page-sub">{{ tab === 'list' ? '查看处理进度，补充问题信息，确认解决结果' : '告诉我们您遇到的问题，我们会安排合适的工程师处理' }}</p></div><el-button v-if="tab === 'list'" :icon="Refresh" :loading="listLoading" @click="loadTickets">刷新工单</el-button></div>
+    <div class="page-head"><div><span class="page-eyebrow">EMPLOYEE SERVICE DESK</span><h1 class="page-title">{{ tab === 'list' ? '我的工单' : editingTicket ? '重新编辑工单' : '提交工单' }}</h1><p class="page-sub">{{ tab === 'list' ? '查看处理进度，补充问题信息，确认解决结果' : editingTicket ? '修改已提交的内容，保存后沿用原工单计时' : '告诉我们您遇到的问题，我们会安排合适的工程师处理' }}</p></div><el-button v-if="tab === 'list'" :icon="Refresh" :loading="listLoading" @click="loadTickets">刷新工单</el-button></div>
     <div class="support-entry">
       <div><strong>遇到 IT 问题？先问问智能客服</strong><span>描述问题，获取排查建议，也可以转接人工。</span></div>
       <el-button type="primary" plain @click="$router.push('/consultation')">开始咨询 →</el-button>
@@ -9,7 +9,7 @@
     <el-tabs v-model="tab" class="view-tabs">
       <el-tab-pane name="create">
         <template #label>
-          <el-icon style="vertical-align:-2px;margin-right:4px"><EditPen /></el-icon>提交工单
+          <el-icon style="vertical-align:-2px;margin-right:4px"><EditPen /></el-icon>{{ editingTicket ? '重新编辑' : '提交工单' }}
         </template>
       </el-tab-pane>
       <el-tab-pane name="list">
@@ -25,11 +25,12 @@
     <el-card shadow="never" class="panel form-panel">
       <template #header>
         <div class="panel-header">
-          <span class="panel-title">提交新工单</span>
+          <span class="panel-title">{{ editingTicket ? `重新编辑 · ${editingTicket.ticket_id}` : '提交新工单' }}</span>
         </div>
       </template>
 
-      <div v-if="consultationSession || appliedSession" class="consultation-origin">
+      <el-alert v-if="editingTicket" title="问题类型不可修改；保存后保留原提交时间和处理进度，工单不会重新计时。" type="info" show-icon :closable="false" class="draft-alert" />
+      <div v-if="!editingTicket && (consultationSession || appliedSession)" class="consultation-origin">
         <div class="origin-heading"><el-icon aria-hidden="true"><ChatDotRound /></el-icon><strong>{{ appliedSession ? '已关联咨询内容' : '来自咨询的工单' }}</strong></div>
         <p v-if="appliedSession">已关联咨询 {{ appliedSession }}。您可以继续修改表单，确认后再提交。</p>
         <p v-if="prefillLoading" role="status">正在读取咨询内容，您也可以直接填写表单。</p>
@@ -40,7 +41,7 @@
       </div>
       <!-- 草稿提示 -->
       <el-alert
-        v-if="draftBanner"
+        v-if="draftBanner && !editingTicket"
         type="warning"
         :closable="false"
         class="draft-alert"
@@ -56,11 +57,12 @@
         ref="formRef"
         :model="form"
         :rules="formRules"
+        :disabled="submitting || editPhotoLoading"
         label-position="top"
         class="ticket-form"
       >
         <section class="form-section"><div class="section-heading"><span class="section-number">01</span><div><h2>问题信息</h2><p>清楚描述现象与影响，便于工程师判断和处理。</p></div></div>
-        <el-alert v-if="categoryError" :title="categoryError" type="error" show-icon :closable="false" class="page-error"><el-button link type="primary" @click="loadCategories">重新加载分类</el-button></el-alert>
+        <el-alert v-if="categoryError && !editingTicket" :title="categoryError" type="error" show-icon :closable="false" class="page-error"><el-button link type="primary" @click="loadCategories">重新加载分类</el-button></el-alert>
         <!-- 工单标题 -->
         <el-form-item prop="title">
           <template #label>
@@ -79,7 +81,7 @@
           <!-- 工单性质 -->
           <el-col :xs="24" :sm="12">
             <el-form-item prop="nature" label="工单性质">
-              <el-radio-group v-model="form.nature">
+              <el-radio-group v-model="form.nature" :disabled="!!editingTicket">
                 <el-radio-button v-for="n in natures" :key="n.value" :value="n.value">{{ n.label }}</el-radio-button>
               </el-radio-group>
             </el-form-item>
@@ -87,8 +89,9 @@
 
           <!-- 末级分类 -->
           <el-col :xs="24" :sm="12">
-            <el-form-item prop="category_id" label="问题分类">
-              <el-select :loading="categoryLoading" v-model="form.category_id" placeholder="选择末级分类" style="width:100%" filterable>
+            <el-form-item prop="category_id" label="问题类型（分类）">
+              <el-input v-if="editingTicket" :model-value="ticketTypeLabel(editingTicket)" readonly aria-label="问题类型（不可修改）" />
+              <el-select v-else :loading="categoryLoading" v-model="form.category_id" placeholder="选择末级分类" style="width:100%" filterable>
                 <el-option v-for="c in filteredCategories" :key="c.categoryId" :value="c.categoryId" :label="c.name" />
               </el-select>
             </el-form-item>
@@ -165,6 +168,7 @@
               list-type="picture-card"
               accept="image/jpeg,image/png,image/gif,image/webp,image/bmp"
               :limit="3"
+              :disabled="submitting || editPhotoLoading"
               :http-request="uploadPhoto"
               :before-upload="checkPhoto"
               :on-remove="removePhoto"
@@ -187,12 +191,13 @@
             :disabled="!!submitHint"
             @click="submitTicket"
           >
-            {{ submitting ? '提交中...' : '提交工单' }}
+            {{ editingTicket ? (submitting ? '保存中...' : '保存修改') : (submitting ? '提交中...' : '提交工单') }}
           </el-button>
+          <el-button v-if="editingTicket" size="large" :disabled="submitting || photoUploading || editPhotoLoading" @click="cancelEdit">取消编辑</el-button>
           <el-text v-if="submitHint" type="warning" size="small" style="margin-left:16px">
             {{ submitHint }}
           </el-text>
-          <el-text v-if="draftSaved" type="success" size="small" style="margin-left:16px">
+          <el-text v-if="draftSaved && !editingTicket" type="success" size="small" style="margin-left:16px">
             <el-icon style="vertical-align:-2px"><SuccessFilled /></el-icon>
             草稿已自动保存 {{ draftTime }}
           </el-text>
@@ -260,7 +265,7 @@
           </div>
           <div class="ticket-title">{{ t.title }}</div>
           <div class="ticket-meta">
-            <el-tag size="small" type="info" effect="plain">{{ t.category_name }}</el-tag>
+            <el-tag size="small" type="info" effect="plain">{{ ticketTypeLabel(t) }}</el-tag>
             <span v-if="t.assignee_name">处理人：{{ t.assignee_name }}</span>
             <span>{{ formatTime(t.created_at) }}</span>
             <SlaBadge :ticket-id="t.ticket_id" mode="card" />
@@ -283,17 +288,18 @@
     <el-dialog
       v-model="detailVisible"
       :title="`工单详情 · ${detailTicket?.ticket_id || ''}`"
-      width="720px"
+      width="min(760px, calc(100vw - 32px))"
       :close-on-click-modal="false"
       destroy-on-close
     >
       <div v-if="detailLoading" class="detail-loading" role="status"><el-skeleton :rows="5" animated /><p>正在加载工单详情…</p></div>
       <el-alert v-if="detailError" :title="detailError" type="error" :closable="false" show-icon><el-button link type="primary" @click="openDetail({ ticket_id: detailId })">重新加载</el-button></el-alert>
-      <template v-if="detailTicket && !detailLoading && !detailError">
+      <div v-if="detailTicket && !detailLoading && !detailError" class="ticket-detail-content">
         <div class="detail-summary"><h2>{{ detailTicket.title }}</h2><div><el-tag :type="statusTagType(detailTicket.status)">{{ statusLabel(detailTicket.status) }}</el-tag><el-tag :type="priorityTagType(detailTicket.priority)" effect="plain">{{ priorityLabel(detailTicket.priority) }}优先级</el-tag><span>处理人：{{ detailTicket.assignee_name || '等待分配' }}</span></div></div>
-        <el-descriptions :column="2" border class="detail-desc">
-          <el-descriptions-item label="标题" :span="2">{{ detailTicket.title }}</el-descriptions-item>
-          <el-descriptions-item label="分类">{{ detailTicket.category_name }}</el-descriptions-item>
+        <el-descriptions :column="detailColumns" border class="detail-desc">
+          <el-descriptions-item label="标题" :span="detailColumns">{{ detailTicket.title }}</el-descriptions-item>
+          <el-descriptions-item label="工单性质">{{ ticketNatureLabel(detailTicket.nature) }}</el-descriptions-item>
+          <el-descriptions-item label="问题类型">{{ ticketTypeLabel(detailTicket) }}</el-descriptions-item>
           <el-descriptions-item label="优先级">
             <el-tag :type="priorityTagType(detailTicket.priority)" size="small">{{ priorityLabel(detailTicket.priority) }}</el-tag>
           </el-descriptions-item>
@@ -304,10 +310,12 @@
           <el-descriptions-item label="处理人">{{ detailTicket.assignee_name || '未分配' }}</el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ formatTime(detailTicket.created_at) }}</el-descriptions-item>
           <el-descriptions-item v-if="detailTicket.location" label="位置">{{ detailTicket.location }}</el-descriptions-item>
-          <el-descriptions-item label="问题描述" :span="2">{{ detailTicket.description }}</el-descriptions-item>
-          <el-descriptions-item label="影响情况" :span="2">{{ detailTicket.impact_description }}</el-descriptions-item>
-          <el-descriptions-item label="紧急说明" :span="2">{{ detailTicket.urgency_description }}</el-descriptions-item>
-          <el-descriptions-item v-if="detailPhotos.length" label="照片附件" :span="2">
+          <el-descriptions-item v-if="detailTicket.contact" label="本次联系方式">{{ detailTicket.contact }}</el-descriptions-item>
+          <el-descriptions-item v-if="detailTicket.asset_id" label="资产编号">{{ detailTicket.asset_id }}</el-descriptions-item>
+          <el-descriptions-item label="问题描述" :span="detailColumns">{{ detailTicket.description }}</el-descriptions-item>
+          <el-descriptions-item label="影响情况" :span="detailColumns">{{ detailTicket.impact_description }}</el-descriptions-item>
+          <el-descriptions-item label="紧急说明" :span="detailColumns">{{ detailTicket.urgency_description }}</el-descriptions-item>
+          <el-descriptions-item v-if="detailPhotos.length" label="照片附件" :span="detailColumns">
             <el-image
               v-for="(u, i) in detailPhotos"
               :key="i"
@@ -323,6 +331,16 @@
 
         <!-- SLA 计时 -->
         <SlaTimer :ticket-id="detailTicket.ticket_id" />
+
+        <el-alert v-if="detailTicket.status === 'CANCELLED'" title="工单已撤回" description="本工单已作废并停止计时，内容和流转记录保留存档，平台管理员仍可查看。" type="info" show-icon :closable="false" />
+        <section v-else-if="detailTicket.creator_id === userStore.userId" class="ticket-detail-actions" aria-label="工单操作">
+          <div class="detail-action-copy"><h3>工单操作</h3><p>修改内容不重置计时；不再需要处理时，可撤回工单。</p></div>
+          <div class="detail-action-buttons">
+            <el-button type="primary" :icon="EditPen" :disabled="!!editingTicket || submitting || photoUploading || withdrawing" @click="startEdit(detailTicket)">重新编辑</el-button>
+            <el-button v-if="canWithdrawTicket(detailTicket, userStore.userId)" type="danger" plain :loading="withdrawing" :disabled="!!editingTicket || submitting || photoUploading" @click="withdrawTicket(detailTicket)">撤回工单</el-button>
+          </div>
+          <el-alert v-if="withdrawError" :title="withdrawError" type="error" show-icon :closable="false" />
+        </section>
 
         <!-- 验收操作 -->
         <el-card v-if="detailTicket.status === 'PENDING_ACCEPTANCE'" shadow="never" class="action-card">
@@ -405,7 +423,7 @@
             </el-timeline-item>
           </el-timeline>
         </el-card>
-      </template>
+      </div>
     </el-dialog>
   </div>
 </template>
@@ -420,6 +438,7 @@ import {
 import { ticketApi, draftApi, categoryApi, attachmentApi } from '../api/index.js'
 import { consultationApi } from '../api/consultation.js'
 import { loadPhotoUrls, revokePhotoUrls } from '../utils/attachmentPhotos.js'
+import { ticketToForm, ticketTypeLabel, ticketNatureLabel, editableTicketPayload, canWithdrawTicket } from '../utils/ticketEditing.js'
 import { useUserStore } from '../stores/user.js'
 import SlaBadge from '../components/SlaBadge.vue'
 import SlaTimer from '../components/SlaTimer.vue'
@@ -446,6 +465,11 @@ const form = ref({
   nature: 'INCIDENT', category_id: '', title: '', description: '',
   impact_description: '', urgency_description: '', location: '', contact: '', asset_id: ''
 })
+const editingTicket = ref(null)
+const editPhotoLoading = ref(false)
+let createFormBackup = null
+let editPhotoRequest = 0
+let editPhotoUrls = []
 // Consultation content is fetched separately and only applied on explicit user action.
 const consultationSession = computed(() => route.query.from === 'consultation' && typeof route.query.session === 'string' ? route.query.session : '')
 const prefillLoading = ref(false)
@@ -584,6 +608,10 @@ const rejectError = ref('')
 const ratingScore = ref(0)
 const ratingComment = ref('')
 const detailPhotos = ref([])
+const detailColumns = ref(2)
+function resizeDetail() { detailColumns.value = window.innerWidth <= 540 ? 1 : 2 }
+const withdrawing = ref(false)
+const withdrawError = ref('')
 
 function formatTime(t) { return t ? new Date(t).toLocaleString('zh-CN') : '' }
 
@@ -597,7 +625,7 @@ const STATUS_LABEL = {
   NEW: '新建', ASSIGNED: '已分配', IN_PROGRESS: '处理中',
   PENDING_SUPPLEMENT: '待补充', PENDING_EXTERNAL: '外部等待',
   PENDING_ACCEPTANCE: '待验收', COMPLETED: '已完成',
-  CANCELLED: '已取消', CLOSED: '已关闭'
+  CANCELLED: '已撤回', CLOSED: '已关闭'
 }
 const STATUS_TYPE = {
   NEW: 'warning', ASSIGNED: 'primary', IN_PROGRESS: 'primary',
@@ -625,6 +653,8 @@ function flowTimelineType(status) {
 // 未满足条件时的实时提示
 const submitHint = computed(() => {
   if (submitting.value) return ''
+  if (editPhotoLoading.value) return '正在加载原工单照片'
+  if (photoUploading.value) return '请等待照片上传完成'
   const missing = []
   if (!form.value.category_id) missing.push('问题分类')
   const tLen = form.value.title.trim().length
@@ -653,6 +683,82 @@ const lastSubmitAt = ref(0)
 // ---- 照片附件上传（先传图拿 attachment_id，提交工单时随 attachments 字段绑定）----
 const photoList = ref([])
 const photoIds = ref([])
+const photoRequests = ref(0)
+const photoUploading = computed(() => photoRequests.value > 0 || photoList.value.some(file => file.status === 'ready' || file.status === 'uploading'))
+
+async function startEdit(ticket) {
+  if (editingTicket.value || submitting.value || photoUploading.value || withdrawing.value || ticket.status === 'CANCELLED' || ticket.creator_id !== userStore.userId) return
+  clearTimeout(draftTimer)
+  createFormBackup = {
+    form: { ...form.value }, photoList: [...photoList.value], photoIds: [...photoIds.value],
+    submitError: submitError.value
+  }
+  editingTicket.value = { ...ticket }
+  form.value = ticketToForm(ticket)
+  photoIds.value = [...(ticket.attachments || [])]
+  photoList.value = photoIds.value.map((id, index) => ({
+    uid: id, name: `原照片 ${index + 1}`, status: 'success', response: { attachment_id: id }
+  }))
+  submitError.value = ''
+  detailVisible.value = false
+  editPhotoLoading.value = true
+  const request = ++editPhotoRequest
+  const query = { ...route.query, tab: 'create' }
+  delete query.ticket
+  await router.push({ path: route.path, query })
+  await nextTick()
+  formRef.value?.clearValidate()
+  try {
+    for (const file of photoList.value) {
+      const urls = await loadPhotoUrls([file.response.attachment_id])
+      if (request !== editPhotoRequest) { revokePhotoUrls(urls); return }
+      editPhotoUrls.push(...urls)
+      file.url = urls[0] || ''
+    }
+  } finally {
+    if (request === editPhotoRequest) editPhotoLoading.value = false
+  }
+}
+
+function restoreCreateForm() {
+  editPhotoRequest++
+  revokePhotoUrls(editPhotoUrls)
+  editPhotoUrls = []
+  editPhotoLoading.value = false
+  clearTimeout(draftTimer)
+  if (createFormBackup) {
+    form.value = createFormBackup.form
+    photoList.value = createFormBackup.photoList
+    photoIds.value = createFormBackup.photoIds
+    submitError.value = createFormBackup.submitError
+  }
+  editingTicket.value = null
+  createFormBackup = null
+  nextTick(() => formRef.value?.clearValidate())
+}
+
+function cancelEdit() {
+  if (submitting.value || photoUploading.value || editPhotoLoading.value) return
+  restoreCreateForm()
+  tab.value = 'list'
+}
+
+async function saveEditedTicket() {
+  const id = editingTicket.value.ticket_id
+  submitting.value = true
+  try {
+    await ticketApi.edit(id, editableTicketPayload(form.value, photoIds.value))
+    restoreCreateForm()
+    ElMessage.success('修改已保存，工单计时保持不变')
+    await router.push({ path: route.path, query: { ...route.query, tab: 'list' } })
+    await loadTickets()
+    await openDetail({ ticket_id: id })
+  } catch (error) {
+    submitError.value = '保存失败：' + (error.message || '请稍后重试')
+  } finally {
+    submitting.value = false
+  }
+}
 
 function checkPhoto(file) {
   const okTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp']
@@ -667,14 +773,24 @@ function checkPhoto(file) {
   return true
 }
 
-async function uploadPhoto({ file, onSuccess, onError }) {
+async function uploadPhoto({ file }) {
+  const request = editPhotoRequest
+  photoRequests.value++
   try {
     const res = await attachmentApi.upload(file)
-    photoIds.value.push(res.data.attachment_id)
-    onSuccess(res.data) // 挂到 file.response，删除时据此找回 attachment_id
+    // 移除上传项或离开本次编辑后，迟到结果不能写入另一张表单。
+    if (request !== editPhotoRequest || !photoList.value.some(item => item.uid === file.uid)) return
+    if (editingTicket.value && createFormBackup?.photoIds.includes(res.data.attachment_id)) {
+      throw new Error('该照片已用于未提交的新工单草稿，请选择其他照片')
+    }
+    if (!photoIds.value.includes(res.data.attachment_id)) photoIds.value.push(res.data.attachment_id)
+    // Promise 结果交给 el-upload 写入 file.response，避免重复成功回调覆盖附件 ID。
+    return res.data
   } catch (e) {
-    onError(e)
     ElMessage.error('照片上传失败：' + e.message)
+    throw e
+  } finally {
+    photoRequests.value--
   }
 }
 
@@ -682,15 +798,17 @@ function removePhoto(file) {
   const attId = file.response?.attachment_id
   if (!attId) return
   photoIds.value = photoIds.value.filter(id => id !== attId)
+  // 编辑原照片只更新待保存集合，取消编辑时不会撤回原附件。
+  if (editingTicket.value?.attachments?.includes(attId)) return
   attachmentApi.remove(attId).catch(() => {})
 }
 
 // 提交工单
 async function submitTicket() {
-  if (submitting.value) return
+  if (submitting.value || photoUploading.value || editPhotoLoading.value) return
   submitError.value = ''
   // PRD §3.2：防重复点击 Debounce 3 秒
-  if (Date.now() - lastSubmitAt.value < 3000) return
+  if (!editingTicket.value && Date.now() - lastSubmitAt.value < 3000) return
 
   // Element Plus 表单校验
   try {
@@ -703,6 +821,7 @@ async function submitTicket() {
     return
   }
 
+  if (editingTicket.value) return saveEditedTicket()
   if (!formToken.value) formToken.value = genClientToken()
   submitting.value = true
   lastSubmitAt.value = Date.now()
@@ -750,6 +869,7 @@ async function submitTicket() {
 
 // 草稿
 async function saveDraft() {
+  if (editingTicket.value) return
   await draftApi.save({
     nature: form.value.nature,
     category_id: form.value.category_id,
@@ -832,6 +952,7 @@ async function openDetail(ticket) {
   detailVisible.value = true
   detailLoading.value = true
   detailError.value = ''
+  withdrawError.value = ''
   try {
     const res = await ticketApi.detail(ticket.ticket_id)
     if (request !== detailRequest) return
@@ -849,6 +970,29 @@ async function openDetail(ticket) {
     if (request === detailRequest) detailError.value = '详情加载失败：' + (e.message || '请稍后重试')
   } finally {
     if (request === detailRequest) detailLoading.value = false
+  }
+}
+
+async function withdrawTicket(ticket) {
+  if (withdrawing.value || editingTicket.value || submitting.value || photoUploading.value || !canWithdrawTicket(ticket, userStore.userId)) return
+  withdrawing.value = true
+  withdrawError.value = ''
+  try {
+    try {
+      await ElMessageBox.confirm('撤回后工单将作废并停止计时，工程师不再处理；内容和记录保留存档，您和平台管理员仍可查看。此操作不可恢复。', '确认撤回工单', {
+        confirmButtonText: '确认撤回', cancelButtonText: '继续保留', type: 'warning',
+        confirmButtonClass: 'el-button--danger'
+      })
+    } catch { return }
+    await ticketApi.withdraw(ticket.ticket_id)
+    ElMessage.success('工单已撤回，记录已保留')
+    detailVisible.value = false
+    await loadTickets()
+    await openDetail({ ticket_id: ticket.ticket_id })
+  } catch (error) {
+    withdrawError.value = '撤回失败：' + (error.message || '请稍后重试')
+  } finally {
+    withdrawing.value = false
   }
 }
 
@@ -897,8 +1041,8 @@ async function submitRating(t) {
 
 // 自动保存草稿：每 30s
 watch(form, () => {
-  if (!form.value.description.trim()) return
   clearTimeout(draftTimer)
+  if (editingTicket.value || !form.value.description.trim()) return
   draftTimer = setTimeout(saveDraft, 30000)
 }, { deep: true })
 
@@ -914,6 +1058,8 @@ async function loadCategories() {
 }
 
 onMounted(async () => {
+  resizeDetail()
+  window.addEventListener('resize', resizeDetail)
   await loadCategories()
   try {
     const draft = await draftApi.get()
@@ -933,7 +1079,7 @@ watch(() => route.query.ticket, (tid) => {
   if (tid) openDetail({ ticket_id: tid })
 })
 
-onUnmounted(() => { clearTimeout(draftTimer); revokePhotoUrls(detailPhotos.value) })
+onUnmounted(() => { window.removeEventListener('resize', resizeDetail); clearTimeout(draftTimer); editPhotoRequest++; revokePhotoUrls(editPhotoUrls); revokePhotoUrls(detailPhotos.value) })
 </script>
 
 <style scoped>
@@ -1030,6 +1176,24 @@ onUnmounted(() => { clearTimeout(draftTimer); revokePhotoUrls(detailPhotos.value
 .pagination { margin-top: 16px; justify-content: center; }
 
 /* 弹窗 */
+.ticket-detail-content { display: flex; flex-direction: column; gap: 24px; }
+.ticket-detail-content > .detail-summary,
+.ticket-detail-content > .detail-desc,
+.ticket-detail-content > .el-card { margin: 0; }
+.ticket-detail-content :deep(.el-descriptions__cell) { padding: 12px 14px; line-height: 1.7; }
+.ticket-detail-content :deep(.el-descriptions__content) { overflow-wrap: anywhere; }
+.ticket-detail-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 20px; border: 1px solid var(--el-border-color-lighter); border-radius: 12px; background: var(--el-fill-color-light); }
+.detail-action-copy h3 { margin: 0 0 6px; font-size: 15px; }
+.detail-action-copy p { margin: 0; font-size: 13px; line-height: 1.7; color: var(--el-text-color-secondary); }
+.detail-action-buttons { display: flex; flex-wrap: wrap; gap: 12px; }
+.detail-action-buttons :deep(.el-button) { min-height: 44px; margin: 0; }
+.ticket-detail-actions > .el-alert { width: 100%; }
+@media(max-width: 540px) {
+  .ticket-detail-content { gap: 20px; }
+  .ticket-detail-actions { padding: 16px; }
+  .detail-action-buttons { width: 100%; }
+  .detail-action-buttons :deep(.el-button) { flex: 1; }
+}
 .detail-desc { margin-bottom: 16px; }
 
 .action-card { margin-bottom: 16px; background: var(--el-fill-color-light); }

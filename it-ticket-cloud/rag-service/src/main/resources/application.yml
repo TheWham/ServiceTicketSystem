@@ -74,8 +74,9 @@ rag:
   retrieval:
     top-k: ${RAG_TOP_K:5}
     max-top-k: 20
-    # 相似度 >= 0.70 视为可靠命中；0.45~0.70 判定 LOW_CONFIDENCE；< 0.45 或无命中允许无引用通用回答。
+    # 仅作引用质量阈值：相似度 >= 0.70 视为可靠命中；无命中及所有弱命中均允许无引用通用回答。
     confidence-threshold: ${RAG_CONFIDENCE_THRESHOLD:0.70}
+    # 旧配置保留兼容，不再参与可靠性或拒答判定。
     low-confidence-threshold: ${RAG_LOW_CONFIDENCE_THRESHOLD:0.45}
     snippet-length: 1000
 

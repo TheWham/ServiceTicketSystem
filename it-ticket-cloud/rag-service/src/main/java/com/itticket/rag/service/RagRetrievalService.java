@@ -38,12 +38,12 @@ import java.util.Set;
  * 2. 问题向量化（复用 Embedding 客户端，1024 维）；
  * 3. ES 混合检索（向量 kNN + BM25 全文，RRF 融合），强制 status=PUBLISHED
  *    （AI-001 · specs/02-ai-api-json-schema.md:14；AC-27 · specs/09-prd-spec-test-traceability.md:93）；
- * 4. 阈值分档与引用校验（AI-008 · specs/02-ai-api-json-schema.md:96：
+ * 4. 引用质量阈值与引用校验（AI-008 · specs/02-ai-api-json-schema.md:96：
  *    引用必须指向仍然 PUBLISHED 的知识版本）。
  *
  * <p>大模型生成与对话状态由 AI 客服服务负责，本服务通过 /api/v1/rag/retrievals 交付
- * 检索依据与领域判定。领域外/高风险不做检索，办公 IT 的无命中/不相关命中不强制拒答
- * （允许空引用通用回答），置信度不足与知识冲突仍拒答（AI-001 冷启动修订，
+ * 检索依据与领域判定。领域外/高风险不做检索，办公 IT 的无命中/弱命中不强制拒答
+ * （允许空引用通用回答），相似度仅决定引用质量，知识冲突仍拒答（AI-001，
  * 对应 PRD AC-02 · IT服务工单系统PRD-Ultimate.md:886）。</p>
  *
  * 【降级语义】：
@@ -101,7 +101,7 @@ public class RagRetrievalService {
     }
 
     /**
-     * 执行领域判定 + 检索 + 阈值分档。
+     * 执行领域判定 + 检索 + 引用质量判定。
      *
      * @param question   用户问题
      * @param categoryId 可选分类过滤
@@ -162,24 +162,11 @@ public class RagRetrievalService {
                     AiRefusalReason.MODEL_UNAVAILABLE, false);
         }
 
-        // 5) 阈值分档（AI-001 · specs/02-ai-api-json-schema.md:14：
-        //    无命中/不相关不强制拒答；置信度不足仍拒答）
+        // 5) 相似度只决定引用质量；无命中或弱命中允许上层使用模型通用能力。
+        //    lowConfidenceThreshold 仅保留配置兼容，不参与可靠性或拒答判定。
         BigDecimal topScore = maxSimilarity(hits);
-        boolean reliable;
-        AiRefusalReason reason;
-        if (hits.isEmpty() || topScore.compareTo(properties.getLowConfidenceThreshold()) < 0) {
-            // 无命中或不相关命中：不强制拒答，允许上层给出空引用的通用回答
-            reliable = false;
-            reason = null;
-        } else if (topScore.compareTo(properties.getConfidenceThreshold()) < 0) {
-            // 介于下限与阈值之间：置信度不足，仍拒答
-            reliable = false;
-            reason = AiRefusalReason.LOW_CONFIDENCE;
-        } else {
-            reliable = true;
-            reason = null;
-        }
-        return outcome(domain, false, null, hits, topScore, reason, reliable);
+        boolean reliable = !hits.isEmpty() && topScore.compareTo(properties.getConfidenceThreshold()) >= 0;
+        return outcome(domain, false, null, hits, topScore, null, reliable);
     }
 
     /**
@@ -250,7 +237,7 @@ public class RagRetrievalService {
                 .toList();
     }
 
-    /** 将 retrieve 已校验并分档的结果转为对外响应，携带 score 与 indexVersion（MR-004）。 */
+    /** 将 retrieve 已校验的结果转为对外响应，携带引用质量 score 与 indexVersion（MR-004）。 */
     public RagRetrievalResponse toResponse(RetrievalOutcome outcome) {
         List<RetrievedChunk> items = outcome.hits() == null ? List.of() : outcome.hits().stream()
                 .map(hit -> new RetrievedChunk(
@@ -283,7 +270,7 @@ public class RagRetrievalService {
                 if (outcome.dependencyUnavailable() || outcome.suggestedRefusalReason() != null) {
                     yield AiReplyType.REFUSE;
                 }
-                // 可靠命中带引用；无命中/不相关也可通用回答（空引用）
+                // 可靠命中带引用；无命中/弱命中也可通用回答（空引用）
                 yield AiReplyType.ANSWER;
             }
         };

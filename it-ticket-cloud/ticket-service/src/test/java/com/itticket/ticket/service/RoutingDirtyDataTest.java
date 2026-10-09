@@ -176,7 +176,9 @@ class RoutingDirtyDataTest {
     @Test
     void timeoutTransferWithoutSuccessorRaisesExceptionQueue() {
         Ticket t = ticket("TK01", "C_NET");
+        t.setStatus(com.itticket.ticket.enums.TicketStatus.ASSIGNED);
         when(tickets.selectById("TK01")).thenReturn(t);
+        when(tickets.selectOne(any())).thenReturn(t);
         // 路由配置全空 -> 转派找不到任何后继工程师
         when(routes.selectList(any())).thenReturn(List.of());
         Assignment current = new Assignment();
@@ -198,6 +200,8 @@ class RoutingDirtyDataTest {
     @Test
     void routeFailureRaisesQueueAndSwallowsAdminNotifyFailure() {
         Ticket t = ticket("TK02", "C_ACC");
+        t.setStatus(com.itticket.ticket.enums.TicketStatus.NEW);
+        when(tickets.selectOne(any())).thenReturn(t);
         when(routes.selectList(any())).thenReturn(List.of());
         when(users.admins()).thenThrow(new IllegalStateException("user-service unavailable"));
 
@@ -213,6 +217,8 @@ class RoutingDirtyDataTest {
     @Test
     void routeFailureNotifiesEachAdmin() {
         Ticket t = ticket("TK03", "C_ACC");
+        t.setStatus(com.itticket.ticket.enums.TicketStatus.NEW);
+        when(tickets.selectOne(any())).thenReturn(t);
         when(routes.selectList(any())).thenReturn(List.of());
         when(users.admins()).thenReturn(Result.ok(
                 List.of(new UserInfo("U_ADM01", "管理员A", "PLATFORM_ADMIN", "IT", "ACTIVE"),

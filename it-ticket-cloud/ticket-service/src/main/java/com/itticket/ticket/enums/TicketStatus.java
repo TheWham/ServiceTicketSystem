@@ -24,7 +24,7 @@ public enum TicketStatus {
     /** 已验收或自动验收（可按规则重新打开） */
     COMPLETED("COMPLETED", "已完成", true),
     /** 员工主动撤销（不可恢复） */
-    CANCELLED("CANCELLED", "已取消", true),
+    CANCELLED("CANCELLED", "已撤回", true),
     /** 逾期未补充/重复单/管理员异常关闭（部分原因可恢复） */
     CLOSED("CLOSED", "已关闭", true);
 

@@ -2,6 +2,7 @@ package com.itticket.rag.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.annotation.Version;
 import com.itticket.rag.enums.KnowledgeRiskLevel;
@@ -35,6 +36,10 @@ public class KnowledgeArticle {
     /** 知识文章业务主键 ID */
     @TableId(value = "article_id", type = IdType.INPUT)
     private String articleId;
+
+    /** 列表展示的当前版本标题，不写入文章表。 */
+    @TableField(exist = false)
+    private String title;
 
     /** 知识所属业务分类 ID (如 C_NET, C_SW, C_HW 等) */
     private String categoryId;

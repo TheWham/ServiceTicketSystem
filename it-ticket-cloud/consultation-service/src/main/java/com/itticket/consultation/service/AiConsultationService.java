@@ -54,7 +54,7 @@ public class AiConsultationService {
      * (AI-004.3 约束 REFUSE 的 answerText 长度为 0),只用于让聊天记录可读。
      */
     private static final String REFUSAL_TRANSCRIPT =
-            "暂时无法给出可靠的办公 IT 建议，请转人工或直接提交工单。";
+            "暂时无法给出可靠的 IT 建议，请转人工或直接提交工单。";
 
     private final ConsultationTransitionService transitionService;
     private final ConsultationMessageService messageService;
@@ -81,11 +81,17 @@ public class AiConsultationService {
     private AiChatResponse doChat(CurrentUser user, String sessionId, AiChatRequest request,
                                   String idempotencyKey) {
         Consultation consultation = transitionService.load(sessionId);
+        authzService.requireCreator(user, consultation);
         requireAiActive(consultation);
+
+        String currentClientMessageId = "ai-q:" + idempotencyKey;
+        List<RagQuery.Turn> history = messageService.loadAiHistory(
+                sessionId, consultation.getCreatorId(), currentClientMessageId,
+                properties.getAi().getContextMaxMessages(), properties.getAi().getContextMaxChars());
 
         // 员工提问先落库:即使后续 AI 降级,对话历史也完整(RD-013 不得用空成功掩盖失败)
         messageService.appendEmployeeMessage(sessionId, user.userId(),
-                "ai-q:" + idempotencyKey, request.message());
+                currentClientMessageId, request.message());
 
         boolean highRisk = !"rag-service".equals(properties.getAi().getRetrievalProvider())
                 && !"openai-compatible".equals(properties.getAi().getProvider())
@@ -94,7 +100,7 @@ public class AiConsultationService {
 
         RagResult result = null;
         if (properties.getAi().isAnswerEnabled() && !highRisk) {
-            RagQuery query = new RagQuery(sessionId, request.message(), List.of(),
+            RagQuery query = new RagQuery(sessionId, request.message(), history,
                     contextCategory(consultation, request), contextAsset(request),
                     properties.getAi().getTopK(), user.userId(), user.role().name());
             result = ragClient.answer(query, RequestContext.get());
@@ -192,7 +198,7 @@ public class AiConsultationService {
 
     private String refusalTranscript(AiAnswerGuard.Verdict verdict) {
         if (verdict.refusalReason() == com.itticket.consultation.enums.AiRefusalReason.OFF_TOPIC) {
-            return "我只能协助办公 IT 问题，这个请求不在服务范围内，不能答复。";
+            return "我可以协助 IT 和电脑技术问题，这个请求不在服务范围内，不能答复。";
         }
         if (verdict.refusalReason() == com.itticket.consultation.enums.AiRefusalReason.HIGH_RISK_TOPIC) {
             return "该请求涉及高风险操作或需要授权，请转人工处理；我不能执行操作或代为更改系统。";

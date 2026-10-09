@@ -6,6 +6,7 @@ import com.itticket.ticket.dto.AcceptRequest;
 import com.itticket.ticket.dto.ActionRequest;
 import com.itticket.ticket.dto.AssignRequest;
 import com.itticket.ticket.dto.CreateTicketRequest;
+import com.itticket.ticket.dto.EditTicketRequest;
 import com.itticket.ticket.dto.ContractEnvelope;
 import com.itticket.ticket.dto.TicketProjection;
 import com.itticket.ticket.dto.RatingRequest;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -56,13 +58,24 @@ public class TicketController {
                                      @RequestParam(required = false) String mine_or_pool,
                                      @RequestParam(defaultValue = "1") int page,
                                      @RequestParam(defaultValue = "20") int page_size) {
-        return Result.ok(ticketService.list(status, category, assignee_id, creator_id, priority,
+        return Result.ok(ticketService.list(UserContext.get(), status, category, assignee_id, creator_id, priority,
                 unassigned, mine_or_pool, page, page_size));
     }
 
     @GetMapping("/{id}")
     public Result<Map<String, Object>> detail(@PathVariable String id) {
-        return Result.ok(ticketService.get(id));
+        return Result.ok(ticketService.get(UserContext.get(), id));
+    }
+
+    @PostMapping("/{id}/withdraw")
+    public Result<Map<String, Object>> withdraw(@PathVariable String id) {
+        return Result.ok("工单已撤回，记录已保留", ticketService.withdraw(UserContext.get(), id));
+    }
+
+    @PutMapping("/{id}")
+    public Result<Void> edit(@PathVariable String id, @RequestBody EditTicketRequest request) {
+        ticketService.edit(UserContext.get(), id, request);
+        return Result.ok("修改已保存", null);
     }
 
     @PostMapping("/{id}/assign")

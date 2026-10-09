@@ -120,10 +120,10 @@
                 <div v-if="msg.content" class="msg-text">{{ msg.content }}</div>
                 <ChatMessageAttachments v-if="msg.attachments?.length" :session-id="session.sessionId" :attachments="msg.attachments" />
 
-                <!-- 通用能力回答标识(冷启动放宽策略:无知识库依据,提示可沉淀) -->
+                <!-- 通用能力回答标识(冷启动放宽策略:无知识库依据) -->
                 <div v-if="msg.generalAnswer" class="general-answer-note">
                   <el-icon><MagicStick /></el-icon>
-                  这条回答基于 AI 通用知识，暂无知识库依据。点击「已解决」后，完整问答将经脱敏检查进入知识库待审核队列，由管理员审核。
+                  这条回答基于 AI 通用知识，暂无知识库依据。
                 </div>
 
                 <!-- 有知识依据时展示经过校验的真实引用 -->
@@ -1022,7 +1022,7 @@ onUnmounted(stopPolling)
 /* 独立客服页面：对话流滚动，操作区保持可见。 */
 .chat-panel { border-radius: 16px; }
 .chat-panel :deep(.el-card__header) { padding: 18px 24px; }
-.chat-panel :deep(.el-card__body) { display: flex; flex-direction: column; padding: 0; height: clamp(500px, calc(100dvh - 345px), 850px); }
+.chat-panel :deep(.el-card__body) { display: flex; flex-direction: column; padding: 0; height: clamp(500px, calc(100dvh - 325px), 1000px); }
 .new-message-cue { align-self: center; flex-shrink: 0; padding: 8px 16px; margin: 4px 0 10px; border: 1px solid var(--el-color-primary-light-7); border-radius: 20px; color: var(--el-color-primary); background: var(--el-color-primary-light-9); font: inherit; font-size: 12px; cursor: pointer; }
 .conversation-header, .conversation-identity { display: flex; align-items: center; gap: 12px; }
 .conversation-header { justify-content: space-between; }
@@ -1048,13 +1048,13 @@ onUnmounted(stopPolling)
 .avatar-ai { background: var(--el-color-primary); border-radius: 10px; }
 .avatar-employee { background: var(--el-color-primary-light-9); color: var(--el-color-primary); border-radius: 10px; }
 .msg-main { max-width: 85%; min-width: 0; }
-.msg-bubble { padding: 12px 16px; }
+.msg-bubble { padding: 12px 16px; font-size: 16px; }
 .bubble-ai { background: var(--el-fill-color-light); border-color: transparent; }
 .msg-time { font-size: 12px; color: var(--el-text-color-regular); }
 .chat-input { flex-shrink: 0; margin: 0; padding: 10px 24px 16px; border-top: 1px solid var(--el-border-color-lighter); }
 .input-toolbar { justify-content: space-between; align-items: center; margin-bottom: 6px; }
 .input-toolbar label { font-size: 12px; color: var(--el-text-color-regular); }
-.chat-input :deep(.el-textarea__inner) { border-radius: 10px; padding: 12px 14px 24px; font-family: inherit; font-size: 14px; }
+.chat-input :deep(.el-textarea__inner) { border-radius: 10px; padding: 12px 14px 24px; font-family: inherit; font-size: 16px; }
 .chat-actions { margin-top: 12px; gap: 10px; }
 .chat-actions .el-button { min-height: 36px; }
 .chat-actions-left { gap: 0; flex-wrap: wrap; }

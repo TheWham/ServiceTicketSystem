@@ -161,10 +161,10 @@ export const REFUSAL_REASON = {
   NO_RELIABLE_KNOWLEDGE: '目前无法提供可靠的处理建议，请补充问题细节或转人工',
   LOW_CONFIDENCE: '目前信息不足，无法有把握地给出处理建议，请补充说明或转人工',
   CONFLICTING_KNOWLEDGE: '相关知识之间存在冲突，需要人工判断',
-  HIGH_RISK_TOPIC: '该请求涉及权限变更、安全事件、数据恢复或硬件拆修等高风险操作，请转人工处理',
+  HIGH_RISK_TOPIC: '该请求涉及未经授权、绕过安全控制或需要人工核实的操作，请联系 IT 人员处理',
   MODEL_UNAVAILABLE: 'AI 服务暂时不可用',
   POLICY_BLOCKED: 'AI 综合回答当前未开放',
-  OFF_TOPIC: '抱歉，这个问题不属于 IT 办公范围，不能答复。我可以帮助你处理电脑、网络、邮箱、打印机和办公软件等问题。'
+  OFF_TOPIC: '抱歉，这个问题不属于 IT 或电脑技术范围，不能答复。我可以帮助你处理电脑、网络、软件、编程和设备使用等问题。'
 }
 
 export const TERMINAL_STATUS = ['RESOLVED', 'CONVERTED_TO_TICKET', 'CLOSED']

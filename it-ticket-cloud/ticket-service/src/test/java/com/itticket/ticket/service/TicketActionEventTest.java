@@ -59,6 +59,7 @@ class TicketActionEventTest {
         ticket.setPriority("MEDIUM");
         ticket.setCategoryId("C_NET");
         when(tickets.selectById("TK01")).thenReturn(ticket);
+        when(tickets.selectOne(any())).thenReturn(ticket);
         when(tickets.update(isNull(), any())).thenReturn(1);
         when(flows.selectCount(any())).thenReturn(1L);
         return ticket;

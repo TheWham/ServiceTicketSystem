@@ -45,14 +45,14 @@ POST /api/v1/consultations/{id}/feedback                     → 持久化待处
 每次 AI 回答依次经过:
 
 1. 会话状态必须是 `AI_ACTIVE`,否则 `AI_SESSION_NOT_ACTIVE`;
-2. 员工提问先落库 —— 即便后续 AI 降级,对话历史仍然完整;
-3. 默认由 rag-service 返回领域和知识策略：`OFFICE_IT` 才进入生成，`OFF_TOPIC` 明确拒答，`HIGH_RISK` 转人工，`UNCERTAIN` 追问；显式配置 `retrieval-provider=mysql` 时保留模型分类与 SQL 检索的兼容链路；
+2. 校验会话归属，读取该 AI 会话最近的有效 user/assistant 消息（默认 12 条、合计 12000 字符；`context-max-messages`/`context-max-chars` 可调，硬上限 40 条/32000 字符）。排除撤回、系统、人工聊天和当前重复消息，再保存当前提问；
+3. 两种检索模式均先由模型结合当前问题及历史判定技术范围和风险；续问补全为独立问题再检索。正常 IT/电脑问题允许通用回答，领域外拒答，非法/未授权请求阻断，缺信息则追问；模型确认的 IT 意图不被 RAG 旧关键词或分数规则覆盖；
 4. `ai.answer-enabled=false`(评测未达 PRD 17.3 上线门槛)→ `REFUSE / POLICY_BLOCKED`;
 5. 否则经 `GuardedRagClient` 调用 RAG:超时、并发上限、连续 5 次失败打开断路器;
 6. **输出闸门 `AiAnswerGuard`** 按固定优先级判定,任一条不过即结构化拒答:
    `POLICY_BLOCKED → HIGH_RISK_TOPIC → MODEL_UNAVAILABLE → NO_RELIABLE_KNOWLEDGE(Schema)
-   → CONFLICTING_KNOWLEDGE → NO_RELIABLE_KNOWLEDGE(引用失效)→ LOW_CONFIDENCE`;
-7. 有依据时优先引用已发布知识；无命中或命中不足时可提供办公 IT 通用建议。通用回答引用为空，不能冒充内部政策或编造地址/来源；任何实际引用都必须仍为 `PUBLISHED` 当前版本，失效即整体拒答；
+   → CONFLICTING_KNOWLEDGE → OFF_TOPIC → NO_RELIABLE_KNOWLEDGE(引用失效)`;
+7. 有依据时优先引用已发布知识；无命中、弱命中或模型自评分偏低均不会强制拒答。检索分数只决定可靠引用，模型 confidence 只用于审计/转人工建议；`min-confidence` 保留兼容而不参与硬拦截。通用回答引用为空，不冒充内部政策或编造地址/来源；任何实际引用都必须仍为 `PUBLISHED` 当前版本，失效即整体拒答；
 8. 写 `ai_interaction`(模型版本、命中知识版本、置信度、耗时)，消息的 `citation_json` 写 schemaVersion=1 元数据（引用、interactionId、replyType、refusalReason、generalAnswer），历史读取兼容旧引用数组，不写提示词与推理过程。
 
 员工可主动确认 `AI_ACTIVE → RESOLVED`；AI 不自动确认、建单或修改企业系统。调用模型期间关闭咨询后，原有写锁复核仍会阻止迟到回答落库。
@@ -76,7 +76,7 @@ RD-006 允许两者二选一,选拒答是因为会话保持可用、客户端只
 
 `local` 不具备模型通用知识能力，无命中仍拒答；冷启动通用回答策略需使用 `openai-compatible`。检索独立由 `retrieval-provider=rag-service|mysql` 决定，默认使用 RAG；关键词高风险兜底仅用于 `local + mysql` 兼容模式。
 
-**两种模式下检索都只读 `PUBLISHED` 当前版本**,模型拿不到数据库、未发布案例、原始工单或聊天正文。
+**两种模式下检索都只读 `PUBLISHED` 当前版本**。模型只能使用已授权当前 AI 会话的有界历史，不能读取数据库、未发布案例、原始工单、其他会话或普通人工聊天正文。
 
 三道硬约束:
 
@@ -87,7 +87,7 @@ RD-006 允许两者二选一,选拒答是因为会话保持可用、客户端只
    `choices[0].message.content`,推理字段不解析、不落库、不写日志(AI-001、AI-008)。
 3. **先范围判定再受约束生成** —— 无命中仍可生成办公 IT 通用建议；即使无命中，模型给出的任何虚构 versionId 也会导致整次输出无效。有命中但不相关时允许不引用，不把不相关来源挂到通用答案上。
 
-检索和生成共享同一次 `GuardedRagClient` 的总超时与并发保护，重试也消耗同一预算。RAG 模式只调用一次生成模型；MySQL 兼容模式另加一次模型分类。
+分类、检索和生成共享同一次 `GuardedRagClient` 的总超时与并发保护，重试也消耗同一预算。RAG 和 MySQL 模式均调用一次语义分类，分类放行后调用一次生成；分类同时补全续问的检索内容。生成支持 `ANSWER`、无引用且非空的 `CLARIFY` 和 `REFUSE`。
 两次调用都严格验证完整响应、字段类型、置信度范围和引用，不接收工具调用或截断响应。
 HTTP stub 测试验证流程与边界，不能证明真实模型对自然语言、混合请求和提示注入的分类准确率；上线仍需代表性语义评测。
 

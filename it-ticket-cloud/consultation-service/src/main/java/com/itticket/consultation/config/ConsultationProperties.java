@@ -60,7 +60,7 @@ public class ConsultationProperties {
          *   <li>{@code openai-compatible}:调用 OpenAI 兼容端点做受约束生成;</li>
          *   <li>{@code local}:不调外部模型,只按检索结果拼装答案(离线/演示/评测未上线时使用)。</li>
          * </ul>
-         * 无论哪种,检索都只读 PUBLISHED 知识,生成都必须落在检索到的资料上(AI-001)。
+         * 检索都只读 PUBLISHED 知识；模型模式也可给不带知识引用的通用 IT 回答。
          */
         private String provider = "local";
 
@@ -99,7 +99,11 @@ public class ConsultationProperties {
 
         private String modelVersion = "local-rag-1.0";
         private int topK = 3;
-        /** 低于该置信度必须拒答(AI-001)。 */
+        /** Maximum persisted history messages; nonpositive uses 12, hard cap 40. */
+        private int contextMaxMessages = 12;
+        /** Total history UTF-16 characters; nonpositive uses 12000, hard cap 32000. */
+        private int contextMaxChars = 12000;
+        /** 旧配置兼容项，不再作为有效回答的拒答门槛；置信度仅用于审计和转人工建议。 */
         private BigDecimal minConfidence = new BigDecimal("0.60");
         /** 低于该置信度即便可答也建议转人工。 */
         private BigDecimal suggestTransferBelowConfidence = new BigDecimal("0.75");

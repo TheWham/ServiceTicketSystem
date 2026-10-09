@@ -326,7 +326,7 @@ const columns = computed(() => {
     'PENDING_EXTERNAL':   { label: '外部等待', dotColor: '#b88230' },
     'PENDING_ACCEPTANCE': { label: '待验收', dotColor: '#13a8a8' },
     'COMPLETED':          { label: '已完成', dotColor: '#67c23a' },
-    'CANCELLED':          { label: '已取消', dotColor: '#c0c4cc' },
+    'CANCELLED':          { label: '已撤回', dotColor: '#c0c4cc' },
     'CLOSED':             { label: '已关闭', dotColor: '#c0c4cc' }
   }
   const result = engineerStatuses(activeView.value).map(s => ({ status: s, ...statusMap[s], tickets: [] }))
@@ -355,7 +355,7 @@ const STATUS_LABEL = {
   NEW: '新建', ASSIGNED: '已分配', IN_PROGRESS: '处理中',
   PENDING_SUPPLEMENT: '待补充', PENDING_EXTERNAL: '外部等待',
   PENDING_ACCEPTANCE: '待验收', COMPLETED: '已完成',
-  CANCELLED: '已取消', CLOSED: '已关闭'
+  CANCELLED: '已撤回', CLOSED: '已关闭'
 }
 const STATUS_TYPE = {
   NEW: 'warning', ASSIGNED: 'primary', IN_PROGRESS: 'primary',

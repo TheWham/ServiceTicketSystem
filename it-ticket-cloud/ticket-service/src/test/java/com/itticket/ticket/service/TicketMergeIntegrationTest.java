@@ -111,6 +111,7 @@ class TicketMergeIntegrationTest {
         assertFalse(outcome.duplicated());
         when(tickets.selectById("TK001")).thenReturn(saved);
         when(routing.route(saved)).thenReturn("ENG01");
+        when(tickets.update(isNull(), any())).thenReturn(1);
         // 事务未提交：派单与咨询回执不可见（防回滚后脏副作用）
         verifyNoInteractions(conversions, routing);
         verify(sla).startCompletionSla(eq("TK001"), eq("MEDIUM"), any());
@@ -159,7 +160,7 @@ class TicketMergeIntegrationTest {
         ticket.setCreatorId("U_EMP01");
         ticket.setStatus(TicketStatus.NEW);
         when(tickets.selectById("TK001")).thenReturn(ticket);
-        service.get("TK001");
+        service.get(employee, "TK001");
         var query = ArgumentCaptor.forClass(QueryWrapper.class);
         verify(attachments).selectList(query.capture());
         var sql = query.getValue().getSqlSegment();

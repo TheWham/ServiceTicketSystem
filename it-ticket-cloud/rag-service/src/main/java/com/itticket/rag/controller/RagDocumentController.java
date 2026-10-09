@@ -42,7 +42,7 @@ import java.util.Map;
  * - AC-27 · specs/09-prd-spec-test-traceability.md:93
  *     已下线知识在检索中不返回（检索侧 status=PUBLISHED 硬过滤）。
  * - MR-004 · specs/10-model-rag-integration.md:70
- *     RAG 调用链路：领域判定 ➔ 检索 ➔ 阈值分档，本模块输出判定结果供 AI 客服使用。
+ *     RAG 调用链路：领域判定 ➔ 检索 ➔ 引用质量判定，本模块输出判定结果供 AI 客服使用。
  * - RD-003 · specs/04-resilience-degradation.md:33
  *     检索类依赖超时边界（ES 检索 5s）。
  * - MR-011 · specs/10-model-rag-integration.md:151
@@ -165,8 +165,8 @@ public class RagDocumentController {
      *   <li>领域判定前置（MR-004 · specs/10-model-rag-integration.md:70）：
      *       OFF_TOPIC / HIGH_RISK 时 items 为空并以 suggestedReplyType/suggestedRefusalReason
      *       告知对接方应拒答；</li>
-     *   <li>阈值分档（AI-001）：topScore &lt; 0.45 判 unreliable，0.45–0.70 建议 LOW_CONFIDENCE
-     *       拒答，≥ 0.70 判 reliable；无命中/不相关不强制拒答，由 AI 客服走通用回答。</li>
+     *   <li>引用质量（AI-001）：有效命中 topScore ≥ confidenceThreshold（默认 0.70）判 reliable；
+     *       无命中或低于阈值均不强制拒答，由 AI 客服走通用回答；旧下限配置不再参与判定。</li>
      * </ul>
      *
      * @param request 检索请求（question 必填，categoryId / topK 可选）

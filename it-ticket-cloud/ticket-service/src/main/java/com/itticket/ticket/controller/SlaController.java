@@ -5,6 +5,9 @@ import com.itticket.common.api.Result;
 import com.itticket.ticket.entity.SlaInstance;
 import com.itticket.ticket.mapper.SlaInstanceMapper;
 import com.itticket.ticket.service.WorkCalendarService;
+import com.itticket.ticket.service.TicketVisibility;
+import com.itticket.ticket.mapper.TicketMapper;
+import com.itticket.common.web.UserContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,6 +29,7 @@ public class SlaController {
 
     private final SlaInstanceMapper slaInstanceMapper;
     private final WorkCalendarService workCalendarService;
+    private final TicketMapper ticketMapper;
 
     /**
      * 查工单当前 SLA 实例（完成类 COMPLETION 为主）。
@@ -33,6 +37,7 @@ public class SlaController {
      */
     @GetMapping("/{ticketId}")
     public Result<Map<String, Object>> getByTicket(@PathVariable String ticketId) {
+        TicketVisibility.checkRead(UserContext.get(), ticketMapper.selectById(ticketId));
         SlaInstance sla = slaInstanceMapper.selectOne(new QueryWrapper<SlaInstance>()
                 .eq("biz_type", "TICKET").eq("biz_id", ticketId).eq("sla_type", "TICKET_COMPLETION")
                 .orderByDesc("created_at").last("LIMIT 1"));

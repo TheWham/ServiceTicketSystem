@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -31,6 +32,49 @@ import static org.mockito.Mockito.*;
  * （会话状态机、幂等执行器、被护栏包裹的 RAG 客户端均为 mock）。
  */
 class AiConsultationPolicyTest {
+
+    @Test
+    void followUpLoadsConfiguredHistoryBeforeAppendingCurrentQuestion() {
+        ConsultationProperties properties = new ConsultationProperties();
+        properties.getAi().setContextMaxMessages(6);
+        properties.getAi().setContextMaxChars(900);
+        Fixture fixture = new Fixture(properties, generalAnswer());
+        List<RagQuery.Turn> history = List.of(new RagQuery.Turn("user", "VPN cannot connect"),
+                new RagQuery.Turn("assistant", "Restart the VPN client"));
+        when(fixture.messages.loadAiHistory("S1", "U1", "ai-q:idempotent-1", 6, 900)).thenReturn(history);
+
+        fixture.chat("Restarted; still broken");
+
+        ArgumentCaptor<RagQuery> query = ArgumentCaptor.forClass(RagQuery.class);
+        var order = inOrder(fixture.messages, fixture.rag);
+        order.verify(fixture.messages).loadAiHistory("S1", "U1", "ai-q:idempotent-1", 6, 900);
+        order.verify(fixture.messages).appendEmployeeMessage("S1", "U1", "ai-q:idempotent-1", "Restarted; still broken");
+        order.verify(fixture.rag).answer(query.capture(), nullable(String.class));
+        assertThat(query.getValue().question()).isEqualTo("Restarted; still broken");
+        assertThat(query.getValue().priorTurns()).containsExactlyElementsOf(history);
+    }
+
+    @Test
+    void unauthorizedCallerCannotReadHistoryOrInvokeModel() {
+        Fixture fixture = new Fixture(new ConsultationProperties(), generalAnswer());
+        assertThatThrownBy(() -> fixture.service.chat(
+                new CurrentUser("U2", RoleCode.EMPLOYEE, Actor.EMPLOYEE), "S1",
+                new AiChatRequest("private history", null), "idempotent-1"))
+                .isInstanceOf(com.itticket.consultation.api.ApiException.class);
+        verifyNoInteractions(fixture.messages, fixture.rag);
+    }
+
+    @Test
+    void defaultContextBudgetsReachHistoryLoader() {
+        Fixture fixture = new Fixture(new ConsultationProperties(), generalAnswer());
+        fixture.chat("VPN cannot connect");
+        verify(fixture.messages).loadAiHistory("S1", "U1", "ai-q:idempotent-1", 12, 12000);
+    }
+
+    private static RagResult generalAnswer() {
+        return new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, "Check VPN connectivity", List.of(),
+                BigDecimal.ONE, false, "model", List.of(), 10, null, true);
+    }
 
     /**
      * 正常答复路径：含“密码”关键词（高风险）但属常规故障排查，仍走语义护栏正常答复；
@@ -73,7 +117,7 @@ class AiConsultationPolicyTest {
         assertThat(response.refusalReason()).isEqualTo(AiRefusalReason.OFF_TOPIC);
         ArgumentCaptor<String> content = ArgumentCaptor.forClass(String.class);
         verify(fixture.messages).appendAiMessage(eq("S1"), anyString(), content.capture(), anyString());
-        assertThat(content.getValue()).contains("办公 IT").contains("不能答复");
+        assertThat(content.getValue()).contains("IT").contains("不能答复");
     }
 
     /**
@@ -84,6 +128,7 @@ class AiConsultationPolicyTest {
      */
     private static class Fixture {
         final ConsultationMessageService messages = mock(ConsultationMessageService.class);
+        final GuardedRagClient rag = mock(GuardedRagClient.class);
         final AiConsultationService service;
 
         Fixture(ConsultationProperties properties, RagResult answer) {
@@ -97,7 +142,6 @@ class AiConsultationPolicyTest {
             IdempotencyService idempotency = mock(IdempotencyService.class);
             when(idempotency.execute(anyString(), anyString(), anyString(), any(), eq(AiChatResponse.class), any()))
                     .thenAnswer(call -> new IdempotentResult<>(((Supplier<?>) call.getArgument(5)).get(), false));
-            GuardedRagClient rag = mock(GuardedRagClient.class);
             when(rag.answer(any(), nullable(String.class))).thenReturn(answer);
             service = new AiConsultationService(transitions, messages, mock(KnowledgeQueryService.class), rag,
                     mock(AiInteractionMapper.class), new AuthzService(properties), idempotency, properties);

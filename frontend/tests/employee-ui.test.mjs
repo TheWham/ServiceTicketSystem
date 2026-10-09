@@ -112,7 +112,7 @@ test('fully populated form can explicitly associate a validated consultation wit
 test('closing employee details invalidates a pending response and keeps the modal closed', async () => {
   let resolve
   const state = {
-    detailVisible: ref(false), detailLoading: ref(false), detailError: ref(''), detailId: ref(''), detailTicket: ref(null), detailFlows: ref([]), detailPhotos: ref([]),
+    detailVisible: ref(false), detailLoading: ref(false), detailError: ref(''), withdrawError: ref(''), detailId: ref(''), detailTicket: ref(null), detailFlows: ref([]), detailPhotos: ref([]),
     rejectReason: ref(''), rejectError: ref(''), ratingScore: ref(0), ratingComment: ref(''),
     ticketApi: { detail: () => new Promise(done => { resolve = done }) }, revokePhotoUrls: () => {}, loadPhotoUrls: async () => [], watch
   }

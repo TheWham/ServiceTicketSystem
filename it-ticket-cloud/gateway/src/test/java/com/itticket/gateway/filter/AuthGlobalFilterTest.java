@@ -29,6 +29,35 @@ import static org.junit.jupiter.api.Assertions.*;
 class AuthGlobalFilterTest {
     private final JwtProperties properties = new JwtProperties();
 
+    @Test
+    void knowledgeAdminAccountsUseActualUserServiceStatus() {
+        for (String userId : new String[]{"U_KBA01", "kb_admin"}) {
+            for (String status : new String[]{"ACTIVE", "DISABLED"}) {
+                var lookedUp = new java.util.concurrent.atomic.AtomicBoolean();
+                var forwarded = new java.util.concurrent.atomic.AtomicBoolean();
+                String json = """
+                    {"code":0,"data":{"user_id":"%s","role":"KNOWLEDGE_ADMIN","status":"%s"}}
+                    """.formatted(userId, status);
+                WebClient.Builder builder = WebClient.builder().exchangeFunction(request -> {
+                    lookedUp.set(true);
+                    assertTrue(request.url().getPath().endsWith("/" + userId));
+                    return Mono.just(ClientResponse.create(HttpStatus.OK)
+                            .header("Content-Type", MediaType.APPLICATION_JSON_VALUE).body(json).build());
+                });
+                String jwt = JwtUtil.sign(properties.getSecret(), userId, "Knowledge admin", "KNOWLEDGE_ADMIN", "D1", 60000);
+                var exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/api/v1/rag/articles")
+                        .header("Authorization", "Bearer " + jwt));
+                new AuthGlobalFilter(properties, new ObjectMapper(), builder).filter(exchange, request -> {
+                    forwarded.set(true);
+                    return Mono.empty();
+                }).block();
+                assertTrue(lookedUp.get(), "Knowledge admin must use the same authoritative lookup as other users");
+                assertEquals("ACTIVE".equals(status), forwarded.get());
+                if ("DISABLED".equals(status)) assertEquals(HttpStatus.UNAUTHORIZED, exchange.getResponse().getStatusCode());
+            }
+        }
+    }
+
     /**
      * 构造一个“同时携带合法 JWT 和伪造身份头”的请求：
      * JWT 声明的角色是 EMPLOYEE，而伪造头却声称自己是 PLATFORM_ADMIN ——

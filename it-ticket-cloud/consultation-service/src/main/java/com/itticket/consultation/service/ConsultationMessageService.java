@@ -3,6 +3,7 @@ package com.itticket.consultation.service;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.itticket.consultation.adapter.RagQuery;
 import com.itticket.consultation.api.ApiCode;
 import com.itticket.consultation.api.ApiException;
 import com.itticket.consultation.api.FieldIssue;
@@ -27,6 +28,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -205,5 +208,42 @@ public class ConsultationMessageService {
                 .orderByAsc(ConsultationMessage::getSentAt)
                 .orderByAsc(ConsultationMessage::getMessageId)
                 .last("LIMIT 200"));
+    }
+
+    /**
+     * Load context only after the caller has authorized the session creator.
+     * Select newest AI messages first, retain their text within the budget, then restore chronology.
+     * Nonpositive limits use defaults; oversized limits are capped regardless of configuration.
+     */
+    public List<RagQuery.Turn> loadAiHistory(String sessionId, String creatorId,
+                                            String currentClientMessageId, int maxMessages, int maxChars) {
+        int messageLimit = maxMessages <= 0 ? 12 : Math.min(maxMessages, 40);
+        int remaining = maxChars <= 0 ? 12000 : Math.min(maxChars, 32000);
+        List<ConsultationMessage> messages = messageMapper.selectAiHistory(
+                sessionId, creatorId, currentClientMessageId, messageLimit);
+        List<RagQuery.Turn> turns = new ArrayList<>();
+        for (ConsultationMessage message : messages) {
+            String content = message.getContent();
+            if (content == null || content.isBlank()) {
+                continue;
+            }
+            int length = Math.min(content.length(), remaining);
+            // Do not send an unpaired UTF-16 surrogate when truncating a message.
+            if (length < content.length() && length > 0
+                    && Character.isHighSurrogate(content.charAt(length - 1))
+                    && Character.isLowSurrogate(content.charAt(length))) {
+                length--;
+            }
+            if (length > 0) {
+                String role = message.getSenderType() == MessageSenderType.EMPLOYEE ? "user" : "assistant";
+                turns.add(new RagQuery.Turn(role, content.substring(0, length)));
+            }
+            remaining -= length;
+            if (remaining == 0 || length < content.length()) {
+                break;
+            }
+        }
+        Collections.reverse(turns);
+        return List.copyOf(turns);
     }
 }

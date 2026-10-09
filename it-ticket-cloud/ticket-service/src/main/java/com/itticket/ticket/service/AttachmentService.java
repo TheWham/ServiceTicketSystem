@@ -146,6 +146,7 @@ public class AttachmentService {
             }
         } else {
             Ticket ticket = ticketMapper.selectById(att.getBizId());
+            TicketVisibility.checkRead(user, ticket);
             boolean allowed = ticket != null && (ticket.getCreatorId().equals(user.getUserId())
                     || user.getUserId().equals(ticket.getAssigneeId())
                     || "PLATFORM_ADMIN".equals(user.getRole()));
