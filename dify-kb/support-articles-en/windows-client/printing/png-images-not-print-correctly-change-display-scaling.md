@@ -1,0 +1,43 @@
+# PNG images don't print correctly in Word 2010 after the system display scaling setting is changed in Windows 7
+
+This article discusses an issue in which PNG images don't print correctly in Word 2010 after the scaling setting for the system display is changed in Windows 7.
+
+_Applies to:_ &nbsp; Windows 7 Service Pack 1  
+_Original KB number:_ &nbsp; 3101023
+
+## Symptoms
+
+Consider the following scenario:
+
+- You have a Windows 7-based computer that has Microsoft Word 2010 installed.
+- You have a Word document that contains a PNG image.
+- In Control Panel, you change the Windows display scaling from the default setting of **Smaller - 100% (default)**  to **Medium - 125%**.
+- In Word, you print the document to an XPS-based printer driver.
+
+After you print the Word document, you notice that the edges of PNG image are cut off on the printout.
+
+## Cause
+
+This issue may occur because the PNG image doesn't contain the pHYs (physical pixel dimensions) chunk to specify the size of each pixel in the image.
+
+## Workaround
+
+To work around this issue, follow these steps:
+
+1. Start Word 2010.
+2. Right-click the PNG image, and then click **Format picture**.
+3. Change any of the **Sharpen and Soften** or **Brightness and Contrast** slider settings.
+4. Click **Close**  to save the changes.
+5. Right-click the PNG image again, and then revert the slider settings to their original positions.
+6. Click **Close**  to save the changes.
+
+This change in the image settings adds the pHYs chunk to the PNG image and enables it to print correctly.
+
+## Data collection
+
+If you need assistance from Microsoft support, we recommend you collect the information by following the steps mentioned in [Gather information by using TSS for User Experience issues](https://learn.microsoft.com/en-us/troubleshoot/windows-client/windows-troubleshooters/gather-information-using-tss-user-experience#printing).
+
+
+---
+
+> Source: [Microsoft Learn](https://learn.microsoft.com/en-us/troubleshoot/windows-client/printing/png-images-not-print-correctly-change-display-scaling) (Microsoft, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/))

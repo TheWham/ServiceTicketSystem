@@ -1,0 +1,34 @@
+# Error AADSTS75005 - The request isn't a valid Saml2 protocol message
+
+## Summary
+
+This article describes a problem in which you receive the error message "Error AADSTS75005 - The request isn't a valid Saml2 protocol message." when you try to sign into an application that has been integrated with Microsoft Entra ID.
+
+## Symptoms
+
+You receive error `AADSTS75005` when trying to sign into an application that has been set up to use Microsoft Entra ID for identity management using SAML-based single sign-on (SSO).
+
+## Cause
+
+Microsoft Entra ID doesn't support the SAML request sent by the application for single sign-on. Some common issues are:
+
+- Missing required fields in the SAML request.
+- SAML request encoded method.
+
+## Resolution
+
+1. Capture the SAML request. Follow the tutorial [How to debug SAML-based single sign-on to applications in Microsoft Entra ID](/azure/active-directory/manage-apps/debug-saml-sso-issues) to learn how to capture the SAML request.
+1. Contact the application vendor and share the following info:
+    - SAML request
+    - [Microsoft Entra Single Sign-on SAML protocol requirements](/azure/active-directory/develop/single-sign-on-saml-protocol)
+
+The application vendor should validate that they support the Microsoft Entra SAML implementation for single sign-on.
+
+## More Information
+
+For a full list of Active Directory Authentication and authorization error codes, see [Microsoft Entra authentication and authorization error codes](/azure/active-directory/develop/reference-aadsts-error-codes)
+
+
+---
+
+> Source: [Microsoft Learn](https://learn.microsoft.com/en-us/troubleshoot/entra/entra-id/app-integration/error-code-AADSTS75005-not-a-valid-saml-request) (Microsoft, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/))

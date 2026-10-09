@@ -1,0 +1,21 @@
+# Changes to your password are not saved in Azure, Office 365, or Intune
+
+_Original product version:_ &nbsp; Cloud Services (Web roles/Worker roles), Microsoft Intune  
+_Original KB number:_ &nbsp; 2951280
+
+## Symptoms
+
+When you change your password in Microsoft Azure, Microsoft Office 365, or Microsoft Intune and then select **Finish** to save your changes, the changed password is not saved.
+
+## Cause
+
+This problem occurs when you use special characters such as the less-than sign `<` or the greater-than sign `>` as part of your password.
+
+## Resolution
+
+To resolve this problem, do not use special characters as part of your password.
+
+
+---
+
+> Source: [Microsoft Learn](https://learn.microsoft.com/en-us/troubleshoot/entra/entra-id/dir-dmns-obj/pwd-change-not-save) (Microsoft, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/))

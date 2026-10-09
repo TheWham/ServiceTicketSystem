@@ -1,0 +1,35 @@
+# Print directly to the printer setting doesn't work with XPS-based print drivers
+
+This article provides a solution to an issue where the **Print directly to the printer** option doesn't work with XPS-based print drivers.
+
+_Applies to:_ &nbsp; Windows 7 Service Pack 1  
+_Original KB number:_ &nbsp; 3017432
+
+## Symptoms
+
+Consider the following scenario:
+
+- On a Windows 7 Service Pack 1-based system, you have a printer installed that uses an XPS-based print driver.
+- On the **Advanced** tab of the printer properties, the **Print directly to the printer** option is selected.
+
+In this scenario, print jobs do not print.
+
+## Cause
+
+When the **Print directly to the printer** option is selected, the print job must be rendered under the application process. However, with XPS-based print drivers, the print job is rendered under the PrintFilterPipelineSvc.exe process. Therefore, the print job must be sent to the spooler, where it is then sent to the PrintFilterPipelineSvc.exe process to be rendered.
+
+## Workaround
+
+To work around this issue, use one of the following methods:
+
+- Configure the printer to use spooling.
+- Use a GDI-based print driver.
+
+## More information
+
+Windows 8 and Windows 8.1 use the new v4 XPS-based printer model. Therefore, the **Print directly to the printer** option is unavailable (appears dimmed).
+
+
+---
+
+> Source: [Microsoft Learn](https://learn.microsoft.com/en-us/troubleshoot/windows-client/printing/print-directly-to-the-printer-setting-not-work) (Microsoft, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/))

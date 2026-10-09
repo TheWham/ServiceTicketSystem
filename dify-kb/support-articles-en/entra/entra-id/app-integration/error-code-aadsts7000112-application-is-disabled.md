@@ -1,0 +1,35 @@
+# Error AADSTS7000112 - Application is disabled
+
+## Summary
+
+This article discusses how to resolve the `AADSTS7000112` error that occurs when you try to sign in to an application that can be used together with Microsoft Entra ID.
+
+## Symptoms
+
+When you try to sign in to an Azure application that's integrated into Microsoft Entra ID, you receive the following `AADSTS7000112` error message:
+
+> Application '\<appIdentifier>'(\<appName>) disabled.
+
+## Cause
+
+The service principal object is disabled on the resource tenant.
+
+## Solution
+
+Work together with the resource tenant owners to determine why the service principal object is disabled. Then, use the following table to take the appropriate action.
+
+| Scenario | Action |
+|--|--|
+| The service principal is supposed to be disabled. | Don't do anything. Access is intentionally blocked. We don't expect or recommend that resource tenant admins of first-party applications disable the respective service principal. Microsoft Services automatically provisions and manages the service principals. It's possible that the backing application associated with this service principal was intentionally disabled globally by the home tenant admin, the app owner, or by Microsoft. For more information, see [Deactivate an enterprise application](/entra/identity/enterprise-apps/deactivate-application-portal). |
+| The service principal isn't supposed to be disabled, or it was disabled mistakenly. | Ask the resource tenant owners to re-enable the service principal. One method to re-enable the service principal is to use PowerShell to set the `-AccountEnabled` parameter to `$true`. For more information, see the [Set-AzureADServicePrincipal](/powershell/module/azuread/set-azureadserviceprincipal#example-1-disable-the-account-of-a-service-principal) cmdlet reference. |
+
+## More information
+
+For a full list of authentication and authorization error codes, see [Microsoft Entra authentication and authorization error codes](/entra/identity-platform/reference-error-codes).
+
+To investigate individual errors, go to <https://login.microsoftonline.com/error>.
+
+
+---
+
+> Source: [Microsoft Learn](https://learn.microsoft.com/en-us/troubleshoot/entra/entra-id/app-integration/error-code-aadsts7000112-application-is-disabled) (Microsoft, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/))
