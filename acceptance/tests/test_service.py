@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
-"""tests/test_service.py —— 质量负责人测试集（《验收评测协议书》§3 + §2 指标）
+"""tests/test_service.py —— 质量负责人测试集（《验收评测协议书 V2》§3.1 + §2.2 指标）
 
-样本集：TC-01~TC-07 典型案例 / TC-08~TC-09 边界案例 / TC-10 注入案例
-指标集：M-01 字段校验精确度 / M-03 提取准确率 / M-05 生成成功率 / M-06 幂等防重
-        M-07 降级可用率 / M-08 附件校验 / M-09 资产校验
+样本集：TC-01~TC-07 典型案例（V2 TC-07=描述为空必填缺失）/ TC-08~TC-09 边界 / TC-10 注入
+指标集：M-01 字段校验用例通过率 / M-03 字段提取用例通过率 / M-05 受测样本建单成功率
+        M-06 幂等防重用例通过率（40901）/ M-07 降级用例验证通过率 / M-08 附件校验 / M-09 资产校验
 规格集：SPEC §3 状态机 13 条合法边 + Guard 守卫 + T2/T3 超时降级
+        （V2 完整 9 态 18 边属 M-10，由 ticket-service 集成测试覆盖，见 README）
 
+V2 §4.2 门禁：确定性指标验收阈值一律 100%，任何一条样本断言失败即该项不达标。
 运行：python -m pytest -v    （大屏展示目标：100% Passed）
 """
 import json
@@ -16,7 +18,7 @@ from conftest import EXE_BYTES, JPG_BYTES, PNG_BYTES
 
 from ticket_p0.constants import (
     CODE_ASSET_NOT_FOUND, CODE_BIZ_ERROR, CODE_CONFLICT, CODE_FORBIDDEN,
-    TICKET_ID_RE, TicketStatus,
+    CODE_IDEMPOTENT_CONFLICT, TICKET_ID_RE, TicketStatus,
 )
 from ticket_p0.errors import BizError, ValidationFailed
 
@@ -107,7 +109,7 @@ def test_tc05_其他低优_带资产(service, make_dto):
 
 
 # =====================================================================
-# 二、典型案例 TC-06 ~ TC-07（负向：必填与长度下限）
+# 二、典型案例 TC-06 ~ TC-07（负向：必填缺失）
 # =====================================================================
 
 def test_tc06_标题为空_必填拦截(service, make_dto):
@@ -118,12 +120,12 @@ def test_tc06_标题为空_必填拦截(service, make_dto):
     assert service.count_tickets() == 0
 
 
-def test_tc07_描述过短_下限拦截(service, make_dto):
-    """TC-07：description=3 字符 < 10 → 拦截并提示引导文案"""
+def test_tc07_描述为空_必填拦截(service, make_dto):
+    """TC-07（V2）：description 为空 → 拦截，提示「请填写问题描述」，不生成工单"""
     with pytest.raises(ValidationFailed) as exc:
-        service.submit(make_dto(title="电脑蓝屏", description="蓝屏了"), "E1001")
+        service.submit(make_dto(title="电脑蓝屏", description=""), "E1001")
     assert "description" in exc.value.fields
-    assert "10" in exc.value.msg
+    assert "请填写问题描述" in exc.value.msg
     assert service.count_tickets() == 0
 
 
@@ -135,7 +137,8 @@ TC08_TITLE = "办公电脑开机后蓝屏报错代码0x0000007B反复重启无�
 
 
 def test_tc08_临界合法边界(service, make_dto):
-    """TC-08：title=50（上限）、desc=10（下限）、资产字母段=2位（正则下界）→ 全部放行"""
+    """TC-08（V2 与初版一致）：title=50（上限）、desc=10 字（合法，V2 起无下限）、
+    资产字母段=2位（正则下界）→ 全部放行"""
     assert len(TC08_TITLE) == 50
     desc = "我的电脑蓝屏无法开机"
     assert len(desc) == 10
@@ -193,13 +196,14 @@ def test_tc10_多向量恶意注入(service, make_dto):
 # =====================================================================
 
 def test_m01_字段校验精确度(service, make_dto, clock):
-    """10 条样本回放：真阳性(非法被拦)+真阴性(合法放行) 精确度 100%（阈值 ≥98%）"""
+    """10 条样本回放：真阳性(非法被拦)+真阴性(合法放行)（V2 门禁：100%，零容忍）
+    V2 §2.2.1 误判分级：非法漏拦权重×2、合法误拦权重×1——下方断言任一失败即缺陷"""
     samples = [  # (dto, 是否应通过, 预期错误字段子集)
         (make_dto(title="样本1硬件蓝屏", description="开机蓝屏无法进入系统需要处理"), True, set()),
         (make_dto(title="样本2软件崩溃", category="SOFTWARE",
                   description="软件频繁崩溃闪退无法正常使用"), True, set()),
         (make_dto(title="", description="开机蓝屏无法进入系统需要处理"), False, {"title"}),
-        (make_dto(title="样本4描述过短", description="蓝屏了"), False, {"description"}),
+        (make_dto(title="样本4描述缺失", description=""), False, {"description"}),
         (make_dto(title="样本5分类非法", category="HR_OA",
                   description="开机蓝屏无法进入系统需要处理"), False, {"category"}),
         (make_dto(title="样本6优先级非法", priority="P0",
@@ -224,12 +228,13 @@ def test_m01_字段校验精确度(service, make_dto, clock):
         if passed == should_pass and (should_pass or expect_fields <= fields):
             correct += 1
     accuracy = correct / len(samples)
-    print(f"\n[M-01] 字段校验精确度 = {accuracy:.0%}（阈值 ≥98%）")
-    assert accuracy >= 0.98
+    print(f"\n[M-01] 字段校验用例通过率 = {accuracy:.0%}（V2 门禁 100%）")
+    assert accuracy == 1.0
 
 
-def test_m05_工单生成成功率(service, make_dto, clock):
-    """5 条校验通过样本 100% 落库（阈值 ≥99.5%）"""
+def test_m05_受测样本建单成功率(service, make_dto, clock):
+    """5 条校验通过样本全部落库（V2 门禁 100%；生产 SLO ≥99.95% 由运维 APM 度量）
+    V2 §2.2.5 合法性校验：ticket_id 合法、creator_id=当前登录用户、初始状态合法"""
     cases = [
         dict(title="M05样本A", category="HARDWARE", priority="HIGH"),
         dict(title="M05样本B", category="SOFTWARE", priority="MEDIUM"),
@@ -241,21 +246,24 @@ def test_m05_工单生成成功率(service, make_dto, clock):
     ok = 0
     for c in cases:
         t = service.submit(make_dto(description=desc, **c), "E1001")
-        if t["ticket_status"] == TicketStatus.CREATED and TICKET_ID_RE.match(t["ticket_id"]):
+        if (t["ticket_status"] == TicketStatus.CREATED
+                and TICKET_ID_RE.match(t["ticket_id"])
+                and t["creator_id"] == "E1001"):
             ok += 1
         clock.advance(4)
     rate = ok / len(cases)
-    print(f"\n[M-05] 工单生成成功率 = {rate:.0%}（阈值 ≥99.5%）")
-    assert rate >= 0.995 and service.count_tickets() == 5
+    print(f"\n[M-05] 受测样本建单成功率 = {rate:.0%}（V2 门禁 100%）")
+    assert rate == 1.0 and service.count_tickets() == 5
 
 
-def test_m06_幂等防重率(service, make_dto, clock):
-    """3s 窗口内同用户+同标题连点仅落库 1 条；窗口外放行（阈值 100%）"""
+def test_m06_幂等防重用例通过率(service, make_dto, clock):
+    """3s 窗口内同用户+同标题连点仅落库 1 条（V2 门禁 100%，拦截码 40901）；窗口外放行
+    V2 §4.2 零容忍项：任一违反整体验收直接判不通过"""
     dto = make_dto()
     t1 = service.submit(dto, "E1001")
     with pytest.raises(BizError) as e1:
-        service.submit(dto, "E1001")                    # 第 2 次点击：40900
-    assert e1.value.code == CODE_CONFLICT
+        service.submit(dto, "E1001")                    # 第 2 次点击：40901
+    assert e1.value.code == CODE_IDEMPOTENT_CONFLICT
     clock.advance(2)
     with pytest.raises(BizError):                       # t0+2s 仍在窗口内
         service.submit(dto, "E1001")
@@ -265,8 +273,9 @@ def test_m06_幂等防重率(service, make_dto, clock):
     assert t2["ticket_id"] != t1["ticket_id"] and service.count_tickets() == 2
 
 
-def test_m07_推荐降级可用率(service, make_dto):
-    """推荐接口异常 → 静默降级返回空，提单链路 100% 可用（阈值 100%）"""
+def test_m07_降级用例验证通过率(service, make_dto):
+    """推荐接口异常 → 静默降级返回空，提单链路 100% 可用（V2 门禁 100%，Mock 回放）
+    V2 §2.2.7 扩展场景（AI 咨询熔断 / ES 不可用补偿）属智能链路，见 rag/consultation 测试集"""
     class BoomRecommender:
         def recommend(self, category, title=""):
             raise TimeoutError("recommend api timeout > 2s")
@@ -278,7 +287,8 @@ def test_m07_推荐降级可用率(service, make_dto):
 
 
 def test_m08_附件校验准确率(service, make_dto):
-    """四维校验：格式白名单 / 大小≤5MB / 数量≤3 / 魔数与扩展名一致（阈值 100%）"""
+    """四维校验：格式白名单 / 大小≤5MB / 数量≤3 / 魔数与扩展名一致
+    V2 门禁 100%；附件 MIME 校验属 V2 §4.2 零容忍项（安全红线）"""
     # 超大小：>5MB
     with pytest.raises(BizError) as e1:
         service.upload_attachment("big.jpg", b"\xff\xd8\xff" + bytes(5 * 1024 * 1024), "E1001")
@@ -305,7 +315,7 @@ def test_m08_附件校验准确率(service, make_dto):
 
 
 def test_m09_资产编号校验准确率(service, make_dto, clock):
-    """正则校验 + CMDB 联动：查无→40401、查中→回显型号责任人（阈值 100%）"""
+    """正则校验 + CMDB 联动：查无→40401、查中→回显型号责任人（V2 门禁 100%）"""
     # 正则不过 → 40000（字段级）
     with pytest.raises(ValidationFailed) as e1:
         service.submit(make_dto(assetId="IT-PC-123"), "E1001")

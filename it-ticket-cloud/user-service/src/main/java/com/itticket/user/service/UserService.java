@@ -231,6 +231,65 @@ public class UserService {
         userMapper.updateById(u);
     }
 
+    /**
+     * 主管修改用户角色：撤销全部未撤销角色 → 授予新角色（最新授予即主角色，见 primaryRole）。
+     * 角色取自 JWT，改完不影响已签发 token，用户下次登录生效；
+     * 改为 ENGINEER 时自动加入全部 ACTIVE 支持团队（与建号一致）。
+     */
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    public UserVO changeRole(String targetUserId, com.itticket.user.dto.ChangeRoleRequest req,
+                             String operatorId, String operatorRole) {
+        requireAdmin(operatorRole);
+        if (req == null || isBlank(req.getRoleCode())) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "请选择新角色");
+        }
+        String roleCode = req.getRoleCode().trim().toUpperCase();
+        if ("KB_ADMIN".equals(roleCode)) roleCode = "KNOWLEDGE_ADMIN";
+        if (!java.util.Set.of("EMPLOYEE", "ENGINEER", "PLATFORM_ADMIN", "KNOWLEDGE_ADMIN").contains(roleCode)) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "非法角色:" + roleCode);
+        }
+        User target = userMapper.selectById(targetUserId);
+        if (target == null || !"ACTIVE".equals(target.getStatus())) {
+            throw new BizException(ErrorCode.USER_INVALID, "目标用户不存在或已禁用");
+        }
+        String oldRole;
+        try {
+            oldRole = primaryRole(targetUserId);
+        } catch (BizException e) {
+            oldRole = null; // 无有效角色的历史脏数据也允许主管修复
+        }
+        if (roleCode.equals(oldRole)) {
+            throw new BizException(ErrorCode.PARAM_INVALID, "新角色与当前角色相同，无需修改");
+        }
+
+        java.time.LocalDateTime now = java.time.LocalDateTime.now(java.time.ZoneOffset.UTC);
+        // 撤销此前全部未撤销的角色授权
+        userRoleMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<UserRoleEntity>()
+                .eq("user_id", targetUserId).isNull("revoked_at")
+                .set("revoked_at", now).set("updated_at", now));
+        // 授予新角色（granted_at 最新 → primaryRole 取到它）
+        UserRoleEntity ur = new UserRoleEntity();
+        ur.setUserId(targetUserId);
+        ur.setRoleCode(roleCode);
+        ur.setGrantedBy(operatorId);
+        ur.setGrantedAt(now);
+        ur.setCreatedAt(now);
+        ur.setUpdatedAt(now);
+        userRoleMapper.insert(ur);
+
+        target.setUpdatedAt(now);
+        userMapper.updateById(target);
+
+        if ("ENGINEER".equals(roleCode)) {
+            autoJoinTeams(targetUserId);
+        }
+        org.slf4j.LoggerFactory.getLogger(getClass())
+                .info("[账号] 主管 {} 将用户 {} 的角色由 {} 改为 {}，原因: {}",
+                        operatorId, targetUserId, oldRole, roleCode,
+                        isBlank(req.getReason()) ? "未填写" : req.getReason().trim());
+        return UserVO.from(target, roleCode);
+    }
+
     /** 仅主管（平台管理员/知识库管理员）可管理账号 */
     private static void requireAdmin(String role) {
         if (!"PLATFORM_ADMIN".equals(role)) {

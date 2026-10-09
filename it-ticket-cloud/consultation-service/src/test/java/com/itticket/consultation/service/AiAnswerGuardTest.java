@@ -8,8 +8,6 @@ import com.itticket.consultation.enums.AiRefusalReason;
 import com.itticket.consultation.enums.AiReplyType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -26,41 +24,37 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>契约来源:
  * <ul>
- *   <li>AI-001:合法 IT 问题允许通用回答；知识冲突、风险或依赖不可用仍拒答。
- *       有效回答不因置信度低而拒答；分数保留用于审计及转人工建议。</li>
+ *   <li>AI-001:无可靠命中、知识冲突、置信度不足或模型无法完成时必须拒答,不得用常识补写未经引用的步骤;
+ *       高风险主题必须 REFUSE 并提供转人工和直接提单入口;每个关键结论至少一条 KnowledgeCitation;</li>
  *   <li>AI-003 / AI-004.3:拒答必须给结构化 refusalReason,REFUSE 时 answerText 为空;</li>
  *   <li>AI-008:引用必须指向仍为 PUBLISHED 的当前版本,失效即整体拒答(AC-27 知识下线场景);</li>
  *   <li>RD-006:RAG/模型不可用时返回拒答并保留转人工与直接提单入口,不得生成无来源猜测答案;</li>
- *   <li>AC-01 基于知识回答成功并展示来源；无可靠知识时允许空引用通用回答并保留转人工入口。</li>
+ *   <li>PRD 24.2:AC-01 基于知识回答成功并展示来源;AC-02 无可靠知识时明确拒答并展示转人工入口。</li>
  * </ul>
  */
 class AiAnswerGuardTest {
 
     @Test
     void semanticHighRiskDecisionCannotBeOverriddenByGeneratedAnswer() {
-        RagResult result = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, "执行操作", List.of(),
-                BigDecimal.ONE, false, "model", List.of(), 10, null, true, false, true);
+        RagResult result = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, "执行操作", List.of(), BigDecimal.ONE, AiRefusalReason.HIGH_RISK_TOPIC, "model", List.of(), 10, null, true, false);
         assertRefusal(evaluate(result), AiRefusalReason.HIGH_RISK_TOPIC);
     }
 
     @Test
     void offTopicFlagCannotBeOverriddenByAnswerReplyType() {
-        RagResult result = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, "越界内容", List.of(),
-                BigDecimal.ONE, false, "model", List.of(), 10, null, true, true);
+        RagResult result = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, "越界内容", List.of(), BigDecimal.ONE, AiRefusalReason.OFF_TOPIC, "model", List.of(), 10, null, true, false);
         assertRefusal(evaluate(result), AiRefusalReason.OFF_TOPIC);
     }
 
     @Test
     void clarificationDoesNotNeedKnowledgeCitation() {
-        RagResult result = new RagResult(RagStatus.SUCCESS, AiReplyType.CLARIFY, "请补充设备和现象", List.of(),
-                BigDecimal.ONE, false, "model", List.of(), 10, null);
+        RagResult result = new RagResult(RagStatus.SUCCESS, AiReplyType.CLARIFY, "请补充设备和现象", List.of(), BigDecimal.ONE, null, "model", List.of(), 10, null, false, false);
         assertThat(evaluate(result).replyType()).isEqualTo(AiReplyType.CLARIFY);
     }
 
     @Test
     void generalAnswerCannotHideInvalidCitations() {
-        RagResult result = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, "通用答案", CITATIONS,
-                BigDecimal.ONE, false, "model", List.of(), 10, null, true, false);
+        RagResult result = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, "通用答案", CITATIONS, BigDecimal.ONE, null, "model", List.of(), 10, null, true, false);
         assertRefusal(evaluate(result), AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
     }
 
@@ -86,17 +80,21 @@ class AiAnswerGuardTest {
 
     /** 一个「完美」的模型成功结果:SUCCESS + ANSWER + 有效引用 + 高置信度。 */
     private static RagResult perfect(String confidence) {
-        return new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, ANSWER_TEXT, CITATIONS,
-                new BigDecimal(confidence), false, "local-rag-1.0", List.of("KV-0001"), 120L, null);
+        return new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, ANSWER_TEXT, CITATIONS, new BigDecimal(confidence), null, "local-rag-1.0", List.of("KV-0001"), 120L, null, false, false);
     }
 
     private static RagResult withCitations(List<KnowledgeCitationDto> citations) {
-        return new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, ANSWER_TEXT, citations,
-                new BigDecimal("0.90"), false, "local-rag-1.0", List.of("KV-0001"), 120L, null);
+        return new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, ANSWER_TEXT, citations, new BigDecimal("0.90"), null, "local-rag-1.0", List.of("KV-0001"), 120L, null, false, false);
+    }
+
+    private static RagResult risk(RagResult result) {
+        return new RagResult(RagStatus.SUCCESS, result.replyType(), result.answerText(), result.citations(),
+                result.confidence(), AiRefusalReason.HIGH_RISK_TOPIC, result.modelVersion(), result.retrievedVersionIds(),
+                result.latencyMs(), null, result.generalAnswer(), false);
     }
 
     private static AiAnswerGuard.Verdict evaluate(RagResult result) {
-        return AiAnswerGuard.evaluate(result, properties(), false, ALL_PUBLISHED);
+        return AiAnswerGuard.evaluate(result, properties(), ALL_PUBLISHED);
     }
 
     /** AI-004.3 + AI-001:所有拒答形态的公共不变式。 */
@@ -129,7 +127,7 @@ class AiAnswerGuardTest {
     }
 
     @Test
-    @DisplayName("旧 minConfidence(0.60)边界不影响回答放行")
+    @DisplayName("AC-01 置信度恰好等于 minConfidence(0.60)时放行,不是「低于等于即拒答」")
     void ac01_confidence_exactly_at_min_threshold_is_allowed() {
         AiAnswerGuard.Verdict verdict = evaluate(perfect("0.60"));
 
@@ -139,11 +137,9 @@ class AiAnswerGuardTest {
     }
 
     @Test
-    @DisplayName("AC-01 CLARIFY(澄清提问)保留既有协议处理")
+    @DisplayName("AC-01 CLARIFY(澄清提问)在引用有效且置信度达标时按原样放行")
     void ac01_clarify_reply_type_is_preserved() {
-        RagResult clarify = new RagResult(RagStatus.SUCCESS, AiReplyType.CLARIFY,
-                "请问是内网还是外网无法访问?", CITATIONS, new BigDecimal("0.80"),
-                false, "local-rag-1.0", List.of("KV-0001"), 90L, null);
+        RagResult clarify = new RagResult(RagStatus.SUCCESS, AiReplyType.CLARIFY, "请问是内网还是外网无法访问?", CITATIONS, new BigDecimal("0.80"), null, "local-rag-1.0", List.of("KV-0001"), 90L, null, false, false);
 
         AiAnswerGuard.Verdict verdict = evaluate(clarify);
 
@@ -152,15 +148,12 @@ class AiAnswerGuardTest {
     }
 
     @Test
-    @DisplayName("AC-01 replyType 缺省时按 ANSWER 处理(AI-003 默认值)")
-    void ac01_null_reply_type_defaults_to_answer() {
-        RagResult noType = new RagResult(RagStatus.SUCCESS, null, ANSWER_TEXT, CITATIONS,
-                new BigDecimal("0.88"), false, "local-rag-1.0", List.of("KV-0001"), 90L, null);
-
+    @DisplayName("AC-01 replyType 缺省时拒绝非法输出")
+    void missingReplyTypeRefusesInsteadOfDefaultingToAnswer() {
+        RagResult noType = new RagResult(RagStatus.SUCCESS, null, ANSWER_TEXT, CITATIONS, new BigDecimal("0.88"), null, "local-rag-1.0", List.of("KV-0001"), 90L, null, false, false);
         AiAnswerGuard.Verdict verdict = evaluate(noType);
 
-        assertThat(verdict.replyType()).isEqualTo(AiReplyType.ANSWER);
-        assertThat(verdict.refusalReason()).isNull();
+        assertRefusal(verdict, AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
     }
 
     // ------------------------------------------------------------------
@@ -174,7 +167,7 @@ class AiAnswerGuardTest {
         disabled.setAnswerEnabled(false);
 
         AiAnswerGuard.Verdict verdict =
-                AiAnswerGuard.evaluate(perfect("0.99"), disabled, false, ALL_PUBLISHED);
+                AiAnswerGuard.evaluate(perfect("0.99"), disabled, ALL_PUBLISHED);
 
         assertRefusal(verdict, AiRefusalReason.POLICY_BLOCKED);
         assertThat(verdict.confidence()).isEqualByComparingTo(RagResult.ZERO_CONFIDENCE);
@@ -184,7 +177,7 @@ class AiAnswerGuardTest {
     @DisplayName("AC-02 高风险主题优先于一切模型结果:HIGH_RISK_TOPIC(AI-001)")
     void ac02_high_risk_topic_wins_over_model_result() {
         AiAnswerGuard.Verdict verdict =
-                AiAnswerGuard.evaluate(perfect("0.99"), properties(), true, ALL_PUBLISHED);
+                AiAnswerGuard.evaluate(risk(perfect("0.99")), properties(), ALL_PUBLISHED);
 
         assertRefusal(verdict, AiRefusalReason.HIGH_RISK_TOPIC);
         assertThat(verdict.confidence()).isEqualByComparingTo(RagResult.ZERO_CONFIDENCE);
@@ -196,7 +189,7 @@ class AiAnswerGuardTest {
         RagResult timeout = RagResult.degraded(RagStatus.TIMEOUT, "TIMEOUT", 15000L);
 
         AiAnswerGuard.Verdict verdict =
-                AiAnswerGuard.evaluate(timeout, properties(), true, ALL_PUBLISHED);
+                AiAnswerGuard.evaluate(risk(timeout), properties(), ALL_PUBLISHED);
 
         assertRefusal(verdict, AiRefusalReason.HIGH_RISK_TOPIC);
     }
@@ -208,7 +201,7 @@ class AiAnswerGuardTest {
         disabled.setAnswerEnabled(false);
 
         AiAnswerGuard.Verdict verdict =
-                AiAnswerGuard.evaluate(perfect("0.99"), disabled, true, ALL_PUBLISHED);
+                AiAnswerGuard.evaluate(perfect("0.99"), disabled, ALL_PUBLISHED);
 
         assertRefusal(verdict, AiRefusalReason.POLICY_BLOCKED);
     }
@@ -236,8 +229,7 @@ class AiAnswerGuardTest {
     void ac02_null_result_maps_to_model_unavailable() {
         assertRefusal(evaluate(null), AiRefusalReason.MODEL_UNAVAILABLE);
 
-        RagResult noStatus = new RagResult(null, AiReplyType.ANSWER, ANSWER_TEXT, CITATIONS,
-                new BigDecimal("0.90"), false, "local-rag-1.0", List.of("KV-0001"), 10L, null);
+        RagResult noStatus = new RagResult(null, AiReplyType.ANSWER, ANSWER_TEXT, CITATIONS, new BigDecimal("0.90"), null, "local-rag-1.0", List.of("KV-0001"), 10L, null, false, false);
         assertRefusal(evaluate(noStatus), AiRefusalReason.MODEL_UNAVAILABLE);
     }
 
@@ -255,9 +247,7 @@ class AiAnswerGuardTest {
     @Test
     @DisplayName("AC-02 topK 内知识冲突:CONFLICTING_KNOWLEDGE")
     void ac02_knowledge_conflict_maps_to_conflicting_knowledge() {
-        RagResult conflict = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, ANSWER_TEXT,
-                CITATIONS, new BigDecimal("0.90"), true, "local-rag-1.0",
-                List.of("KV-0001", "KV-0002"), 120L, null);
+        RagResult conflict = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, ANSWER_TEXT, CITATIONS, new BigDecimal("0.90"), AiRefusalReason.CONFLICTING_KNOWLEDGE, "local-rag-1.0", List.of("KV-0001", "KV-0002"), 120L, null, false, false);
 
         AiAnswerGuard.Verdict verdict = evaluate(conflict);
 
@@ -269,14 +259,13 @@ class AiAnswerGuardTest {
     @Test
     @DisplayName("AC-02 适配器自身判定 REFUSE:NO_RELIABLE_KNOWLEDGE")
     void ac02_adapter_refusal_maps_to_no_reliable_knowledge() {
-        RagResult refuse = new RagResult(RagStatus.SUCCESS, AiReplyType.REFUSE, null, List.of(),
-                RagResult.ZERO_CONFIDENCE, false, "local-rag-1.0", List.of(), 100L, null);
+        RagResult refuse = new RagResult(RagStatus.SUCCESS, AiReplyType.REFUSE, null, List.of(), RagResult.ZERO_CONFIDENCE, null, "local-rag-1.0", List.of(), 100L, null, false, false);
 
         assertRefusal(evaluate(refuse), AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
     }
 
     @Test
-    @DisplayName("未标记通用回答且引用为空或 null:NO_RELIABLE_KNOWLEDGE")
+    @DisplayName("AC-02 引用为空或为 null:NO_RELIABLE_KNOWLEDGE(AI-001 每个结论至少一条引用)")
     void ac02_missing_citations_map_to_no_reliable_knowledge() {
         assertRefusal(evaluate(withCitations(List.of())), AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
         assertRefusal(evaluate(withCitations(null)), AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
@@ -290,12 +279,11 @@ class AiAnswerGuardTest {
         assertRefusal(evaluate(withCitations(withNull)), AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"0", "0.2", "0.59", "0.95"})
-    @DisplayName("任何置信度都必须校验引用仍为当前发布版本")
-    void ac02_unpublished_citation_maps_to_no_reliable_knowledge(String confidence) {
+    @Test
+    @DisplayName("AC-02 知识已下线(引用不再是当前发布版本):整体拒答 NO_RELIABLE_KNOWLEDGE(AI-008 / AC-27)")
+    void ac02_unpublished_citation_maps_to_no_reliable_knowledge() {
         AiAnswerGuard.Verdict verdict =
-                AiAnswerGuard.evaluate(perfect(confidence), properties(), false, NONE_PUBLISHED);
+                AiAnswerGuard.evaluate(perfect("0.95"), properties(), NONE_PUBLISHED);
 
         assertRefusal(verdict, AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
     }
@@ -310,46 +298,36 @@ class AiAnswerGuardTest {
                 (articleId, versionId) -> "KV-0001".equals(versionId);
 
         AiAnswerGuard.Verdict verdict = AiAnswerGuard.evaluate(
-                withCitations(mixed), properties(), false, onlyFirstPublished);
+                withCitations(mixed), properties(), onlyFirstPublished);
 
         assertRefusal(verdict, AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"0", "0.2", "0.59"})
-    @DisplayName("有效知识回答不因低置信度拒答，保留审计分数及转人工建议")
-    void cited_answer_is_allowed_regardless_of_confidence(String confidence) {
-        AiAnswerGuard.Verdict verdict = evaluate(perfect(confidence));
+    @Test
+    @DisplayName("AC-02 置信度 0.59 低于门槛:LOW_CONFIDENCE")
+    void ac02_confidence_below_threshold_maps_to_low_confidence() {
+        AiAnswerGuard.Verdict verdict = evaluate(perfect("0.59"));
 
-        assertThat(verdict.replyType()).isEqualTo(AiReplyType.ANSWER);
-        assertThat(verdict.answerText()).isEqualTo(ANSWER_TEXT);
-        assertThat(verdict.citations()).isEqualTo(CITATIONS);
-        assertThat(verdict.refusalReason()).isNull();
-        assertThat(verdict.suggestTransfer()).isTrue();
-        assertThat(verdict.confidence()).isEqualByComparingTo(new BigDecimal(confidence));
+        assertRefusal(verdict, AiRefusalReason.LOW_CONFIDENCE);
+        assertThat(verdict.confidence()).isEqualByComparingTo(new BigDecimal("0.59"));
     }
 
     @Test
-    @DisplayName("置信度缺失按 0 留痕，不作为硬拒答条件")
-    void null_confidence_defaults_to_zero_without_refusal() {
-        RagResult noConfidence = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, ANSWER_TEXT,
-                CITATIONS, null, false, "local-rag-1.0", List.of("KV-0001"), 100L, null);
+    @DisplayName("AC-02 置信度缺失按 0 处理:LOW_CONFIDENCE")
+    void ac02_null_confidence_maps_to_low_confidence() {
+        RagResult noConfidence = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, ANSWER_TEXT, CITATIONS, null, null, "local-rag-1.0", List.of("KV-0001"), 100L, null, false, false);
 
         AiAnswerGuard.Verdict verdict = evaluate(noConfidence);
 
-        assertThat(verdict.replyType()).isEqualTo(AiReplyType.ANSWER);
-        assertThat(verdict.refusalReason()).isNull();
-        assertThat(verdict.suggestTransfer()).isTrue();
+        assertRefusal(verdict, AiRefusalReason.LOW_CONFIDENCE);
         assertThat(verdict.confidence()).isEqualByComparingTo(RagResult.ZERO_CONFIDENCE);
     }
 
     @Test
     @DisplayName("AC-02 正文为空或全空白:NO_RELIABLE_KNOWLEDGE,不返回空答案冒充成功")
     void ac02_blank_answer_text_maps_to_no_reliable_knowledge() {
-        RagResult blank = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, "   ", CITATIONS,
-                new BigDecimal("0.90"), false, "local-rag-1.0", List.of("KV-0001"), 100L, null);
-        RagResult nullText = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, null, CITATIONS,
-                new BigDecimal("0.90"), false, "local-rag-1.0", List.of("KV-0001"), 100L, null);
+        RagResult blank = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, "   ", CITATIONS, new BigDecimal("0.90"), null, "local-rag-1.0", List.of("KV-0001"), 100L, null, false, false);
+        RagResult nullText = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, null, CITATIONS, new BigDecimal("0.90"), null, "local-rag-1.0", List.of("KV-0001"), 100L, null, false, false);
 
         assertRefusal(evaluate(blank), AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
         assertRefusal(evaluate(nullText), AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
@@ -366,20 +344,20 @@ class AiAnswerGuardTest {
         disabled.setAnswerEnabled(false);
 
         List<AiAnswerGuard.Verdict> refusals = new ArrayList<>();
-        refusals.add(AiAnswerGuard.evaluate(perfect("0.99"), disabled, false, ALL_PUBLISHED));
-        refusals.add(AiAnswerGuard.evaluate(perfect("0.99"), properties(), true, ALL_PUBLISHED));
+        refusals.add(AiAnswerGuard.evaluate(perfect("0.99"), disabled, ALL_PUBLISHED));
+        refusals.add(AiAnswerGuard.evaluate(risk(perfect("0.99")), properties(), ALL_PUBLISHED));
         refusals.add(evaluate(RagResult.degraded(RagStatus.TIMEOUT, "TIMEOUT", 15000L)));
         refusals.add(evaluate(RagResult.degraded(RagStatus.UNAVAILABLE, "CIRCUIT_OPEN", 1L)));
         refusals.add(evaluate(null));
         refusals.add(evaluate(RagResult.degraded(RagStatus.INVALID_RESPONSE, "INVALID_RESPONSE", 80L)));
-        refusals.add(evaluate(new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, ANSWER_TEXT,
-                CITATIONS, new BigDecimal("0.90"), true, "local-rag-1.0", List.of(), 10L, null)));
+        refusals.add(evaluate(new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, ANSWER_TEXT, CITATIONS, new BigDecimal("0.90"), AiRefusalReason.CONFLICTING_KNOWLEDGE, "local-rag-1.0", List.of(), 10L, null, false, false)));
         refusals.add(evaluate(withCitations(List.of())));
-        refusals.add(AiAnswerGuard.evaluate(perfect("0.95"), properties(), false, NONE_PUBLISHED));
+        refusals.add(AiAnswerGuard.evaluate(perfect("0.95"), properties(), NONE_PUBLISHED));
+        refusals.add(evaluate(perfect("0.59")));
         // 冷启动修订新增:超范围拒答分支(OFF_TOPIC)
         refusals.add(evaluate(offTopicRefusal()));
 
-        assertThat(refusals).hasSize(10);
+        assertThat(refusals).hasSize(11);
 
         Set<AiRefusalReason> reasons = EnumSet.noneOf(AiRefusalReason.class);
         for (AiAnswerGuard.Verdict verdict : refusals) {
@@ -390,10 +368,8 @@ class AiAnswerGuardTest {
             assertThat(verdict.refusalReason()).isNotNull();
             reasons.add(verdict.refusalReason());
         }
-        // 分数不再产生 LOW_CONFIDENCE；枚举保留用于协议兼容。
-        Set<AiRefusalReason> expected = EnumSet.allOf(AiRefusalReason.class);
-        expected.remove(AiRefusalReason.LOW_CONFIDENCE);
-        assertThat(reasons).containsExactlyInAnyOrderElementsOf(expected);
+        // 十一个分支恰好覆盖 AiRefusalReason 的全部七个取值(含冷启动修订新增的 OFF_TOPIC)
+        assertThat(reasons).containsExactlyInAnyOrder(AiRefusalReason.values());
     }
 
     // ------------------------------------------------------------------
@@ -402,16 +378,12 @@ class AiAnswerGuardTest {
 
     /** 模型自判超范围(非 IT 办公类)的拒答结果。 */
     private static RagResult offTopicRefusal() {
-        return new RagResult(RagStatus.SUCCESS, AiReplyType.REFUSE, null, List.of(),
-                RagResult.ZERO_CONFIDENCE, false, "local-rag-1.0", List.of(), 100L, null,
-                false, true);
+        return new RagResult(RagStatus.SUCCESS, AiReplyType.REFUSE, null, List.of(), RagResult.ZERO_CONFIDENCE, AiRefusalReason.OFF_TOPIC, "local-rag-1.0", List.of(), 100L, null, false, false);
     }
 
     /** 通用能力回答:无命中、无引用、模型基于自身知识作答。 */
     private static RagResult generalAnswer(String confidence) {
-        return new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, ANSWER_TEXT, List.of(),
-                new BigDecimal(confidence), false, "local-rag-1.0", List.of(), 120L, null,
-                true, false);
+        return new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, ANSWER_TEXT, List.of(), new BigDecimal(confidence), null, "local-rag-1.0", List.of(), 120L, null, true, false);
     }
 
     @Test
@@ -429,26 +401,16 @@ class AiAnswerGuardTest {
         assertThat(verdict.suggestTransfer()).isTrue();
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"0", "0.2", "0.59"})
-    @DisplayName("有效通用回答不因低置信度拒答，保留审计分数及转人工建议")
-    void general_answer_is_allowed_regardless_of_confidence(String confidence) {
-        AiAnswerGuard.Verdict verdict = evaluate(generalAnswer(confidence));
-
-        assertThat(verdict.replyType()).isEqualTo(AiReplyType.ANSWER);
-        assertThat(verdict.answerText()).isEqualTo(ANSWER_TEXT);
-        assertThat(verdict.citations()).isEmpty();
-        assertThat(verdict.refusalReason()).isNull();
-        assertThat(verdict.suggestTransfer()).isTrue();
-        assertThat(verdict.confidence()).isEqualByComparingTo(new BigDecimal(confidence));
+    @Test
+    @DisplayName("冷启动:通用能力回答置信度不足时拒答 LOW_CONFIDENCE,不得无门槛放行")
+    void general_answer_below_confidence_threshold_refuses() {
+        assertRefusal(evaluate(generalAnswer("0.59")), AiRefusalReason.LOW_CONFIDENCE);
     }
 
     @Test
     @DisplayName("冷启动:通用能力回答正文为空时拒答 NO_RELIABLE_KNOWLEDGE,不返回空答案")
     void general_answer_with_blank_text_refuses() {
-        RagResult blank = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, "   ", List.of(),
-                new BigDecimal("0.90"), false, "local-rag-1.0", List.of(), 100L, null,
-                true, false);
+        RagResult blank = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, "   ", List.of(), new BigDecimal("0.90"), null, "local-rag-1.0", List.of(), 100L, null, true, false);
 
         assertRefusal(evaluate(blank), AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
     }
@@ -464,9 +426,7 @@ class AiAnswerGuardTest {
     @Test
     @DisplayName("冷启动:非超范围的适配器拒答仍归 NO_RELIABLE_KNOWLEDGE,不受新枚举影响")
     void non_off_topic_refusal_still_maps_to_no_reliable_knowledge() {
-        RagResult refuse = new RagResult(RagStatus.SUCCESS, AiReplyType.REFUSE, null, List.of(),
-                RagResult.ZERO_CONFIDENCE, false, "local-rag-1.0", List.of(), 100L, null,
-                false, false);
+        RagResult refuse = new RagResult(RagStatus.SUCCESS, AiReplyType.REFUSE, null, List.of(), RagResult.ZERO_CONFIDENCE, null, "local-rag-1.0", List.of(), 100L, null, false, false);
 
         assertRefusal(evaluate(refuse), AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
     }
@@ -475,7 +435,7 @@ class AiAnswerGuardTest {
     @DisplayName("冷启动:通用回答不受引用校验影响,即使所有知识都已下线也可放行")
     void general_answer_ignores_citation_validator() {
         AiAnswerGuard.Verdict verdict =
-                AiAnswerGuard.evaluate(generalAnswer("0.85"), properties(), false, NONE_PUBLISHED);
+                AiAnswerGuard.evaluate(generalAnswer("0.85"), properties(), NONE_PUBLISHED);
 
         assertThat(verdict.replyType()).isEqualTo(AiReplyType.ANSWER);
         assertThat(verdict.refusalReason()).isNull();
@@ -506,30 +466,4 @@ class AiAnswerGuardTest {
     // 七、matchesHighRisk(AI-001 高风险主题)
     // ------------------------------------------------------------------
 
-    @Test
-    @DisplayName("AC-02 高风险关键词匹配大小写不敏感")
-    void ac02_matches_high_risk_is_case_insensitive() {
-        List<String> keywords = List.of("删库", "rm -rf", "Root 密码");
-
-        assertThat(AiAnswerGuard.matchesHighRisk("请问怎么 RM -RF / 清理磁盘", keywords)).isTrue();
-        assertThat(AiAnswerGuard.matchesHighRisk("root 密码忘了怎么办", keywords)).isTrue();
-        assertThat(AiAnswerGuard.matchesHighRisk("生产环境删库了怎么恢复", keywords)).isTrue();
-    }
-
-    @Test
-    @DisplayName("AC-02 未命中高风险关键词时返回 false,不影响正常问答")
-    void ac02_matches_high_risk_returns_false_without_hit() {
-        assertThat(AiAnswerGuard.matchesHighRisk("打印机连不上怎么办", List.of("删库", "rm -rf")))
-                .isFalse();
-    }
-
-    @Test
-    @DisplayName("AC-02 空消息、空关键词列表与空白关键词都不构成高风险命中")
-    void ac02_matches_high_risk_handles_empty_inputs() {
-        assertThat(AiAnswerGuard.matchesHighRisk(null, List.of("删库"))).isFalse();
-        assertThat(AiAnswerGuard.matchesHighRisk("", List.of("删库"))).isFalse();
-        assertThat(AiAnswerGuard.matchesHighRisk("删库", List.of())).isFalse();
-        assertThat(AiAnswerGuard.matchesHighRisk("删库", null)).isFalse();
-        assertThat(AiAnswerGuard.matchesHighRisk("任意内容", Arrays.asList(null, "", "   "))).isFalse();
-    }
 }

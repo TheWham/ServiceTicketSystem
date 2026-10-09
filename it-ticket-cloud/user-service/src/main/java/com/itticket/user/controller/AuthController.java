@@ -2,6 +2,7 @@ package com.itticket.user.controller;
 
 import com.itticket.common.api.Result;
 import com.itticket.common.web.UserContext;
+import com.itticket.user.dto.ChangeRoleRequest;
 import com.itticket.user.dto.ChangePasswordRequest;
 import com.itticket.user.dto.CreateUserRequest;
 import com.itticket.user.dto.ForgotPasswordRequest;
@@ -14,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -62,6 +64,13 @@ public class AuthController {
     @GetMapping("/accounts")
     public Result<List<UserVO>> listAccounts() {
         return Result.ok(userService.listAllAccounts(currentRole()));
+    }
+
+    /** 主管修改用户角色：撤销原角色授权并授予新角色（下次登录生效） */
+    @PutMapping("/accounts/{userId}/role")
+    public Result<UserVO> changeRole(@PathVariable("userId") String userId,
+                                     @RequestBody ChangeRoleRequest request) {
+        return Result.ok("角色修改成功", userService.changeRole(userId, request, currentUserId(), currentRole()));
     }
 
     /** 主管重置他人密码 */

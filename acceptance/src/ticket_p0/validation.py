@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
-"""提单 DTO 字段级校验（SPEC §1.7 校验矩阵 / 协议书 M-01）：
-逐字段收集错误一次性返回；CMDB 联动校验由 service 在字段校验通过后执行。"""
+"""提单 DTO 字段级校验（SPEC §1.7 校验矩阵 / 协议书 V2 §2.2.1 M-01）：
+逐字段收集错误一次性返回（V2 误判分级：非法漏拦权重×2、合法误拦×1）；
+description 规则对齐 V2 TC-07：必填 + 上限 500 字（取消 10 字下限）。
+CMDB 联动校验由 service 在字段校验通过后执行。"""
 from datetime import datetime
 
 from .constants import (
     ASSET_ID_RE, ATTACH_MAX_COUNT, ATTACH_URL_RE, CATEGORIES, CODE_BIZ_ERROR,
-    DESC_MAX_LEN, DESC_MIN_LEN, PRIORITIES, TIME_FMT, TITLE_MAX_LEN,
+    DESC_MAX_LEN, PRIORITIES, TIME_FMT, TITLE_MAX_LEN,
 )
 from .errors import FieldError
 
@@ -32,13 +34,12 @@ def validate_submission(dto: dict, now: datetime) -> list:
     if dto.get("priority") not in PRIORITIES:
         errs.append(FieldError("priority", CODE_BIZ_ERROR, "优先级不合法，仅支持 HIGH/MEDIUM/LOW"))
 
-    # description：必填 10~500
-    desc = dto.get("description") or ""
-    if len(desc) < DESC_MIN_LEN:
-        errs.append(FieldError("description", CODE_BIZ_ERROR,
-                               "请至少填写10个字，说明何时开始、报错原文、已尝试的操作"))
-    elif len(desc) > DESC_MAX_LEN:
-        errs.append(FieldError("description", CODE_BIZ_ERROR, "问题描述长度需在 10~500 之间"))
+    # description：必填 + 上限 500（V2 TC-07：空描述拦截，提示「请填写问题描述」）
+    desc = (dto.get("description") or "").strip()
+    if not desc:
+        errs.append(FieldError("description", CODE_BIZ_ERROR, "请填写问题描述"))
+    elif len(dto.get("description") or "") > DESC_MAX_LEN:
+        errs.append(FieldError("description", CODE_BIZ_ERROR, "问题描述长度不能超过500字"))
 
     # assetId：选填 + 正则（CMDB 查无 → 40401 由 service 判定）
     asset_id = dto.get("assetId")

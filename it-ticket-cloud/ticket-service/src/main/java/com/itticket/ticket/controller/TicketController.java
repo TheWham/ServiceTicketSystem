@@ -10,6 +10,7 @@ import com.itticket.ticket.dto.EditTicketRequest;
 import com.itticket.ticket.dto.ContractEnvelope;
 import com.itticket.ticket.dto.TicketProjection;
 import com.itticket.ticket.dto.RatingRequest;
+import com.itticket.ticket.dto.UpdateTicketRequest;
 import com.itticket.ticket.enums.TicketStatus;
 import com.itticket.ticket.service.TicketService;
 import com.itticket.ticket.vo.TicketListVO;
@@ -72,10 +73,18 @@ public class TicketController {
         return Result.ok("工单已撤回，记录已保留", ticketService.withdraw(UserContext.get(), id));
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/{id}/content")
     public Result<Void> edit(@PathVariable String id, @RequestBody EditTicketRequest request) {
         ticketService.edit(UserContext.get(), id, request);
         return Result.ok("修改已保存", null);
+    }
+
+    /** 提单人编辑工单并重新提交（新建/已分配可改内容；待补充提交后回到处理中） */
+    @PutMapping("/{id}")
+    public Result<Map<String, Object>> update(@PathVariable String id, @RequestBody UpdateTicketRequest request) {
+        Map<String, Object> result = ticketService.update(UserContext.get(), id, request);
+        boolean resubmitted = TicketStatus.IN_PROGRESS.getValue().equals(result.get("status"));
+        return Result.ok(resubmitted ? "已重新提交，工单回到处理中" : "工单已更新", result);
     }
 
     @PostMapping("/{id}/assign")

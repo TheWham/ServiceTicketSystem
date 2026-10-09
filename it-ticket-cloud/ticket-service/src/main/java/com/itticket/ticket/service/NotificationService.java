@@ -49,7 +49,8 @@ public class NotificationService {
             java.util.Map.entry("SUPPLEMENT_TIMEOUT_CLOSED", "逾期未补充,工单已关闭"),
             java.util.Map.entry("SLA_NEAR", "SLA 即将超时"),
             java.util.Map.entry("SLA_BREACHED", "SLA 已违约"),
-            java.util.Map.entry("ROUTE_FAILED", "工单路由失败，待管理员分配")
+            java.util.Map.entry("ROUTE_FAILED", "工单路由失败，待管理员分配"),
+            java.util.Map.entry("TICKET_EDITED", "工单内容已更新")
     );
 
     /**
@@ -91,6 +92,29 @@ public class NotificationService {
         String content = "工单 " + ticketId + " " + label + "，点击查看详情处理。";
         String actionUrl = "/tickets/" + ticketId;
         deliver(eventId, receiverId, "IN_APP", title, content, actionUrl);
+    }
+
+    /**
+     * 提单人编辑/补充工单后通知处理人。
+     * 编辑可多次发生，事件 id 带时间戳保证每次都能投递（绕开事件级去重 §14.3）。
+     */
+    @Async("notifyExecutor")
+    public void notifyCreatorEdit(String ticketId, String assigneeId, boolean resubmitted) {
+        String eventType = resubmitted ? "SUPPLEMENTED" : "TICKET_EDITED";
+        String eventId = eventType + ":" + ticketId + ":" + System.currentTimeMillis();
+        String ticketTitle = ticketId;
+        try {
+            com.itticket.ticket.entity.Ticket t = ticketMapper.selectById(ticketId);
+            if (t != null && t.getTitle() != null && !t.getTitle().isBlank()) {
+                ticketTitle = t.getTitle();
+            }
+        } catch (Exception e) {
+            log.warn("[通知] 查询工单标题失败,降级为单号: {}", ticketId);
+        }
+        String label = EVENT_LABEL.getOrDefault(eventType, eventType);
+        String title = "【" + label + "】" + ticketTitle;
+        String content = "工单 " + ticketId + " " + label + "，点击查看详情处理。";
+        deliver(eventId, assigneeId, "IN_APP", title, content, "/tickets/" + ticketId);
     }
 
     /**

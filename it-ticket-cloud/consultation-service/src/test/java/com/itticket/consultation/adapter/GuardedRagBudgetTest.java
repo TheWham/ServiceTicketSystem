@@ -23,7 +23,7 @@ class GuardedRagBudgetTest {
             catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             return attempt == 1 ? RagResult.degraded(RagStatus.TIMEOUT, "TIMEOUT", 250)
                     : new RagResult(RagStatus.SUCCESS, AiReplyType.CLARIFY, "请补充设备信息", List.of(),
-                            BigDecimal.ONE, false, "test", List.of(), 300, null);
+                            BigDecimal.ONE, null, "test", List.of(), 300, null, false, false);
         };
         GuardedRagClient client = new GuardedRagClient(adapter, config);
         try {
@@ -44,5 +44,5 @@ class GuardedRagBudgetTest {
             assertThat(attempts).hasValue(1);
         } finally { client.shutdown(); }
     }
-    private RagQuery query() { return new RagQuery("S1", "VPN 无法连接", List.of(), null, null, 3); }
+    private RagQuery query() { return new RagQuery("S1", "VPN 无法连接", null, null, 3, new RagCaller("U1", "EMPLOYEE")); }
 }
