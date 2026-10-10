@@ -52,7 +52,7 @@ docker compose logs -f gateway consultation-service rag-service
 # 网关健康
 curl http://127.0.0.1:28080/api/health
 # 登录接口（种子账号见主 README）
-curl -X POST http://127.0.0.1:8080/api/v1/users/login \
+curl -X POST http://127.0.0.1:28080/api/v1/users/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"..."}'
 
