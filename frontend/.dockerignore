@@ -1,0 +1,9 @@
+# 前端构建上下文忽略
+node_modules
+dist
+*.log
+.env
+.env.*
+!.env.example
+playwright-report
+test-results
