@@ -3,12 +3,12 @@
 #
 #   服务器起：Nacos + Redis + Elasticsearch（基础设施）
 #   拉镜像起：5 个微服务（GHCR 私有镜像）
-#   MySQL：不用本地容器，全部连远程库（MYSQL_HOST 环境变量指向远程地址）
+#   MySQL：连服务器宿主机上的 mysqld（host.docker.internal:3306，不出公网回环）
 #
 # 模型凭据脱敏方案：
 #   对话模型 / 向量模型的 base-url、api-key 只写在服务器本地的 .env 文件
 #   （已 gitignore，不进仓库、不进镜像），由 compose environment 注入容器。
-#   代码里的 ai-secrets.yml 机制在容器内文件缺失时自动跳过，环境变量直接生效。
+#   代码里的 ai-secrets.yml 机制在容器内文件缺失时静默跳过，环境变量直接生效。
 #
 # 首次部署：
 #   1. mkdir -p /opt/it-ticket && 上传本目录 3 个文件到 /opt/it-ticket/
@@ -22,14 +22,18 @@
 x-java-env: &java-env
   TZ: Asia/Shanghai
   SPRING_PROFILES_ACTIVE: prod
-  # Nacos/Redis 在同一 compose 网络，容器间用服务名互访
+  # Nacos 在同一 compose 网络，容器间用服务名互访
   NACOS_ADDR: nacos:8848
-  MYSQL_HOST: ${MYSQL_HOST:-120.92.138.195}
+  # MySQL 在宿主机上：经 host.docker.internal 访问（extra_hosts 注入 host-gateway）
+  MYSQL_HOST: ${MYSQL_HOST:-host.docker.internal}
   MYSQL_PORT: ${MYSQL_PORT:-3306}
   MYSQL_DB: ${MYSQL_DB:-it_ticket_system}
   MYSQL_USERNAME: ${MYSQL_USERNAME:-root}
   MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请在 .env 里设置 MYSQL_PASSWORD}
   JWT_SECRET: ${JWT_SECRET:?请在 .env 里设置 JWT_SECRET}
+
+x-extra-hosts: &extra-hosts
+  host.docker.internal: host-gateway
 
 networks:
   it-ticket-net:
@@ -113,11 +117,12 @@ services:
     environment:
       <<: *java-env
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+    extra_hosts: *extra-hosts
     depends_on:
       nacos:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "28080:8080"
     networks:
       - it-ticket-net
 
@@ -125,6 +130,7 @@ services:
     image: ${IMAGE_PREFIX:?请在 .env 里设置 IMAGE_PREFIX}/it-ticket-user-service:latest
     restart: unless-stopped
     environment: *java-env
+    extra_hosts: *extra-hosts
     depends_on:
       nacos:
         condition: service_healthy
@@ -138,6 +144,7 @@ services:
       <<: *java-env
       # 附件落盘到命名卷，容器重建不丢
       ITTICKET_ATTACHMENT_STORAGEDIR: /app/data/attachments
+    extra_hosts: *extra-hosts
     volumes:
       - it-ticket-attachments:/app/data/attachments
     depends_on:
@@ -161,6 +168,7 @@ services:
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
       ES_KNOWLEDGE_INDEX: ${ES_KNOWLEDGE_INDEX:-knowledge_chunk}
+    extra_hosts: *extra-hosts
     depends_on:
       nacos:
         condition: service_healthy
@@ -185,6 +193,7 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_MODEL: ${AI_MODEL:-}
       AI_API_KEY: ${AI_API_KEY:-}
+    extra_hosts: *extra-hosts
     volumes:
       - it-ticket-attachments:/app/data/attachments
     depends_on:

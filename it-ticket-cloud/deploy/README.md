@@ -50,7 +50,7 @@ docker compose logs -f gateway consultation-service rag-service
 
 ```bash
 # 网关健康
-curl http://127.0.0.1:8080/api/health
+curl http://127.0.0.1:28080/api/health
 # 登录接口（种子账号见主 README）
 curl -X POST http://127.0.0.1:8080/api/v1/users/login \
   -H 'Content-Type: application/json' \
@@ -64,7 +64,7 @@ docker compose logs consultation-service | grep -i "ai\|model"
 
 | 端口 | 服务 | 绑定 |
 |---|---|---|
-| 8080 | gateway（唯一对外入口） | 0.0.0.0 |
+| 28080 | gateway（唯一对外入口） | 0.0.0.0 |
 | 8848/9848 | Nacos 控制台 | 127.0.0.1（SSH 隧道访问） |
 | 6379 | Redis | 127.0.0.1 |
 | 9200 | Elasticsearch | 127.0.0.1 |
