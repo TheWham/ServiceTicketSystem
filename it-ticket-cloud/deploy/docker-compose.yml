@@ -205,6 +205,17 @@ services:
     networks:
       - it-ticket-net
 
+  # 前端：nginx 托管 Vue 构建产物，/api 与 /ws 反代到 gateway（容器网络）
+  frontend:
+    image: ${IMAGE_PREFIX:?请在 .env 里设置 IMAGE_PREFIX}/it-ticket-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "10086:80"
+    depends_on:
+      - gateway
+    networks:
+      - it-ticket-net
+
 volumes:
   it-ticket-redis-data:
   it-ticket-es-data:

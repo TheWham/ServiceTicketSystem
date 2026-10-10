@@ -16,6 +16,7 @@ on:
     branches: [main]
     paths:
       - "it-ticket-cloud/**"
+      - "frontend/**"
       - ".github/workflows/docker-ghcr.yml"
   workflow_dispatch:
 
@@ -45,6 +46,8 @@ jobs:
             port: 8302
           - module: consultation-service
             port: 8301
+          - module: frontend
+            port: 80
 
     steps:
       - name: Checkout
@@ -76,8 +79,8 @@ jobs:
       - name: Build & push
         uses: docker/build-push-action@v6
         with:
-          context: it-ticket-cloud
-          file: it-ticket-cloud/Dockerfile
+          context: ${{ matrix.module == 'frontend' && 'frontend' || 'it-ticket-cloud' }}
+          file: ${{ matrix.module == 'frontend' && 'frontend/Dockerfile' || 'it-ticket-cloud/Dockerfile' }}
           build-args: |
             MODULE=${{ matrix.module }}
             SERVICE_PORT=${{ matrix.port }}

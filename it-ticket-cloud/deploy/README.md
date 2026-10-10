@@ -64,7 +64,8 @@ docker compose logs consultation-service | grep -i "ai\|model"
 
 | 端口 | 服务 | 绑定 |
 |---|---|---|
-| 28080 | gateway（唯一对外入口） | 0.0.0.0 |
+| 10086 | frontend（系统界面入口） | 0.0.0.0 |
+| 28080 | gateway API（前端 nginx 反代的后端） | 0.0.0.0 |
 | 8848/9848 | Nacos 控制台 | 127.0.0.1（SSH 隧道访问） |
 | 6379 | Redis | 127.0.0.1 |
 | 9200 | Elasticsearch | 127.0.0.1 |
