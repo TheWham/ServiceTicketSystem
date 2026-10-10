@@ -1,0 +1,31 @@
+# 只把构建必需的文件送进 BuildKit 上下文，避免 target/、本地工具链、日志进镜像层
+target/
+**/target/
+logs/
+*.log
+node_modules/
+frontend/
+acceptance/
+evals/
+specs/
+db/
+docs/
+design-system/
+.devtools/
+.wpscomate/
+__pycache__/
+*.py[cod]
+.git/
+.githooks/
+.idea/
+*.iml
+.vscode/
+
+# 模型凭据绝不允许进镜像（本地开发文件，服务器走 .env 注入）
+ai-secrets.yml
+**/ai-secrets.yml
+
+# 本地环境文件
+.env
+.env.*
+!.env.example

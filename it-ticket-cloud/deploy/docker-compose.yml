@@ -1,0 +1,201 @@
+# ==============================================================================
+# 服务器一键部署（/opt/it-ticket 或任意目录）
+#
+#   服务器起：Nacos + Redis + Elasticsearch（基础设施）
+#   拉镜像起：5 个微服务（GHCR 私有镜像）
+#   MySQL：不用本地容器，全部连远程库（MYSQL_HOST 环境变量指向远程地址）
+#
+# 模型凭据脱敏方案：
+#   对话模型 / 向量模型的 base-url、api-key 只写在服务器本地的 .env 文件
+#   （已 gitignore，不进仓库、不进镜像），由 compose environment 注入容器。
+#   代码里的 ai-secrets.yml 机制在容器内文件缺失时自动跳过，环境变量直接生效。
+#
+# 首次部署：
+#   1. mkdir -p /opt/it-ticket && 上传本目录 3 个文件到 /opt/it-ticket/
+#   2. cp .env.example .env && chmod 600 .env && 填写真实值
+#   3. echo "<PAT>" | docker login ghcr.io -u <github用户名> --password-stdin
+#   4. docker compose up -d
+#
+# 基础设施端口只绑 127.0.0.1（loopback），微服务之间走内部网络。
+# ==============================================================================
+
+x-java-env: &java-env
+  TZ: Asia/Shanghai
+  SPRING_PROFILES_ACTIVE: prod
+  # Nacos/Redis 在同一 compose 网络，容器间用服务名互访
+  NACOS_ADDR: nacos:8848
+  MYSQL_HOST: ${MYSQL_HOST:-120.92.138.195}
+  MYSQL_PORT: ${MYSQL_PORT:-3306}
+  MYSQL_DB: ${MYSQL_DB:-it_ticket_system}
+  MYSQL_USERNAME: ${MYSQL_USERNAME:-root}
+  MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请在 .env 里设置 MYSQL_PASSWORD}
+  JWT_SECRET: ${JWT_SECRET:?请在 .env 里设置 JWT_SECRET}
+
+networks:
+  it-ticket-net:
+    driver: bridge
+
+services:
+  # ============================== 基础设施 ==============================
+
+  nacos:
+    image: nacos/nacos-server:v2.3.2
+    container_name: it-ticket-nacos
+    restart: unless-stopped
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: "false"
+      TZ: Asia/Shanghai
+    ports:
+      # 控制台/OpenAPI 与 gRPC 客户端端口。loopback 绑定，外部访问需走 SSH 隧道
+      - "127.0.0.1:8848:8848"
+      - "127.0.0.1:9848:9848-9849"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8848/nacos/v1/console/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - it-ticket-net
+
+  redis:
+    image: redis:8.2.9-alpine
+    container_name: it-ticket-redis
+    restart: unless-stopped
+    command: >
+      redis-server --appendonly yes --appendfsync everysec
+      --maxmemory 256mb --maxmemory-policy allkeys-lru
+      --requirepass "${REDIS_PASSWORD:?请在 .env 里设置 REDIS_PASSWORD}"
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - it-ticket-redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASS\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    environment:
+      REDIS_PASS: ${REDIS_PASSWORD}
+    networks:
+      - it-ticket-net
+
+  elasticsearch:
+    image: elasticsearch:8.11.3
+    container_name: it-ticket-es
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - TZ=Asia/Shanghai
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - it-ticket-es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - it-ticket-net
+
+  # ============================== 微服务（GHCR 镜像） ==============================
+
+  gateway:
+    image: ${IMAGE_PREFIX:?请在 .env 里设置 IMAGE_PREFIX}/it-ticket-gateway:latest
+    restart: unless-stopped
+    environment:
+      <<: *java-env
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+    depends_on:
+      nacos:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    networks:
+      - it-ticket-net
+
+  user-service:
+    image: ${IMAGE_PREFIX:?请在 .env 里设置 IMAGE_PREFIX}/it-ticket-user-service:latest
+    restart: unless-stopped
+    environment: *java-env
+    depends_on:
+      nacos:
+        condition: service_healthy
+    networks:
+      - it-ticket-net
+
+  ticket-service:
+    image: ${IMAGE_PREFIX:?请在 .env 里设置 IMAGE_PREFIX}/it-ticket-ticket-service:latest
+    restart: unless-stopped
+    environment:
+      <<: *java-env
+      # 附件落盘到命名卷，容器重建不丢
+      ITTICKET_ATTACHMENT_STORAGEDIR: /app/data/attachments
+    volumes:
+      - it-ticket-attachments:/app/data/attachments
+    depends_on:
+      nacos:
+        condition: service_healthy
+    networks:
+      - it-ticket-net
+
+  rag-service:
+    image: ${IMAGE_PREFIX:?请在 .env 里设置 IMAGE_PREFIX}/it-ticket-rag-service:latest
+    restart: unless-stopped
+    environment:
+      <<: *java-env
+      # ES 与 Redis 在同一 compose 网络内，容器名互访
+      ES_HOST: elasticsearch
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 .env 里设置 REDIS_PASSWORD}
+      # ---- 向量/Embedding 模型凭据（脱敏：值只在服务器 .env）----
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
+      ES_KNOWLEDGE_INDEX: ${ES_KNOWLEDGE_INDEX:-knowledge_chunk}
+    depends_on:
+      nacos:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - it-ticket-net
+
+  consultation-service:
+    image: ${IMAGE_PREFIX:?请在 .env 里设置 IMAGE_PREFIX}/it-ticket-consultation-service:latest
+    restart: unless-stopped
+    environment:
+      <<: *java-env
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?请在 .env 里设置 REDIS_PASSWORD}
+      # 检索走同网络 rag-service 容器名（不是公网地址）
+      RAG_BASE_URL: http://rag-service:8302
+      # ---- 对话模型凭据（脱敏：值只在服务器 .env）----
+      AI_PROVIDER: ${AI_PROVIDER:-openai-compatible}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+    volumes:
+      - it-ticket-attachments:/app/data/attachments
+    depends_on:
+      nacos:
+        condition: service_healthy
+      rag-service:
+        condition: service_started
+    networks:
+      - it-ticket-net
+
+volumes:
+  it-ticket-redis-data:
+  it-ticket-es-data:
+  it-ticket-attachments:

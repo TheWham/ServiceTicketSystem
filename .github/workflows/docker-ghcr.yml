@@ -1,0 +1,89 @@
+# ==============================================================================
+# 构建全部微服务镜像并推送 GHCR (ghcr.io)
+#
+# 触发：push 到 main（改了 it-ticket-cloud/ 或本 workflow 时才跑，省 CI 时间）
+# 产物：ghcr.io/<owner>/it-ticket-{gateway,user-service,ticket-service,rag-service,consultation-service}
+#       tag = latest + 短 sha。镜像继承仓库可见性（私有仓库 → 私有镜像）。
+#
+# 服务器侧配合：deploy/docker-compose.yml 用 PAT (read:packages) 拉取。
+# 注意：ghcr.io 镜像名必须全小写，owner 名含大写时需转小写（IMAGE_PREFIX 处理）。
+# ==============================================================================
+
+name: Build & Push to GHCR
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "it-ticket-cloud/**"
+      - ".github/workflows/docker-ghcr.yml"
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  # it-ticket-cloud 是 Maven 多模块仓库子目录，镜像内以模块名构建
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - module: gateway
+            port: 8080
+          - module: user-service
+            port: 8101
+          - module: ticket-service
+            port: 8201
+          - module: rag-service
+            port: 8302
+          - module: consultation-service
+            port: 8301
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lowercase owner for GHCR
+        id: owner
+        run: echo "prefix=${REGISTRY}/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.owner.outputs.prefix }}/it-ticket-${{ matrix.module }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=,format=short
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: it-ticket-cloud
+          file: it-ticket-cloud/Dockerfile
+          build-args: |
+            MODULE=${{ matrix.module }}
+            SERVICE_PORT=${{ matrix.port }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=it-ticket-${{ matrix.module }}
+          cache-to: type=gha,scope=it-ticket-${{ matrix.module }},mode=max
