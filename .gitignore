@@ -1,0 +1,7 @@
+.env
+config.ini
+output/
+__pycache__/
+*.pyc
+.DS_Store
+.idea/
