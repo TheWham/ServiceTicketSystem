@@ -706,7 +706,11 @@ def run_day13_pipeline():
 
         # 轨 3: Dense + BM25 双路召回 + RRF 融合（无精排，Top-3）
         # 与轨 4 的唯一区别是：不做 Rerank 精排与按秩融合，用于隔离出精排环节的真实增益
+        t0 = time.time()
         fused = retriever.rrf_fusion(bm25_raw, dense_raw, rrf_k=60, candidate_limit=3)
+        fusion_time = round((time.time() - t0) * 1000, 1)
+        # 轨 3 端到端延迟 = 双路召回(dense+bm25) + RRF 融合，与轨 1/2 的口径对齐
+        fused_time = round(dense_time + bm25_time + fusion_time, 1)
         fused_text = " ".join([d[0].page_content for d in fused])
         fused_hits = sum(1 for f in expected if f in fused_text)
 
@@ -734,6 +738,7 @@ def run_day13_pipeline():
             "bm25_hits": bm25_hits,
             "bm25_time": bm25_time,
             "fused_hits": fused_hits,
+            "fused_time": fused_time,
             "full_hits": full_hits,
             "full_time": full_res["latency_ms"],
             "top1_score": top1_score,
@@ -795,8 +800,20 @@ def run_day13_pipeline():
 
     # 4. 生成评测实验报告 Markdown 落盘
     print(f"\n[4/4] 生成并落盘评测报告文档...")
+    # 真实平均端到端延迟：从每题实测值求均值（不再用模板写死的假数字）
+    n_q = max(len(eval_records), 1)
+    avg_latency = {
+        "dense": round(sum(r["dense_time"] for r in eval_records) / n_q, 1),
+        "bm25": round(sum(r["bm25_time"] for r in eval_records) / n_q, 1),
+        "fused": round(sum(r["fused_time"] for r in eval_records) / n_q, 1),
+        "full": round(sum(r["full_time"] for r in eval_records) / n_q, 1),
+    }
     report_file = out_path / "Day13_混合检索与Rerank重排评测报告.md"
-    _generate_markdown_report(report_file, eval_records, total_dense, total_bm25, total_fused, total_full, total_expected, reranker_name=reranker_model)
+    _generate_markdown_report(
+        report_file, eval_records,
+        total_dense, total_bm25, total_fused, total_full, total_expected,
+        reranker_name=reranker_model, avg_latency=avg_latency
+    )
 
     print(f"\n🎉 评测报告已成功落盘至：{report_file}")
     print("=" * 80)
@@ -810,7 +827,8 @@ def _generate_markdown_report(
     total_fused: int,
     total_full: int,
     total_expected: int,
-    reranker_name: str = "qwen3-reranker-8b"
+    reranker_name: str = "qwen3-reranker-8b",
+    avg_latency: Optional[Dict[str, float]] = None
 ):
     # 数据驱动：真实最高命中率的链路才标 🏆
     totals = {"dense": total_dense, "bm25": total_bm25, "fused": total_fused, "full": total_full}
@@ -821,6 +839,10 @@ def _generate_markdown_report(
         return f"**🏆 {val} / {total_expected}**" if tag == winner else f"{val} / {total_expected}"
     def rate(val):
         return f"**{val / total_expected:.1%}**"
+    def lat(tag):
+        # 真实平均端到端延迟（由调用方从每题实测均值传入），不再写死
+        v = (avg_latency or {}).get(tag)
+        return f"{v}ms" if v is not None else "-"
 
     if winner == "full":
         d_note = "命中率达到工业级顶峰，且 Top-1 黄金上下文相关度置信度极高"
@@ -847,10 +869,10 @@ def _generate_markdown_report(
 
 | 检索机制链路架构 | 黄金事实命中总数 | 事实覆盖率 (Hit Rate@3) | 平均端到端延迟 | 架构技术定性分析 |
 | :--- | :---: | :---: | :---: | :--- |
-| **链路 A：纯 Dense 向量检索** | {crown('dense', total_dense)} | {rate(total_dense)} | ~15ms | 命令/错误码/端口/事件ID 等专有编号易漂移脱靶 |
-| **链路 B：纯 BM25 关键词检索** | {crown('bm25', total_bm25)} | {rate(total_bm25)} | ~2ms | 得益于 Day 11 术语归一化，硬编号命中佳，但抽象因果句检索受限 |
-| **链路 C：双路粗排 + RRF 融合** | {crown('fused', total_fused)} | {rate(total_fused)} | ~18ms | 兼得两路之长，多样性融合召回率高，但未做精细相关度重排 |
-| **链路 D：顶级全链路 (+ {reranker_name})** | {crown('full', total_full)} | {rate(total_full)} | ~45ms | {d_note} |
+| **链路 A：纯 Dense 向量检索** | {crown('dense', total_dense)} | {rate(total_dense)} | {lat('dense')} | 命令/错误码/端口/事件ID 等专有编号易漂移脱靶 |
+| **链路 B：纯 BM25 关键词检索** | {crown('bm25', total_bm25)} | {rate(total_bm25)} | {lat('bm25')} | 得益于 Day 11 术语归一化，硬编号命中佳，但抽象因果句检索受限 |
+| **链路 C：双路粗排 + RRF 融合** | {crown('fused', total_fused)} | {rate(total_fused)} | {lat('fused')} | 兼得两路之长，多样性融合召回率高，但未做精细相关度重排 |
+| **链路 D：顶级全链路 (+ {reranker_name})** | {crown('full', total_full)} | {rate(total_full)} | {lat('full')} | {d_note} |
 
 ---
 
