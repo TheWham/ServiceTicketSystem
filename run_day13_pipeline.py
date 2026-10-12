@@ -78,6 +78,7 @@ def _fallback_load_ksp_config() -> Dict[str, str]:
         "api_key": os.environ.get("KSP_API_KEY") or env.get("KSP_API_KEY", ""),
         "base_url": os.environ.get("KSP_BASE_URL") or env.get("KSP_BASE_URL", ""),
         "embed_model": os.environ.get("KSP_EMBED_MODEL") or env.get("KSP_EMBED_MODEL", "qwen3-embedding-8b"),
+        "rerank_model": os.environ.get("KSP_RERANK_MODEL") or env.get("KSP_RERANK_MODEL", "qwen3-reranker-8b"),
     }
 
 
@@ -511,8 +512,11 @@ def run_day13_pipeline():
     parser.add_argument("--wiki-dir", default="output/wiki", help="Day 11 Wiki 卡片目录")
     parser.add_argument("--chroma-dir", default="day12_output/chroma_wiki_structured", help="Day 12 结构化向量库目录")
     parser.add_argument("--output-dir", default="day13_output", help="Day 13 产物输出目录")
-    parser.add_argument("--reranker", default="qwen3-reranker-8b", help="重排模型名称")
+    parser.add_argument("--reranker", default="", help="重排模型名称(默认取 KSP_RERANK_MODEL 或 qwen3-reranker-8b)")
     args = parser.parse_args()
+
+    # 重排模型名：命令行 > 环境变量 KSP_RERANK_MODEL > .env > 内置默认
+    reranker_model = args.reranker or load_ksp_config().get("rerank_model", "qwen3-reranker-8b")
 
     print("=" * 80)
     print("🚀 Day 13 Wiki 术语归一化、双路混合检索与 Rerank 深度重排优化实战流水线")
@@ -591,7 +595,7 @@ def run_day13_pipeline():
     retriever = IndustrialHybridRetriever(
         vector_db=vector_db,
         corpus_docs=all_chunks,
-        reranker_model_name=args.reranker
+        reranker_model_name=reranker_model
     )
 
     # 3. 执行 4 轨架构对比大比武评测 (Benchmark)
@@ -707,7 +711,7 @@ def run_day13_pipeline():
     # 4. 生成评测实验报告 Markdown 落盘
     print(f"\n[4/4] 生成并落盘评测报告文档...")
     report_file = out_path / "Day13_混合检索与Rerank重排评测报告.md"
-    _generate_markdown_report(report_file, eval_records, total_dense, total_bm25, total_fused, total_full, total_expected, reranker_name=args.reranker)
+    _generate_markdown_report(report_file, eval_records, total_dense, total_bm25, total_fused, total_full, total_expected, reranker_name=reranker_model)
 
     print(f"\n🎉 评测报告已成功落盘至：{report_file}")
     print("=" * 80)

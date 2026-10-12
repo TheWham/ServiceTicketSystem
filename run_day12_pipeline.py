@@ -80,6 +80,7 @@ def load_ksp_config() -> Dict[str, str]:
         "api_key": os.environ.get("KSP_API_KEY") or env_file.get("KSP_API_KEY", ""),
         "base_url": os.environ.get("KSP_BASE_URL") or env_file.get("KSP_BASE_URL", ""),
         "embed_model": os.environ.get("KSP_EMBED_MODEL") or env_file.get("KSP_EMBED_MODEL", "qwen3-embedding-8b"),
+        "rerank_model": os.environ.get("KSP_RERANK_MODEL") or env_file.get("KSP_RERANK_MODEL", "qwen3-reranker-8b"),
     }
 
 
