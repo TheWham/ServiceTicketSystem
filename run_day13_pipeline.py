@@ -85,15 +85,21 @@ def _fallback_load_ksp_config() -> Dict[str, str]:
 load_ksp_config = _fallback_load_ksp_config
 KspEmbeddingProvider = None
 WikiStructureAwareChunker = None
+ParentChildChunker = None
+expand_to_parents = None
 try:
     from run_day12_pipeline import (
         load_ksp_config as _lc,
         KspEmbeddingProvider as _kep,
         WikiStructureAwareChunker as _wsc,
+        ParentChildChunker as _pcc,
+        expand_to_parents as _etp,
     )
     load_ksp_config = _lc
     KspEmbeddingProvider = _kep
     WikiStructureAwareChunker = _wsc
+    ParentChildChunker = _pcc
+    expand_to_parents = _etp
 except Exception as _e:  # pragma: no cover - 独立运行兜底
     print(f"⚠️ 未能从 run_day12_pipeline 复用组件({_e})，将使用内置兜底实现")
 
@@ -500,6 +506,7 @@ class IndustrialHybridRetriever:
 
         return {
             "final_results": final_results,
+            "scored_all": scored_docs,  # 全部候选的融合明细（供详细召回报告使用）
             "fused_count": len(fused_candidates),
             "bm25_count": len(bm25_res),
             "dense_count": len(dense_res),
@@ -613,9 +620,15 @@ def run_day13_pipeline():
     # 1. 自动读取 Day 11 的 Wiki 知识卡片并生成结构化切片作为倒排语料
     print(f"\n[1/4] 载入知识基座切片语料与 Chroma 向量数据库...")
 
-    # 复用 Day 12 的结构感知切块与 KSP 嵌入组件（模块级已尝试导入）
-    if WikiStructureAwareChunker is not None:
+    # 复用 Day 12 的父子切块与 KSP 嵌入组件（模块级已尝试导入）
+    # 语料必须是"子块"：与 Day 12 持久化向量库（存子块）保持同一粒度，
+    # 检索命中子块后再经 expand_to_parents 回溯父块全文（Small-to-Big）。
+    if ParentChildChunker is not None:
+        chunker = ParentChildChunker(child_size=512)
+        use_parent_child = True
+    elif WikiStructureAwareChunker is not None:
         chunker = WikiStructureAwareChunker(chunk_size=550, chunk_overlap=80)
+        use_parent_child = False
     else:
         # 若独立运行未找到 day12 组件，内嵌轻量实现
         from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -626,6 +639,7 @@ def run_day13_pipeline():
                 sp = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
                 return sp.create_documents([text])
         chunker = SimpleChunker()
+        use_parent_child = False
 
     if KspEmbeddingProvider is not None:
         # 复用与 Day 12 相同的嵌入模型与磁盘缓存，保证维度一致(4096)
@@ -643,10 +657,14 @@ def run_day13_pipeline():
 
     all_chunks: List[Document] = []
     for wf in wiki_files:
-        chunks = chunker.split_wiki_document(str(wf))
-        all_chunks.extend(chunks)
+        if use_parent_child:
+            _parent, children = chunker.split_wiki_document(str(wf))
+            all_chunks.extend(children)
+        else:
+            all_chunks.extend(chunker.split_wiki_document(str(wf)))
 
-    print(f"       -> 成功提取 Wiki 高纯度切片语料共：{len(all_chunks)} 个 Chunks")
+    print(f"       -> 成功提取 Wiki 切片语料共：{len(all_chunks)} 个"
+          f"{'（父子切片·子块）' if use_parent_child else ''} Chunks")
 
     # 载入或构建向量数据库
     vector_db = None
@@ -690,18 +708,20 @@ def run_day13_pipeline():
         expected = test["expected_facts"]
         m_filter = test["filter"]
 
-        # 轨 1: 纯 Dense 向量检索 (Top-3)
+        # 轨 1: 纯 Dense 向量检索（子块匹配，Top-3），命中后回溯父块算事实覆盖
         t0 = time.time()
         dense_raw = retriever.dense_search(query, top_k=3, metadata_filter=m_filter)
         dense_time = round((time.time() - t0) * 1000, 1)
-        dense_text = " ".join([d[0].page_content for d in dense_raw])
+        dense_parents = expand_to_parents([d for d, _, _ in dense_raw]) if expand_to_parents else [d for d, _, _ in dense_raw]
+        dense_text = " ".join([d.page_content for d in dense_parents])
         dense_hits = sum(1 for f in expected if f in dense_text)
 
-        # 轨 2: 纯 BM25 关键词检索 (Top-3)
+        # 轨 2: 纯 BM25 关键词检索（子块匹配，Top-3），命中后回溯父块
         t0 = time.time()
         bm25_raw = retriever.bm25_search(query, top_k=3, metadata_filter=m_filter)
         bm25_time = round((time.time() - t0) * 1000, 1)
-        bm25_text = " ".join([d[0].page_content for d in bm25_raw])
+        bm25_parents = expand_to_parents([d for d, _, _ in bm25_raw]) if expand_to_parents else [d for d, _, _ in bm25_raw]
+        bm25_text = " ".join([d.page_content for d in bm25_parents])
         bm25_hits = sum(1 for f in expected if f in bm25_text)
 
         # 轨 3: Dense + BM25 双路召回 + RRF 融合（无精排，Top-3）
@@ -711,7 +731,8 @@ def run_day13_pipeline():
         fusion_time = round((time.time() - t0) * 1000, 1)
         # 轨 3 端到端延迟 = 双路召回(dense+bm25) + RRF 融合，与轨 1/2 的口径对齐
         fused_time = round(dense_time + bm25_time + fusion_time, 1)
-        fused_text = " ".join([d[0].page_content for d in fused])
+        fused_parents = expand_to_parents([d for d, _ in fused]) if expand_to_parents else [d for d, _ in fused]
+        fused_text = " ".join([d.page_content for d in fused_parents])
         fused_hits = sum(1 for f in expected if f in fused_text)
 
         # 轨 4: 顶级工业级全链路（元数据过滤 + 双路召回 + RRF + Rerank 精排 + 按秩融合兜底）
@@ -723,16 +744,22 @@ def run_day13_pipeline():
             metadata_filter=m_filter
         )
         full_docs = full_res["final_results"]
-        full_text = " ".join([d["content"] for d in full_docs])
+        full_parents = expand_to_parents(full_docs) if expand_to_parents else [Document(page_content=d["content"], metadata=d["metadata"]) for d in full_docs]
+        full_text = " ".join([d.page_content for d in full_parents])
         full_hits = sum(1 for f in expected if f in full_text)
         # top1_score 取融合分（按秩加权），用于评估精排 Top-1 的相关度置信度
         top1_score = full_docs[0]["fused_score"] if full_docs else 0.0
+
+        def _ids(docs, key="wiki_id"):
+            return [d.metadata.get(key, "?") for d in docs]
 
         eval_records.append({
             "id": qid,
             "category": test["category"],
             "query": query,
             "expected_count": len(expected),
+            "expected": expected,
+            "filter": m_filter,
             "dense_hits": dense_hits,
             "dense_time": dense_time,
             "bm25_hits": bm25_hits,
@@ -742,7 +769,23 @@ def run_day13_pipeline():
             "full_hits": full_hits,
             "full_time": full_res["latency_ms"],
             "top1_score": top1_score,
-            "challenge": test["challenge_type"]
+            "challenge": test["challenge_type"],
+            # ===== 详细召回轨迹（供"7组详细召回过程"报告使用）=====
+            "trace": {
+                # 子块列用 child_id（能看出命中的是第几个子块），父块列用卡片 id
+                "dense_child_ids": _ids([d for d, _, _ in dense_raw], key="child_id"),
+                "dense_parent_ids": _ids(dense_parents),
+                "dense_scores": [round(s, 4) for _, _, s in dense_raw],
+                "bm25_child_ids": _ids([d for d, _, _ in bm25_raw], key="child_id"),
+                "bm25_parent_ids": _ids(bm25_parents),
+                "bm25_scores": [round(s, 2) for _, _, s in bm25_raw],
+                "rrf_child_ids": _ids([d for d, _ in fused], key="child_id"),
+                "rrf_parent_ids": _ids(fused_parents),
+                "full_parent_ids": _ids(full_parents),
+                "full_fused_scores": [d["fused_score"] for d in full_docs],
+                "scored_all": full_res.get("scored_all", []),
+                "missed": [f for f in expected if f not in full_text],
+            }
         })
 
     # 控制台打印对比表
@@ -814,9 +857,93 @@ def run_day13_pipeline():
         total_dense, total_bm25, total_fused, total_full, total_expected,
         reranker_name=reranker_model, avg_latency=avg_latency
     )
+    # 同时生成"7组对抗题详细召回过程"报告（父子切片 Small-to-Big 全程轨迹）
+    detail_file = out_path / "Day13_7组对抗题详细召回过程.md"
+    _generate_retrieval_detail_report(detail_file, eval_records, reranker_name=reranker_model, corpus=all_chunks)
 
     print(f"\n🎉 评测报告已成功落盘至：{report_file}")
     print("=" * 80)
+
+
+def _generate_retrieval_detail_report(
+    report_path: Path,
+    records: List[Dict[str, Any]],
+    reranker_name: str = "Kimi3-reranker-8b",
+    corpus: Optional[List[Document]] = None
+):
+    """生成"7组对抗题详细召回过程"报告。
+
+    按"父子切片 Small-to-Big"的完整链路，逐题展示四个阶段的召回轨迹：
+      ① Dense 子块匹配 -> ② BM25 子块匹配 -> ③ RRF 融合 -> ④ Rerank精排+按秩融合
+    并标注每题命中的黄金考点、漏掉项、正确答案卡片，便于汇报讲解。
+    """
+    # ground truth：正文含多数黄金考点的卡片（用于对照展示）
+    def ground_truth(expected):
+        if not corpus or not expected:
+            return []
+        return sorted({c.metadata.get("wiki_id") for c in corpus
+                       if sum(1 for f in expected if f in c.page_content) >= max(1, len(expected) // 2)})
+
+    lines = [
+        "# Day13 · 7 组对抗题详细召回过程报告",
+        "",
+        f"**检索架构**：父子切片（Small-to-Big）。子块（512字符行累加）做向量/关键词精确匹配，",
+        f"命中后经 `expand_to_parents` 回溯父块（整卡全文）返回。精排模型：{reranker_name}。",
+        "",
+        "> 说明：每题展示四阶段——① Dense 子块召回 ② BM25 子块召回 ③ RRF 融合 ④ Rerank精排+按秩融合，",
+        "> 卡片 id 前的 `→` 表示“命中子块后回溯到的父块”。",
+        "",
+        "---",
+    ]
+
+    for r in records:
+        tr = r["trace"]
+        expected = r.get("expected", [])
+        missed = tr.get("missed", [])
+        gt = ground_truth(expected)
+        lines += [
+            "",
+            f"## [{r['id']}] {r['category']}",
+            "",
+            f"- **查询**：`{r['query']}`",
+        ]
+        if r.get("filter"):
+            lines.append(f"- **元数据前置过滤**：`{r['filter']}`")
+        if gt:
+            lines.append(f"- **正确答案卡片**：{', '.join(gt)}")
+        lines.append(f"- **黄金考点**：{'、'.join(f'`{x}`' for x in expected)}")
+        lines.append("")
+        lines.append("| 阶段 | 命中子块 → 回溯父块 | 分数 |")
+        lines.append("| :--- | :--- | :--- |")
+        lines.append(f"| ① Dense 子块召回 | {'、'.join(tr['dense_child_ids'])} → **{'、'.join(tr['dense_parent_ids'])}** | {tr['dense_scores']} |")
+        lines.append(f"| ② BM25 子块召回 | {'、'.join(tr['bm25_child_ids'])} → **{'、'.join(tr['bm25_parent_ids'])}** | {tr['bm25_scores']} |")
+        lines.append(f"| ③ RRF 融合 | — → **{'、'.join(tr['rrf_parent_ids'])}** | — |")
+        lines.append(f"| ④ Rerank+按秩融合 | — → **{'、'.join(tr['full_parent_ids'])}** | 融合分 {tr['full_fused_scores']} |")
+        lines.append("")
+        hits_txt = f"{r['full_hits']}/{r['expected_count']}"
+        miss_txt = "、".join(f"`{x}`" for x in missed) if missed else "无"
+        lines.append(f"- **最终命中**：{hits_txt}　**漏掉考点**：{miss_txt}")
+        lines.append(f"- **挑战点**：{r['challenge']}")
+        lines.append("")
+
+    # 末尾汇总四轨命中率
+    total_exp = sum(r["expected_count"] for r in records)
+    lines += [
+        "---",
+        "",
+        "## 四轨命中率汇总",
+        "",
+        "| 链路 | 命中 / 总数 | 覆盖率 |",
+        "| :--- | :---: | :---: |",
+        f"| A 纯 Dense | {sum(r['dense_hits'] for r in records)} / {total_exp} | {sum(r['dense_hits'] for r in records)/total_exp:.1%} |",
+        f"| B 纯 BM25 | {sum(r['bm25_hits'] for r in records)} / {total_exp} | {sum(r['bm25_hits'] for r in records)/total_exp:.1%} |",
+        f"| C RRF 融合 | {sum(r['fused_hits'] for r in records)} / {total_exp} | {sum(r['fused_hits'] for r in records)/total_exp:.1%} |",
+        f"| D 全链路(+Rerank) | {sum(r['full_hits'] for r in records)} / {total_exp} | {sum(r['full_hits'] for r in records)/total_exp:.1%} |",
+        "",
+    ]
+
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
 
 
 def _generate_markdown_report(

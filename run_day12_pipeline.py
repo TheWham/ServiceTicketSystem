@@ -362,6 +362,121 @@ class WikiStructureAwareChunker:
 
 
 # ==============================================================================
+# 1b. 父子切片引擎 (Parent-Child / Small-to-Big)
+# ==============================================================================
+
+class ParentChildChunker:
+    """
+    父子切片（Small-to-Big）引擎——企业知识库的标准检索架构：
+    - 父块 (Parent)：整张 Wiki 卡片全文，自包含语义单元，作为"最终交给 LLM 的上下文"
+    - 子块 (Child) ：按行累加到 child_size(默认512字符) 的细粒度切片，作为"向量匹配单元"
+    - 每个子块 metadata 携带 parent_id + parent_content(父块全文) + 全部 wiki_* 元数据
+
+    检索流程（Small-to-Big）：
+      embedding 只打在子块上（文本小、语义聚焦、匹配精确）
+      -> 命中子块后通过 parent_id / parent_content 回溯父块全文
+      -> 把父块全文交给下游（LLM / 评测），保证上下文完整
+
+    为什么比"整卡原子检索"更通用：
+      整卡原子化在卡片 ~900 字符时有效，但卡片变大后单块语义被稀释；
+      父子切片让"匹配精度"(子块) 与"上下文完整性"(父块) 解耦，任意文档规模都成立。
+    """
+
+    def __init__(self, child_size: int = 512):
+        self.child_size = child_size
+
+    def split_wiki_document(self, file_path: str) -> Tuple[Document, List[Document]]:
+        """切分单个 Wiki 卡片，返回 (父块, [子块列表])。
+
+        父块：剥离 frontmatter 后的正文全文。
+        子块：正文按行累加，累计到 child_size 即切下一块（行边界切，不切断行）。
+        """
+        with open(file_path, "r", encoding="utf-8") as f:
+            raw_content = f.read()
+
+        frontmatter_meta, body = WikiStructureAwareChunker.parse_wiki_frontmatter(raw_content)
+        wiki_title = frontmatter_meta.get("title", Path(file_path).stem)
+        parent_id = frontmatter_meta.get("id", Path(file_path).stem)
+
+        # ---- 公共元数据：wiki_* 全字段（子块与父块都带，支持元数据过滤）----
+        base_meta: Dict[str, Any] = {}
+        for k, v in frontmatter_meta.items():
+            base_meta[f"wiki_{k}"] = json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else str(v)
+        base_meta["source_file"] = os.path.basename(file_path)
+        base_meta["parent_id"] = parent_id
+
+        # ---- 父块：整卡全文 ----
+        parent_meta = dict(base_meta)
+        parent_meta["chunk_role"] = "parent"
+        parent_meta["split_strategy"] = "Parent-Child (父块=整卡全文)"
+        parent_doc = Document(page_content=body, metadata=parent_meta)
+
+        # ---- 子块：按行累加到 child_size ----
+        lines = body.splitlines(keepends=True)
+        buffers: List[str] = []
+        cur: List[str] = []
+        cur_len = 0
+        for ln in lines:
+            # 行边界切分：当前缓冲加这一行会超 child_size 且缓冲非空，则切出一块
+            if cur and cur_len + len(ln) > self.child_size:
+                buffers.append("".join(cur))
+                cur = [ln]
+                cur_len = len(ln)
+            else:
+                cur.append(ln)
+                cur_len += len(ln)
+        if cur:
+            buffers.append("".join(cur))
+
+        child_docs: List[Document] = []
+        for idx, text in enumerate(buffers):
+            md = dict(base_meta)
+            md["chunk_role"] = "child"
+            md["child_idx"] = idx
+            # 子块唯一标识：便于在检索轨迹里看出命中的是该卡片的第几个子块
+            md["child_id"] = f"{parent_id}#c{idx}"
+            md["chunk_length"] = len(text)
+            md["split_strategy"] = f"Parent-Child (子块={self.child_size}字符行累加)"
+            # 关键：子块携带父块全文，检索命中后可零成本回溯
+            md["parent_content"] = body
+            child_docs.append(Document(page_content=text, metadata=md))
+
+        return parent_doc, child_docs
+
+
+def expand_to_parents(items) -> List[Document]:
+    """Small-to-Big 回溯：把检索命中的子块展开为去重后的父块全文。
+
+    items 可以是 Document 列表或 dict 列表（含 metadata / page_content|content）。
+    - 若带 parent_content（子块）：取其父块全文，按 parent_id 去重；
+    - 若不带（已是父块/朴素块）：原样保留，按内容去重。
+    返回 Document 列表，page_content 为"最终交给下游的上下文"。
+    """
+    seen = set()
+    out: List[Document] = []
+    for it in items:
+        if isinstance(it, Document):
+            md, txt = it.metadata, it.page_content
+        else:
+            md, txt = it.get("metadata", {}), it.get("content", it.get("page_content", ""))
+        pc = md.get("parent_content")
+        pid = md.get("parent_id") or md.get("wiki_id")
+        if pc is not None:
+            key = pid or pc[:60]
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(Document(page_content=pc, metadata=md))
+        else:
+            key = pid or txt[:60]
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(Document(page_content=txt, metadata=md))
+    return out
+
+
+# ==============================================================================
 # 2. 朴素暴力切块基线 (Naive Baseline Chunker)
 # ==============================================================================
 
@@ -528,13 +643,16 @@ def run_day12_pipeline(
         raise FileNotFoundError(f"❌ 找不到 Day 11 的 Wiki 知识卡片，请先运行 Day 11 流水线生成！")
 
     print(f"\n[2/5] 执行数据分块阶段 (A/B 双轨并行)...")
-    # 轨 A: 结构感知切块（先进组）
-    structured_chunks: List[Document] = []
-    print(f"  • [先进组: Wiki 结构感知切块]")
+    # 轨 A: 父子切片（Small-to-Big）——子块入向量库做精确匹配，父块留作回溯上下文
+    parent_child = ParentChildChunker(child_size=512)
+    structured_chunks: List[Document] = []   # 入库的"子块"
+    parent_docs: List[Document] = []         # 对应的"父块"（回溯用）
+    print(f"  • [先进组: Wiki 父子切片 (父块=整卡, 子块=512字符行累加)]")
     for wf in wiki_files:
-        chunks = struct_chunker.split_wiki_document(str(wf))
-        structured_chunks.extend(chunks)
-        print(f"    - 处理文件: {wf.name} -> 生成 {len(chunks)} 个结构化切片")
+        parent_doc, children = parent_child.split_wiki_document(str(wf))
+        parent_docs.append(parent_doc)
+        structured_chunks.extend(children)
+        print(f"    - 处理文件: {wf.name} -> 父块x1 + 子块x{len(children)}")
 
     # 轨 B: 朴素暴力切块（对照组）。若有原始 txt 用原始文档，
     # 否则直接用同一份 wiki 文件做"纯字符无结构切块"，保证 A/B 对比语料一致、只变量是策略。
@@ -578,8 +696,9 @@ def run_day12_pipeline(
         naive_top = naive_res[0].page_content.replace("\n", " ")[:120] if naive_res else "无结果"
         naive_combined = " ".join([d.page_content for d in naive_res])
 
-        # 2. 结构感知检索 (Top-3)
-        struct_res = db_structured.similarity_search(query, k=3)
+        # 2. 父子切片检索 (Small-to-Big)：先命中子块，再回溯父块全文
+        child_res = db_structured.similarity_search(query, k=3)
+        struct_res = expand_to_parents(child_res)  # 子块 -> 去重父块
         struct_top = struct_res[0].page_content.replace("\n", " ")[:120] if struct_res else "无结果"
         struct_combined = " ".join([d.page_content for d in struct_res])
         struct_meta = struct_res[0].metadata if struct_res else {}
