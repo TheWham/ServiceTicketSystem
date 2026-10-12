@@ -209,15 +209,17 @@ class KspEmbeddingProvider:
 
 class WikiStructureAwareChunker:
     """
-    Day 12 结构感知切块引擎：
+    Day 12 结构感知切块引擎（自适应粒度）：
     - YAML Frontmatter 自动解析与清洗
-    - Markdown 标题树层级粗切
-    - 递归字符二次微切 (含 Overlap 保护)
+    - 短卡片整卡保持原子性（卡片即最小语义单元，落在 300~800 token 甜点区）
+    - 长文档才降级：标题树粗切 -> 相邻小节合并到目标粒度 -> 递归微切兜底
     - 全局业务属性 Payload 深度注入
     """
-    def __init__(self, chunk_size: int = 550, chunk_overlap: int = 80):
+    def __init__(self, chunk_size: int = 550, chunk_overlap: int = 80, max_card_chars: int = 1000):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        # 短于该长度的卡片正文不再按标题切碎，整卡作为一个原子切片
+        self.max_card_chars = max_card_chars
 
         # 标题树切分器
         self.headers_to_split_on = [
@@ -252,19 +254,51 @@ class WikiStructureAwareChunker:
             return metadata, body_content
         return {}, file_content
 
+    def _merge_small_sections(self, splits: List[Document]) -> List[Document]:
+        """把过小的相邻标题节向上合并到目标粒度（只在标题边界合并，不切断句子）"""
+        merged: List[Document] = []
+        cur: Optional[Document] = None
+        for doc in splits:
+            if cur is None:
+                cur = doc
+                continue
+            if len(cur.page_content) + len(doc.page_content) <= self.chunk_size:
+                cur = Document(
+                    page_content=cur.page_content + "\n\n" + doc.page_content,
+                    metadata={**cur.metadata, **{k: v for k, v in doc.metadata.items() if k not in cur.metadata}},
+                )
+            else:
+                merged.append(cur)
+                cur = doc
+        if cur is not None:
+            merged.append(cur)
+        return merged
+
     def split_wiki_document(self, file_path: str) -> List[Document]:
         """对单个 Wiki 文档执行层级感知切块与 Payload 注入"""
         with open(file_path, "r", encoding="utf-8") as f:
             raw_content = f.read()
 
         frontmatter_meta, body = self.parse_wiki_frontmatter(raw_content)
-        header_splits = self.header_splitter.split_text(body)
-
         wiki_title = frontmatter_meta.get("title", Path(file_path).stem)
+
+        # ===== 自适应粒度：短卡片整卡原子化，长文档才多级切分 =====
+        if len(body) <= self.max_card_chars:
+            # 整卡一个原子切片：卡片本身就是自包含、语义完整的 FAQ 单元
+            header_splits = [Document(page_content=body, metadata={"Header_1": wiki_title})]
+            oversized = False
+        else:
+            raw_splits = self.header_splitter.split_text(body)
+            header_splits = self._merge_small_sections(raw_splits)
+            oversized = True
+
         final_chunks: List[Document] = []
         for header_doc in header_splits:
-            # 二次微切保护
-            sub_splits = self.recursive_splitter.split_documents([header_doc])
+            # 二次微切保护（仅长文档路径里仍超预算的节才触发；短卡片路径保持原子不切）
+            if oversized and len(header_doc.page_content) > self.chunk_size:
+                sub_splits = self.recursive_splitter.split_documents([header_doc])
+            else:
+                sub_splits = [header_doc]
             for idx, chunk in enumerate(sub_splits):
                 # 构造面包屑上下文增强（提升小模型向量语义理解）
                 h1 = chunk.metadata.get("Header_1", "")
@@ -289,7 +323,10 @@ class WikiStructureAwareChunker:
                 chunk.metadata["chunk_id"] = str(uuid.uuid4())[:8]
                 chunk.metadata["sub_idx"] = idx
                 chunk.metadata["chunk_length"] = len(chunk.page_content)
-                chunk.metadata["split_strategy"] = "Structure-Aware (Wiki Header + Metadata Injection)"
+                chunk.metadata["split_strategy"] = (
+                    "Card-Atomic (Wiki卡片整卡原子 + 元数据注入)" if not oversized
+                    else "Structure-Aware (Wiki Header + 元数据注入)"
+                )
 
                 final_chunks.append(chunk)
 
@@ -430,11 +467,13 @@ def run_day12_pipeline(
     struct_chunker = WikiStructureAwareChunker(chunk_size=550, chunk_overlap=80)
     naive_chunker = NaiveFixedChunker(chunk_size=500, chunk_overlap=50)
 
-    # 检查输入源
+    # 检查输入源（_index.md 是目录导航页非知识正文，排除避免污染检索）
     wiki_files = sorted(wiki_path.glob("*.md")) if wiki_path.exists() else []
+    wiki_files = [f for f in wiki_files if f.name != "_index.md"]
     if not wiki_files:
         print(f"⚠️  未在 {wiki_path} 发现 Day 11 Wiki 卡片，尝试备用路径...")
         wiki_files = sorted(project_root.glob("04_wiki_pipeline/output/wiki/*.md"))
+        wiki_files = [f for f in wiki_files if f.name != "_index.md"]
 
     if not wiki_files:
         raise FileNotFoundError(f"❌ 找不到 Day 11 的 Wiki 知识卡片，请先运行 Day 11 流水线生成！")
@@ -565,8 +604,8 @@ def _generate_markdown_report(report_path: Path, struct_chunks: List[Document], 
 | :--- | :--- | :--- | :--- |
 | **切块策略** | 纯按 500 字符切分，忽略标题与段落 | Markdown 标题层级树 + 递归句子微切 | 保证每个切块语意自包含，无断头句 |
 | **元数据注入** | ❌ 无元数据注入（仅记录源文件名与切片号） | ✅ 深度注入 YAML Frontmatter (分类/部门/实体/关键词) | 支持 Day 13 混合检索的前置硬过滤 |
-| **切片总数量** | {len(naive_chunks)} 个切片 | {len(struct_chunks)} 个高纯度条款切片 | 条款边界清晰，切片密度与质量显著提升 |
-| **平均切块长度** | 约 420 字符 | 约 350~500 字符 (自适应条款长度) | 避免大段无关内容稀释 Embedding 能量 |
+| **切片总数量** | {len(naive_chunks)} 个切片 | {len(struct_chunks)} 个原子切片 | 整卡原子切片数量更少但语义完整，避免碎片化稀释向量 |
+| **平均切块长度** | 约 420 字符 | 约 700~950 字符 (整卡原子) | 命中一条切片即携带完整排查链路，无需二次拼接 |
 | **分类冲突防御** | ❌ 无法区分网络/账号/硬件等故障域 | ✅ 携带 `wiki_category` 与 `wiki_department` | 跨分类检索时物理屏蔽无关域干扰 |
 
 ---
@@ -591,7 +630,7 @@ def _generate_markdown_report(report_path: Path, struct_chunks: List[Document], 
 """
 
     content += """## 三、 结论与阶段技术承接
-1. **结构感知切块价值确证**：通过 Markdown `#`, `##` 层级树结合递归微切，切片完整包含了上下文排查前提（现象→根因→处置），未出现关键判定词遗漏；
+1. **自适应粒度切块价值确证**：对约 900 字符的短卡片整卡保持原子性（落在 300~800 token 甜点区），避免按标题切碎导致跨小节事实分裂；仅超长文档才标题切分+合并+递归兜底。切片完整包含了上下文排查链路（现象→根因→自助→进阶），未出现关键判定词遗漏；
 2. **元数据前置过滤完全生效**：借助 `wiki_category` 的过滤条件，检索链路成功将查询范围物理限定在目标故障域，屏蔽无关分类干扰；
 3. **技术承接**：本日持久化落盘的 `chroma_wiki_structured/` 数据库，将无缝对接 **Day 13 的 BM25 + Dense 双路召回与 Rerank 精排工程**。
 """

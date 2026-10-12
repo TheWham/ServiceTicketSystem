@@ -549,7 +549,9 @@ def run_day13_pipeline():
         embed_provider = None
         print("       ⚠️ 未复用到 KspEmbeddingProvider，Dense 通道可能不可用")
 
+    # _index.md 是目录导航页非知识正文，排除避免污染检索
     wiki_files = sorted(wiki_path.glob("*.md")) if wiki_path.exists() else []
+    wiki_files = [f for f in wiki_files if f.name != "_index.md"]
     if not wiki_files:
         raise FileNotFoundError(f"❌ 未在 {wiki_path} 找到 Wiki 卡片，请先运行 Day 11 流水线！")
 
