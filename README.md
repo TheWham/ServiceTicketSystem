@@ -1,172 +1,277 @@
 # IT 服务工单系统
 
-> 企业级 IT 服务工单管理系统,覆盖**提单→路由→处理→验收→评价**完整闭环。
-> 后端基于 Spring Cloud 微服务,前端基于 Vue 3 + Element Plus,业务规则对齐《PRD-Ultimate》。
+> 企业级 IT 服务工单管理系统，覆盖**提单 → 自动路由 → 处理 → 验收 → 评价**完整闭环，并内置 **RAG 智能客服**（知识检索 → 受约束生成 → 引用复核 → 转人工）。
+> 后端 Spring Cloud 微服务（5 个服务），前端 Vue 3 + Element Plus，业务规则对齐 [PRD-Ultimate 2.2](docs/IT服务工单系统PRD-Ultimate.md)。
 
 ---
+
+## 架构总览
+
+```
+                     ┌──────────────────────────────┐
+      浏览器(:5175)   │  Vue3 + Element Plus 前端     │
+            │         └──────────────────────────────┘
+            │  /api/**  (vite proxy → 8080)
+            ▼
+ ┌──────────────────────┐   lb:// (Nacos 服务发现)
+ │   gateway  :8080     │─────────────────────────────┐
+ │  JWT 统一鉴权/路由/   │  透传 X-User-Id/Name/Role/Dept
+ │  CORS/白名单         │──────────┬──────────────────┤
+ └──────────────────────┘          ▼                  ▼
+        ┌──────────────┬───────────────┬─────────────────────┐
+        ▼              ▼               ▼                     ▼
+ ┌─────────────┐ ┌──────────────┐ ┌──────────────────┐ ┌─────────────┐
+ │ user-service│ │ ticket-service│ │ consultation-    │ │ rag-service │
+ │   :8101     │ │   :8201      │ │ service :8301    │ │   :8302     │
+ │ 登录/JWT/   │ │ 工单/状态机/  │ │ AI 咨询/转人工/  │ │ 知识入库/   │
+ │ 账号/草稿   │ │ 路由/SLA/    │ │ 知识搜索/反馈    │ │ 向量化/     │
+ │             │ │ 通知/异常队列 │ │   ▲ HTTP 检索    │ │ ES 混合检索 │
+ └──────┬──────┘ └─────┬────────┘ └──────┬───────────┘ └──────┬──────┘
+        │  Feign /internal   │  Feign /internal  │              │
+        └───────────┬────────┴───────────────────┘              │
+                    ▼                                           ▼
+      ┌──────────────────────────────┐        ┌──────────────────────────┐
+      │ MySQL it_ticket_system :3306 │        │ Elasticsearch :9200      │
+      │ 单库 41 张表（默认远程库）     │        │ 知识向量/全文混合检索      │
+      └──────────────────────────────┘        └──────────────────────────┘
+      ┌──────────────────────────────┐        ┌──────────────────────────┐
+      │ Nacos :8848 注册/配置中心     │        │ Redis :6379 反馈幂等缓存  │
+      └──────────────────────────────┘        └──────────────────────────┘
+```
+
+| 服务 | 端口 | 职责 |
+|:---|:---|:---|
+| gateway | 8080 | 唯一入口：JWT 校验（白名单）、校验用户 ACTIVE、剥离/注入 `X-User-*` 透传头、路由、CORS |
+| user-service | 8101 | 登录（BCrypt+JWT）、忘记/修改密码、账号管理（建号/改角色/重置密码）、用户查询、提单草稿 |
+| ticket-service | 8201 | 工单全业务：提单（幂等）、自动路由、9 态状态机、优先级矩阵、SLA 计时、通知、异常队列、照片附件 |
+| consultation-service | 8301 | 智能客服：AI 咨询（问答/澄清/拒答）、知识搜索、转人工与人工会话、咨询附件、AI 反馈、转工单预填 |
+| rag-service | 8302 | RAG 知识库：文档入库流水线（解析→切片→向量化→ES 索引）、知识生命周期状态机、ES 混合检索、AI 反馈沉淀知识 |
+| common / common-web | — | 统一 Result/错误码/JWT 工具；全局异常、`UserContext` 透传头解析、时间格式 |
+
+> consultation-service 不做检索与模型托管（检索在 rag-service、对话状态在本服务）；rag-service 不做大模型生成。两服务共用 OpenAI 兼容端点（对话模型 + embedding 模型）。
 
 ## 技术栈
 
 | 层 | 技术 |
 |:---|:---|
-| 前端 | Vue 3 + Vite + Pinia + Vue Router + Element Plus + Axios |
-| 后端 | Java 17 + Spring Boot 3.2.5 + Spring Cloud 2023.0.1 + Spring Cloud Alibaba |
-| 数据库 | MySQL 8（统一单库 `it_ticket_system`；已实现模块按 PRD/spec 对齐，未实现模块保留原字段） |
-| 服务治理 | Nacos(注册中心)+ OpenFeign + Spring Cloud Gateway |
-| 认证 | JWT(HS256,12h)+ BCrypt,网关统一鉴权 |
-| ORM | MyBatis-Plus 3.5.7 |
+| 前端 | Vue 3.4 + Vite 5 + Pinia + Vue Router 4 + Element Plus 2.8 + Axios（+ reka-ui 命令面板） |
+| 后端 | Java 17 + Spring Boot 3.2.5 + Spring Cloud 2023.0.1 + Spring Cloud Alibaba 2023.0.1.2 |
+| ORM / 认证 | MyBatis-Plus 3.5.7；JWT(HS256) + BCrypt，网关统一鉴权 |
+| 数据库 | MySQL 8，统一单库 `it_ticket_system`（41 张表），持久化时间统一 UTC |
+| 中间件 | Nacos 2.3.2（注册中心 + 可选配置中心）、Redis 8.2.9（AI 反馈幂等标记）、Elasticsearch 8.11.3（知识向量/BM25 混合检索） |
+| AI | OpenAI 兼容端点：对话模型（判定 + 受约束生成）+ embedding 模型（1024 维） |
 
 ## 项目结构
 
 ```
 it-ticket-system/
-├── it-ticket-cloud/          # 微服务后端
-│   ├── gateway/              # 网关 :8080 —— 唯一入口 + JWT 统一鉴权 + 路由
-│   ├── user-service/         # 用户服务 :8101 —— 登录/JWT、用户、草稿
-│   ├── ticket-service/       # 工单服务 :8201 —— 工单全业务、状态机、路由、SLA、通知、异常队列
-│   ├── consultation-service/ # 咨询服务 :8301 —— AI、转人工、咨询与知识检索
-│   ├── common/               # Result/错误码/JWT 工具(纯 Java,gateway 可引用)
-│   ├── common-web/           # 全局异常、UserContext 透传头解析、时间格式
-│   ├── db/init/              # MySQL 建表 + 种子(00-schema.sql → 10-seed.sql)
-│   ├── scripts/              # 本地一键启动/初始化脚本(Windows)
-│   ├── docker-compose.yml    # Nacos + MySQL 一键起(Docker 环境)
-│   ├── pom.xml               # 父 POM
+├── it-ticket-cloud/          # Spring Cloud 微服务后端（父 POM）
+│   ├── gateway/              # 网关 :8080 —— AuthGlobalFilter + 8 条路由
+│   ├── user-service/         # :8101 —— 认证/账号/草稿（+ /api/internal/users Feign 接口）
+│   ├── ticket-service/       # :8201 —— 工单/状态机/路由/SLA/通知/异常/附件
+│   ├── consultation-service/ # :8301 —— AI 咨询/转人工/知识搜索（RAG-INTEGRATION.md）
+│   ├── rag-service/          # :8302 —— 知识入库流水线/生命周期/ES 检索（INTEGRATION.md）
+│   ├── common/               # Result/错误码/JwtUtil（纯 Java，gateway 可引用）
+│   ├── common-web/           # 全局异常、UserContext 透传头解析、时间序列化
+│   ├── db/                   # init/ 建表+种子 | migration/ 版本化迁移 | tools/ schema 与语料构建脚本
+│   ├── nacos-config/         # Nacos 配置中心 DataId 样例 + 导入 zip + 说明（可选开关）
+│   ├── scripts/              # Windows 一键脚本：start-all/init-db/start-nacos/start-redis/...
+│   ├── redis/                # 本地 Redis 便携包说明与 redis.conf
+│   ├── deploy/               # 生产部署：pack-local.ps1 打包 + upgrade-server.sh 换版 + docker-compose.prod.yml
+│   ├── docker-compose.yml    # nacos + mysql(可选本地) + redis
 │   └── README.md             # 微服务版详细技术文档 ⭐
-├── frontend/                 # Vue 3 + Element Plus 前端(:5173,vite proxy /api → 8080)
+├── frontend/                 # Vue 3 前端（dev :5175，Playwright 测试 :5176）
 │   └── src/
-│       ├── api/              # Axios 封装(自动注入 Authorization: Bearer)
-│       ├── router/           # 路由 + 角色守卫(meta.role 支持数组)
-│       ├── stores/           # Pinia(token + 用户信息,localStorage 持久化)
-│       ├── views/            # 登录 / 员工端 / 工程师端 / 主管端
-│       ├── components/       # NotificationBell(通知铃铛)、SlaBadge/SlaTimer(SLA 倒计时)
-│       ├── styles/           # 全局样式 + 暗黑主题变量
-│       ├── App.vue           # 经典后台布局(aside + header + main,暗黑切换 + 通知入口)
-│       └── main.js           # ElementPlus 注册入口
-├── acceptance/               # 验收评测(27 项用例全绿,详见 acceptance/README.md)
-│   ├── src/ticket_p0/        # P0 阶段 8 大模块参考实现
-│   ├── tests/                # pytest 测试套件(含 TC-10 注入防护)
-│   ├── scripts/              # 评测执行脚本
-│   └── reports/              # 评测报告输出
-├── docs/IT服务工单系统PRD-Ultimate.md # 当前产品需求基线（2.2）
-├── docs/specs/               # 数据字段、接口、SQL 和实现差异清单
+│       ├── api/              # Axios 封装（自动注入 Bearer；咨询侧独立实例 + Idempotency-Key）
+│       ├── router/           # 路由 + 角色守卫（EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KNOWLEDGE_ADMIN）
+│       ├── views/            # 员工服务台 / 智能客服 / 工程师工作台 / 主管派单 / 账号管理 / 知识管理
+│       ├── components/       # ConsultationChat、NotificationBell、SlaBadge/SlaTimer、WorkspaceSearch...
+│       └── styles/           # service-desk.css + future-desk.css（见 design-system/）
+├── acceptance/               # 验收评测：pytest 27 项用例（提单链路 P0）+ ai-rag-smoke.mjs RAG 冒烟
+├── dify-kb/                  # Dify/知识库语料：359 篇英文 + 359 篇中文翻译 + 自撰中文排障文档
+├── design-system/            # it-service-desk 已实施设计规范（MASTER.md）
+├── db/                       # 根级单文件初始化脚本 it_ticket_system_init_v2.sql（41 表，与 db/init 等价）
+├── docs/                     # PRD、技术 SPEC、验收协议 V2、specs/ 契约 01-11、superpowers/ 设计与计划
 └── README.md                 # 本文档
 ```
 
 ## 快速开始
 
-### 0. 数据库(统一远程)
+**环境要求**：JDK 17、Maven（无 wrapper，需自装）、Node.js（≥18，Vite 5）、MySQL 8（默认连远程库，可免本地安装）。Windows 下中间件可用 Docker 或项目自带脚本。
 
-数据库**统一连远程库** `120.92.138.195:3306`（密码通过 `MYSQL_PASSWORD` 注入，库名 `it_ticket_system`），无需本地起 MySQL。仅首次需初始化：
+### 0. 初始化数据库（首次）
 
-```bash
-it-ticket-cloud\scripts\init-db.cmd   # 默认连远程库建表+种子;可用 MYSQL_HOST/MYSQL_PASSWORD 覆盖
-```
-
-### 1. 起 Nacos
-
-```bash
-docker compose up -d nacos                 # 有 Docker
-it-ticket-cloud\scripts\start-nacos.cmd  # 无 Docker(Windows standalone,8848/9848)
-```
-
-### 2. 起服务(需 JDK 17 + Maven)
+数据库默认连远程库（主机经 `MYSQL_HOST` 覆盖，库名 `it_ticket_system`），无需本地起 MySQL：
 
 ```bash
 cd it-ticket-cloud
-mvn package                                    # 或在 IDE 中分别启动四个 Application
-java -jar gateway/target/it-ticket-gateway-1.0.0.jar
-java -jar user-service/target/it-ticket-user-service-1.0.0.jar
-java -jar ticket-service/target/it-ticket-ticket-service-1.0.0.jar
-# 咨询服务需在 consultation-service 目录启动，读取同目录的 ai-secrets.yml：
-# java -jar target/it-ticket-consultation-service-1.0.0.jar
+scripts\init-db.cmd        # 建表 + 种子；用 MYSQL_HOST/PORT/USERNAME/PASSWORD 覆盖目标库
 ```
 
-**配置**：默认加载 `application-dev.yml`（本地 profile，连远程库）；生产用 `--spring.profiles.active=prod`（敏感项均可由环境变量覆盖）。环境变量：`NACOS_ADDR`、`MYSQL_HOST`(默认 120.92.138.195)、`MYSQL_PASSWORD`（默认 clt123456，生产建议注入覆盖）、`JWT_SECRET`(生产必换)。Nacos 配置中心为可选开关 `NACOS_CONFIG_ENABLED=true`（详见 `nacos-config/配置管理说明.md`）。
+> 脚本仅用于**空库**。存量库请走 `db/migration` 的版本化迁移说明，勿用空库脚本覆盖数据。等价入口：根目录 `db/it_ticket_system_init_v2.sql`（同一生成器产物，勿对同一库重复执行）。
+
+### 1. 起中间件
+
+| 中间件 | 有 Docker | 无 Docker（Windows） |
+|:---|:---|:---|
+| Nacos :8848 | `docker compose up -d nacos`（在 it-ticket-cloud/） | `scripts\start-nacos.cmd` |
+| Redis :6379 | `docker compose up -d redis` | `scripts\start-redis.ps1` |
+| Elasticsearch :9200 | 在 `rag-service/` 下 `docker compose up -d` | `scripts\start-elasticsearch.ps1` |
+
+> MySQL 默认连远程库，不用起；`scripts\start-mysql-local.cmd` 可选。只用工单核心链路（不起 AI 咨询）时可跳过 Redis 和 ES。
+
+### 2. 构建并启动后端（5 个服务）
+
+```bash
+cd it-ticket-cloud
+mvn package -DskipTests
+
+# 推荐顺序：user → rag → consultation → ticket → gateway
+java -jar user-service/target/it-ticket-user-service-1.0.0.jar
+java -jar rag-service/target/it-ticket-rag-service-1.0.0.jar
+java -jar consultation-service/target/it-ticket-consultation-service-1.0.0.jar
+java -jar ticket-service/target/it-ticket-ticket-service-1.0.0.jar
+java -jar gateway/target/it-ticket-gateway-1.0.0.jar
+```
+
+也可在 IDEA 中分别启动 5 个 Application（IDE 编译需 `-parameters`，父 POM 已配置）。`scripts\start-all.cmd` 一键起中间件 + gateway/user/ticket 三个核心服务。
+
+**AI 配置**：`consultation-service/` 与 `rag-service/` 目录下复制 `ai-secrets.example.yml` 为 `ai-secrets.yml`（已 gitignore），填入模型端点与密钥（`AI_SECRETS_FILE`/`RAG_SECRETS_FILE` 可指向同一文件）；也可用 `AI_BASE_URL`/`AI_API_KEY`/`AI_MODEL`/`EMBEDDING_*` 环境变量注入。
+
+**验证**：各服务健康检查均为 `GET /api/health`，如 `curl http://127.0.0.1:8080/api/health`。
 
 ### 3. 起前端
 
 ```bash
-cd frontend && npm install && npm run dev    # 5173,proxy /api → 8080 网关
+cd frontend
+npm install
+echo API_PROXY_TARGET=http://127.0.0.1:8080 > .env.local   # 重要：缺省 28080 是过时值
+npm run dev                                                # http://127.0.0.1:5175
 ```
 
 ### 4. 登录
 
-种子账号 4 个,**默认密码均为 `123456`**,角色为 PRD §5.1 大写枚举:
+种子账号 4 个，**默认密码均为 `123456`**，角色为 PRD §5.1 大写枚举（忘记密码三要素 = 账号 + 姓名 + 员工号）：
 
-| 用户ID | 姓名 | 角色 |
-|:---|:---|:---|
-| U_EMP01 | 演示员工 | EMPLOYEE |
-| U_ENG01 | 演示工程师 | ENGINEER |
-| U_ADM01 | 平台管理员 | PLATFORM_ADMIN |
-| U_KBA01 | 知识库管理员 | KNOWLEDGE_ADMIN |
+| 用户ID | 员工号 | 姓名 | 角色 | 主页 |
+|:---|:---|:---|:---|:---|
+| U_EMP01 | E1001 | 演示员工 | EMPLOYEE | `/employee`（服务台 + 智能客服） |
+| U_ENG01 | E2001 | 演示工程师 | ENGINEER | `/engineer`（工单池/任务/人工咨询） |
+| U_ADM01 | E3001 | 平台管理员 | PLATFORM_ADMIN | `/supervisor`（派单/账号管理） |
+| U_KBA01 | E4001 | 知识库管理员 | KNOWLEDGE_ADMIN | `/knowledge-admin`（文档导入/知识审核发布） |
+
+## 核心功能
+
+### 工单闭环（ticket-service）
+
+- **提单**：七字段校验（标题 ≤50、五分类、优先级、描述 10~500 字、附件 jpg/png 单张 ≤5MB 最多 3 张、期望完成时间、资产编号 CMDB 回显）、`Idempotency-Key` 幂等防重、3s 防抖、工单号 `TK+日期+流水`、服务端草稿。
+- **自动路由（F-06）**：按分类路由规则（`category_route`）定位支持组，组内按加权负载选工程师；无候选人留在 NEW 并进异常队列，由管理员处理。
+- **9 态状态机（F-07）**：NEW / ASSIGNED / IN_PROGRESS / PENDING_SUPPLEMENT / PENDING_EXTERNAL / PENDING_ACCEPTANCE / COMPLETED / CANCELLED / CLOSED，声明式流转边 + 角色/业务守卫三重校验；每次流转写只追加的 `ticket_transition`。
+- **自动流转**：响应超时自动转派、72h 未补充自动关闭、48h 未验收自动通过、7 日内复发自动重开；员工撤销、管理员异常关闭/标记重复单。
+- **SLA（F-08）**：HIGH 4 工作小时 / MEDIUM 1 工作日 / LOW 3 工作日，按工作日历只计工作时间，补充/外部等待暂停计时，超时自动转异常处理；前端 SlaBadge/SlaTimer 以服务端剩余工作秒为基准倒计时。
+- **通知（F-10）**：流转事件驱动，按 `event_id+receiver+channel` 生命周期幂等去重；前端 NotificationBell 轮询未读数，点击跳转对应工作台并自动打开工单详情。
+- **其他**：接单时「影响×紧急」3×3 矩阵定优先级并触发 SLA 重算、提单人编辑重新提交、照片上传与三端预览、评价 1-5 星、主管删除工单、主管改用户角色。
+
+### AI 咨询与 RAG（consultation-service + rag-service）
+
+- **检索（rag-service）**：文档上传（≤20MB）→ 解析 → 按标题层级/滑动窗口切片 → embedding（1024 维）→ ES `knowledge_chunk` 索引，四阶段流水线带全链路 trace；检索为向量 + BM25 混合排序，引用分数阈值 0.70。
+- **领域四态判定**：`OFFICE_IT`（正常回答）/ `OFF_TOPIC`（拒答）/ `HIGH_RISK`（14 个高危关键词，拒答 + 引导人工）/ `UNCERTAIN`（追问澄清），先于检索、独立判定。
+- **受约束生成（consultation-service）**：检索依据 → 受约束生成 → **引用双重复核**（生成前锁定读复核 PUBLISHED 版本，生成后 AiAnswerGuard 复核；引用由服务端从实际资料重建，模型编造 versionId 即整次输出无效）。
+- **降级语义（RD-006）**：模型/检索故障统一表达为结构化拒答 + `suggestTransfer=true`，不静默回退、不把服务故障解释为"无命中"；密钥缺失仅 AI 问答降级，知识搜索/人工咨询不受影响。
+- **转人工**：加权负载选工程师（候选上限 8）→ 10 工作分钟响应 SLA → 人工会话 → 提交结论 → 员工确认 → 24h 内可重开；可一键转工单（预填标题/描述，经 ticket-service 建单后回写 `CONVERTED_TO_TICKET`）。
+- **知识生命周期（SM-KNOWLEDGE-001）**：DRAFT → PENDING_REVIEW → PUBLISHED → OFFLINE，作者不得自审（AC-25）、高风险须平台管理员、发布后写 ES（失败标 PENDING_COMPENSATION 可补偿重建）。
+- **AI 反馈沉淀**：员工对 AI 回答点"已解决"后，反馈经脱敏自动沉淀为待审核知识文章（Redis 幂等标记，5s 扫描 `ai_interaction`），审核发布后进入检索。
 
 ## API 一览
 
-统一响应 `{code, msg, data}`,`code=0` 成功。经网关访问:`http://localhost:8080/api/v1/**`。
+统一经网关访问 `http://localhost:8080/api/v1/**`。工单/用户等服务响应为 `{code, msg, data}`（`code=0` 成功）；咨询/知识服务为 PRD 21.1 包络 `{code: "SUCCESS", message, request_id, data}`。常用入口：
 
 | 方法 | 路径 | 说明 | 权限 |
 |:---|:---|:---|:---|
 | GET | /api/health | 健康检查 | 免认证 |
-| POST | /api/v1/users/login | 登录,`{userId,password}` → `{token,user}` | 免认证 |
+| POST | /api/v1/users/login | 登录 `{userId,password}` → `{token,user}` | 免认证 |
 | GET | /api/v1/users/login-options | 可登录用户列表 | 免认证 |
-| POST | /api/v1/users/forgot-password | 忘记密码(工号+姓名+员工号三要素→自助重置) | 免认证 |
-| POST | /api/v1/users/change-password | 修改密码(旧密码校验) | 登录 |
-| GET | /api/v1/users/me | 当前用户 | 登录 |
-| GET | /api/v1/users/accounts | 账号列表(可视化) | PLATFORM_ADMIN/KNOWLEDGE_ADMIN |
-| POST | /api/v1/users/accounts | 新建账号(注册仅主管) | PLATFORM_ADMIN/KNOWLEDGE_ADMIN |
-| POST | /api/v1/users/accounts/:id/reset-password | 重置他人密码 | PLATFORM_ADMIN/KNOWLEDGE_ADMIN |
-| GET | /api/v1/users?role= | 用户列表(派单用) | 登录 |
-| GET/POST/DELETE | /api/v1/users/drafts | 提单草稿(每用户一条) | 登录 |
-| GET | /api/v1/categories/leaf | 叶子分类(提单表单下拉) | 登录 |
-| POST | /api/v1/tickets | 创建工单(idempotency_key 幂等,创建后自动路由) | 登录 |
-| GET | /api/v1/tickets | 列表(8 种筛选 + 分页) | 登录 |
-| GET | /api/v1/tickets/:id | 详情 + 流转日志 | 登录 |
+| POST | /api/v1/users/forgot-password | 忘记密码（三要素自助重置） | 免认证 |
+| GET/POST | /api/v1/users/accounts | 账号列表 / 新建账号 | PLATFORM_ADMIN/KNOWLEDGE_ADMIN |
+| PUT | /api/v1/users/accounts/:id/role | 修改用户角色 | PLATFORM_ADMIN/KNOWLEDGE_ADMIN |
+| GET/POST/DELETE | /api/v1/users/drafts | 提单草稿（每用户一条） | 登录 |
+| GET | /api/v1/categories/leaf | 叶子分类（提单表单下拉） | 登录 |
+| POST | /api/v1/tickets | 创建工单（Idempotency-Key 幂等，创建后自动路由） | 登录 |
+| GET | /api/v1/tickets | 列表（status/category/assignee/priority/unassigned 等筛选 + 分页） | 登录 |
 | POST | /api/v1/tickets/:id/assign | 派单/改派 | PLATFORM_ADMIN |
-| POST | /api/v1/tickets/:id/claim | 接单(矩阵确认影响×紧急) | ENGINEER |
-| POST | /api/v1/tickets/:id/actions | 状态操作(route/accept/request_supplement/supply_info/external_wait/external_resolved/submit_resolution/reject/cancel/abnormal_close/reopen 等) | 状态机校验 |
-| POST | /api/v1/tickets/:id/rating | 评价 1-5 星(仅已完成) | 登录 |
-| GET | /api/v1/sla/:ticketId | SLA 计时(目标时刻/已用工时/剩余工作秒,前端倒计时基准) | 登录 |
-| GET | /api/v1/notifications | 通知列表(分页) | 登录 |
-| GET | /api/v1/notifications/pending-count | 未读待办数(前端 30s 轮询) | 登录 |
-| GET | /api/v1/exceptions/pending-count | 异常队列待处理数(路由失败工单) | supervisor |
+| POST | /api/v1/tickets/:id/claim | 接单（矩阵确认影响×紧急） | ENGINEER |
+| POST | /api/v1/tickets/:id/actions | 状态操作（route/accept/request_supplement/supply_info/external_wait/submit_resolution/reject/cancel/abnormal_close/reopen...） | 状态机校验 |
+| POST | /api/v1/tickets/:id/rating | 评价 1-5 星（仅已完成） | 登录 |
+| POST | /api/v1/tickets/attachments/upload | 照片上传（另有 /:id/content 下载、DELETE 撤回） | 登录 |
+| GET | /api/v1/sla/:ticketId | SLA 计时（剩余工作秒，前端倒计时基准） | 登录 |
+| GET | /api/v1/notifications、/pending-count | 通知列表 / 未读数（前端轮询） | 登录 |
+| GET | /api/v1/exceptions、/pending-count | 异常队列（路由失败工单） | 管理员 |
+| POST | /api/v1/consultations | 创建咨询会话（AI / 转人工） | 登录 |
+| POST | /api/v1/consultations/:id/ai-messages | AI 问答（ANSWER/CLARIFY/REFUSE） | 登录 |
+| POST | /api/v1/consultations/:id/transfer | 转人工（幂等触发自动分配） | 登录 |
+| POST | /api/v1/consultations/:id/messages | 人工会话消息 | 参与者 |
+| GET | /api/v1/knowledge/search | 知识搜索（仅 PUBLISHED） | 登录 |
+| POST | /api/v1/rag/documents/upload | 文档上传入库（解析→切片→向量化→ES） | 知识管理 |
+| POST | /api/v1/rag/retrievals | RAG 检索（Top-K 切片 + 领域判定） | 登录 |
+| POST | /api/v1/rag/articles/:id/submit · publish · reject · offline | 知识审核流（按状态/角色守卫） | 知识管理/管理员 |
 
-核心错误码:`40001` 参数校验、`40021` 处理人无效、`40100/40101` 未登录/用户禁用、`40300` 权限不足、`40400` 工单不存在、`40901` 幂等冲突、`40910` 非法状态转移、`40911` 不可领取、`40912` 已被他人领取。
+完整接口契约见 [docs/specs/05-http-api-openapi.yaml](docs/specs/05-http-api-openapi.yaml)（非 AI）与 [docs/specs/02-ai-api-json-schema.md](docs/specs/02-ai-api-json-schema.md)（AI）；错误码与状态机细节见 [it-ticket-cloud/README.md](it-ticket-cloud/README.md)。核心错误码：`40001` 参数校验、`40100/40101` 未登录/禁用、`40300` 权限不足、`40901` 幂等冲突、`40910` 非法状态转移、`40911/40912` 不可领取/已被他人领取。
 
-工单状态机(PRD §9,9 态 18 条边):NEW → ASSIGNED → IN_PROGRESS → PENDING_SUPPLEMENT ⇄ / PENDING_EXTERNAL ⇄ / PENDING_ACCEPTANCE → COMPLETED / CANCELLED / CLOSED。含系统自动边:响应超时转派、72h 未补充自动关闭、48h 未验收自动通过、7 日内复发重开;通用边:员工撤销、管理员异常关闭/标记重复单。每次流转写 `ticket_transition`,并按事件类型发通知(`notification` 落库,1 分钟幂等)。
+## 测试与验收
 
-## 核心机制
+| 套件 | 位置 | 命令 | 状态 |
+|:---|:---|:---|:---|
+| 提单链路验收（pytest，27 项：TC-01~10 + M-01~09 + 状态机/守卫） | `acceptance/` | `python -m pytest -v`；`python scripts/run.py` 生成评测报告 | 27/27 通过（2026-10-08 报告，V2 §4.2 综合判定通过） |
+| RAG/AI 咨询端到端冒烟（Node） | `acceptance/ai-rag-smoke.mjs` | `node acceptance/ai-rag-smoke.mjs [--require-answer]`（需网关 + consultation + rag 已启动） | 验证领域判定/拒答/引用/持久化 |
+| 后端单元/集成测试（JUnit，61 个测试类） | `it-ticket-cloud/*/src/test` | `mvn -pl consultation-service,rag-service -am test`（或按模块） | RAG 集成范围 262 项通过（consultation 206 / rag 48 / gateway 2，见 spec 记录） |
+| 前端单元/契约测试 | `frontend/tests/*.test.mjs` | `npm test`（node --test，20 个文件） | — |
+| 前端浏览器测试（Playwright） | `frontend/tests/browser/` | `npm run test:browser`（端口 5176） | 8 个 spec |
 
-- **自动路由(F-06)**:创建工单后按分类路由规则(`category_route`)定位支持组,组内按加权负载选工程师;无可用候选人时工单留在 NEW 并进入异常队列,由管理员处理。
-- **SLA 计时(F-08)**:按优先级生成 SLA 实例(高 4 工作小时/中 1 工作日/低 3 工作日),基于工作日历(`work_calendar`)只计工作时间;暂停时段(`sla_pause`)不计入;超时自动转入异常处理。前端 SlaBadge/SlaTimer 以服务端计算的剩余工作秒为基准做本地倒计时。
-- **站内通知(F-10)**:9 态流转事件驱动通知(分配/接单/请求补充/验收/超时等),接收人按目标状态推导;以 `event_id+receiver+channel` 生命周期幂等键去重;前端 NotificationBell 30s 轮询未读数,点击通知跳 `/tickets/:id` 按角色重定向到工作台并自动打开工单详情。
+## 生产部署
 
-## 当前进展(2026-09-29)
+```bash
+cd it-ticket-cloud/deploy
+.\pack-local.ps1        # Maven 全量构建 + 前端 build → 打出 it-ticket-system-deploy-YYYYMMDD.tar.gz
+# 服务器上解包后：
+cp .env.example .env    # 填 JWT_SECRET、AI_API_KEY、EMBEDDING_API_KEY、MYSQL_*、CORS_ORIGINS 等
+.\upgrade-server.sh     # 构建镜像并 docker compose -f docker-compose.prod.yml up -d，健康检查 5 个服务 + 前端
+```
 
-**已完成**:
-- **后端微服务化**:登录/JWT、网关鉴权与透传、建单+幂等(idempotency_key)、自动路由(F-06)、SLA 计时与自动流转(F-08)、9 态状态机 guard(F-07)、异常队列、通知事件落库(F-10,生命周期幂等)(详见 [it-ticket-cloud/README.md](it-ticket-cloud/README.md))
-- **认证模块**:BCrypt 登录、忘记密码(三要素自助重置)、修改密码、主管侧账号管理(建号/列表/重置密码),注册仅主管可操作
-- **前端 Element Plus 化**:经典后台布局 + 暗黑模式 + 通知中心(SlaBadge/SlaTimer/NotificationBell) + 账号管理页,角色值域对齐 PRD 大写枚举(EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KNOWLEDGE_ADMIN)
-- **数据库结构按 PRD 全量对齐**:单库 28 张表(统一连远程库),字段/枚举/优先级矩阵对齐 PRD-Ultimate
-- **配置管理**:Nacos 接入(可选) + 本地 dev/prod 双环境 profile
-- **验收评测**:27 项用例全绿(含 TC-10 注入防护),代码位于 `acceptance/`
+生产编排（`docker-compose.prod.yml`）含 5 个后端服务 + 前端 nginx（:80，网关 :8080 对外）；基础设施（MySQL/Nacos/Redis/ES）经 `host.docker.internal` 指向宿主机；密钥全部由 `.env` 注入，不进镜像不进 git。
 
-**未完成**:知识搜索(F-02)、转人工咨询(F-03/F-04)、聊天与附件(F-09)、平台权限审计(F-11)、案例池与知识库(F-12)、RAG 智能客服(F-13,P1) 等 PRD 功能点尚未开发。
+## 配置与环境变量
 
-## 相关文档
+配置分层：`application.yml`（启动项）→ `application-{profile}.yml`（默认 dev）→ Nacos 可选覆盖（`NACOS_CONFIG_ENABLED=true`，见 [nacos-config/配置管理说明.md](it-ticket-cloud/nacos-config/配置管理说明.md)）。
 
-- [IT服务工单系统PRD-Ultimate.md](IT服务工单系统PRD-Ultimate.md) —— 产品需求文档(状态机/SLA/通知/路由规则依据)
-- [it-ticket-cloud/README.md](it-ticket-cloud/README.md) —— 微服务版详细技术文档(架构/接口/错误码/状态机/数据库/排查指南)
-- [acceptance/README.md](acceptance/README.md) —— 验收评测报告(27 项用例全绿)
+常用变量（均可在 dev 环境省略，见 `scripts/dotenv-example.env` 与 `deploy/.env.example`）：
+
+| 变量 | 默认 | 说明 |
+|:---|:---|:---|
+| `MYSQL_HOST/PORT/DB/USERNAME/PASSWORD` | 远程库 / 3306 / it_ticket_system | 数据库连接 |
+| `NACOS_ADDR` | 127.0.0.1:8848 | 注册中心 |
+| `JWT_SECRET` | dev 内置默认 | **生产必须注入**，缺失启动失败 |
+| `RAG_BASE_URL` | http://127.0.0.1:8302 | consultation → rag 检索地址 |
+| `AI_BASE_URL / AI_API_KEY / AI_MODEL` | — | OpenAI 兼容对话模型端点 |
+| `EMBEDDING_BASE_URL / EMBEDDING_API_KEY / EMBEDDING_MODEL` | — | embedding 模型（1024 维） |
+| `AI_SECRETS_FILE / RAG_SECRETS_FILE` | ./ai-secrets.yml | 密钥文件路径（已 gitignore） |
+| `ES_HOST/PORT/ES_KNOWLEDGE_INDEX` | localhost / 9200 / knowledge_chunk | Elasticsearch |
+| `API_PROXY_TARGET` | ~~http://127.0.0.1:28080~~（过时） | **前端代理，请设为 http://127.0.0.1:8080** |
+
+## 文档地图
+
+| 文档 | 说明 |
+|:---|:---|
+| [docs/IT服务工单系统PRD-Ultimate.md](docs/IT服务工单系统PRD-Ultimate.md) | 业务基线 PRD 2.2（状态机/SLA/通知/路由的唯一依据；根目录同名文件为占位指针） |
+| [it-ticket-cloud/README.md](it-ticket-cloud/README.md) | 微服务版详细技术文档（架构/接口/错误码/状态机/数据库/排查指南）⭐ |
+| [docs/specs/](docs/specs/README.md) | 一期契约 01~11：数据模型 / AI Schema / 状态机 / 韧性 / OpenAPI / DDL / 事件 / 权限与 SLA / 追溯矩阵 / 模型与 RAG |
+| [docs/superpowers/specs/](docs/superpowers/) | 设计文档存档（RAG 咨询组合设计、服务台 UI 设计等）与实施计划 |
+| [docs/IT服务工单系统-验收评测协议书-V2.md](docs/IT服务工单系统-验收评测协议书-V2.md) | 验收评测协议（指标/用例/判定规则）；实测报告在 `acceptance/reports/` |
+| [it-ticket-cloud/consultation-service/RAG-INTEGRATION.md](it-ticket-cloud/consultation-service/RAG-INTEGRATION.md) / [rag-service/INTEGRATION.md](it-ticket-cloud/rag-service/INTEGRATION.md) | RAG 集成契约（检索/引用/阈值/反馈沉淀） |
+| [design-system/it-service-desk/MASTER.md](design-system/it-service-desk/MASTER.md) | 已实施的前端设计规范（深空蓝黑 + 电光青，亮/暗双主题） |
+| [工单提交流程讲解.md](工单提交流程讲解.md) | 提单链路讲解（AI 预审 → 前置校验 → 后置生成，面向答辩/演示） |
+| [AGENTS.md](AGENTS.md) | 工程协作约束（接口变更同步迁移调用方、不做静默回退等） |
 
 ## 仓库
 
-- **主仓库(GitHub)**:https://github.com/TheWham/ServiceTicketSystem
-- **镜像(Gitee)**:https://gitee.com/early-rise/it-ticket-system
-
-## 单库合并与字段兼容
-
-当前规范以 `docs/IT服务工单系统PRD-Ultimate.md` 和 `docs/specs/01、05、06` 为准。字段差异与本次范围见 [main/spec 对照报告](docs/specs/11-main-schema-alignment.md)。用户、工单、咨询统一通过 `MYSQL_HOST`、`MYSQL_PORT`、`MYSQL_DB=it_ticket_system`、`MYSQL_USERNAME`、`MYSQL_PASSWORD` 连接同一库；持久化时间统一 UTC，HTTP 输出带时区。
-
-`db/init` 仅用于空库。已有 main 数据库请按 `it-ticket-cloud/db/migration` 说明执行备份、停写、暂存转换和校验，再显式切换；不能用空库脚本覆盖现有数据。本次合并不会自动迁移任何现有或远程数据库。未实现的知识审核、附件上传等模块不借本次合并补齐字段或功能。
-
-模型地址与 ID 支持 `AI_BASE_URL`、`AI_MODEL`；密钥使用本地忽略的 `consultation-service/ai-secrets.yml` 或 `AI_API_KEY`。外部文件调整后重启咨询服务即可；服务默认使用同一 `dev/prod` profile，启用 Nacos 时须同步咨询和新草稿路由。
+- **主仓库（GitHub）**：https://github.com/TheWham/ServiceTicketSystem
+- **镜像（Gitee）**：https://gitee.com/early-rise/it-ticket-system
