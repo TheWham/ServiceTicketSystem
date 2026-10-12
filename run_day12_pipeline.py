@@ -112,7 +112,9 @@ class KspEmbeddingProvider:
         else:
             self.engine_type = "未配置 KSP_API_KEY/KSP_BASE_URL，降级本地hash兜底"
 
-    # ---- 缓存 ----
+    # ---- 缓存：以"文本 sha1"为键 ----
+    # 为什么用内容哈希而不是自增 id：同一文本无论来自哪次运行、哪个脚本，
+    # 只要内容一致就命中缓存，保证 Day12/Day13/inspect 三个脚本共享同一份向量缓存。
     def _cache_path(self, text: str) -> Optional[Path]:
         if not self._cache_dir:
             return None
@@ -124,6 +126,7 @@ class KspEmbeddingProvider:
             try:
                 return json.loads(p.read_text(encoding="utf-8"))
             except Exception:
+                # 缓存文件损坏时静默按未命中处理，后续会重算覆盖
                 return None
         return None
 
@@ -132,8 +135,9 @@ class KspEmbeddingProvider:
         if p:
             p.write_text(json.dumps(vec), encoding="utf-8")
 
-    # ---- API ----
+    # ---- API：OpenAI 兼容 /embeddings 协议 ----
     def _call_api(self, texts: List[str]) -> List[List[float]]:
+        # 服务端返回的 data 顺序不一定与请求一致，必须按 index 重排回输入顺序
         payload = json.dumps({"model": self.model, "input": texts}).encode("utf-8")
         req = urllib.request.Request(
             f"{self.cfg['base_url'].rstrip('/')}/embeddings",
@@ -149,7 +153,8 @@ class KspEmbeddingProvider:
 
     @staticmethod
     def _fallback_vector(text: str, dim: int = 768) -> List[float]:
-        """词频-散列拟合嵌入：断网/无 key 时保证流水线可完整跑通"""
+        """词频-散列拟合嵌入：断网/无 key 时保证流水线可完整跑通。
+        注意：仅用于演示流程不中断，无真实语义，生产环境绝不能依赖。"""
         vec = [0.0] * dim
         for i, ch in enumerate(text):
             h = int(hashlib.md5(ch.encode("utf-8")).hexdigest(), 16)
@@ -157,10 +162,12 @@ class KspEmbeddingProvider:
         norm = sum(x * x for x in vec) ** 0.5 or 1.0
         return [x / norm for x in vec]
 
-    # ---- LangChain Embeddings 协议 ----
+    # ---- LangChain Embeddings 协议（Chroma 只认这两个方法名）----
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """批量嵌入。流程：先查缓存 -> 未命中者按 batch_size 分批请求 -> 写回缓存。
+        任一单批失败仅该批降级，不影响整库构建。"""
         vectors: List[Optional[List[float]]] = [None] * len(texts)
-        pending: List[Tuple[int, str]] = []
+        pending: List[Tuple[int, str]] = []  # (原始下标, 文本)，保持最终顺序与输入一致
 
         for i, t in enumerate(texts):
             cached = self._cache_get(t)
@@ -183,6 +190,7 @@ class KspEmbeddingProvider:
                     vectors[idx] = vec
                     self._cache_put(t, vec)
 
+        # 兜底：缓存未命中且 API 不可用（或 self.available=False）时的降级
         for i, v in enumerate(vectors):
             if v is None:
                 v = self._fallback_vector(texts[i])
@@ -191,6 +199,7 @@ class KspEmbeddingProvider:
         return vectors
 
     def embed_query(self, text: str) -> List[float]:
+        """单条查询嵌入（检索时调用）。同样先查缓存。"""
         cached = self._cache_get(text)
         if cached is not None:
             return cached
@@ -256,7 +265,13 @@ class WikiStructureAwareChunker:
         return {}, file_content
 
     def _merge_small_sections(self, splits: List[Document]) -> List[Document]:
-        """把过小的相邻标题节向上合并到目标粒度（只在标题边界合并，不切断句子）"""
+        """把过小的相邻标题节向上合并到目标粒度（只在标题边界合并，不切断句子）。
+
+        为什么需要这一步：MarkdownHeaderTextSplitter 会"逢节必切"，产生大量
+        100~300 字符的碎块。若一个完整论点横跨多个小节，碎块会导致检索时事实
+        被召回得不完整。这里贪心地把相邻小节累加合并，直到再加就超 chunk_size，
+        既保住语义完整性，又不违背标题边界。
+        """
         merged: List[Document] = []
         cur: Optional[Document] = None
         for doc in splits:
@@ -264,6 +279,7 @@ class WikiStructureAwareChunker:
                 cur = doc
                 continue
             if len(cur.page_content) + len(doc.page_content) <= self.chunk_size:
+                # 合并正文；元数据以"先出现的高层标题"为准（cur 在前，优先级更高）
                 cur = Document(
                     page_content=cur.page_content + "\n\n" + doc.page_content,
                     metadata={**cur.metadata, **{k: v for k, v in doc.metadata.items() if k not in cur.metadata}},
@@ -276,19 +292,28 @@ class WikiStructureAwareChunker:
         return merged
 
     def split_wiki_document(self, file_path: str) -> List[Document]:
-        """对单个 Wiki 文档执行层级感知切块与 Payload 注入"""
+        """对单个 Wiki 文档执行自适应粒度切块与元数据注入。
+
+        返回：带 frontmatter 注入与面包屑增强的 Document 列表。
+        切分策略二选一：
+          - 短卡片（正文 <= max_card_chars）：整卡一个原子切片，不再按标题切碎；
+          - 长文档：标题树粗切 -> 相邻小节合并 -> 超长节递归微切兜底。
+        """
         with open(file_path, "r", encoding="utf-8") as f:
             raw_content = f.read()
 
         frontmatter_meta, body = self.parse_wiki_frontmatter(raw_content)
         wiki_title = frontmatter_meta.get("title", Path(file_path).stem)
 
-        # ===== 自适应粒度：短卡片整卡原子化，长文档才多级切分 =====
+        # ===== 自适应粒度决策：短卡片整卡原子化，长文档才多级切分 =====
+        # 设计动机（详见讲义 2.3 节）：~900 字符的短卡片本身就是自包含语义单元，
+        # 若按 H2"逢节必切"会把横跨两节的事实切散，导致检索丢考点（TC-03 曾 2/4）。
         if len(body) <= self.max_card_chars:
-            # 整卡一个原子切片：卡片本身就是自包含、语义完整的 FAQ 单元
+            # 整卡原子路径：不打标题切分，Header_1 直接用卡片标题
             header_splits = [Document(page_content=body, metadata={"Header_1": wiki_title})]
             oversized = False
         else:
+            # 长文档路径：先标题树粗切，再把过小相邻节合并，最后超长节才递归微切
             raw_splits = self.header_splitter.split_text(body)
             header_splits = self._merge_small_sections(raw_splits)
             oversized = True
@@ -301,12 +326,13 @@ class WikiStructureAwareChunker:
             else:
                 sub_splits = [header_doc]
             for idx, chunk in enumerate(sub_splits):
-                # 构造面包屑上下文增强（提升小模型向量语义理解）
+                # 构造面包屑上下文增强：把"H1 > H2 > H3"层级写进正文开头，
+                # 让小模型在向量化时也能感知该切片在原文中的位置（提升语义对齐）
                 h1 = chunk.metadata.get("Header_1", "")
                 h2 = chunk.metadata.get("Header_2", "")
                 h3 = chunk.metadata.get("Header_3", "")
                 breadcrumbs = " > ".join([h for h in [h1, h2, h3] if h])
-                
+
                 # 增强前缀（让切片天然带有规约大纲位置）
                 if breadcrumbs:
                     enhanced_content = f"【制度大纲：{breadcrumbs}】\n{chunk.page_content}"
@@ -314,9 +340,10 @@ class WikiStructureAwareChunker:
                     enhanced_content = f"【制度归属：{wiki_title}】\n{chunk.page_content}"
                 chunk.page_content = enhanced_content
 
-                # 1. 深度注入 Frontmatter 元数据
+                # 1. 深度注入 Frontmatter 元数据（Day 13 前置硬过滤的基础）
                 for k, v in frontmatter_meta.items():
-                    # Chroma 等向量数据库要求元数据类型为 str/int/float/bool
+                    # Chroma 等向量数据库要求元数据类型为 str/int/float/bool，
+                    # list/dict 一律序列化为 JSON 字符串
                     chunk.metadata[f"wiki_{k}"] = json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else str(v)
 
                 # 2. 注入切块自身拓扑元数据
@@ -373,12 +400,19 @@ class NaiveFixedChunker:
 # ==============================================================================
 
 class VectorStoreManager:
-    """负责两套对照向量数据库的初始化、持久化与检索"""
+    """负责两套对照向量数据库的初始化、持久化与检索。
+
+    为什么 build_store 每次先删旧目录再重建：
+    教学/实验场景下切块策略会反复调整（如改 chunk_size、改切分算法），
+    若增量追加会让旧策略的残留切片污染新库，导致评测结果不可复现。
+    因此每次全量重建，保证"库里只有当前策略的产物"。
+    """
     def __init__(self, base_persist_dir: str, embedding_provider: KspEmbeddingProvider):
         self.base_dir = Path(base_persist_dir)
         self.embedding_provider = embedding_provider
 
     def build_store(self, collection_name: str, documents: List[Document], persist_subdir: str) -> Chroma:
+        """把一批 Document 向量化并落盘到独立子目录，返回可检索的 Chroma 句柄。"""
         target_dir = self.base_dir / persist_subdir
         if target_dir.exists():
             shutil.rmtree(target_dir, ignore_errors=True)
@@ -397,7 +431,11 @@ class VectorStoreManager:
 # ==============================================================================
 # 4. 黄金业务对抗问答集与评测打分体系
 # ==============================================================================
-
+# 设计说明：每道题的 expected_facts 均取自真实 Wiki 卡片正文的"硬事实"
+# （命令、错误码、端口、阈值数字、工具名），用于量化"切块是否保住完整事实链"。
+# 打分方式：把 Top-3 召回的切片正文拼接，统计 expected_facts 中有多少被包含。
+# 这些题刻意挑选"考点横跨多个小节"或"含易漂移专有编号"的场景，
+# 以便暴露过度切分 / 向量漂移等真实工程缺陷（见讲义 2.3 节）。
 BENCHMARK_QUERIES = [
     {
         "id": "TC-01",
@@ -447,11 +485,20 @@ def run_day12_pipeline(
     output_dir: str = "day12_output",
     embedding_model: str = ""
 ):
+    """Day 12 主流水线：切块 -> 向量化 -> 双库入库 -> A/B 评测 -> 元数据过滤 -> 报告。
+
+    流程概览：
+      [1] 初始化嵌入引擎与切块器
+      [2] 双轨切块（结构感知 vs 朴素对照）
+      [3] 两套 Chroma 库分别入库
+      [4] 5 道对抗题检索评测
+      [5] 元数据前置硬过滤演示 + 报告落盘
+    """
     print("=" * 80)
     print("🚀 Day 12 企业知识库 Chunking 分块策略工程与 Embedding 向量化调优流水线")
     print("=" * 80)
 
-    # 路径解析
+    # 路径解析：兼容"从子目录 day12 运行"与"从项目根运行"两种情况
     project_root = Path(__file__).resolve().parent.parent if Path(__file__).parent.name == "day12" else Path(__file__).resolve().parent
     wiki_path = project_root / wiki_kb_dir
     raw_path = project_root / raw_docs_dir
@@ -459,6 +506,7 @@ def run_day12_pipeline(
     out_path.mkdir(parents=True, exist_ok=True)
 
     print(f"\n[1/5] 初始化向量模型引擎与分块器配置...")
+    # 嵌入缓存放在产物目录下，随库一起管理；重跑时命中缓存可秒级完成
     embed_provider = KspEmbeddingProvider(
         cache_dir=str(out_path / ".emb_cache"),
         model_override=embedding_model or None
@@ -480,7 +528,7 @@ def run_day12_pipeline(
         raise FileNotFoundError(f"❌ 找不到 Day 11 的 Wiki 知识卡片，请先运行 Day 11 流水线生成！")
 
     print(f"\n[2/5] 执行数据分块阶段 (A/B 双轨并行)...")
-    # 轨 A: 结构感知切块
+    # 轨 A: 结构感知切块（先进组）
     structured_chunks: List[Document] = []
     print(f"  • [先进组: Wiki 结构感知切块]")
     for wf in wiki_files:
@@ -488,10 +536,11 @@ def run_day12_pipeline(
         structured_chunks.extend(chunks)
         print(f"    - 处理文件: {wf.name} -> 生成 {len(chunks)} 个结构化切片")
 
-    # 轨 B: 朴素暴力切块 (从原始未经清洗治理的文档或未结构化文本切块)
+    # 轨 B: 朴素暴力切块（对照组）。若有原始 txt 用原始文档，
+    # 否则直接用同一份 wiki 文件做"纯字符无结构切块"，保证 A/B 对比语料一致、只变量是策略。
     raw_files = list(raw_path.glob("*.txt")) if raw_path.exists() else []
     if not raw_files:
-        raw_files = wiki_files  # 若无原始txt，用wiki文件纯字符无感知切块作为对比
+        raw_files = wiki_files
 
     naive_chunks: List[Document] = []
     print(f"  • [对照组: 朴素固定长度截断]")
@@ -525,21 +574,17 @@ def run_day12_pipeline(
         expected = item["expected_facts"]
 
         # 1. 朴素检索 (Top-3)
-        t0 = time.time()
         naive_res = db_naive.similarity_search(query, k=3)
-        naive_cost = (time.time() - t0) * 1000
         naive_top = naive_res[0].page_content.replace("\n", " ")[:120] if naive_res else "无结果"
         naive_combined = " ".join([d.page_content for d in naive_res])
 
         # 2. 结构感知检索 (Top-3)
-        t0 = time.time()
         struct_res = db_structured.similarity_search(query, k=3)
-        struct_cost = (time.time() - t0) * 1000
         struct_top = struct_res[0].page_content.replace("\n", " ")[:120] if struct_res else "无结果"
         struct_combined = " ".join([d.page_content for d in struct_res])
         struct_meta = struct_res[0].metadata if struct_res else {}
 
-        # 计算 Top-3 召回黄金事实覆盖率
+        # 计算 Top-3 召回黄金事实覆盖率：expected_facts 中有多少出现在召回文本里
         naive_hits = sum(1 for exp in expected if exp in naive_combined)
         struct_hits = sum(1 for exp in expected if exp in struct_combined)
 
@@ -566,7 +611,9 @@ def run_day12_pipeline(
     print("=" * 90)
 
     print(f"\n[5/5] 验证元数据前置硬过滤 (Metadata Pre-filtering 攻防演示)...")
-    # 演示：按知识分类对「账号与权限问题」域进行强制过滤检索
+    # 演示：按知识分类对「账号与权限问题」域进行强制过滤检索。
+    # 这是 Day 12 注入元数据的核心价值——检索前先按结构化标签收窄范围，
+    # 物理屏蔽无关分类，杜绝跨域串扰导致的幻觉。
     target_filter = {"wiki_category": "账号与权限问题"}
     try:
         filtered_res = db_structured.similarity_search(
@@ -583,6 +630,7 @@ def run_day12_pipeline(
             print(f"  💡 摘要片段: {filtered_res[0].page_content[:90]}...")
             print("  ✅ 成功将检索范围物理限定在账号权限域，彻底屏蔽网络/硬件等无关分类干扰！")
     except Exception as e:
+        # Chroma 版本差异可能导致 filter 语法不同，降级提示但不中断流水线
         print(f"  ⚠️ 元数据过滤演示遇到轻微适配异常: {e}")
 
     # 出具评测报告
@@ -594,6 +642,7 @@ def run_day12_pipeline(
 
 
 def _generate_markdown_report(report_path: Path, struct_chunks: List[Document], naive_chunks: List[Document], eval_results: List[Dict]):
+    """生成 Day12 评测报告：策略对照表 + 每题 Top-3 命中明细 + 结论与技术承接。"""
     content = f"""# Day 12 工业级 Chunking 分块策略与向量化调优评测报告
 
 > 知识库来源：《IT常见问题RAG知识库.docx》→ Day 11 清洗重构产出的 35 张 Wiki 知识卡片

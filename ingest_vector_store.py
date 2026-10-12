@@ -36,7 +36,11 @@ from run_day12_pipeline import KspEmbeddingProvider, WikiStructureAwareChunker
 
 
 class WikiKnowledgeIngestionPipeline:
-    """读取带 YAML Frontmatter 的 Wiki 卡片，注入元数据后批量灌入 Chroma"""
+    """读取带 YAML Frontmatter 的 Wiki 卡片，注入元数据后批量灌入 Chroma。
+
+    与 run_day12_pipeline.py 的区别：本脚本是"纯入库工具"，只负责
+    切块 + 向量化 + 落盘到独立 chroma_db，不跑评测对照，适合单独验证入库链路。
+    """
 
     def __init__(
         self,
@@ -48,19 +52,24 @@ class WikiKnowledgeIngestionPipeline:
         self.persist_directory = persist_directory
 
         # 1. 初始化 Embedding 模型（KSP qwen3-embedding-8b，4096 维，余弦归一化）
+        #    embedding 缓存放在产物目录下，重复入库时命中缓存、零重复 API 调用
         print("⚡ 正在加载 Embedding 模型...")
         self.embeddings = embedding_provider or KspEmbeddingProvider(
             cache_dir=str(Path(persist_directory).parent / ".emb_cache")
         )
         print(f"   -> Embedding 引擎: 【{self.embeddings.engine_type}】")
 
-        # 2+3. 结构感知切块器：Markdown 标题层级切分 + 递归字符兜底微切
+        # 2+3. 复用 Day 12 的自适应粒度切块器（短卡片整卡原子化，长文档多级切分）
         self.chunker = WikiStructureAwareChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
     def process_and_ingest_dir(self, wiki_dir: str):
-        """批量读取目录下所有 Wiki 卡片并注入向量数据库"""
+        """批量读取目录下所有 Wiki 卡片并注入向量数据库。
+
+        返回可检索的 Chroma 句柄。_index.md 是目录导航页，排除以避免污染检索。
+        """
         wiki_path = Path(wiki_dir)
         files = sorted(wiki_path.glob("*.md"))
+        files = [f for f in files if f.name != "_index.md"]  # 排除目录导航页
         if not files:
             raise FileNotFoundError(f"❌ 未在 {wiki_path} 找到任何 .md Wiki 卡片")
 

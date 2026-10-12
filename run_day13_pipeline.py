@@ -103,7 +103,12 @@ except Exception as _e:  # pragma: no cover - 独立运行兜底
 # ==============================================================================
 
 class ChineseTokenizer:
-    """轻量稳健中文分词器（优先使用 jieba，未安装时自适应正则与 N-gram 切词）"""
+    """轻量稳健中文分词器（优先使用 jieba，未安装时自适应正则与 N-gram 切词）。
+
+    为什么 BM25 通道必须先分词：BM25 基于"词项是否命中"打分，中文没有天然空格，
+    必须先切成词项；且专有编号（错误码/命令/端口）要作为完整 token 保留，
+    否则字面硬匹配优势尽失。
+    """
 
     @staticmethod
     def tokenize(text: str) -> List[str]:
@@ -125,7 +130,14 @@ class ChineseTokenizer:
 
 
 class PurePythonBM25:
-    """纯 Python 高性能 BM25Okapi 实现（当系统未预装 rank_bm25 时零依赖兜底）"""
+    """纯 Python BM25Okapi 实现（当系统未预装 rank_bm25 时零依赖兜底）。
+
+    BM25 打分三要素：
+      - TF（词频）：查询词在文档中出现越多越相关，用 k1 做饱和衰减；
+      - IDF（逆文档频率）：越稀有的词权重越高（"806"远比"故障"珍贵）；
+      - 长度归一化（b）：长文档不因字数多被额外加分。
+    参数约定：k1=1.5 控制词频饱和度，b=0.75 控制长度归一化强度（工业常用默认）。
+    """
 
     def __init__(self, corpus: List[List[str]], k1: float = 1.5, b: float = 0.75):
         self.k1 = k1
@@ -136,7 +148,7 @@ class PurePythonBM25:
         self.idf: Dict[str, float] = {}
         self.doc_len: List[int] = []
 
-        # 统计词频与文档频率
+        # 统计每篇文档的词频（TF）与每个词出现在几篇文档（DF）
         df: Dict[str, int] = {}
         for doc in corpus:
             self.doc_len.append(len(doc))
@@ -147,15 +159,16 @@ class PurePythonBM25:
             for word in frequencies:
                 df[word] = df.get(word, 0) + 1
 
-        # 计算逆文档频率 IDF
+        # 预计算每个词的 IDF（只算一次，检索时直接查表）
         for word, freq in df.items():
             self.idf[word] = math.log(1 + (self.corpus_size - freq + 0.5) / (freq + 0.5))
 
     def get_scores(self, query: List[str]) -> List[float]:
+        """对整条语料打分，返回与语料同序的分数数组。O(查询词数 × 文档数)。"""
         scores = [0.0] * self.corpus_size
         for word in query:
             if word not in self.idf:
-                continue
+                continue  # 未在语料出现的词直接跳过，不贡献分数
             idf_val = self.idf[word]
             for i, doc_freq in enumerate(self.doc_freqs):
                 if word in doc_freq:
@@ -175,6 +188,11 @@ class KspReranker:
     KSP 重排模型适配器（默认 qwen3-reranker-8b，Jina 风格 /rerank 协议）：
     - 首选调用 KSP OpenAI 兼容 /rerank 端点，返回 relevance_score
     - 端点不可用时无缝降级为本地启发式交叉对齐打分，确保流水线 100% 可运行
+
+    ⚠️ 重要工程约束（详见讲义第六篇）：
+    远程 Reranker 的**绝对分**可能不稳定（同输入多次调用分数区间会漂移），
+    但**排序**基本稳定。因此下游 hybrid_rerank_search 只取它的"名次"做融合，
+    不直接信任绝对分，避免分数漂移导致结果抖动。
     """
 
     def __init__(self, model_name: str = "qwen3-reranker-8b", cfg: Optional[Dict[str, str]] = None):
@@ -193,7 +211,11 @@ class KspReranker:
             print(f"       -> 未配置 KSP_API_KEY/KSP_BASE_URL，采用本地启发式交叉对齐重排打分")
 
     def _call_api(self, query: str, documents: List[str], top_n: Optional[int] = None) -> List[float]:
-        """调用 KSP /rerank，返回与 documents 同序的相关度分数列表"""
+        """调用 KSP /rerank，返回与输入 documents 同序的相关度分数列表。
+
+        服务端返回 results 里每项带 index 与 relevance_score，顺序不一定与请求一致，
+        必须按 index 还原回输入顺序，否则下游会把分数错配到错误的文档上。
+        """
         payload: Dict[str, Any] = {
             "model": self.model_name,
             "query": query,
@@ -250,7 +272,11 @@ class KspReranker:
         return round(min(0.99, base_score * 0.5 + code_boost + min(density_boost, 0.25) + 0.05), 4)
 
     def predict(self, pairs: List[List[str]]) -> List[float]:
-        """对 (query, doc) 对列表打分。按 query 分组批量调用 KSP，失败逐组降级启发式"""
+        """对 (query, doc) 对列表打分，返回与输入同序的分数列表。
+
+        同一 query 的多篇候选合并为一次 /rerank 请求（减少往返）；
+        若该次调用失败，仅这一组降级为启发式打分，不影响其他查询。
+        """
         results: List[Optional[float]] = [None] * len(pairs)
         # 同一 query 的多篇文档合并为一次请求
         groups: Dict[str, List[int]] = {}
@@ -283,6 +309,7 @@ class IndustrialHybridRetriever:
     - Chroma 向量数据库语义检索
     - RRF (Reciprocal Rank Fusion, k=60) 倒数排名融合
     - KspReranker (qwen3-reranker-8b 交叉注意力) 精排
+    - 按秩加权融合兜底（rerank 名次 + RRF 名次，免疫远程分数漂移）
     - 支持全生命周期 Metadata Pre-filtering 硬过滤
     """
 
@@ -315,7 +342,11 @@ class IndustrialHybridRetriever:
         top_k: int = 15,
         metadata_filter: Optional[Dict[str, Any]] = None
     ) -> List[Tuple[Document, int, float]]:
-        """BM25 关键词精确检索通道，返回 [(Doc, Rank, BM25_Score)]"""
+        """BM25 关键词精确检索通道，返回 [(Doc, Rank, BM25_Score)]。
+
+        字面召回：对"工单号/错误码/端口/命令"等专有编号极强（IDF 高），
+        恰好补上 Dense 向量检索把这些数字语义稀释掉的盲区。
+        """
         tokenized_query = ChineseTokenizer.tokenize(query)
         scores = self.bm25.get_scores(tokenized_query)
         sorted_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
@@ -341,7 +372,11 @@ class IndustrialHybridRetriever:
         top_k: int = 15,
         metadata_filter: Optional[Dict[str, Any]] = None
     ) -> List[Tuple[Document, int, float]]:
-        """Dense 语义向量检索通道，返回 [(Doc, Rank, Cosine_Similarity)]"""
+        """Dense 语义向量检索通道，返回 [(Doc, Rank, Cosine_Similarity)]。
+
+        语义召回：擅长意图匹配（"打不开网页"≈"无法访问网站"），
+        与 BM25 字面召回互补，共同构成双路召回。
+        """
         if self.vector_db is None:
             return []
         
@@ -362,8 +397,12 @@ class IndustrialHybridRetriever:
         candidate_limit: int = 15
     ) -> List[Tuple[Document, float]]:
         """
-        RRF 倒数排名融合算法：
-        只看名次不看异构绝对分，公式：RRF_Score = sum(1 / (k + rank))
+        RRF 倒数排名融合算法：只看名次不看异构绝对分。
+
+        公式：RRF_Score(d) = Σ_channels 1/(k + rank_c(d))
+        为什么用名次而非绝对分：BM25 分(0~30+)与余弦分(0~1)量纲完全不同，
+        直接相加会被大数值淹没；名次天然归一，零调参即可无损合并两路。
+        以 page_content 作为去重键：同一切片若两路都召回，分数累加、排名更前。
         """
         rrf_scores: Dict[str, float] = {}
         doc_map: Dict[str, Document] = {}
@@ -385,7 +424,11 @@ class IndustrialHybridRetriever:
 
     @staticmethod
     def _ranks_of(scores: List[float]) -> List[int]:
-        """把分数列表转成名次（1 = 最高），并列平分取相同名次"""
+        """把分数列表转成名次（1 = 最高），并列（分数相同）取相同名次。
+
+        为什么需要名次化：远程 Reranker 的绝对分会漂移但排序基本稳定，
+        取名次后融合对分数漂移免疫（详见讲义第六篇）。
+        """
         order = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
         ranks = [0] * len(scores)
         for pos, idx in enumerate(order):
@@ -465,13 +508,15 @@ class IndustrialHybridRetriever:
 
 
 # ==============================================================================
-# 3. 7 组专有名词、生僻编号与跨版本冲突对抗评测集 (Golden Hard Benchmark)
-# ==============================================================================
-
-# ==============================================================================
 # 3. 7 组命令、错误码、端口与跨分类冲突对抗评测集 (Golden Hard Benchmark)
 # ==============================================================================
 
+# 设计说明：每道题的 expected_facts 取自真实 Wiki 卡片的"硬事实"
+# （命令、错误码、端口、阈值、工具名），刻意覆盖三类 Dense 盲区：
+#   1) 精确编号/命令（HC-01/02/04/07）：验证 BM25 字面召回的不可替代性；
+#   2) 多跳处置链（HC-05）：验证切块是否保住跨小节完整事实；
+#   3) 元数据前置过滤（HC-03）：验证分类硬过滤正确收窄检索域。
+# 打分方式：把 Top-3 召回正文拼接，统计 expected_facts 命中数。
 HARD_BENCHMARK_SUITE = [
     {
         "id": "HC-01",
@@ -537,6 +582,14 @@ HARD_BENCHMARK_SUITE = [
 # ==============================================================================
 
 def run_day13_pipeline():
+    """Day 13 主流水线：载入语料/向量库 -> 装配混合检索器 -> 四轨评测 -> 报告。
+
+    四轨对比（同一道题跑四条链路，量化各阶段增益）：
+      A 纯 Dense 向量检索
+      B 纯 BM25 关键词检索
+      C Dense + BM25 + RRF 融合（无精排）
+      D 全链路：元数据过滤 + 双路召回 + RRF + Rerank 精排 + 按秩融合兜底
+    """
     parser = argparse.ArgumentParser(description="Day 13 混合检索机制与 Rerank 重排优化流水线")
     parser.add_argument("--wiki-dir", default="output/wiki", help="Day 11 Wiki 卡片目录")
     parser.add_argument("--chroma-dir", default="day12_output/chroma_wiki_structured", help="Day 12 结构化向量库目录")
@@ -651,12 +704,13 @@ def run_day13_pipeline():
         bm25_text = " ".join([d[0].page_content for d in bm25_raw])
         bm25_hits = sum(1 for f in expected if f in bm25_text)
 
-        # 轨 3: 传统 Dense + BM25 双路召回 + RRF 融合 (无 Rerank, Top-3)
+        # 轨 3: Dense + BM25 双路召回 + RRF 融合（无精排，Top-3）
+        # 与轨 4 的唯一区别是：不做 Rerank 精排与按秩融合，用于隔离出精排环节的真实增益
         fused = retriever.rrf_fusion(bm25_raw, dense_raw, rrf_k=60, candidate_limit=3)
         fused_text = " ".join([d[0].page_content for d in fused])
         fused_hits = sum(1 for f in expected if f in fused_text)
 
-        # 轨 4: 顶级工业级全链路 (元数据过滤 + 双路召回 + RRF + Rerank 精排 Top-3)
+        # 轨 4: 顶级工业级全链路（元数据过滤 + 双路召回 + RRF + Rerank 精排 + 按秩融合兜底）
         full_res = retriever.hybrid_rerank_search(
             query=query,
             final_top_k=3,
@@ -667,6 +721,7 @@ def run_day13_pipeline():
         full_docs = full_res["final_results"]
         full_text = " ".join([d["content"] for d in full_docs])
         full_hits = sum(1 for f in expected if f in full_text)
+        # top1_score 取融合分（按秩加权），用于评估精排 Top-1 的相关度置信度
         top1_score = full_docs[0]["fused_score"] if full_docs else 0.0
 
         eval_records.append({
@@ -695,7 +750,8 @@ def run_day13_pipeline():
     total_fused = sum(r["fused_hits"] for r in eval_records)
     total_full = sum(r["full_hits"] for r in eval_records)
 
-    # 数据驱动：计算哪条链路命中率最高，避免结论与数据自相矛盾
+    # 数据驱动：真实算出哪条链路命中率最高才标 🏆，避免"报告写死某链路最优"
+    # 与实际数据自相矛盾（rerank 不稳定时全链路可能反被 RRF 反超，报告须如实反映）。
     totals = {
         "dense": total_dense,
         "bm25": total_bm25,

@@ -26,7 +26,13 @@ OUTPUT_ROOT = "day12_output"
 
 
 def discover_collections() -> dict:
-    """扫描 OUTPUT_ROOT 下所有 Chroma 持久化目录，返回 {集合名: 目录路径}"""
+    """扫描 OUTPUT_ROOT 下所有 Chroma 持久化目录，返回 {集合名: 目录路径}。
+
+    为什么需要自动发现：Day12 把不同集合持久化到不同子目录
+    （wiki_structured_kb -> chroma_wiki_structured，naive_fixed_kb -> chroma_naive，
+    langchain -> chroma_db），它们不在同一个 Chroma 实例里。
+    用 chroma.sqlite3 是否存在来判定"这是一个有效的 Chroma 持久化目录"。
+    """
     found: dict = {}
     root = Path(OUTPUT_ROOT)
     if not root.exists():
@@ -35,13 +41,13 @@ def discover_collections() -> dict:
     candidates = [root] + [p for p in root.iterdir() if p.is_dir()]
     for d in candidates:
         if not (d / "chroma.sqlite3").exists():
-            continue
+            continue  # 不是 Chroma 持久化目录，跳过
         try:
             client = chromadb.PersistentClient(path=str(d))
             for c in client.list_collections():
                 found[c.name] = str(d)
         except Exception:
-            continue
+            continue  # 目录损坏或不可读时跳过，不影响其他集合
     return found
 
 
@@ -81,7 +87,7 @@ def main():
     print(f"📦 集合 [{args.collection}] 共 {col.count()} 条记录")
     print("=" * 80)
 
-    # 2. 抽样查看
+    # 2. 抽样查看：col.get 直接按存储顺序取，不做相似度排序，用于快速浏览库内容
     res = col.get(limit=args.sample, include=["documents", "metadatas", "embeddings"])
     print(f"\n🔍 抽样 {len(res['ids'])} 条：")
     for i, cid in enumerate(res["ids"]):
@@ -100,6 +106,8 @@ def main():
     if args.query:
         print("\n" + "=" * 80)
         print(f"🔎 向量检索测试: 「{args.query}」 (Top-{args.k})")
+        # 关键约束：查询向量必须与入库时用同一个 embedding 模型、同一个维度(4096)，
+        # 否则维度不匹配会直接报错，或语义错位导致检索结果毫无意义。
         provider = KspEmbeddingProvider(cache_dir=str(Path(target_path).parent / ".emb_cache"))
         print(f"    Embedding 引擎: {provider.engine_type}")
         qres = col.query(
