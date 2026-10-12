@@ -1,7 +1,10 @@
 .env
 config.ini
-output/
 __pycache__/
 *.pyc
 .DS_Store
 .idea/
+# 产物入库，仅排除可再生成的缓存与日志
+**/.llm_cache/
+**/.emb_cache/
+output/run.log
