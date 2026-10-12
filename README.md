@@ -36,8 +36,7 @@ demos/
 │   ├── clean_pipeline.py             # 规则物理清洗：保序解析 docx、字段表摊平、按 H2 切条目
 │   ├── llm_synthesizer.py            # 双模型 LLM 治理：正文清洗 + frontmatter 元数据萃取
 │   ├── wiki_generator.py             # 生成带 YAML frontmatter 的 Wiki 卡片
-│   ├── run_demo.py / run_examples.py # 运行入口
-│   └── .env.example                  # KSP 配置模板（脱敏，真实 key 放根目录 .env）
+│   └── run_demo.py / run_examples.py # 运行入口
 │
 ├── output/                           # 【Day 11 产物】
 │   ├── cleaned/                      # 规则清洗后的结构化条目（.md）
@@ -53,6 +52,7 @@ demos/
 ├── day13_output/                     # 【Day 13 产物】
 │   └── Day13_混合检索与Rerank重排评测报告.md
 │
+├── .env.example                      # KSP 配置模板（脱敏；复制为根目录 .env 并填真实 key，.env 不入库）
 ├── IT常见问题RAG知识库.docx           # 源数据：IT 常见问题原始 Word 文档
 └── CLAUDE.md                         # 工程约定说明
 ```
