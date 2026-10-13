@@ -9,6 +9,10 @@ import os
 import subprocess
 import sys
 
+# Windows 控制台默认 GBK，统一切换 UTF-8 防止 emoji 打印崩溃
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 
 def run_sub_demo(demo_dir: str, script_name: str, title: str):
     print("\n" + "#" * 80)

@@ -7,7 +7,7 @@ Layer 2 Wiki 生成器：wiki_generator.py
 import os
 from typing import Any, Dict, List, Optional
 
-from clean_pipeline import Entry
+from .clean_pipeline import Entry
 
 DEFAULT_SOURCE_NAME = "IT常见问题RAG知识库.docx"
 DEFAULT_DEPARTMENT = "IT 部"

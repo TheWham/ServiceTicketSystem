@@ -1,0 +1,9 @@
+{
+  "wiki_fingerprint": "db659009f3ef994b7e84a772d5bcbd73f78e8262",
+  "config_fingerprint": "bed020b9404c4dfd1f28dc13245b3b279bf51f82",
+  "chunker": {
+    "name": "parent_child",
+    "child_size": 512
+  },
+  "embedding_engine": "KSP OpenAI兼容 /embeddings (qwen3-embedding-8b)"
+}

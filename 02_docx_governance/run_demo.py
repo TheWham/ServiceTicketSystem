@@ -3,6 +3,12 @@ Word (.docx) 格式专项治理演示脚本：
 对比朴素分离提取 vs 保序流式提取效果。
 """
 
+import sys
+
+# Windows 控制台默认 GBK，统一切换 UTF-8 防止 emoji 打印崩溃
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import os
 from generate_sample_docx import create_sample_docx
 from docx_stream_parser import DocxGovernanceEngine

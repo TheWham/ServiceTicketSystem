@@ -15,13 +15,17 @@ import argparse
 import os
 import sys
 from dataclasses import replace
+from pathlib import Path
 
 # Windows 控制台默认 GBK 编码，直接 print emoji 会抛 UnicodeEncodeError，必须重配为 UTF-8
 sys.stdout.reconfigure(encoding="utf-8")
 
-from clean_pipeline import CleanPipeline                  # Step 1：规则物理清洗引擎
-from llm_synthesizer import LlmSynthesizer, load_api_config  # Step 2/3：双模型 LLM 清洗与萃取
-from wiki_generator import generate_wiki                  # Step 4：Wiki 卡片渲染落盘
+# 实现已迁移至 rag_pipeline 包；本目录运行时把仓库根加入 sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from rag_pipeline.ingestion.clean_pipeline import CleanPipeline                  # Step 1：规则物理清洗引擎
+from rag_pipeline.ingestion.llm_synthesizer import LlmSynthesizer, load_api_config  # Step 2/3：双模型 LLM 清洗与萃取
+from rag_pipeline.ingestion.wiki_generator import generate_wiki                  # Step 4：Wiki 卡片渲染落盘
 
 DOCX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "IT常见问题RAG知识库.docx")
 OUTPUT_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "output")

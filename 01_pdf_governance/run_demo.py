@@ -3,6 +3,12 @@ PDF 格式专项治理演示脚本：
 自动生成样本 PDF，识别页面类型，分别执行矢量提取与扫描件 OCR 治理。
 """
 
+import sys
+
+# Windows 控制台默认 GBK，统一切换 UTF-8 防止 emoji 打印崩溃
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import os
 from generate_sample_pdf import create_sample_pdf
 from pdf_governor import PDFGovernanceEngine

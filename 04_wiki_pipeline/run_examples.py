@@ -24,9 +24,13 @@ warnings.filterwarnings("ignore")
 
 import pandas as pd
 
-from clean_pipeline import CleanPipeline, Entry, desensitize_text
-from llm_synthesizer import LlmSynthesizer, load_api_config
-from wiki_generator import render_card, render_index, make_wiki_id
+# 实现已迁移至 rag_pipeline 包；本目录运行时把仓库根加入 sys.path
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from rag_pipeline.ingestion.clean_pipeline import CleanPipeline, Entry, desensitize_text
+from rag_pipeline.ingestion.llm_synthesizer import LlmSynthesizer, load_api_config
+from rag_pipeline.ingestion.wiki_generator import render_card, render_index, make_wiki_id
 
 DEMO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_ROOT = os.path.join(DEMO_ROOT, "output", "example")

@@ -3,6 +3,12 @@ Excel (.xlsx) 格式专项治理演示脚本：
 演示【纯明细表走 Text2SQL 确定性计算】与【业务规则表转行级自包含切片】双轨落地。
 """
 
+import sys
+
+# Windows 控制台默认 GBK，统一切换 UTF-8 防止 emoji 打印崩溃
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 import json
 import os
 from generate_sample_excel import create_sample_excel

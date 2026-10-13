@@ -1,0 +1,38 @@
+# ==============================================================================
+# RAG 链路统一配置（唯一真源）
+# 改动本文件后重跑 python run_day12_pipeline.py 重建索引即可全链路生效；
+# Day13 加载持久化向量库前会比对配置指纹，切片参数变更自动触发重建。
+# ==============================================================================
+
+chunking:
+  strategy: parent_child        # 切块策略: parent_child(父子Small-to-Big) | structure_aware(结构感知)
+  child_size: 512               # 子块字符预算（含上下文头）
+  section_header_level: 2       # 语义边界标题级别：2=按 ## 分节，3=按 ###
+  merge_preamble: true          # true: H1标题+导语并入首个小节，不独立成块
+  strip_trace_tail: true        # true: 剔除文末"--- + > 🔗 溯源："模板行（仅子块，父块保留）
+  boost_injection: first        # 检索增强行(关键词/实体)注入范围: first=仅每卡首块 | all=每个子块 | none=不注入
+  breadcrumb_header: true       # true: 每个子块注入【卡片：标题 > 小节】面包屑
+  # structure_aware 策略专用（strategy=structure_aware 时生效）
+  struct_chunk_size: 550
+  struct_chunk_overlap: 80
+
+embedding:
+  model: qwen3-embedding-8b     # 可被环境变量 KSP_EMBED_MODEL 覆盖
+  cache_dir: day12_output/.emb_cache
+
+store:
+  persist_dir: day12_output/chroma_wiki_structured
+  collection: wiki_structured_kb
+
+retrieval:
+  top_k: 3                      # 最终返回条数
+  rough_top_k: 15               # 粗排候选数（双路各取）
+  rrf_k: 60                     # RRF 倒数融合常数
+  fuse_k: 10                    # 按秩加权融合的小 k（增强名次区分度）
+  rrf_weight: 0.6               # 召回侧权重
+  rerank_weight: 0.4            # 精排侧权重
+  default_exclude:              # 主链路默认物理屏蔽的元数据坏值
+    wiki_status: [已废止, 已下线]
+
+reranker:
+  model: qwen3-reranker-8b      # 可被环境变量 KSP_RERANK_MODEL 或 CLI --reranker 覆盖

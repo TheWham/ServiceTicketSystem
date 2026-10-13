@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 
 from openai import OpenAI
 
-from clean_pipeline import Entry
+from .clean_pipeline import Entry
 
 DEFAULT_BASE_URL = ""  # 内部接入点不入库：请通过环境变量 KSP_BASE_URL 或 .env 提供
 DEFAULT_CHAT_MODEL = "kimi-k3"          # LLM 精修（元数据萃取）
@@ -43,6 +43,8 @@ def load_api_config(search_dir: Optional[str] = None) -> Dict[str, str]:
     candidates = [
         os.path.join(here, ".env"),
         os.path.join(os.path.dirname(here), ".env"),
+        # 仓库根（rag_pipeline/ingestion 上两级）：.env 约定放项目根
+        os.path.join(os.path.dirname(os.path.dirname(here)), ".env"),
     ]
     if search_dir:
         candidates.insert(0, os.path.join(search_dir, ".env"))
