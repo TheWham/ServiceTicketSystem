@@ -40,6 +40,10 @@ class RetrievalConfig:
     fuse_k: int = 10
     rrf_weight: float = 0.6
     rerank_weight: float = 0.4
+    reject_threshold: Optional[float] = None
+    rerank_granularity: str = "child"
+    query_rewrite: bool = False
+    rewrite_model: str = ""
     default_exclude: Dict[str, List[str]] = field(
         default_factory=lambda: {"wiki_status": ["已废止", "已下线"]}
     )
@@ -54,6 +58,7 @@ class PipelineConfig:
     store_persist_dir: str = "day12_output/chroma_wiki_structured"
     store_collection: str = "wiki_structured_kb"
     reranker_model: str = "qwen3-reranker-8b"
+    reranker_backend: str = "dashscope"
 
 
 def _fill(dc: Any, data: Optional[Dict[str, Any]]) -> Any:
@@ -84,6 +89,7 @@ def load_config(path: Optional[str] = None) -> PipelineConfig:
         store_persist_dir=(raw.get("store") or {}).get("persist_dir", "day12_output/chroma_wiki_structured"),
         store_collection=(raw.get("store") or {}).get("collection", "wiki_structured_kb"),
         reranker_model=(raw.get("reranker") or {}).get("model", "qwen3-reranker-8b"),
+        reranker_backend=(raw.get("reranker") or {}).get("backend", "dashscope"),
     )
 
 

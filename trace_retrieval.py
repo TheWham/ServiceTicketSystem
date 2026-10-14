@@ -22,7 +22,9 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 
 from langchain_community.vectorstores import Chroma
 from run_day12_pipeline import WikiStructureAwareChunker, KspEmbeddingProvider
-from run_day13_pipeline import IndustrialHybridRetriever, HARD_BENCHMARK_SUITE, load_ksp_config
+from run_day13_pipeline import IndustrialHybridRetriever, HARD_BENCHMARK_SUITE
+from rag_pipeline.config import load_config
+from rag_pipeline.embedding import load_rerank_config
 
 
 def build_retriever():
@@ -40,8 +42,11 @@ def build_retriever():
         embedding_function=emb,
         collection_name="wiki_structured_kb",
     )
-    reranker_model = load_ksp_config().get("rerank_model", "qwen3-reranker-8b")
-    return IndustrialHybridRetriever(vector_db=db, corpus_docs=chunks, reranker_model_name=reranker_model), chunks
+    # 重排模型/后端与主链路同源（RERANK_* 或 KSP_*，及 pipeline.yaml 的 reranker.backend）
+    cfg = load_config()
+    reranker_model = load_rerank_config().get("model") or cfg.reranker_model
+    return IndustrialHybridRetriever(vector_db=db, corpus_docs=chunks, reranker_model_name=reranker_model,
+                                     reranker_backend=cfg.reranker_backend), chunks
 
 
 def trace_one(retriever, chunks, query, expected=None, metadata_filter=None, k=3):

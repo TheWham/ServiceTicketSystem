@@ -31,8 +31,20 @@ retrieval:
   fuse_k: 10                    # 按秩加权融合的小 k（增强名次区分度）
   rrf_weight: 0.6               # 召回侧权重
   rerank_weight: 0.4            # 精排侧权重
+  rerank_granularity: parent    # 精排粒度: child=逐子块打分 | parent=子块召回后对整卡全文打分(返回 Top-K 张卡)
+  query_rewrite: true           # 查询改写：LLM 删去用户对原因的猜测并补规范术语；原查询+改写查询四路召回，精排用改写查询
+  rewrite_model: ""             # 改写模型，空=取 .env 的 KSP_CLEAN_MODEL（deepseek-v4-flash，约 3~4s）
+                                # 备选 qwen-flash（约 0.5s）：排序同等，但拒答余量仅 0.03，需配阈值 0.35
+  reject_threshold: 0.40        # 低置信拒答：候选原始 rerank 最高分低于此值则返回空（null=不启用）
+                                # 2026-10-14 在 主题集+开发集 上标定（KSP qwen3-reranker-8b + 父块精排 + deepseek 改写）：
+                                #   正样本最低 0.504 / 负样本 13 题中 12 题 ≤0.317，唯一例外 HN-05（离职交接，0.494）
+                                #   取 0.40：误拒 0/26、误放 1/13，距正样本最低余量 0.10。换模型/改写模型须重标
+                                # 历史：无改写时 0.37 在开发集上正负重叠（0.446 vs 0.472）；百炼 qwen3.7 无改写可用 0.64
   default_exclude:              # 主链路默认物理屏蔽的元数据坏值
     wiki_status: [已废止, 已下线]
 
 reranker:
   model: qwen3-reranker-8b      # 可被环境变量 KSP_RERANK_MODEL 或 CLI --reranker 覆盖
+  backend: dashscope            # 仅走 KSP 网关时生效（.env 配了 RERANK_* 直连时忽略）
+                                # 网关同名模型分流到两种后端，只接受该后端打分: dashscope | jina | any
+                                # jina 后端疑似未套 Qwen3 提示模板，判别力差（详见讲义 6.6）

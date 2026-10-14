@@ -37,6 +37,37 @@ def load_ksp_config() -> Dict[str, str]:
     }
 
 
+def load_rerank_config() -> Dict[str, str]:
+    """重排服务配置：独立的 RERANK_* 优先，未配置时回落到 KSP 网关。
+
+    重排可以与嵌入/LLM 走不同供应商（如阿里云百炼直连），三项均可单独覆盖：
+      RERANK_BASE_URL / RERANK_API_KEY / RERANK_MODEL
+    provider="direct" 表示直连独立服务（不做 KSP 双后端限定与对冲），"ksp" 表示走 KSP 网关。
+    """
+    env_file = _parse_env_file(PROJECT_ROOT / ".env")
+
+    def get(name: str) -> str:
+        return os.environ.get(name) or env_file.get(name, "")
+
+    ksp = load_ksp_config()
+    base_url, api_key = get("RERANK_BASE_URL"), get("RERANK_API_KEY")
+    if base_url and api_key:
+        return {
+            "provider": "direct",
+            "base_url": base_url,
+            "api_key": api_key,
+            "model": get("RERANK_MODEL") or ksp["rerank_model"],
+        }
+    return {
+        "provider": "ksp",
+        "base_url": ksp["base_url"],
+        "api_key": ksp["api_key"],
+        "model": ksp["rerank_model"],
+        # 只填了地址没填 key：回落 KSP 并提示，避免静默降级成启发式打分
+        "note": "RERANK_BASE_URL 已配置但 RERANK_API_KEY 为空，重排暂回落 KSP 网关" if base_url else "",
+    }
+
+
 class KspEmbeddingProvider:
     """
     KSP OpenAI 兼容 /embeddings 提供者（默认 qwen3-embedding-8b，4096 维）：

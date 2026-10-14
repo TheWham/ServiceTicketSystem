@@ -33,9 +33,20 @@ RAG 链路（切块建库 → 混合检索评测，依赖 Wiki 卡片与 LLM API
 ```bash
 python run_day12_pipeline.py   # 切块 + 嵌入 + Chroma 建库（含 manifest 指纹）
 python run_day13_pipeline.py   # 四轨检索评测（Dense/BM25/RRF/全链路+Rerank）
+python run_day13_pipeline.py --suite dev    # 开发集（可用于调参）
+python run_day13_pipeline.py --suite test   # 封存测试集：只在方案定稿后运行一次，结果不得用于回调参数
+python probe_reranker.py       # 重排服务验收（可复现性/文末换行扰动/排序）
 ```
 
-**配置中心 `configs/pipeline.yaml`**：切片规则（策略/child_size/H2 边界/前言合并/溯源剔除/检索增强注入范围/面包屑）、嵌入与重排模型、检索参数（top_k/rrf_k/融合权重/废止卡排除）。Day12 与 Day13 经 `rag_pipeline.config.build_chunker()` 共用同一切块器实例化路径；Day12 建库时在 manifest 落 `config_fingerprint`，Day13 加载前比对——改 YAML 任何切片参数，旧库自动判失效并重建内存索引。
+**评测题集纪律**（`rag_pipeline/evaluation/suite.py`）：`HARD_BENCHMARK_SUITE`（主题集）与 `DEV_SUITE`（开发集）用于调参与阈值标定；`TEST_SUITE` 在调参前写好并封存，2026-10-14 定稿后已运行一次（快照 `day13_output/_run10_test_once/`）。若再改检索参数，需另出新测试题，不能拿旧测试集回调。`--reject-threshold` / `--rewrite-model` 可临时覆盖配置做对照实验。
+
+**配置中心 `configs/pipeline.yaml`**：切片规则（策略/child_size/H2 边界/前言合并/溯源剔除/检索增强注入范围/面包屑）、嵌入与重排模型（含 `reranker.backend` 后端限定，见下）、检索参数（top_k/rrf_k/融合权重/精排粒度 rerank_granularity/查询改写 query_rewrite/低置信拒答阈值 reject_threshold/废止卡排除）。Day12 与 Day13 经 `rag_pipeline.config.build_chunker()` 共用同一切块器实例化路径；Day12 建库时在 manifest 落 `config_fingerprint`，Day13 加载前比对——改 YAML 任何切片参数，旧库自动判失效并重建内存索引。
+
+**KSP rerank 双后端**：网关把同名 `qwen3-reranker-8b` 随机分流到 Jina 格式（`{"results":...}`，约 70%，疑似未套 Qwen3 提示模板、对文末空白极敏感、判别力差）与 DashScope 格式（`{"output":{"results":...}}`，约 30%，正常）两种后端。`KspReranker` 默认只接受 dashscope 打分（并发对冲；429 只退避不耗重试预算）；单次请求超过约 1 万字会分批发送（dashscope 后端长请求会截断文档、改变分数）。排查 rerank 分数异常先落盘原始响应看格式。
+
+**当前定稿链路**：KSP `qwen3-reranker-8b`（dashscope）+ 父块精排 + 查询改写（`rag_pipeline/retrieval/query_rewriter.py`，deepseek-v4-flash，原查询+改写查询四路召回、精排用改写查询，缓存在 `day13_output/.llm_cache/rewrite`）+ `reject_threshold: 0.40`。阈值与改写模型、重排模型强绑定，任一更换都要在主题集+开发集上重标。
+
+**重排可独立换供应商**（当前默认走 KSP，`.env` 中 `RERANK_*` 已注释停用；百炼 qwen3.7 免费额度已耗尽，启用前需在控制台关闭"仅使用免费额度"）：`.env` 中配置 `RERANK_BASE_URL` + `RERANK_API_KEY`（+ 可选 `RERANK_MODEL`）后，重排直连该服务（不做双后端限定/对冲），嵌入与 LLM 仍走 KSP；只填地址不填 key 时回落 KSP 并提示。阿里云百炼的 OpenAI 兼容重排在 `/compatible-api/v1/reranks`（不是 Chat 用的 `/compatible-mode/v1`），代码会自动换算并探测端点，模型名为 `qwen3-rerank`（分数与 KSP dashscope 后端逐题一致，阈值 0.37 通用；`qwen3.7-text-rerank` 需改阈值 0.64）。换供应商后先跑 `python probe_reranker.py`（可复现性 + 文末换行扰动 + 排序三项验收），再跑 Day13 评测并按报告重标 `reject_threshold`。
 
 ## rag_pipeline 包（RAG 全链路，自 run_day12/13 与 04_wiki_pipeline 抽取整合）
 
@@ -46,8 +57,8 @@ rag_pipeline/
 ├── chunking/          # parent_child（父子切片+expand_to_parents）/ structure_aware（结构感知+朴素基线）/ fingerprint
 ├── embedding.py       # KspEmbeddingProvider + load_ksp_config
 ├── store.py           # VectorStoreManager（全量重建 + manifest）
-├── retrieval/         # tokenizer（分词+纯Python BM25）/ reranker（KSP /rerank+启发式兜底）/ hybrid（双路+RRF+按秩融合+Top-1/2共振保护）
-├── evaluation/        # suite（Day12 TC + Day13 HC/NEG 题集）/ report（主报告+详细召回过程）
+├── retrieval/         # tokenizer（分词+纯Python BM25）/ reranker（KSP或直连 /rerank+启发式兜底）/ query_rewriter（LLM 查询改写）/ hybrid（多路+RRF+按秩融合+Top-1/2共振保护+低置信拒答）
+├── evaluation/        # suite（Day12 TC + Day13 主题集/开发集/封存测试集）/ report（主报告+详细召回过程）
 └── pipelines/         # indexing.py（建库，原 day12）/ evaluation.py（检索评测，原 day13）
 ```
 

@@ -30,7 +30,8 @@ class IndustrialHybridRetriever:
         vector_db: Any,
         corpus_docs: List[Document],
         reranker_model_name: str = "qwen3-reranker-8b",
-        default_exclude: Optional[Dict[str, List[str]]] = None
+        default_exclude: Optional[Dict[str, List[str]]] = None,
+        reranker_backend: str = "dashscope"
     ):
         self.vector_db = vector_db
         self.corpus_docs = corpus_docs
@@ -50,7 +51,7 @@ class IndustrialHybridRetriever:
             self.bm25 = PurePythonBM25(self.tokenized_corpus)
 
         print(f"⚡ [2/3] 正在初始化 Cross-Encoder 交叉重排模型...")
-        self.reranker = KspReranker(model_name=reranker_model_name)
+        self.reranker = KspReranker(model_name=reranker_model_name, backend=reranker_backend)
         print("✅ [3/3] 双路混合检索与重排引擎装配就绪！\n")
 
     def _is_excluded(self, metadata: Dict[str, Any]) -> bool:
@@ -124,10 +125,12 @@ class IndustrialHybridRetriever:
         bm25_results: List[Tuple[Document, int, float]],
         dense_results: List[Tuple[Document, int, float]],
         rrf_k: int = 60,
-        candidate_limit: int = 15
+        candidate_limit: int = 15,
+        extra_results: Optional[List[List[Tuple[Document, int, float]]]] = None
     ) -> List[Tuple[Document, float]]:
         """
         RRF 倒数排名融合算法：只看名次不看异构绝对分。
+        extra_results：额外通道（如改写查询的 BM25/Dense 结果），与前两路同权累加。
 
         公式：RRF_Score(d) = Σ_channels 1/(k + rank_c(d))
         为什么用名次而非绝对分：BM25 分(0~30+)与余弦分(0~1)量纲完全不同，
@@ -143,11 +146,12 @@ class IndustrialHybridRetriever:
             doc_map[key] = doc
             rrf_scores[key] = rrf_scores.get(key, 0.0) + (1.0 / (rrf_k + rank))
 
-        # 累加 Dense 向量通道贡献
-        for doc, rank, _ in dense_results:
-            key = doc.page_content
-            doc_map[key] = doc
-            rrf_scores[key] = rrf_scores.get(key, 0.0) + (1.0 / (rrf_k + rank))
+        # 累加 Dense 向量通道贡献（及改写查询等额外通道）
+        for channel in [dense_results] + list(extra_results or []):
+            for doc, rank, _ in channel:
+                key = doc.page_content
+                doc_map[key] = doc
+                rrf_scores[key] = rrf_scores.get(key, 0.0) + (1.0 / (rrf_k + rank))
 
         sorted_candidates = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)[:candidate_limit]
         return [(doc_map[key], score) for key, score in sorted_candidates]
@@ -177,13 +181,28 @@ class IndustrialHybridRetriever:
         metadata_filter: Optional[Dict[str, Any]] = None,
         fuse_k: int = 10,
         rrf_weight: float = 0.6,
-        rerank_weight: float = 0.4
+        rerank_weight: float = 0.4,
+        reject_threshold: Optional[float] = None,
+        rerank_granularity: str = "child",
+        rewrite_query: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         端到端检索流水线：
         元数据过滤 -> Dense + BM25 双路召回 -> RRF 融合粗排 -> Rerank 交叉精排
         -> 按秩二次加权融合（reranker 排序稳定但绝对分漂移，取名次免疫分漂；
            召回侧稳定故加权 0.6 托底，精排侧 0.4 提供精度增益，小 k 增强名次区分度）
+        -> 低置信拒答（可选）：全部候选的原始 rerank 最高分 < reject_threshold 时返回空结果
+
+        rerank_granularity：
+          - "child"：精排逐个子块打分，最终返回 Top-K 个子块（可能同属一张卡）；
+          - "parent"：子块只负责召回，按父块(整卡)去重后对整卡全文精排，最终返回 Top-K 张卡。
+            子块只是一个 150~300 字的小节，精排看不到整卡上下文，易被小节标题/字面带偏；
+            父块精排让 Cross-Encoder 基于完整"现象-根因-处置"判断相关性。
+            候选不带 parent_content（非父子切片策略）时自动退回 child。
+
+        rewrite_query（可选，由 QueryRewriter 生成）：
+          - 召回：原查询与改写查询各跑 BM25 + Dense，四路 RRF 融合（原查询保底，改写失败不致命）；
+          - 精排：用改写查询打分——改写删掉了用户对原因的错误猜测，避免精排顺着猜测给兄弟卡高分。
         """
         t0 = time.time()
 
@@ -191,15 +210,45 @@ class IndustrialHybridRetriever:
         bm25_res = self.bm25_search(query, top_k=rough_top_k, metadata_filter=metadata_filter)
         dense_res = self.dense_search(query, top_k=rough_top_k, metadata_filter=metadata_filter)
 
-        # Step 2: RRF 倒数排名融合（得到召回侧粗排名次）
-        fused_candidates = self.rrf_fusion(bm25_res, dense_res, rrf_k=rrf_k, candidate_limit=rough_top_k)
+        # Step 1.5（可选）：改写查询再跑一组双路召回
+        extra = []
+        if rewrite_query and rewrite_query != query:
+            extra = [self.bm25_search(rewrite_query, top_k=rough_top_k, metadata_filter=metadata_filter),
+                     self.dense_search(rewrite_query, top_k=rough_top_k, metadata_filter=metadata_filter)]
+
+        # Step 2: RRF 倒数排名融合（得到召回侧粗排名次）；多一组查询则候选上限同比放大
+        fused_candidates = self.rrf_fusion(
+            bm25_res, dense_res, rrf_k=rrf_k,
+            candidate_limit=rough_top_k * (1 + len(extra) // 2), extra_results=extra
+        )
+        rerank_query = rewrite_query or query
+
+        if not fused_candidates:
+            return {"final_results": [], "bm25_count": 0, "dense_count": 0, "latency_ms": 0}
+
+        # Step 2.5（父块精排）：按父块去重，每张卡由其 RRF 名次最高的子块代表，
+        # 卡片顺序即卡级 RRF 名次；代表子块的 metadata 带 parent_content，下游回溯不变
+        rerank_texts = None
+        parent_mode = rerank_granularity == "parent" and all(
+            "parent_content" in doc.metadata for doc, _ in fused_candidates
+        )
+        if parent_mode:
+            seen_parents = set()
+            card_candidates = []
+            for doc, score in fused_candidates:
+                pid = doc.metadata.get("parent_id") or doc.metadata.get("wiki_id")
+                if pid in seen_parents:
+                    continue
+                seen_parents.add(pid)
+                card_candidates.append((doc, score))
+            fused_candidates = card_candidates
+            rerank_texts = [doc.metadata["parent_content"] for doc, _ in fused_candidates]
 
         # Step 3: Cross-Encoder 深度交叉精排（得到精排名次）
         candidate_docs = [doc for doc, _ in fused_candidates]
-        if not candidate_docs:
-            return {"final_results": [], "bm25_count": 0, "dense_count": 0, "latency_ms": 0}
-
-        pairs = [[query, doc.page_content] for doc in candidate_docs]
+        if rerank_texts is None:
+            rerank_texts = [doc.page_content for doc in candidate_docs]
+        pairs = [[rerank_query, txt] for txt in rerank_texts]
         rerank_scores = self.reranker.predict(pairs)
 
         # Step 4: 按秩二次加权融合
@@ -242,7 +291,7 @@ class IndustrialHybridRetriever:
                     break
             return set(seen)
 
-        protected_parents = _top_parent_ids(bm25_res) & _top_parent_ids(dense_res)
+        protected_parents = set.intersection(*[_top_parent_ids(r) for r in [bm25_res, dense_res] + extra])
         if protected_parents and final_results:
             def _pid_of(item: Dict[str, Any]) -> Optional[str]:
                 md = item["metadata"]
@@ -269,10 +318,29 @@ class IndustrialHybridRetriever:
                 final_results[victim_idx] = rescued
                 final_results.sort(key=lambda x: x["fused_score"], reverse=True)
 
+        # 低置信拒答：按秩融合永远能排出 Top-K，库外问题也会硬塞 3 条最像的卡给 LLM。
+        # 这里看的是精排给出的"原始绝对分"——名次只能说明谁更像，绝对分才说明像不像。
+        # 只在本次打分全部来自远程 reranker 时生效：启发式兜底分的量纲不同，套用同一阈值会误杀
+        # （注意要看"本次调用"是否降级，而不是服务整体是否可用——限流等瞬时故障只降级单次）。
+        # ⚠️ 讲义第六篇记录过远程绝对分整体漂移，阈值需结合报告里的原始分分布定期复核。
+        max_rerank = max(rerank_scores) if rerank_scores else 0.0
+        rejected = (
+            reject_threshold is not None
+            and self.reranker.last_used_remote
+            and max_rerank < reject_threshold
+        )
+        if rejected:
+            final_results = []
+
         latency_ms = round((time.time() - t0) * 1000, 2)
 
         return {
             "final_results": final_results,
+            "granularity": "parent" if parent_mode else "child",
+            "rewrite_query": rewrite_query if extra else None,
+            "rejected": rejected,
+            "rerank_remote": self.reranker.last_used_remote,
+            "max_rerank_score": round(max_rerank, 4),
             "scored_all": scored_docs,  # 全部候选的融合明细（供详细召回报告使用）
             "fused_count": len(fused_candidates),
             "bm25_count": len(bm25_res),

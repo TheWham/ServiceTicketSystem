@@ -16,13 +16,16 @@ except ImportError:
     chromadb = None
 
 from ..config import load_config, config_fingerprint, build_chunker
-from ..embedding import load_ksp_config, KspEmbeddingProvider
+from ..embedding import load_ksp_config, load_rerank_config, KspEmbeddingProvider
 from ..chunking.structure_aware import WikiStructureAwareChunker
 from ..chunking.parent_child import ParentChildChunker, expand_to_parents
 from ..chunking.fingerprint import compute_wiki_fingerprint
 from ..retrieval.hybrid import IndustrialHybridRetriever
-from ..evaluation.suite import HARD_BENCHMARK_SUITE
-from ..evaluation.report import _generate_markdown_report, _generate_retrieval_detail_report
+from ..retrieval.query_rewriter import QueryRewriter
+from ..evaluation.suite import HARD_BENCHMARK_SUITE, DEV_SUITE, TEST_SUITE
+from ..evaluation.report import (
+    _generate_markdown_report, _generate_retrieval_detail_report, pick_winners, suite_breakdown
+)
 
 
 def run_evaluation():
@@ -38,12 +41,24 @@ def run_evaluation():
     parser.add_argument("--wiki-dir", default="output/wiki", help="Day 11 Wiki 卡片目录")
     parser.add_argument("--chroma-dir", default="day12_output/chroma_wiki_structured", help="Day 12 结构化向量库目录")
     parser.add_argument("--output-dir", default="day13_output", help="Day 13 产物输出目录")
-    parser.add_argument("--reranker", default="", help="重排模型名称(默认取 KSP_RERANK_MODEL 或 qwen3-reranker-8b)")
+    parser.add_argument("--reranker", default="", help="重排模型名称(默认取 RERANK_MODEL > KSP_RERANK_MODEL > pipeline.yaml)")
+    parser.add_argument("--suite", choices=["main", "dev", "holdout", "test"], default="main",
+                        help="main=主题集；dev=开发集（holdout 为旧名）——二者用于调参/标定；"
+                             "test=封存测试集，只在方案定稿后运行一次。dev/test 报告加后缀另存")
+    parser.add_argument("--reject-threshold", type=float, default=None,
+                        help="临时覆盖 pipeline.yaml 的 reject_threshold（换模型对比用，不改配置文件）")
+    parser.add_argument("--rewrite-model", default=None,
+                        help="临时覆盖 pipeline.yaml 的 rewrite_model；传 none 关闭查询改写（对照实验用）")
     args = parser.parse_args()
+    if args.suite == "holdout":
+        args.suite = "dev"
+    suite = {"main": HARD_BENCHMARK_SUITE, "dev": DEV_SUITE, "test": TEST_SUITE}[args.suite]
+    # 开发集/测试集报告加后缀另存，避免覆盖主题集的正式报告
+    suffix = {"main": "", "dev": "_开发集", "test": "_测试集"}[args.suite]
 
     cfg = load_config()
     # 重排模型名：命令行 > 环境变量/.env > pipeline.yaml > 内置默认
-    reranker_model = args.reranker or load_ksp_config().get("rerank_model") or cfg.reranker_model
+    reranker_model = args.reranker or load_rerank_config().get("model") or cfg.reranker_model
 
     print("=" * 80)
     print("🚀 Day 13 Wiki 术语归一化、双路混合检索与 Rerank 深度重排优化实战流水线")
@@ -142,15 +157,26 @@ def run_evaluation():
         vector_db=vector_db,
         corpus_docs=all_chunks,
         reranker_model_name=reranker_model,
-        default_exclude=cfg.retrieval.default_exclude
+        default_exclude=cfg.retrieval.default_exclude,
+        reranker_backend=cfg.reranker_backend
     )
 
     # 3. 执行 4 轨架构对比大比武评测 (Benchmark)
-    print(f"\n[3/4] 执行 12 组对抗评测：7 硬匹配 + 3 同义改写 + 2 库外负样本（四轨对比大比武）...")
+    suite_name = {"main": "主题集", "dev": "开发集", "test": "测试集（封存，定稿后只运行一次）"}[args.suite]
+    print(f"\n[3/4] 执行{suite_name} {len(suite)} 组对抗评测：{suite_breakdown(suite)}（四轨对比大比武）...")
     rc = cfg.retrieval
+    if args.reject_threshold is not None:
+        rc.reject_threshold = args.reject_threshold
+    if args.rewrite_model is not None:
+        rc.query_rewrite = args.rewrite_model.lower() != "none"
+        rc.rewrite_model = "" if args.rewrite_model.lower() == "none" else args.rewrite_model
+    # 查询改写只作用于轨 4（全链路）；轨 1~3 保持原查询，作为不做改写的对照基线
+    rewriter = QueryRewriter(model=rc.rewrite_model, cache_dir=str(out_path / ".llm_cache" / "rewrite"))         if rc.query_rewrite else None
+    if rewriter:
+        print(f"       -> 查询改写已启用：{rewriter.model}（磁盘缓存 {out_path.name}/.llm_cache/rewrite）")
     eval_records = []
 
-    for test in HARD_BENCHMARK_SUITE:
+    for test in suite:
         qid = test["id"]
         query = test["query"]
         expected = test["expected_facts"]
@@ -200,7 +226,10 @@ def run_evaluation():
         fused_parents = expand_to_parents([d for d, _ in fused]) if expand_to_parents else [d for d, _ in fused]
         fused_ids, fused_rank, fused_hits, fused_false = _track_metrics(fused_parents)
 
-        # 轨 4: 顶级工业级全链路（元数据过滤 + 双路召回 + RRF + Rerank 精排 + 按秩融合兜底）
+        # 轨 4: 顶级工业级全链路（元数据过滤 + [查询改写] + 双路召回 + RRF + Rerank 精排 + 按秩融合兜底）
+        t0 = time.time()
+        rewrite = rewriter.rewrite(query) if rewriter else None
+        rewrite_ms = round((time.time() - t0) * 1000, 1)
         full_res = retriever.hybrid_rerank_search(
             query=query,
             final_top_k=rc.top_k,
@@ -209,13 +238,18 @@ def run_evaluation():
             fuse_k=rc.fuse_k,
             rrf_weight=rc.rrf_weight,
             rerank_weight=rc.rerank_weight,
-            metadata_filter=m_filter
+            metadata_filter=m_filter,
+            reject_threshold=rc.reject_threshold,
+            rerank_granularity=rc.rerank_granularity,
+            rewrite_query=rewrite
         )
         full_docs = full_res["final_results"]
         full_parents = expand_to_parents(full_docs) if expand_to_parents else [Document(page_content=d["content"], metadata=d["metadata"]) for d in full_docs]
         full_ids, full_rank, full_hits, full_false = _track_metrics(full_parents)
         # top1_score 取融合分（按秩加权），用于评估精排 Top-1 的相关度置信度
         top1_score = full_docs[0]["fused_score"] if full_docs else 0.0
+        # 原始 rerank 分：融合分被 1/(fuse_k+1) 封顶，只反映名次；原始分才反映精排的相关度把握
+        top1_rerank = full_docs[0]["rerank_score"] if full_docs else None
 
         def _ids(docs, key="wiki_id"):
             return [d.metadata.get(key, "?") for d in docs]
@@ -254,8 +288,17 @@ def run_evaluation():
             "full_rank": full_rank,
             "full_false": full_false,
             "full_ids": full_ids,
-            "full_time": full_res["latency_ms"],
+            "full_time": round(full_res["latency_ms"] + rewrite_ms, 2),  # 含改写耗时（缓存命中时≈0）
+            "rewrite": rewrite,
+            "rewrite_ok": (rewriter.last_ok if rewriter else None),
+            "rewrite_ms": rewrite_ms,
+            "rewrite_cached": (rewriter.last_cached if rewriter else None),
             "top1_score": top1_score,
+            "top1_rerank": top1_rerank,
+            "max_rerank": full_res.get("max_rerank_score", 0.0),
+            "full_rejected": full_res.get("rejected", False),
+            "rerank_remote": full_res.get("rerank_remote", True),
+            "confusable_with": test.get("confusable_with"),
             "challenge": test["challenge_type"],
             # ===== 详细召回轨迹（供"7组详细召回过程"报告使用）=====
             "trace": {
@@ -272,6 +315,7 @@ def run_evaluation():
                 "protected_ids": [d["metadata"].get("parent_id") or d["metadata"].get("wiki_id")
                                   for d in full_docs if d.get("protected")],
                 "full_fused_scores": [d["fused_score"] for d in full_docs],
+                "full_rerank_scores": [d["rerank_score"] for d in full_docs],
                 "scored_all": full_res.get("scored_all", []),
                 "missed": missed,
             }
@@ -299,12 +343,14 @@ def run_evaluation():
 
     stats = {t: _agg(t) for t in ("dense", "bm25", "fused", "full")}
 
-    # 数据驱动：真实算出哪条链路最优才标 🏆（Recall@3 优先，MRR 次之，事实数兜底）
-    winner = max(stats, key=lambda t: (stats[t]["recall"], stats[t]["mrr"], stats[t]["facts"]))
+    # 数据驱动：真实算出哪条链路最优才标 🏆；多条链路指标完全相同时如实标"并列"
+    winners = pick_winners(stats)
 
     def _rank_str(r, track):
         if not r["target_id"]:
             return "误召回!" if r[f"{track}_false"] else "正确拒答"
+        if track == "full" and r["full_rejected"]:
+            return "✗误拒答"
         rank = r[f"{track}_rank"]
         return f"第{rank}位" if rank else "✗未召回"
 
@@ -323,13 +369,37 @@ def run_evaluation():
         s = stats[tag]
         base = (f"R@3 {s['hit_n']}/{len(positives)} MRR {s['mrr']:.2f} "
                 f"事实 {s['facts']}/{total_expected} 误召回 {s['false_n']}/{len(negatives)}")
-        return f"🏆 {base}" if tag == winner else base
+        if tag not in winners:
+            return base
+        return f"🏆 {base}" if len(winners) == 1 else f"🏆(并列) {base}"
 
-    verdict = "达标" if stats[winner]["recall"] >= 0.8 else "未达标"
+    verdict = "达标" if stats[winners[0]]["recall"] >= 0.8 else "未达标"
     print(f"{'汇总':<8}{'(卡级口径)':<12}{'':<16}"
           f"{_mk('dense'):<10}\n{'':<36}{_mk('bm25'):<10}\n{'':<36}{_mk('fused'):<10}\n"
           f"{'':<36}{_mk('full'):<10}\n{'':<36}判定: {verdict}")
     print("=" * 105)
+
+    # 原始 rerank 分分布：用于标定 reject_threshold（正样本最低分应高于负样本最高分）
+    pos_max = [r["max_rerank"] for r in positives]
+    neg_max = [r["max_rerank"] for r in negatives]
+    if pos_max:
+        print(f"原始 rerank 最高分 · 正样本: min {min(pos_max):.4f} / max {max(pos_max):.4f}"
+              + (f" · 负样本: max {max(neg_max):.4f}" if neg_max else "")
+              + f" · 当前 reject_threshold = {rc.reject_threshold}")
+    bs = retriever.reranker.backend_stats
+    if bs["calls"]:
+        via = (f"KSP 网关·限定后端 {cfg.reranker_backend}" if retriever.reranker.provider == "ksp"
+               else f"直连 {retriever.reranker.endpoint.split('//')[-1].split('/')[0]}")
+        print(f"rerank {via}：{bs['calls']} 次打分共发起 {bs['attempts']} 次请求"
+              f"（平均 {bs['attempts'] / bs['calls']:.1f} 次/打分，限流 {bs['rate_limited']} 次）")
+    if rewriter:
+        rw_ms = [r["rewrite_ms"] for r in eval_records if r["rewrite_cached"] is False]  # 只统计真实 LLM 调用
+        failed = [r["id"] for r in eval_records if r["rewrite_ok"] is False]
+        print(f"查询改写：{len(rw_ms)} 次实际调用" + (f"，平均 {sum(rw_ms) / len(rw_ms):.0f}ms" if rw_ms else "（全部命中缓存）")
+              + (f"；失败回落原查询：{', '.join(failed)}" if failed else ""))
+    degraded = [r["id"] for r in eval_records if not r["rerank_remote"]]
+    if degraded:
+        print(f"⚠️ 以下题目的精排降级为启发式打分，全链路结果不可与远程精排比较：{', '.join(degraded)}")
 
     # 4. 生成评测实验报告 Markdown 落盘
     print(f"\n[4/4] 生成并落盘评测报告文档...")
@@ -341,15 +411,18 @@ def run_evaluation():
         "fused": round(sum(r["fused_time"] for r in eval_records) / n_q, 1),
         "full": round(sum(r["full_time"] for r in eval_records) / n_q, 1),
     }
-    report_file = out_path / "Day13_混合检索与Rerank重排评测报告.md"
+    report_file = out_path / f"Day13_混合检索与Rerank重排评测报告{suffix}.md"
     _generate_markdown_report(
         report_file, eval_records, stats, total_expected,
         n_pos=len(positives), n_neg=len(negatives),
-        reranker_name=reranker_model, avg_latency=avg_latency
+        reranker_name=reranker_model, avg_latency=avg_latency,
+        reject_threshold=rc.reject_threshold, rerank_granularity=rc.rerank_granularity,
+        suite_label=suite_name
     )
     # 同时生成"对抗题详细召回过程"报告（父子切片 Small-to-Big 全程轨迹）
-    detail_file = out_path / "Day13_对抗题详细召回过程.md"
-    _generate_retrieval_detail_report(detail_file, eval_records, reranker_name=reranker_model, corpus=all_chunks)
+    detail_file = out_path / f"Day13_对抗题详细召回过程{suffix}.md"
+    _generate_retrieval_detail_report(detail_file, eval_records, reranker_name=reranker_model, corpus=all_chunks,
+                                      rerank_granularity=rc.rerank_granularity, suite_label=suite_name)
 
     print(f"\n🎉 评测报告已成功落盘至：{report_file}")
     print("=" * 80)

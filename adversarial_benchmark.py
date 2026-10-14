@@ -28,7 +28,9 @@ warnings.filterwarnings("ignore")
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 from run_day12_pipeline import WikiStructureAwareChunker, KspEmbeddingProvider
-from run_day13_pipeline import IndustrialHybridRetriever, load_ksp_config
+from run_day13_pipeline import IndustrialHybridRetriever
+from rag_pipeline.config import load_config
+from rag_pipeline.embedding import load_rerank_config
 
 # ==============================================================================
 # 干扰卡：模拟"旧版废止"知识（同关键词、冲突事实、带 version/status 元数据）
@@ -128,8 +130,13 @@ def main():
     emb = KspEmbeddingProvider(cache_dir="day12_output/.emb_cache")
     # 内存临时库，绝不覆盖持久化的真实向量库
     db = Chroma.from_documents(documents=corpus, embedding=emb, collection_name="adv_bench")
-    reranker_model = load_ksp_config().get("rerank_model", "Kimi3-reranker-8b")
-    retriever = IndustrialHybridRetriever(vector_db=db, corpus_docs=corpus, reranker_model_name=reranker_model)
+    # 重排模型/后端与主链路同源（RERANK_* 或 KSP_*，及 pipeline.yaml 的 reranker.backend）。
+    # 不传 default_exclude：本压测需要"无过滤"对照组；拒答阈值按父块精排标定，
+    # 本脚本用结构感知切块（无父块）故不启用
+    cfg = load_config()
+    reranker_model = load_rerank_config().get("model") or cfg.reranker_model
+    retriever = IndustrialHybridRetriever(vector_db=db, corpus_docs=corpus, reranker_model_name=reranker_model,
+                                          reranker_backend=cfg.reranker_backend)
 
     records = []
     print(f"\n{'场景':<12}{'链路':<9}{'不加过滤':<18}{'加 version=v1.0 过滤':<22}")
