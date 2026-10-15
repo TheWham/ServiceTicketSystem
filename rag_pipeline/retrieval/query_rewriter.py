@@ -1,13 +1,4 @@
-"""查询改写：把用户口语问题改写为"实际现象 + 规范术语"，供混合检索与精排使用。
-
-为什么需要（开发集实测）：
-  - 用户常把自己对原因的猜测写进问题（"是不是开不了机了""是不是带宽被占了"），
-    Cross-Encoder 会顺着猜测把兄弟卡打高分，正确卡反被压到第 2；
-  - 用户的口语描述与卡片术语错位（"撤销对计算机所做的更改" vs 卡片写的"回滚"），
-    Dense/BM25 前 15 个候选里根本没有目标卡，精排无从救起。
-改写只做两件事：删掉猜测、补上规范术语。原查询仍参与召回（多查询 RRF），
-改写失败时回落原查询，检索链路不因 LLM 故障中断。
-"""
+"""查询改写：把用户口语问题改写为"实际现象 + 规范术语"，供混合检索与精排使用。"""
 
 import hashlib
 import json
@@ -28,7 +19,6 @@ class QueryRewriter:
 
     def __init__(self, model: str = "", cache_dir: Optional[str] = None):
         cfg = load_llm_config()
-        # 默认用清洗模型（deepseek-v4-flash，快）；kimi-k3 等推理模型改写延迟过高
         self.model = model or cfg["clean_model"]
         self.cache_dir = Path(cache_dir) if cache_dir else None
         if self.cache_dir:
@@ -36,10 +26,11 @@ class QueryRewriter:
         self.client = None
         self.last_ok = False
         self.last_cached = False
-        if cfg["api_key"] and cfg["base_url"]:
+        api_key = cfg.get("api_key", "")
+        if api_key and not api_key.startswith("sk-replace-") and api_key != "sk-..." and cfg.get("base_url"):
             try:
                 from openai import OpenAI
-                self.client = OpenAI(api_key=cfg["api_key"], base_url=cfg["base_url"], timeout=30)
+                self.client = OpenAI(api_key=api_key, base_url=cfg["base_url"], timeout=30)
             except ImportError:
                 print("       ⚠️ 未安装 openai 包，查询改写不可用，回落原查询")
 
@@ -59,7 +50,7 @@ class QueryRewriter:
         if self.client is None:
             self.last_ok = False
             return query
-        for _ in range(2):  # 偶发空响应：重试一次
+        for _ in range(2):
             try:
                 resp = self.client.chat.completions.create(
                     model=self.model,

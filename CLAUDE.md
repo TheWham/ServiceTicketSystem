@@ -46,7 +46,7 @@ rag_pipeline/
 ├── chunking/          # parent_child（父子切片+expand_to_parents）/ structure_aware（结构感知+朴素基线）/ fingerprint
 ├── embedding.py       # KspEmbeddingProvider + load_embedding_config
 ├── store.py           # VectorStoreManager（全量重建 + manifest）
-├── retrieval/         # tokenizer（分词+纯Python BM25）/ reranker（KSP /rerank+启发式兜底）/ hybrid（双路+RRF+按秩融合+Top-1/2共振保护）
+├── retrieval/         # tokenizer（分词+纯Python BM25）/ reranker（KSP /rerank+启发式兜底）/ hybrid（双路+RRF+按秩融合+置信度门控+Top-1/2共振保护）
 ├── evaluation/        # suite（Day12 TC + Day13 HC/NEG 题集）/ report（主报告+详细召回过程）
 └── pipelines/         # indexing.py（建库，原 day12）/ evaluation.py（检索评测，原 day13）
 ```

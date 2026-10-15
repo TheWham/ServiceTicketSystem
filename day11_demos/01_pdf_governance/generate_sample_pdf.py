@@ -5,17 +5,16 @@
 """
 
 import os
-import fitz  # PyMuPDF
 
 
 def create_sample_pdf(output_path: str) -> None:
+    import fitz  # PyMuPDF（按需导入，已有样本文件时无需强制依赖）
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     doc = fitz.open()
 
     # ==================== 第 1 页：原生矢量文字与表格页 ====================
     page1 = doc.new_page(width=595, height=842)  # A4 尺寸 (pt)
 
-    # 1. 标题与正文
     page1.insert_text((50, 60), "XX 集团数字化转型专项预算与决议报告", fontname="china-s", fontsize=16)
     page1.insert_text((50, 95), "签发部门：集团战略与信息化委员会    日期：2024-10-15", fontname="china-s", fontsize=10)
     page1.insert_text(
@@ -31,10 +30,9 @@ def create_sample_pdf(output_path: str) -> None:
         fontsize=11,
     )
 
-    # 2. 绘制规范矢量表格（有边框线，方便 pdfplumber 精准识别 cell）
     table_x0, table_y0 = 50, 180
     row_height = 28
-    col_widths = [110, 160, 115, 110]  # 总宽 495
+    col_widths = [110, 160, 115, 110]
     headers = ["科目代码", "费用核算大类", "审批预算(万元)", "合规评级"]
     data = [
         ["RD-2024-01", "核心大模型微调算力", "1,250.00", "准予立项"],
@@ -45,7 +43,6 @@ def create_sample_pdf(output_path: str) -> None:
 
     all_rows = [headers] + data
 
-    # 绘制表格边框和文字
     for row_idx, row_data in enumerate(all_rows):
         cur_y0 = table_y0 + row_idx * row_height
         cur_y1 = cur_y0 + row_height
@@ -77,11 +74,9 @@ def create_sample_pdf(output_path: str) -> None:
     page2.insert_text((50, 230), "2. 履约保证金总额为人民币 100,000.00 元整，通过对公账户转账交付。", fontname="china-s", fontsize=10)
     page2.insert_text((50, 260), "3. 指定结算账号：6222 0210 0012 3456 789，开户行为工行光谷支行。", fontname="china-s", fontsize=10)
 
-    # 将 page2 渲染为位图图片
     pix = page2.get_pixmap(dpi=150)
     img_bytes = pix.tobytes("png")
 
-    # 移除 page2，新建一个只插入纯图片的页面（模拟真实的扫描 PDF）
     doc.delete_page(1)
     scanned_page = doc.new_page(width=595, height=842)
     img_rect = fitz.Rect(0, 0, 595, 842)

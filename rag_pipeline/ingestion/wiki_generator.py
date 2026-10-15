@@ -46,6 +46,7 @@ def render_frontmatter(entry: Entry, meta: Dict[str, Any],
     if meta.get("effective_date"):
         lines.append(f"effective_date: {_yaml_scalar(meta['effective_date'])}")
     lines.append(f"version: {_yaml_scalar(meta.get('version') or 'v1.0')}")
+    lines.append(f"status: {_yaml_scalar(meta.get('status') or '现行')}")
     lines.append(f"replaces: {_yaml_str_list(meta.get('replaces') or [])}")
     lines.append(f"entities: {_yaml_str_list(meta.get('entities') or [])}")
     lines.append(f"keywords: {_yaml_str_list(entry.keywords)}")
@@ -55,6 +56,15 @@ def render_frontmatter(entry: Entry, meta: Dict[str, Any],
         lines.append(f"conflict_note: {_yaml_scalar(meta['conflict_note'])}")
     lines.append("---")
     return "\n".join(lines)
+
+
+def _render_md_table(rows: List[List[str]]) -> str:
+    header = [c.replace("\n", " ") for c in rows[0]]
+    md = "| " + " | ".join(header) + " |\n"
+    md += "| " + " | ".join(["---"] * len(header)) + " |\n"
+    for row in rows[1:]:
+        md += "| " + " | ".join(c.replace("\n", "<br>") for c in row) + " |\n"
+    return md
 
 
 def render_card(entry: Entry, meta: Dict[str, Any],
@@ -83,16 +93,18 @@ def render_card(entry: Entry, meta: Dict[str, Any],
                     parts.append(f"- {ln}" if not ln.startswith(("|", "#", "-", ">")) else ln)
         parts.append("")
 
-    for para in entry.body_paras:
-        parts.append(para + "\n")
-
-    for rows in entry.tables:
-        header = [c.replace("\n", " ") for c in rows[0]]
-        md = "| " + " | ".join(header) + " |\n"
-        md += "| " + " | ".join(["---"] * len(header)) + " |\n"
-        for row in rows[1:]:
-            md += "| " + " | ".join(c.replace("\n", "<br>") for c in row) + " |\n"
-        parts.append(md)
+    # 若包含保序块（且未全部转入"正文"字段），严格按原始物理顺序交替渲染段落与表格
+    if entry.body_blocks and "正文" not in entry.fields:
+        for blk in entry.body_blocks:
+            if blk.kind == "table" and blk.rows:
+                parts.append(_render_md_table(blk.rows))
+            elif blk.text:
+                parts.append(blk.text + "\n")
+    else:
+        for para in entry.body_paras:
+            parts.append(para + "\n")
+        for rows in entry.tables:
+            parts.append(_render_md_table(rows))
 
     if entry.remark:
         parts.append(f"> 📝 备注：{entry.remark}\n")

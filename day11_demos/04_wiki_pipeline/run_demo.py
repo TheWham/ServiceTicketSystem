@@ -17,15 +17,13 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-# Windows 控制台默认 GBK 编码，直接 print emoji 会抛 UnicodeEncodeError，必须重配为 UTF-8
 sys.stdout.reconfigure(encoding="utf-8")
 
-# 实现已迁移至 rag_pipeline 包；本目录位于 day11_demos/ 下，向上两级定位仓库根加入 sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from rag_pipeline.ingestion.clean_pipeline import CleanPipeline                  # Step 1：规则物理清洗引擎
-from rag_pipeline.ingestion.llm_synthesizer import LlmSynthesizer, load_api_config  # Step 2/3：双模型 LLM 清洗与萃取
-from rag_pipeline.ingestion.wiki_generator import generate_wiki                  # Step 4：Wiki 卡片渲染落盘
+from rag_pipeline.ingestion.clean_pipeline import CleanPipeline
+from rag_pipeline.ingestion.llm_synthesizer import LlmSynthesizer, load_api_config
+from rag_pipeline.ingestion.wiki_generator import generate_wiki
 
 DOCX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "IT常见问题RAG知识库.docx")
 OUTPUT_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "artifacts", "output")
@@ -45,10 +43,8 @@ def main():
 
     banner("🚀 [Demo 4] IT 知识库文档清洗 + LLM Wiki 知识卡片生成")
 
-    # ---------- Step 1: Layer 1 物理清洗（纯规则，零成本零幻觉） ----------
     banner("📄 [Step 1] Layer 1 数据物理清洗（版面解析 + 规则清洗 + 条目切分）")
     pipeline = CleanPipeline(DOCX_PATH)
-    # run() 内部调用链：parse_blocks() 保序解析 -> clean() 规则 R1-R8 -> split_entries() 切条目 -> 落盘
     entries, stats = pipeline.run(os.path.join(OUTPUT_ROOT, "cleaned"))
     for k, v in stats.items():
         print(f"   [规则统计] {k}: {v}")
@@ -59,20 +55,18 @@ def main():
         entries = entries[: args.limit]
         print(f"   [调试模式] 仅处理前 {args.limit} 个条目")
 
-    # 初始化 LLM 客户端（离线或无 key 时为 None，Step 2/3 自动降级为纯规则模式）
     synthesizer = None
     cfg = None
     if not args.offline:
-        cfg = load_api_config()  # key 来源：环境变量 LLM_API_KEY > 项目根 .env
-        if not cfg["api_key"]:
-            print("\n   [警告] 未找到 LLM_API_KEY，自动降级为离线模式")
+        cfg = load_api_config()
+        api_key = cfg.get("api_key", "")
+        if not api_key or api_key.startswith("sk-replace-") or api_key == "sk-...":
+            print("\n   [警告] 未找到有效 LLM_API_KEY，自动降级为离线模式")
         else:
             print(f"\n   [配置] base_url={cfg['base_url']}")
             print(f"   [配置] 清洗模型={cfg['clean_model']} | 精修模型={cfg['chat_model']}")
-            # cache_dir 开启磁盘缓存：每条结果存 output/.llm_cache/{code}.json，重跑零 API 调用
             synthesizer = LlmSynthesizer(cfg, cache_dir=os.path.join(OUTPUT_ROOT, ".llm_cache"))
 
-    # ---------- Step 2: LLM 语义级清洗（deepseek-v4-flash，便宜模型干粗活） ----------
     banner(f"🧹 [Step 2] LLM 语义级清洗（{cfg['clean_model'] if synthesizer else '离线'}：错别字修正 + 术语规范化 + 排版规整）")
     if synthesizer is None:
         print("   [离线模式] 跳过 LLM 清洗，直接使用 Layer 1 规则清洗结果")
@@ -80,13 +74,11 @@ def main():
         clean_ok = clean_fallback = fix_total = 0
         cleaned_entries = []
         for i, e in enumerate(entries, 1):
-            result = synthesizer.clean_entry(e)  # 内部：查缓存 -> _chat_json -> 重试 -> 规则兜底
+            result = synthesizer.clean_entry(e)
             fix_total += len(result.get("fixes", []))
-            # "备注" 字段从清洗结果中拆回填 remark；"正文" 字段回填后清空 body_paras 防止重复渲染
             fields = dict(result["fields"])
             remark = fields.pop("备注", e.remark)
             body = [] if "正文" in fields else e.body_paras
-            # dataclasses.replace：不改动原对象，生成清洗后的新条目（不可变数据风格，便于回溯）
             cleaned_entries.append(replace(e, fields=fields, remark=remark, body_paras=body))
             if result.get("clean_source") == "llm":
                 clean_ok += 1
@@ -99,9 +91,8 @@ def main():
         entries = cleaned_entries
         print(f"\n   [OK] 清洗完成：LLM 成功 {clean_ok} 条，回退 {clean_fallback} 条，累计修改 {fix_total} 处")
 
-    # ---------- Step 3: Layer 2 LLM 知识治理精修（kimi-k3，聪明模型干细活） ----------
     banner(f"🤖 [Step 3] LLM Wiki 知识治理精修（{cfg['chat_model'] if synthesizer else '离线'}：frontmatter 元数据萃取）")
-    metas = {}  # {条目代码: frontmatter 元数据 dict}
+    metas = {}
     if synthesizer is None:
         print("   [离线模式] 跳过 LLM 萃取，全部使用规则兜底元数据（meta_source=rule）")
         for e in entries:
@@ -109,10 +100,9 @@ def main():
     else:
         llm_ok = llm_fallback = 0
         for i, e in enumerate(entries, 1):
-            # 与 clean_entry 同构：缓存 -> _chat_json(kimi-k3) -> 重试 -> 兜底
             meta = synthesizer.extract_frontmatter(e)
             metas[e.code] = meta
-            if meta.get("meta_source") == "llm":  # meta_source 标记来源，兜底产物可审计筛出
+            if meta.get("meta_source") == "llm":
                 llm_ok += 1
                 print(f"   [{i:>2}/{len(entries)}] ✅ {e.code} -> {meta.get('title')}")
             else:
@@ -129,7 +119,6 @@ def main():
         else:
             print("   [版本冲突] 未检出冲突条款（符合预期）")
 
-    # ---------- Step 4: Wiki 卡片落盘 ----------
     banner("📚 [Step 4] 生成企业标准 Wiki 知识卡片库（YAML Frontmatter + 溯源）")
     paths = generate_wiki(entries, metas, os.path.join(OUTPUT_ROOT, "wiki"))
     print(f"   [OK] 已生成 {len(paths)} 个 Markdown 文件（含 _index.md 总索引）")

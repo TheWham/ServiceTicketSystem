@@ -113,6 +113,12 @@ class RetrievalConfig:
     default_exclude: Dict[str, List[str]] = field(
         default_factory=lambda: {"wiki_status": ["已废止", "已下线"]}
     )
+    # 置信度动态门控：按本次 rerank 打分分布决定给精排多大话语权（详见 retrieval/hybrid.py Step 4）
+    gate_enabled: bool = False                              # 关闭时行为与固定权重完全一致
+    gate_min_score: float = 0.55                            # 高置信门槛①：top-1 原始 rerank 分 ≥ 此值
+    gate_min_margin: float = 0.10                           # 高置信门槛②：top-1 与 top-2 分差 ≥ 此值
+    gate_conf_weights: List[float] = field(default_factory=lambda: [0.35, 0.65])
+    gate_low_weights: List[float] = field(default_factory=lambda: [0.65, 0.35])
 
 
 @dataclass
@@ -157,6 +163,17 @@ def load_config(path: Optional[str] = None) -> PipelineConfig:
         reranker_model=(raw.get("reranker") or {}).get("model", "qwen3-reranker-8b"),
         reranker_backend=(raw.get("reranker") or {}).get("backend", "dashscope"),
     )
+
+
+def build_gate(rc: "RetrievalConfig") -> Dict[str, Any]:
+    """把 RetrievalConfig 里的门控字段打包成 hybrid_rerank_search(gate=...) 的参数。"""
+    return {
+        "enabled": rc.gate_enabled,
+        "min_score": rc.gate_min_score,
+        "min_margin": rc.gate_min_margin,
+        "conf_weights": tuple(rc.gate_conf_weights),
+        "low_weights": tuple(rc.gate_low_weights),
+    }
 
 
 def config_fingerprint(cfg: PipelineConfig) -> str:

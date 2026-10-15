@@ -4,7 +4,7 @@ from datetime import date
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from langchain_core.documents import Document
+from ..chunking.structure_aware import Document
 
 
 TRACK_LABELS = {"dense": "链路 A：纯 Dense", "bm25": "链路 B：纯 BM25",
@@ -47,13 +47,7 @@ def _generate_retrieval_detail_report(
     rerank_granularity: str = "child",
     suite_label: str = "主题集"
 ):
-    """生成"对抗题详细召回过程"报告。
-
-    按"父子切片 Small-to-Big"的完整链路，逐题展示四个阶段的召回轨迹：
-      ① Dense 子块匹配 -> ② BM25 子块匹配 -> ③ RRF 融合 -> ④ Rerank精排+按秩融合
-    并标注每题命中的黄金考点、漏掉项、正确答案卡片，便于汇报讲解。
-    """
-    # ground truth：评测集显式标注的目标卡 id（负样本为 None，表示库内无答案）
+    """生成"对抗题详细召回过程"报告。"""
     def ground_truth(record):
         return [record["target_id"]] if record.get("target_id") else []
 
@@ -65,7 +59,7 @@ def _generate_retrieval_detail_report(
         f"精排粒度：{GRANULARITY_NAMES.get(rerank_granularity, rerank_granularity)}。",
         "",
         "> 说明：每题展示四阶段——① Dense 子块召回 ② BM25 子块召回 ③ RRF 融合 ④ Rerank精排+按秩融合，",
-        "> 卡片 id 前的 `→` 表示“命中子块后回溯到的父块”。",
+        "> 卡片 id 前的 `→` 表示“命中子块后回溯到的父块（去重取 Top-3 父卡）”。",
         "",
         "---",
     ]
@@ -109,7 +103,7 @@ def _generate_retrieval_detail_report(
         lines.append("| :--- | :--- | :--- | :--- |")
         lines.append(f"| ① Dense 子块召回 | {'、'.join(tr['dense_child_ids'])} → **{'、'.join(tr['dense_parent_ids'])}** | {tr['dense_scores']} | {_fmt_rank(r['dense_rank'], r['dense_false'])} |")
         lines.append(f"| ② BM25 子块召回 | {'、'.join(tr['bm25_child_ids'])} → **{'、'.join(tr['bm25_parent_ids'])}** | {tr['bm25_scores']} | {_fmt_rank(r['bm25_rank'], r['bm25_false'])} |")
-        lines.append(f"| ③ RRF 融合 | — → **{'、'.join(tr['rrf_parent_ids'])}** | — | {_fmt_rank(r['fused_rank'], r['fused_false'])} |")
+        lines.append(f"| ③ RRF 融合 | {'、'.join(tr['rrf_child_ids'])} → **{'、'.join(tr['rrf_parent_ids'])}** | — | {_fmt_rank(r['fused_rank'], r['fused_false'])} |")
         if r.get("full_rejected"):
             full_cell = f"— → **（拒答：候选最高原始分 {r['max_rerank']} < 阈值）**"
             score_cell = f"原始分最高 {r['max_rerank']}"
@@ -131,7 +125,6 @@ def _generate_retrieval_detail_report(
         lines.append(f"- **挑战点**：{r['challenge']}")
         lines.append("")
 
-    # 末尾汇总四轨卡级指标（与主报告同口径，由 records 现算，保证两份报告不打架）
     pos = [r for r in records if r["target_id"]]
     neg = [r for r in records if not r["target_id"]]
     n_pos = max(len(pos), 1)
@@ -180,7 +173,6 @@ def _generate_markdown_report(
     rerank_granularity: str = "child",
     suite_label: str = "主题集"
 ):
-    # 数据驱动：真实最优链路才标 🏆；指标完全相同时如实标"并列"，不默认偏向第一条
     winners = pick_winners(stats)
     tied = len(winners) > 1
     best = stats[winners[0]]
@@ -205,12 +197,10 @@ def _generate_markdown_report(
         return f"{stats[tag]['false_n']} / {n_neg}"
 
     def lat(tag):
-        # 真实平均端到端延迟（由调用方从每题实测均值传入），不再写死
         v = (avg_latency or {}).get(tag)
         return f"{v}ms" if v is not None else "-"
 
     full = stats["full"]
-    # 全链路是否只靠"负样本拒答"胜出（Recall/MRR/事实与某条链路打平）
     wins_by_reject = any(
         (round(stats[t]["recall"], 6), round(stats[t]["mrr"], 6), stats[t]["facts"])
         == (round(full["recall"], 6), round(full["mrr"], 6), full["facts"])
@@ -236,11 +226,11 @@ def _generate_markdown_report(
         d_note = ("RRF 与 Rerank 名次加权融合后兼顾召回与精度；当事实分散于多个小节时，"
                   "融合排序以召回侧信号托底，避免正确切片被挤出 Top-3")
         concl3 = (f"{reranker_name} 精排提升了 Top-1 相关度精度；再将其名次与召回侧 RRF 名次按秩加权融合"
-                  f"（召回侧 0.6 / 精排侧 0.4，小 k 增强区分度）后，即便精排在个别多约束查询上误判，"
+                  f"（融合权重经置信度门控：高置信放权精排 0.35/0.65，低置信或启发式降级时召回侧托底 0.65/0.35，"
+                  f"小 k 增强区分度）后，即便精排在个别多约束查询上误判，"
                   f"召回侧的稳定名次也能把正确切片托住——这正是工业实践中 rerank 主精度、RRF 主召回、融合兜底的工程取舍。"
                   f"本轮实测中 {label} 的卡级指标反而领先，如实记录，不做美化。")
 
-    # 双路互补：按本轮真实名次统计"一路排第 1、另一路掉出第 1"的题，不再写死题号
     pos_all = [r for r in records if r["target_id"]]
     bm25_only = [r["id"] for r in pos_all if r["bm25_rank"] == 1 and r["dense_rank"] != 1]
     dense_only = [r["id"] for r in pos_all if r["dense_rank"] == 1 and r["bm25_rank"] != 1]
@@ -254,7 +244,6 @@ def _generate_markdown_report(
         parts.append(f"RRF 未排第 1、全链路纠正到第 1：{'、'.join(full_rescue)}（改写/精排增益）")
     complement_txt = "；".join(parts) + "。" if parts else "本轮各通道在正样本上名次一致，未观测到互补补位。"
 
-    # 原始 rerank 分分布：标定低置信拒答阈值的依据（正样本最低分应明显高于负样本最高分）
     pos_recs = [r for r in records if r["target_id"]]
     neg_recs = [r for r in records if not r["target_id"]]
     th_txt = f"`{reject_threshold}`" if reject_threshold is not None else "未启用（`retrieval.reject_threshold: null`）"
@@ -300,19 +289,17 @@ def _generate_markdown_report(
 
 **所属项目**：企业 IT 常见问题知识库 RAG 检索基座工程
 **实验日期**：{date.today().isoformat()}
-**知识库**：《IT常见问题RAG知识库.docx》→ 清洗重构的 35 张 Wiki 卡片 → 结构感知切块
+**知识库**：《IT常见问题RAG知识库.docx》→ 清洗重构的 35 张 Wiki 卡片 → 父子切片（Small-to-Big）
 **测试引擎**：Chroma 向量数据库 + BM25Okapi 倒排索引 + RRF (k=60) + {reranker_name} (KSP /rerank，精排粒度：{GRANULARITY_NAMES.get(rerank_granularity, rerank_granularity)})
 **评测集**：{suite_label}　**构成**：{n_pos} 道正样本 + {n_neg} 道负样本（{suite_breakdown(records)}）
 **综合最优链路**：{label}（Recall@3 {best['recall']:.1%}, MRR {best['mrr']:.2f}）
 
-> **指标口径说明（为什么不再是 100%）**：本版评测已废弃旧的"Top-3 拼接文本子串覆盖"口径——
-> 该口径下高频通用词（"时间/地址/停止"等）在错误卡片上也会误命中，四轨必然满分、无区分度。
-> 现行口径：
-> - **卡级 Recall@3**：目标卡 `wiki_id` 是否进入回溯父块 Top-3；
-> - **MRR**：目标卡名次的倒数均值，区分"排第 1"与"排第 3"；
+> **指标口径说明（四轨严格对齐父卡 Top-3）**：
+> - **卡级 Recall@3**：四条链路均先取 `rough_top_k=15` 个候选子块，经 `expand_to_parents` 去重回溯后取前 3 张不重复的父卡，判断目标卡 `wiki_id` 是否进入 Top-3；
+> - **MRR**：目标卡在去重父卡序列中的名次倒数均值；
 > - **事实覆盖（限目标卡）**：黄金考点只在检索到的目标卡正文内计数，目标卡未召回记 0；
 > - **负样本误召回**：库外问题若 Top-3 命中预设陷阱卡，记一次误召回；全链路低置信拒答（返回空）不算误召回；
-> - **近邻混淆题**：query 字面贴近兄弟卡，额外报告兄弟卡名次，用于观察精排能否把兄弟卡压到目标卡之后。
+> - **近邻混淆题**：query 字面贴近兄弟卡，额外报告兄弟卡在 Top-3 父卡中的名次。
 
 ---
 
@@ -321,8 +308,8 @@ def _generate_markdown_report(
 | 检索机制链路架构 | 卡级 Recall@3 | MRR | 事实覆盖(限目标卡) | 负样本误召回 | 平均端到端延迟 | 架构技术定性分析 |
 | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
 | **链路 A：纯 Dense 向量检索** | {crown('dense')} | {mrr_s('dense')} | {fact_s('dense')} | {false_s('dense')} | {lat('dense')} | 命令/错误码/端口/事件ID 等专有编号易漂移脱靶；同义改写题是其主场 |
-| **链路 B：纯 BM25 关键词检索** | {crown('bm25')} | {mrr_s('bm25')} | {fact_s('bm25')} | {false_s('bm25')} | {lat('bm25')} | 得益于 Day 11 术语归一化，硬编号命中佳；但同义改写与抽象因果句检索受限 |
-| **链路 C：双路粗排 + RRF 融合** | {crown('fused')} | {mrr_s('fused')} | {fact_s('fused')} | {false_s('fused')} | {lat('fused')} | 兼得两路之长，多样性融合召回率高，但未做精细相关度重排 |
+| **链路 B：纯 BM25 关键词检索** | {crown('bm25')} | {mrr_s('bm25')} | {fact_s('bm25')} | {false_s('bm25')} | {lat('bm25')} | 得益于术语归一化与停用词/标点过滤，硬编号命中佳；但同义改写检索受限 |
+| **链路 C：双路粗排 + RRF 融合** | {crown('fused')} | {mrr_s('fused')} | {fact_s('fused')} | {false_s('fused')} | {lat('fused')} | 兼得两路之长，多样性融合召回率高，但未做精细相关度重排与低置信拒答 |
 | **链路 D：顶级全链路 (+ {reranker_name})** | {crown('full')} | {mrr_s('full')} | {fact_s('full')} | {false_s('full')} | {lat('full')} | {d_note} |
 
 ---
@@ -385,13 +372,10 @@ def _generate_markdown_report(
 3. **Cross-Encoder 精排的定位**：
    {concl3}
 4. **评测方法论沉淀**：
-   本轮评测弃用了"子串覆盖率"这一饱和口径，改用卡级 Recall@3 / MRR / 限目标卡事实覆盖 + 负样本误召回四项指标，
-   并补充同义改写题与库外负样本题——题库与语料同源、期望词含高频通用词时，任何链路的"100%"都不可信。
+   本轮评测将四条链路严格对齐到“Top-15 粗排候选 → 父卡去重 Top-3”的同口径下比较，改用卡级 Recall@3 / MRR / 限目标卡事实覆盖 + 负样本误召回四项指标。
 5. **技术承接预告**：
    - **Day 14**：我们将基于此高召回检索基座，构建企业级自动化**黄金问题集（Golden Dataset）与 RAGAS/TruLens 评测流水线**！
 """
 
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(content)
-
-

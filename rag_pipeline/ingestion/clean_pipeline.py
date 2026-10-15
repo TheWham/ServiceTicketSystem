@@ -2,8 +2,8 @@
 Layer 1 数据物理清洗层：clean_pipeline.py
 职责：
 1. 版面解析：遍历 docx 底层 XML（<w:p>/<w:tbl>）保序提取结构化块（改造自 02_docx_governance 的保序遍历）
-2. 规则清洗：分隔线/空段剔除、空表判定、水印正则框架、字段表摊平、emoji 字段行解析、PII 脱敏
-3. 条目切分：按 Heading1 记大类、Heading2 切知识条目，输出纯净 Markdown（落盘 output/cleaned/）
+2. 规则清洗：分隔线/空段/文档尾注剔除、空表判定、水印正则框架、字段表摊平、emoji 字段行解析、PII 脱敏（排除公网DNS与内网排障网段）
+3. 条目切分：按 Heading1 记大类、Heading2 切知识条目，保序渲染段落与表格，输出纯净 Markdown（落盘 output/cleaned/）
 """
 
 import os
@@ -40,6 +40,7 @@ class Entry:
     remark: str = ""               # 📝 备注
     body_paras: List[str] = field(default_factory=list)   # 无结构化字段条目的正文段落（如附录）
     tables: List[List[List[str]]] = field(default_factory=list)  # 保留的真表格
+    body_blocks: List[Block] = field(default_factory=list)  # 保序正文块（含 para 与 table，严格维持原文阅读顺序）
     is_appendix: bool = False      # 附录标记：无【代码】的 H2 章节
 
 
@@ -47,6 +48,8 @@ class Entry:
 
 ENTRY_CODE_RE = re.compile(r"【\s*([A-Z]+-\d+)\s*】\s*(.+)")
 SEPARATOR_RE = re.compile(r"^[─—\-=_*\s]{6,}$")
+DOC_END_RE = re.compile(r"^[─—\-=_*\s]*文档结束[─—\-=_*\s]*$")
+DOC_FOOTER_RE = re.compile(r"^(?:维护说明[：:]|新增或修正条目请联系).*")
 H1_PREFIX_RE = re.compile(r"^[一二三四五六七八九十百]+、")
 EMOJI_PREFIX_RE = re.compile(r"^[\U0001F300-\U0001FAFF☀-➿⬀-⯿️⃣\s]+")
 
@@ -67,9 +70,44 @@ WATERMARK_PATTERNS: List[re.Pattern] = [
     # re.compile(r"内部资料[，,]?\s*请勿外传"),
 ]
 
+# 公网公共 DNS、回环地址、掩码及 RFC1918 内网排障示例地址白名单（在 IT 运维知识库中属于关键排障参数，不作为 PII 脱敏）
+WHITELIST_IPS = {
+    "223.5.5.5", "223.6.6.6",
+    "114.114.114.114", "114.114.115.115",
+    "119.29.29.29", "180.76.76.76",
+    "8.8.8.8", "8.8.4.4",
+    "1.1.1.1", "1.0.0.1",
+    "127.0.0.1", "0.0.0.0",
+    "255.255.255.0", "255.255.0.0", "255.0.0.0",
+}
+IPV4_RE = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
+
+
+def _is_exempt_tech_ip(ip: str) -> bool:
+    """判断 IP 是否为公共 DNS、回环、子网掩码或 RFC1918 内网排障示例地址。"""
+    if ip in WHITELIST_IPS:
+        return True
+    parts = ip.split(".")
+    try:
+        octets = [int(p) for p in parts]
+    except ValueError:
+        return True
+    if any(o < 0 or o > 255 for o in octets):
+        return True
+    # RFC1918 私网段（10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16）及回环/链路本地（127.0.0.0/8, 169.254.0.0/16）
+    if octets[0] in (10, 127):
+        return True
+    if octets[0] == 192 and octets[1] == 168:
+        return True
+    if octets[0] == 172 and 16 <= octets[1] <= 31:
+        return True
+    if octets[0] == 169 and octets[1] == 254:
+        return True
+    return False
+
+
 # R8 PII 脱敏规则：类型占位符替换（保留实体类型与语义，供 RAG 检索可用）
-# 覆盖：身份证号/手机号/邮箱/银行账号/IP/护照/车牌/凭证密钥/数据库连接串/私钥/姓名(上下文规则)
-# 注：MAC 地址在运维排障文档中承担技术语义（绑定排查），默认不脱敏，可按需开启
+# 覆盖：身份证号/手机号/邮箱/银行账号/非白名单外部IP/护照/车牌/凭证密钥/数据库连接串/私钥/姓名(上下文规则)
 PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     # --- 凭证密钥（优先级最高，先匹配避免被其他规则切碎） ---
     (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"), "[私钥已脱敏]"),
@@ -80,7 +118,6 @@ PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)"), "[手机号]"),
     (re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"), "[邮箱]"),
     (re.compile(r"((?:结算)?(?:账号|账户|卡号|银行卡)[号]?[：:]?\s*)[\d][\d\s]{10,26}\d"), r"\1[银行账号]"),
-    (re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])"), "[IP地址]"),
     (re.compile(r"(?<![A-Za-z0-9])[EGPSegps]\d{8}(?![A-Za-z0-9])"), "[护照号]"),
     (re.compile(r"[京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼][A-HJ-NP-Z][-·]?[A-HJ-NP-Z0-9]{4,5}[A-HJ-NP-Z0-9挂学警港澳]"), "[车牌号]"),
     # --- 姓名（上下文规则：标签后 2-4 个汉字） ---
@@ -91,11 +128,21 @@ PII_PATTERNS: List[Tuple[re.Pattern, str]] = [
 
 
 def desensitize_text(text: str) -> Tuple[str, int]:
-    """对任意文本执行全量 PII 脱敏，返回 (脱敏后文本, 命中次数)"""
+    """对任意文本执行全量 PII 脱敏（保留公网 DNS 与内网排障示例 IP），返回 (脱敏后文本, 命中次数)"""
     hits = 0
     for pattern, repl in PII_PATTERNS:
         text, n = pattern.subn(repl, text)
         hits += n
+
+    def _replace_ip(m: re.Match) -> str:
+        nonlocal hits
+        ip = m.group(0)
+        if _is_exempt_tech_ip(ip):
+            return ip
+        hits += 1
+        return "[IP地址]"
+
+    text = IPV4_RE.sub(_replace_ip, text)
     return text, hits
 
 
@@ -184,8 +231,8 @@ class CleanPipeline:
                 stats["R2_空段剔除"] += 1
                 continue
             if b.kind in ("para", "list"):
-                # R1 分隔线剔除（───── 这类装饰线）
-                if SEPARATOR_RE.match(text):
+                # R1 分隔线与文档尾注结束符剔除（───── / — 文档结束 — / 维护说明）
+                if SEPARATOR_RE.match(text) or DOC_END_RE.match(text) or DOC_FOOTER_RE.match(text):
                     stats["R1_分隔线剔除"] += 1
                     continue
                 # R4 水印/页眉正则框架（WATERMARK_PATTERNS 可配置，本文档无命中）
@@ -252,7 +299,7 @@ class CleanPipeline:
 
             if b.kind == "table":
                 # R5 核心规则：2 列且首列是字段标签的表 -> 摊平为 Entry.fields；
-                # 否则（如速查表）保留为真表格进 Entry.tables
+                # 否则（如速查表）保留为真表格进 Entry.tables 与保序流 Entry.body_blocks
                 if b.rows and len(b.rows[0]) == 2 and FIELD_LABEL_RE.match(b.rows[0][0]):
                     for row in b.rows:
                         lm = FIELD_LABEL_RE.match(row[0])
@@ -261,6 +308,7 @@ class CleanPipeline:
                     stats_flatten += 1
                 else:
                     current.tables.append(b.rows)
+                    current.body_blocks.append(Block(kind="table", rows=b.rows))
                 continue
 
             text = b.text
@@ -274,6 +322,7 @@ class CleanPipeline:
                 current.remark = rm.group(1).strip()
                 continue
             current.body_paras.append(text)  # 其余段落进正文
+            current.body_blocks.append(Block(kind="para", text=text))
 
         flush()
         self.stats["R5_字段表摊平"] = stats_flatten
@@ -314,10 +363,19 @@ class CleanPipeline:
                     lines.append(f"- {ln}")
                 lines.append("")
 
-        for para in e.body_paras:
-            lines.append(para + "\n")
-        for rows in e.tables:
-            lines.append(self._table_to_md(rows))
+        # 优先按 body_blocks 保序输出段落与表格，避免表格坠落到段落底部
+        if e.body_blocks:
+            for blk in e.body_blocks:
+                if blk.kind == "table" and blk.rows:
+                    lines.append(self._table_to_md(blk.rows))
+                elif blk.text:
+                    lines.append(blk.text + "\n")
+        else:
+            for para in e.body_paras:
+                lines.append(para + "\n")
+            for rows in e.tables:
+                lines.append(self._table_to_md(rows))
+
         if e.remark:
             lines.append(f"> 📝 备注：{e.remark}\n")
         return "\n".join(lines).strip() + "\n"

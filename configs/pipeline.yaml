@@ -35,6 +35,12 @@ retrieval:
   query_rewrite: true           # 查询改写：LLM 删去用户对原因的猜测并补规范术语；原查询+改写查询四路召回，精排用改写查询
   rewrite_model: ""             # 改写模型，空=取 .env 的 LLM_CLEAN_MODEL（deepseek-v4-flash）
   reject_threshold: 0.40        # 低置信拒答：候选原始 rerank 最高分低于此值返回空（null=不启用）
+  # 置信度动态门控：按每次 rerank 打分分布动态切换融合权重（false=固定权重，行为同旧版）
+  gate_enabled: true            # true: 高置信时 rerank 大权，低置信/启发式降级时 RRF 托底
+  gate_min_score: 0.55          # 高置信门槛①：top-1 原始 rerank 分（本端点正样本 0.6+、负样本 ≤0.26）
+  gate_min_margin: 0.10         # 高置信门槛②：top-1 与 top-2 的分差（同次调用内分差，免疫跨后端分漂）
+  gate_conf_weights: [0.35, 0.65]  # 高置信时 [rrf_weight, rerank_weight]：放权精排翻盘
+  gate_low_weights: [0.65, 0.35]   # 低置信/启发式降级时：召回侧托底
   default_exclude:              # 主链路默认物理屏蔽的元数据坏值
     wiki_status: [已废止, 已下线]
 

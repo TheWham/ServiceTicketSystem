@@ -72,7 +72,7 @@ demos/
 | | `boost_injection` | 检索增强词注入范围：`first`（仅首块）/ `all` / `none` |
 | | `breadcrumb_header` | 【卡片：标题 > 小节】面包屑开关 |
 | `embedding` / `reranker` | `model` | 可被环境变量 `EMBED_MODEL` / `RERANK_MODEL` 覆盖 |
-| `retrieval` | `top_k` / `rough_top_k` / `rrf_k` / `fuse_k` / `rrf_weight` / `rerank_weight` | 检索与融合参数 |
+| `retrieval` | `top_k` / `rough_top_k` / `rrf_k` / `fuse_k` / `rrf_weight` / `rerank_weight` / `gate_*`（置信度门控） | 检索与融合参数 |
 | | `rerank_granularity` | 精排粒度：`parent`（子块召回后对整卡全文打分）/ `child`（逐子块） |
 | | `query_rewrite` / `rewrite_model` | 查询改写开关 + 改写模型（LLM 删猜测+补术语） |
 | | `reject_threshold` | 低置信拒答阈值（候选最高原始 rerank 分低于此值返回空；null 不启用） |
@@ -125,7 +125,7 @@ demos/
 
 - **双路召回（`retrieval/hybrid.py`）**：BM25 关键词倒排索引（术语归一化红利）+ Dense 向量语义检索。
 - **RRF 融合**：Reciprocal Rank Fusion（k=60）倒数排名融合，无需调参即可化解异构打分冲突。
-- **Cross-Encoder 精排**：KSP `qwen3-reranker-8b`（`/rerank` 接口），按秩加权融合（召回侧 0.6 托底，免疫远程分数漂移）。
+- **Cross-Encoder 精排**：KSP `qwen3-reranker-8b`（`/rerank` 接口），按秩加权融合（召回侧托底，免疫远程分数漂移）；融合权重经**置信度动态门控**按每次精排打分分布切换（高置信放权精排翻盘 / 低置信与启发式降级时召回侧托底），阈值在本端点标定（`pipeline.yaml` 的 `gate_*`）。
 - **双后端修复**：KSP 网关随机分流 Jina/DashScope 两后端（旧代码只认 Jina，DashScope 响应被静默补 0），现双格式解析 + 并发对冲只收 dashscope 高质量打分。
 - **查询改写**：LLM 删去用户对原因的猜测、补规范术语，原查询+改写查询四路 RRF 召回。
 - **父块精排**：子块只负责召回，按父块（整卡）去重后对整卡全文精排，返回 Top-K 张卡。
@@ -171,6 +171,15 @@ python -m rag_pipeline.pipelines.evaluation --suite test # 封存测试集（定
 python -m rag_pipeline.pipelines.evaluation --verbose    # 每题打印检索全流程日志
 python tools/adversarial_benchmark.py                    # 版本冲突对抗压测（可选）
 ```
+
+### Day 14 · 黄金问题集基准评测（6:2:2 配比 + 四项体检指标）
+```bash
+python run_day14_pipeline.py                               # 全量跑测 + 体检报告落盘
+python run_day14_pipeline.py --top-k 5                     # 调整召回深度
+python run_day14_pipeline.py --adversarial-threshold 0.5   # 覆盖拒答阈值（默认自动标定）
+```
+黄金数据集真源：`evals/golden_dataset_v1.0.json`（12 标准 + 4 冲突/跨文档 + 4 越界拒答）；
+体检报告落盘 `artifacts/evaluation/Day14_黄金问题集RAG评测基准报告.md`。
 
 ### 辅助工具
 ```bash

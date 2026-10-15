@@ -1,4 +1,4 @@
-"""检索评测主流水线（四轨对比评测 + 报告落盘）：四轨对比评测 + 报告落盘。"""
+"""检索评测主流水线（四轨对比评测 + 报告落盘）：四轨统一父卡 Top-K 口径对比评测。"""
 
 import argparse
 import json
@@ -6,7 +6,8 @@ import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from langchain_core.documents import Document
+from ..chunking.structure_aware import Document
+from ..store import SimpleVectorStore
 
 try:
     from langchain_community.vectorstores import Chroma
@@ -15,10 +16,9 @@ except ImportError:
     Chroma = None
     chromadb = None
 
-from ..config import load_config, config_fingerprint, build_chunker, load_rerank_config
+from ..config import load_config, config_fingerprint, build_chunker, load_rerank_config, build_gate
 from ..embedding import KspEmbeddingProvider
-from ..chunking.structure_aware import WikiStructureAwareChunker
-from ..chunking.parent_child import ParentChildChunker, expand_to_parents
+from ..chunking.parent_child import expand_to_parents
 from ..chunking.fingerprint import compute_wiki_fingerprint
 from ..retrieval.hybrid import IndustrialHybridRetriever
 from ..retrieval.query_rewriter import QueryRewriter
@@ -47,7 +47,7 @@ class _Tee:
 def run_evaluation():
     """检索评测主流水线：载入语料/向量库 -> 装配混合检索器 -> 四轨评测 -> 报告。
 
-    四轨对比（同一道题跑四条链路，量化各阶段增益）：
+    四轨对比（同一道题跑四条链路，统一以 rough_top_k 召回子块并回溯去重取 Top-K 父卡，消除口径偏差）：
       A 纯 Dense 向量检索
       B 纯 BM25 关键词检索
       C Dense + BM25 + RRF 融合（无精排）
@@ -70,7 +70,6 @@ def run_evaluation():
                         help="运行日志落盘路径（把控制台输出同时写入该文件；传空字符串则不写）")
     args = parser.parse_args()
 
-    # 把控制台输出同时 tee 到日志文件，便于汇报翻看完整运行过程（含对比表 + verbose 检索日志）
     if args.log_file:
         import sys
         log_path = Path(args.log_file)
@@ -79,40 +78,32 @@ def run_evaluation():
     if args.suite == "holdout":
         args.suite = "dev"
     suite = {"main": HARD_BENCHMARK_SUITE, "dev": DEV_SUITE, "test": TEST_SUITE}[args.suite]
-    # 开发集/测试集报告加后缀另存，避免覆盖主题集的正式报告
     suffix = {"main": "", "dev": "_开发集", "test": "_测试集"}[args.suite]
 
     cfg = load_config()
-    # 重排模型名：命令行 > 环境变量/.env > pipeline.yaml > 内置默认
     reranker_model = args.reranker or load_rerank_config().get("model") or cfg.reranker_model
 
     print("=" * 80)
     print("🚀 双路混合检索与 Rerank 深度重排评测流水线")
     print("=" * 80)
 
-    # 项目根 = 本文件上两级（rag_pipeline/pipelines/ -> 仓库根）
     project_root = Path(__file__).resolve().parents[2]
     wiki_path = project_root / args.wiki_dir
     chroma_path = project_root / args.chroma_dir
     out_path = project_root / args.output_dir
     out_path.mkdir(parents=True, exist_ok=True)
 
-    # 1. 自动读取 Day 11 的 Wiki 知识卡片并生成结构化切片作为倒排语料
     print(f"\n[1/4] 载入知识基座切片语料与 Chroma 向量数据库...")
 
-    # 切块器经配置中心工厂实例化——与索引构建走同一路径，
-    # 改 configs/pipeline.yaml 后两侧语料粒度自动保持一致。
     chunker, use_parent_child = build_chunker(cfg)
 
     if KspEmbeddingProvider is not None:
-        # 复用与索引构建相同的嵌入模型与磁盘缓存，保证维度一致(4096)
         embed_provider = KspEmbeddingProvider(cache_dir=str(project_root / cfg.embedding_cache_dir))
         print(f"       -> Embedding 引擎: 【{embed_provider.engine_type}】")
     else:
         embed_provider = None
         print("       ⚠️ 未复用到 KspEmbeddingProvider，Dense 通道可能不可用")
 
-    # _index.md 是目录导航页非知识正文，排除避免污染检索
     wiki_files = sorted(wiki_path.glob("*.md")) if wiki_path.exists() else []
     wiki_files = [f for f in wiki_files if f.name != "_index.md"]
     if not wiki_files:
@@ -129,9 +120,6 @@ def run_evaluation():
     print(f"       -> 成功提取 Wiki 切片语料共：{len(all_chunks)} 个"
           f"{'（父子切片·子块）' if use_parent_child else ''} Chunks")
 
-    # 语料一致性校验：比对索引构建落盘的 manifest 指纹与当前 Wiki 卡片/切块参数。
-    # 不校验的后果：04 重跑或卡片改动后，Chroma 里是旧文本 embedding、BM25 是运行时
-    # 新切块，两路召回的不是同一批 chunk，RRF 按 page_content 去重直接失效。
     stale_reason = None
     manifest_file = chroma_path / "manifest.json"
     if chroma_path.exists() and compute_wiki_fingerprint is not None:
@@ -150,7 +138,6 @@ def run_evaluation():
             except Exception as e:
                 stale_reason = f"manifest 读取失败({e})"
 
-    # 载入或构建向量数据库
     vector_db = None
     if Chroma is not None and chroma_path.exists() and stale_reason is None:
         try:
@@ -175,9 +162,13 @@ def run_evaluation():
             embedding=embed_provider,
             collection_name="wiki_structured_kb"
         )
+    else:
+        # 环境未安装 chromadb 时，优先从 chroma.sqlite3 直接加载真实 4096 维向量，否则构建内存向量库
+        if chroma_path.exists() and stale_reason is None:
+            vector_db = SimpleVectorStore.from_chroma_sqlite(str(chroma_path), embed_provider)
+        if vector_db is None:
+            vector_db = SimpleVectorStore.from_documents(all_chunks, embed_provider)
 
-    # 2. 装配工业级双路混合检索器
-    # default_exclude：把对抗压测验证过的"元数据物理屏蔽废止卡"固化进主链路
     print(f"\n[2/4] 初始化装配 IndustrialHybridRetriever 混合检索与重排核心...")
     retriever = IndustrialHybridRetriever(
         vector_db=vector_db,
@@ -187,7 +178,6 @@ def run_evaluation():
         reranker_backend=cfg.reranker_backend
     )
 
-    # 3. 执行 4 轨架构对比大比武评测 (Benchmark)
     suite_name = {"main": "主题集", "dev": "开发集", "test": "测试集（封存，定稿后只运行一次）"}[args.suite]
     print(f"\n[3/4] 执行{suite_name} {len(suite)} 组对抗评测：{suite_breakdown(suite)}（四轨对比大比武）...")
     rc = cfg.retrieval
@@ -196,8 +186,7 @@ def run_evaluation():
     if args.rewrite_model is not None:
         rc.query_rewrite = args.rewrite_model.lower() != "none"
         rc.rewrite_model = "" if args.rewrite_model.lower() == "none" else args.rewrite_model
-    # 查询改写只作用于轨 4（全链路）；轨 1~3 保持原查询，作为不做改写的对照基线
-    rewriter = QueryRewriter(model=rc.rewrite_model, cache_dir=str(out_path / ".llm_cache" / "rewrite"))         if rc.query_rewrite else None
+    rewriter = QueryRewriter(model=rc.rewrite_model, cache_dir=str(out_path / ".llm_cache" / "rewrite")) if rc.query_rewrite else None
     if rewriter:
         print(f"       -> 查询改写已启用：{rewriter.model}（磁盘缓存 {out_path.name}/.llm_cache/rewrite）")
     eval_records = []
@@ -211,12 +200,6 @@ def run_evaluation():
         trap_ids = test.get("trap_ids", [])
 
         def _track_metrics(parents):
-            """卡级打分：返回 (回溯父块 id 序列, 目标卡名次, 严格事实命中数, 是否误召回陷阱卡)。
-
-            名次以 expand_to_parents 去重后的父块顺序为准（1=Top-1）；目标卡未召回名次为 None。
-            事实命中只在"检索到的目标卡正文"内计数——目标卡没被召回，事实一律记 0，
-            杜绝旧口径下高频通用词在错误卡片上误命中造成的分数虚高。
-            """
             ids = [d.metadata.get("wiki_id") for d in parents]
             rank = (ids.index(target_id) + 1) if (target_id and target_id in ids) else None
             if target_id:
@@ -228,31 +211,37 @@ def run_evaluation():
             false_recall = bool(set(ids) & set(trap_ids))
             return ids, rank, hits, false_recall
 
-        # 轨 1: 纯 Dense 向量检索（子块匹配，Top-3），命中后回溯父块算卡级名次
+        # 修复四轨口径不对称：父子切片下每张卡含 ~4 个子块，若只召回 top_k=3 个子块，
+        # 同卡的 3 个子块会占满全部名额导致回溯后只有 1 张父卡。
+        # 因此轨 1 / 轨 2 / 轨 3 统一先召回 rough_top_k (15) 个候选子块，回溯父块去重后再取前 top_k (3) 张父卡！
+        fetch_k = rc.rough_top_k if use_parent_child else rc.top_k
+
+        # 轨 1: 纯 Dense 向量检索
         t0 = time.time()
-        dense_raw = retriever.dense_search(query, top_k=rc.top_k, metadata_filter=m_filter)
+        dense_rough = retriever.dense_search(query, top_k=fetch_k, metadata_filter=m_filter)
         dense_time = round((time.time() - t0) * 1000, 1)
-        dense_parents = expand_to_parents([d for d, _, _ in dense_raw]) if expand_to_parents else [d for d, _, _ in dense_raw]
+        dense_raw = dense_rough[:rc.top_k]
+        dense_parents = (expand_to_parents([d for d, _, _ in dense_rough]) if expand_to_parents else [d for d, _, _ in dense_rough])[:rc.top_k]
         dense_ids, dense_rank, dense_hits, dense_false = _track_metrics(dense_parents)
 
-        # 轨 2: 纯 BM25 关键词检索（子块匹配，Top-3），命中后回溯父块
+        # 轨 2: 纯 BM25 关键词检索
         t0 = time.time()
-        bm25_raw = retriever.bm25_search(query, top_k=rc.top_k, metadata_filter=m_filter)
+        bm25_rough = retriever.bm25_search(query, top_k=fetch_k, metadata_filter=m_filter)
         bm25_time = round((time.time() - t0) * 1000, 1)
-        bm25_parents = expand_to_parents([d for d, _, _ in bm25_raw]) if expand_to_parents else [d for d, _, _ in bm25_raw]
+        bm25_raw = bm25_rough[:rc.top_k]
+        bm25_parents = (expand_to_parents([d for d, _, _ in bm25_rough]) if expand_to_parents else [d for d, _, _ in bm25_rough])[:rc.top_k]
         bm25_ids, bm25_rank, bm25_hits, bm25_false = _track_metrics(bm25_parents)
 
-        # 轨 3: Dense + BM25 双路召回 + RRF 融合（无精排，Top-3）
-        # 与轨 4 的唯一区别是：不做 Rerank 精排与按秩融合，用于隔离出精排环节的真实增益
+        # 轨 3: Dense + BM25 双路粗排 (Top-15) + RRF 融合 -> 回溯去重取 Top-3 父卡
         t0 = time.time()
-        fused = retriever.rrf_fusion(bm25_raw, dense_raw, rrf_k=rc.rrf_k, candidate_limit=rc.top_k)
+        fused_all = retriever.rrf_fusion(bm25_rough, dense_rough, rrf_k=rc.rrf_k, candidate_limit=fetch_k)
         fusion_time = round((time.time() - t0) * 1000, 1)
-        # 轨 3 端到端延迟 = 双路召回(dense+bm25) + RRF 融合，与轨 1/2 的口径对齐
         fused_time = round(dense_time + bm25_time + fusion_time, 1)
-        fused_parents = expand_to_parents([d for d, _ in fused]) if expand_to_parents else [d for d, _ in fused]
+        fused = fused_all[:rc.top_k]
+        fused_parents = (expand_to_parents([d for d, _ in fused_all]) if expand_to_parents else [d for d, _ in fused_all])[:rc.top_k]
         fused_ids, fused_rank, fused_hits, fused_false = _track_metrics(fused_parents)
 
-        # 轨 4: 顶级工业级全链路（元数据过滤 + [查询改写] + 双路召回 + RRF + Rerank 精排 + 按秩融合兜底）
+        # 轨 4: 顶级工业级全链路
         t0 = time.time()
         rewrite = rewriter.rewrite(query) if rewriter else None
         rewrite_ms = round((time.time() - t0) * 1000, 1)
@@ -268,20 +257,18 @@ def run_evaluation():
             reject_threshold=rc.reject_threshold,
             rerank_granularity=rc.rerank_granularity,
             rewrite_query=rewrite,
+            gate=build_gate(rc),
             verbose=args.verbose
         )
         full_docs = full_res["final_results"]
-        full_parents = expand_to_parents(full_docs) if expand_to_parents else [Document(page_content=d["content"], metadata=d["metadata"]) for d in full_docs]
+        full_parents = (expand_to_parents(full_docs) if expand_to_parents else [Document(page_content=d["content"], metadata=d["metadata"]) for d in full_docs])[:rc.top_k]
         full_ids, full_rank, full_hits, full_false = _track_metrics(full_parents)
-        # top1_score 取融合分（按秩加权），用于评估精排 Top-1 的相关度置信度
         top1_score = full_docs[0]["fused_score"] if full_docs else 0.0
-        # 原始 rerank 分：融合分被 1/(fuse_k+1) 封顶，只反映名次；原始分才反映精排的相关度把握
         top1_rerank = full_docs[0]["rerank_score"] if full_docs else None
 
         def _ids(docs, key="wiki_id"):
             return [d.metadata.get(key, "?") for d in docs]
 
-        # 严格漏项：以全链路检索到的目标卡正文为基准（目标卡未召回则全部记漏）
         full_tgt_text = next((d.page_content for d in full_parents
                               if d.metadata.get("wiki_id") == target_id), "") if target_id else ""
         missed = [f for f in expected if f not in full_tgt_text]
@@ -315,7 +302,7 @@ def run_evaluation():
             "full_rank": full_rank,
             "full_false": full_false,
             "full_ids": full_ids,
-            "full_time": round(full_res["latency_ms"] + rewrite_ms, 2),  # 含改写耗时（缓存命中时≈0）
+            "full_time": round(full_res["latency_ms"] + rewrite_ms, 2),
             "rewrite": rewrite,
             "rewrite_ok": (rewriter.last_ok if rewriter else None),
             "rewrite_ms": rewrite_ms,
@@ -323,13 +310,14 @@ def run_evaluation():
             "top1_score": top1_score,
             "top1_rerank": top1_rerank,
             "max_rerank": full_res.get("max_rerank_score", 0.0),
+            "gate_mode": full_res.get("gate_mode", "off"),
+            "gate_margin": full_res.get("gate_margin", 0.0),
+            "eff_weights": full_res.get("eff_weights", [rc.rrf_weight, rc.rerank_weight]),
             "full_rejected": full_res.get("rejected", False),
             "rerank_remote": full_res.get("rerank_remote", True),
             "confusable_with": test.get("confusable_with"),
             "challenge": test["challenge_type"],
-            # ===== 详细召回轨迹（供"7组详细召回过程"报告使用）=====
             "trace": {
-                # 子块列用 child_id（能看出命中的是第几个子块），父块列用卡片 id
                 "dense_child_ids": _ids([d for d, _, _ in dense_raw], key="child_id"),
                 "dense_parent_ids": _ids(dense_parents),
                 "dense_scores": [round(s, 4) for _, _, s in dense_raw],
@@ -348,7 +336,6 @@ def run_evaluation():
             }
         })
 
-    # 控制台打印对比表（卡级名次口径：数字=目标卡在 Top-3 的名次，✗=未召回）
     print("\n" + "=" * 105)
     print(f"{'题号':<8}{'题型':<12}{'目标卡':<16}{'纯Dense':<10}{'纯BM25':<10}{'RRF融合':<10}{'全链路':<10}{'时延(ms)'}")
     print("-" * 105)
@@ -360,7 +347,6 @@ def run_evaluation():
     total_expected = sum(r["expected_count"] for r in positives)
 
     def _agg(track):
-        """汇总单轨四项核心指标：卡级 Recall@3、MRR、严格事实命中数、负样本误召回数。"""
         hit_n = sum(1 for r in positives if r[f"{track}_rank"])
         mrr = sum(1.0 / r[f"{track}_rank"] for r in positives if r[f"{track}_rank"]) / n_pos
         facts = sum(r[f"{track}_hits"] for r in positives)
@@ -369,8 +355,6 @@ def run_evaluation():
                 "facts": facts, "false_n": false_n}
 
     stats = {t: _agg(t) for t in ("dense", "bm25", "fused", "full")}
-
-    # 数据驱动：真实算出哪条链路最优才标 🏆；多条链路指标完全相同时如实标"并列"
     winners = pick_winners(stats)
 
     def _rank_str(r, track):
@@ -406,7 +390,6 @@ def run_evaluation():
           f"{'':<36}{_mk('full'):<10}\n{'':<36}判定: {verdict}")
     print("=" * 105)
 
-    # 原始 rerank 分分布：用于标定 reject_threshold（正样本最低分应高于负样本最高分）
     pos_max = [r["max_rerank"] for r in positives]
     neg_max = [r["max_rerank"] for r in negatives]
     if pos_max:
@@ -420,17 +403,22 @@ def run_evaluation():
         print(f"rerank {via}：{bs['calls']} 次打分共发起 {bs['attempts']} 次请求"
               f"（平均 {bs['attempts'] / bs['calls']:.1f} 次/打分，限流 {bs['rate_limited']} 次）")
     if rewriter:
-        rw_ms = [r["rewrite_ms"] for r in eval_records if r["rewrite_cached"] is False]  # 只统计真实 LLM 调用
+        rw_ms = [r["rewrite_ms"] for r in eval_records if r["rewrite_cached"] is False]
         failed = [r["id"] for r in eval_records if r["rewrite_ok"] is False]
         print(f"查询改写：{len(rw_ms)} 次实际调用" + (f"，平均 {sum(rw_ms) / len(rw_ms):.0f}ms" if rw_ms else "（全部命中缓存）")
               + (f"；失败回落原查询：{', '.join(failed)}" if failed else ""))
+    gates = [r.get("gate_mode", "off") for r in eval_records]
+    if any(g != "off" for g in gates):
+        n_hi = sum(1 for g in gates if g == "high")
+        n_lo = sum(1 for g in gates if g == "low")
+        print(f"置信度门控：高置信 {n_hi} 题（放权精排 {rc.gate_conf_weights}）"
+              f" / 低置信 {n_lo} 题（召回托底 {rc.gate_low_weights}）"
+              f"（门槛 top-1 ≥{rc.gate_min_score} 且 margin ≥{rc.gate_min_margin}）")
     degraded = [r["id"] for r in eval_records if not r["rerank_remote"]]
     if degraded:
         print(f"⚠️ 以下题目的精排降级为启发式打分，全链路结果不可与远程精排比较：{', '.join(degraded)}")
 
-    # 4. 生成评测实验报告 Markdown 落盘
     print(f"\n[4/4] 生成并落盘评测报告文档...")
-    # 真实平均端到端延迟：从每题实测值求均值（不再用模板写死的假数字）
     n_q = max(len(eval_records), 1)
     avg_latency = {
         "dense": round(sum(r["dense_time"] for r in eval_records) / n_q, 1),
@@ -446,7 +434,6 @@ def run_evaluation():
         reject_threshold=rc.reject_threshold, rerank_granularity=rc.rerank_granularity,
         suite_label=suite_name
     )
-    # 同时生成"对抗题详细召回过程"报告（父子切片 Small-to-Big 全程轨迹）
     detail_file = out_path / f"对抗题详细召回过程{suffix}.md"
     _generate_retrieval_detail_report(detail_file, eval_records, reranker_name=reranker_model, corpus=all_chunks,
                                       rerank_granularity=rc.rerank_granularity, suite_label=suite_name)
@@ -455,14 +442,12 @@ def run_evaluation():
     print("=" * 80)
 
 
-# 向后兼容别名：旧入口与工具脚本仍可用 run_day13_pipeline
 run_day13_pipeline = run_evaluation
 
 
 if __name__ == "__main__":
     import sys
 
-    # Windows 控制台默认 GBK，统一切换 UTF-8 防止 emoji 打印崩溃
     if sys.stdout and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     if sys.stderr and hasattr(sys.stderr, "reconfigure"):

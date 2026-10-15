@@ -1,13 +1,9 @@
 """
 Demo 4 扩展：将「清洗 + LLM 治理 + Wiki 生成」流水线应用到三大格式治理 Demo 的样本文件
 - 01_pdf_governance/enterprise_sample.pdf    -> 逐页条目（矢量页 + 扫描件 OCR 页）
-- 02_docx_governance/enterprise_sla.docx     -> 按章节切条（SLA 协议）
+- 02_docx_governance/enterprise_sla.docx     -> 按章节切条（SLA 协议，保持段落与表格流式顺序）
 - 03_excel_governance/enterprise_data.xlsx   -> 规则表行级卡片 + 明细表数据集卡片（Text2SQL 统计）
 产物输出到 output/example/{pdf,docx,excel}/
-
-用法：
-    python run_examples.py              # 全流程（LLM 在线清洗 + 萃取）
-    python run_examples.py --offline    # 离线降级
 """
 
 import argparse
@@ -24,15 +20,14 @@ warnings.filterwarnings("ignore")
 
 import pandas as pd
 
-# 实现已迁移至 rag_pipeline 包；本目录运行时把仓库根加入 sys.path
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from rag_pipeline.ingestion.clean_pipeline import CleanPipeline, Entry, desensitize_text
+from rag_pipeline.ingestion.clean_pipeline import CleanPipeline, Entry, Block, desensitize_text
 from rag_pipeline.ingestion.llm_synthesizer import LlmSynthesizer, load_api_config
 from rag_pipeline.ingestion.wiki_generator import render_card, render_index, make_wiki_id
 
-DEMO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # = day11_demos/（01/02/03 同级）
+DEMO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_ROOT = os.path.join(os.path.dirname(DEMO_ROOT), "artifacts", "output", "example")
 CACHE_DIR = os.path.join(OUTPUT_ROOT, ".llm_cache")
 
@@ -61,10 +56,8 @@ def adapt_pdf() -> List[Entry]:
             body = re.sub(r"^### 【矢量解析结果】第 \d+ 页\s*", "", md).strip()
         else:
             md = engine.parse_scanned_page(idx)
-            # 截取「最终清洗交付文本」代码块作为该页正文
             m = re.findall(r"```text\n(.*?)```", md, re.DOTALL)
             body = m[-1].strip() if m else md
-        # R8 PII 脱敏（类型占位符，保 RAG 语义）
         body, pii_hits = desensitize_text(body)
         first_line = next((ln.strip() for ln in body.splitlines() if ln.strip() and not ln.startswith("#")), f"第{idx}页")
         title = first_line if report["page_type"] == "VECTOR_TEXT" else f"{first_line}（扫描件 OCR）"
@@ -74,7 +67,7 @@ def adapt_pdf() -> List[Entry]:
     return entries
 
 
-# ==================== 适配器 2：DOCX 样本（SLA 协议） ====================
+# ==================== 适配器 2：DOCX 样本（SLA 协议，保序块） ====================
 
 def adapt_docx() -> List[Entry]:
     path = os.path.join(DEMO_ROOT, "02_docx_governance", "enterprise_sla.docx")
@@ -102,8 +95,10 @@ def adapt_docx() -> List[Entry]:
             continue
         if b.kind == "table":
             current.tables.append(b.rows)
+            current.body_blocks.append(Block(kind="table", rows=b.rows))
         elif b.text:
             current.body_paras.append(b.text)
+            current.body_blocks.append(Block(kind="para", text=b.text))
     return entries
 
 
@@ -113,7 +108,6 @@ def adapt_excel() -> List[Entry]:
     path = os.path.join(DEMO_ROOT, "03_excel_governance", "enterprise_data.xlsx")
     entries: List[Entry] = []
 
-    # --- 规则表：行级自包含卡片 ---
     policy = pd.read_excel(path, sheet_name="reimbursement_policy")
     for _, row in policy.iterrows():
         level_code = str(row["职级代码"])
@@ -128,7 +122,6 @@ def adapt_excel() -> List[Entry]:
             fields=fields,
         ))
 
-    # --- 明细表：Text2SQL 统计 -> 数据集说明卡 ---
     details = pd.read_excel(path, sheet_name="order_sales_details")
     rename_map = {
         "订单流水号": "order_id", "销售大区": "region", "业务季度": "quarter",
@@ -222,8 +215,9 @@ def main():
     synthesizer = None
     if not args.offline:
         cfg = load_api_config()
-        if not cfg["api_key"]:
-            print("   [警告] 未找到 LLM_API_KEY，自动降级为离线模式")
+        api_key = cfg.get("api_key", "")
+        if not api_key or api_key.startswith("sk-replace-") or api_key == "sk-...":
+            print("   [警告] 未找到有效 LLM_API_KEY，自动降级为离线模式")
         else:
             print(f"   [配置] 清洗模型={cfg['clean_model']} | 精修模型={cfg['chat_model']}")
             synthesizer = LlmSynthesizer(cfg, cache_dir=CACHE_DIR)
