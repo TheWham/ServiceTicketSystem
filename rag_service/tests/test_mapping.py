@@ -144,6 +144,20 @@ def test_serialized_json_uses_camelcase_and_omits_null_reason():
     assert item["indexVersion"] == item["versionId"]
 
 
+def test_content_keeps_markdown_structure_while_snippet_collapses():
+    """content 必须是 parent_content 原样（保留换行/缩进，供下游拼 grounding 提示），
+    snippet 才做空白压缩 + 1000 截断（对齐 Java snippetOf 契约）。"""
+    markdown = "# 标题\n\n## 步骤\n- 步骤1：重启\n- 步骤2：重连\n\n```bash\nnet stop spooler\n```\n"
+    resp = build_response(
+        _search_res([_item(child_id="ITKB-ACC-002#c1", parent_content=markdown)]),
+        wiki_mapping=MAPPING, request_category_id=None)
+    it = resp.items[0]
+    assert it.content == markdown                       # 原样保留 Markdown 结构
+    assert "\n" not in it.snippet                        # snippet 仍压缩为单行
+    assert it.snippet == " ".join(markdown.split())[:1000]
+    assert len(it.snippet) <= 1000
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main([__file__, "-q"]))

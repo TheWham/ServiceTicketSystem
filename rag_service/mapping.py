@@ -75,7 +75,7 @@ def build_response(
             index_version=version_id,                     # 契约：indexVersion 恒等于 versionId
             title=title[:MAX_TITLE],
             snippet=_collapse(content)[:MAX_SNIPPET] or title,
-            content=_collapse(content) or title,
+            content=content if content.strip() else title,   # 原样保留 Markdown 结构供下游拼 grounding
             category_id=request_category_id or entry.get("categoryId") or None,
             score=_clamp_score(it.get("rerank_score")),
         ))
