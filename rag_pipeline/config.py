@@ -107,6 +107,7 @@ class RetrievalConfig:
     rrf_weight: float = 0.6
     rerank_weight: float = 0.4
     reject_threshold: Optional[float] = None   # 低置信拒答：候选最高原始 rerank 分低于此值返回空
+    heuristic_reject_threshold: Optional[float] = 0.25  # 降级（启发式打分）拒答阈值：None=降级时不拒答
     rerank_granularity: str = "child"          # 精排粒度: child=子块 | parent=子块召回后对整卡全文打分
     query_rewrite: bool = False                # 查询改写：LLM 删猜测+补术语，原查询+改写查询四路召回
     rewrite_model: str = ""                    # 改写模型，空=取 LLM_CLEAN_MODEL

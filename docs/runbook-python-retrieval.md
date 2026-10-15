@@ -39,6 +39,7 @@ RAG_HOME=$PWD python -m rag_service           # 默认 127.0.0.1:8310，单进�
 | `RAG_REWRITE_CACHE_DIR` | `artifacts/evaluation/.llm_cache/rewrite` | 改写磁盘缓存（复用 Day14 暖缓存） |
 | `RAG_RERANK_WAIT_BUDGET` | `1.5` | rerank 429 累计等待预算（在线收紧，离线评测为 90） |
 | `RAG_RERANK_MAX_RETRIES` | `8` | rerank 每组打分最大请求轮次（离线为 20） |
+| `RAG_RERANK_REQUEST_TIMEOUT` | `2.5` | 单次 rerank HTTP 读超时（离线默认 120s；过大会让一次上游挂起占住串行锁） |
 | `RAG_WIKI_DIR` / `RAG_CHROMA_DIR` | `artifacts/output/wiki` / `artifacts/indexing/chroma_wiki_structured` | 语料与向量库 |
 
 `GET /api/health`（async，不抢检索锁）回显：`status`（`UP`/`DEGRADED`，映射未加载即
@@ -96,9 +97,11 @@ mvn -pl rag-service -am test                    # 82 tests（含 python 分支 1
    dashscope 后端 → 该次打分降级为启发式（`/api/health` 的 `rerankDegradedCount` 递增、
    日志打印警告）。降级题的第 2/3 位排序可能与离线基线漂移，但 top-1 与**拒答集合不变**。
    压测/回归请带节拍（`--pace 1.5`），避免人为打满限流。
-2. **拒答策略（服务层）**：`refuse ⇔ 内核拒答 ∨ 无候选 ∨ max(score) < 0.40`，
-   **不以"是否走了远程 rerank"为条件**——降级时启发式低分同样拒答，对抗题不会泄漏作答。
-   代价：降级且启发式分 < 0.40 的正样本会被误拒（可用性损失，方向安全）。
+2. **拒答策略（内核 + 服务层双重兜底）**：内核层拒答分两条阈值——远程打分用
+   `retrieval.reject_threshold`（0.40），启发式降级时用 `retrieval.heuristic_reject_threshold`
+   （0.25，可配置）；服务层另按 `refuse ⇔ 内核拒答 ∨ 无候选 ∨ max(score) < 0.40` 兜底，
+   不以"是否走了远程 rerank"为条件，对抗题在降级时也不会泄漏作答。
+   代价：降级且启发式分 < 0.25 的正样本会被误拒（可用性损失，方向安全）。
 3. **冷查询延迟**：改写缓存命中时全程 ~0.5-2.6s；缓存**未命中**且网关限流时，
    单题可能超过 Java 侧 `python-timeout-ms=4200`（实测超时过一次）。
    - 部署时预热缓存：先跑一遍黄金集（评测或回归脚本都会写入磁盘缓存）；

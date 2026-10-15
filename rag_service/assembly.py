@@ -83,8 +83,12 @@ class ServiceAssembly:
         # 在线收紧限流预算：实例级覆盖（类属性/实例默认值均可安全遮蔽，离线评测行为不变）
         self.rerank_wait_budget = float(os.environ.get("RAG_RERANK_WAIT_BUDGET", "1.5"))
         self.rerank_max_retries = int(os.environ.get("RAG_RERANK_MAX_RETRIES", "8"))
+        self.rerank_request_timeout = float(os.environ.get("RAG_RERANK_REQUEST_TIMEOUT", "2.5"))
         self.retriever.reranker.RATE_LIMIT_WAIT_BUDGET = self.rerank_wait_budget
         self.retriever.reranker.backend_retries = self.rerank_max_retries
+        # 单次上游请求读超时必须小于 Java 客户端总预算——否则一次上游挂起（原默认 120s）
+        # 会抱着串行锁占住线程池，后续请求全部 5031
+        self.retriever.reranker.REQUEST_TIMEOUT_SECONDS = self.rerank_request_timeout
 
         # ---- 4) 查询改写（1.2s 短超时、不重试；可整体关闭）----
         self.rewrite_disabled = _env_bool("RAG_DISABLE_QUERY_REWRITE", False)
@@ -171,6 +175,7 @@ class ServiceAssembly:
             rerank_weight=rc.rerank_weight,
             metadata_filter=self._metadata_filter(req.category_id),
             reject_threshold=rc.reject_threshold,
+            heuristic_reject_threshold=rc.heuristic_reject_threshold,
             rerank_granularity=rc.rerank_granularity,
             rewrite_query=rewrite,
             gate=build_gate(rc),
@@ -208,6 +213,7 @@ class ServiceAssembly:
             lock_wait_seconds=self.lock_wait_seconds,
             rerank_wait_budget=self.rerank_wait_budget,
             rerank_max_retries=self.rerank_max_retries,
+            rerank_request_timeout=self.rerank_request_timeout,
             rerank_available=bool(getattr(self.retriever.reranker, "available", False)),
             rerank_provider=getattr(self.retriever.reranker, "provider", "unknown"),
             rerank_degraded_count=self.rerank_degraded_count,

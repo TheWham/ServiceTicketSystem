@@ -134,6 +134,7 @@ class RAGEvaluator:
                 rrf_weight=self.rc.rrf_weight,
                 rerank_weight=self.rc.rerank_weight,
                 reject_threshold=self.rc.reject_threshold,
+                heuristic_reject_threshold=self.rc.heuristic_reject_threshold,
                 rerank_granularity=self.rc.rerank_granularity,
                 rewrite_query=rewrite,
                 gate=build_gate(self.rc),

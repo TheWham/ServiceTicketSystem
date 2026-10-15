@@ -177,6 +177,7 @@ class IndustrialHybridRetriever:
         rrf_weight: float = 0.6,
         rerank_weight: float = 0.4,
         reject_threshold: Optional[float] = None,
+        heuristic_reject_threshold: Optional[float] = 0.25,
         rerank_granularity: str = "child",
         rewrite_query: Optional[str] = None,
         gate: Optional[Dict[str, Any]] = None,
@@ -377,13 +378,15 @@ class IndustrialHybridRetriever:
                 final_results[victim_idx] = rescued
                 final_results.sort(key=lambda x: x["fused_score"], reverse=True)
 
-        # 低置信拒答
+        # 低置信拒答：远程用远端标定阈值（reject_threshold）；
+        # 降级为启发式打分时用启发式阈值（heuristic_reject_threshold）。
+        # 远程与启发式的分数尺度不同（启发式正样本 ≥0.47、无关问题 0.05~0.25），
+        # 降级时若沿用远程阈值（或干脆因 last_used_remote=False 跳过拒答门），
+        # 无关问题会被误当命中（网关 429 / 端点不可用时实测发生过）。
+        threshold = (reject_threshold if self.reranker.last_used_remote
+                     else heuristic_reject_threshold)
         max_rerank = max(rerank_scores) if rerank_scores else 0.0
-        rejected = (
-            reject_threshold is not None
-            and self.reranker.last_used_remote
-            and max_rerank < reject_threshold
-        )
+        rejected = threshold is not None and max_rerank < threshold
         if rejected:
             final_results = []
 
@@ -401,7 +404,7 @@ class IndustrialHybridRetriever:
                           f"(RRF名次 {d['rrf_rank']} / Rerank名次 {d['rerank_rank']}){mark}")
                     print(f"         ↳ {brief}")
             else:
-                print(f"      （低置信拒答：最高 rerank 分 {max_rerank:.4f} < 阈值 {reject_threshold}）")
+                print(f"      （低置信拒答：最高 rerank 分 {max_rerank:.4f} < 阈值 {threshold}）")
             print(f"{'=' * 72}")
 
         latency_ms = round((time.time() - t0) * 1000, 2)

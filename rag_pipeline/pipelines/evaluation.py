@@ -255,6 +255,7 @@ def run_evaluation():
             rerank_weight=rc.rerank_weight,
             metadata_filter=m_filter,
             reject_threshold=rc.reject_threshold,
+            heuristic_reject_threshold=rc.heuristic_reject_threshold,
             rerank_granularity=rc.rerank_granularity,
             rewrite_query=rewrite,
             gate=build_gate(rc),

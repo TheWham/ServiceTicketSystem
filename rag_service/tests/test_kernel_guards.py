@@ -12,6 +12,8 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from rag_pipeline.retrieval.query_rewriter import QueryRewriter  # noqa: E402
@@ -86,6 +88,27 @@ def test_query_rewriter_accepts_timeout_and_retries():
 def test_query_rewriter_offline_defaults_unchanged():
     rw = QueryRewriter(model="m", cache_dir=None)
     assert rw.retries == 2                    # 离线默认两次尝试，行为不变
+
+
+def test_rerank_post_timeout_is_bounded_by_instance_attr(monkeypatch):
+    """单次 /rerank 请求的超时必须可在线收紧：原先硬编码 120s，
+    上游一次挂起就能把串行锁占住两分钟（Java 侧 4.2s 早已超时）。"""
+    from rag_pipeline.retrieval import reranker as rmod
+
+    reranker = _make_reranker()
+    reranker.endpoint = "http://127.0.0.1:1/rerank"
+    reranker.REQUEST_TIMEOUT_SECONDS = 2.5
+    captured = {}
+
+    def fake_urlopen(req, timeout=None):
+        captured["timeout"] = timeout
+        raise RuntimeError("stop before network")
+
+    monkeypatch.setattr(rmod.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(RuntimeError):
+        reranker._post({"model": "m", "query": "q", "documents": ["d"]})
+
+    assert captured["timeout"] == 2.5, "必须使用实例级 REQUEST_TIMEOUT_SECONDS"
 
 
 if __name__ == "__main__":

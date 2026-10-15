@@ -35,6 +35,12 @@ retrieval:
   query_rewrite: true           # 查询改写：LLM 删去用户对原因的猜测并补规范术语；原查询+改写查询四路召回，精排用改写查询
   rewrite_model: ""             # 改写模型，空=取 .env 的 LLM_CLEAN_MODEL（deepseek-v4-flash）
   reject_threshold: 0.40        # 低置信拒答：候选原始 rerank 最高分低于此值返回空（null=不启用）
+  heuristic_reject_threshold: 0.25  # rerank 降级为启发式打分时的拒答阈值（启发式分数上限 0.99、无关题实测 ≤0.2；null=关闭降级拒答）
+  heuristic_reject_threshold: 0.25  # rerank 降级为启发式打分时的拒答阈值（null=降级时不拒答）
+                                # 为什么单列：远程 rerank 与启发式的分数尺度不同（启发式正样本 ≥0.47、
+                                # 无关问题 0.05~0.25），沿用远程标定的 0.40 会漏拒——网关 429 降级时
+                                # 无关问题最高分仅 ~0.13 却因降级跳过拒答门，被误当命中。
+                                # 远程成功时本阈值不参与判定（仍用 reject_threshold）。
   # 置信度动态门控：按每次 rerank 打分分布动态切换融合权重（false=固定权重，行为同旧版）
   gate_enabled: true            # true: 高置信时 rerank 大权，低置信/启发式降级时 RRF 托底
   gate_min_score: 0.55          # 高置信门槛①：top-1 原始 rerank 分（本端点正样本 0.6+、负样本 ≤0.26）

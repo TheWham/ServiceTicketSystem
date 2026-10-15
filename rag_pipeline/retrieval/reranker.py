@@ -100,6 +100,7 @@ class KspReranker:
 
     MAX_CHARS_PER_REQUEST = 10000  # 单次 /rerank 请求的文档总字符上限，超出自动分批（网关对超长请求易超时/截断）
     RATE_LIMIT_WAIT_BUDGET = 90.0  # 单次打分因 429 最多累计等待的秒数
+    REQUEST_TIMEOUT_SECONDS = 120.0  # 单次 HTTP 请求读超时；在线服务化时应收紧（否则一次挂起占满串行锁）
 
     @staticmethod
     def _parse_results(res: Any):
@@ -129,7 +130,7 @@ class KspReranker:
                 "Content-Type": "application/json",
             },
         )
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=self.REQUEST_TIMEOUT_SECONDS) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
     def _call_api(self, query: str, documents: List[str], top_n: Optional[int] = None) -> List[float]:

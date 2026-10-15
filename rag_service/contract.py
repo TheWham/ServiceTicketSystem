@@ -95,6 +95,7 @@ class HealthResponse(BaseModel):
     lock_wait_seconds: float = Field(alias="lockWaitSeconds")
     rerank_wait_budget: float = Field(alias="rerankWaitBudget")
     rerank_max_retries: int = Field(alias="rerankMaxRetries")
+    rerank_request_timeout: float = Field(alias="rerankRequestTimeout")
     rerank_available: bool = Field(alias="rerankAvailable")
     rerank_provider: str = Field(alias="rerankProvider")
     rerank_degraded_count: int = Field(alias="rerankDegradedCount")   # 网关限流降级累计次数
