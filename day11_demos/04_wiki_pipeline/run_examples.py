@@ -26,14 +26,14 @@ import pandas as pd
 
 # 实现已迁移至 rag_pipeline 包；本目录运行时把仓库根加入 sys.path
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from rag_pipeline.ingestion.clean_pipeline import CleanPipeline, Entry, desensitize_text
 from rag_pipeline.ingestion.llm_synthesizer import LlmSynthesizer, load_api_config
 from rag_pipeline.ingestion.wiki_generator import render_card, render_index, make_wiki_id
 
-DEMO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUTPUT_ROOT = os.path.join(DEMO_ROOT, "output", "example")
+DEMO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # = day11_demos/（01/02/03 同级）
+OUTPUT_ROOT = os.path.join(os.path.dirname(DEMO_ROOT), "artifacts", "output", "example")
 CACHE_DIR = os.path.join(OUTPUT_ROOT, ".llm_cache")
 
 CN_NUM_RE = re.compile(r"^[一二三四五六七八九十]+、\s*")
@@ -223,7 +223,7 @@ def main():
     if not args.offline:
         cfg = load_api_config()
         if not cfg["api_key"]:
-            print("   [警告] 未找到 KSP_API_KEY，自动降级为离线模式")
+            print("   [警告] 未找到 LLM_API_KEY，自动降级为离线模式")
         else:
             print(f"   [配置] 清洗模型={cfg['clean_model']} | 精修模型={cfg['chat_model']}")
             synthesizer = LlmSynthesizer(cfg, cache_dir=CACHE_DIR)

@@ -34,7 +34,7 @@ class VectorStoreManager:
         """把一批 Document 向量化并落盘到独立子目录，返回可检索的 Chroma 句柄。
 
         manifest：可选的构建指纹（wiki 内容哈希 + 切块参数 + 嵌入模型），落盘为
-        manifest.json，供下游（Day 13）加载前做语料一致性校验。"""
+        manifest.json，供下游（检索评测）加载前做语料一致性校验。"""
         target_dir = self.base_dir / persist_subdir
         if target_dir.exists():
             shutil.rmtree(target_dir, ignore_errors=True)

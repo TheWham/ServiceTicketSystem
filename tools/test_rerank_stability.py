@@ -5,7 +5,7 @@ test_rerank_stability.py — Reranker 打分稳定性压测工具
 
 对同一个 (query, documents) 组合连续调用 N 次远程 rerank API，
 记录每次的绝对分与排序，验证"绝对分漂移、名次稳定"这一工程现象
-（详见 Day13 讲义第六篇）。
+（详见检索评测讲义）。
 
 产出：
   1. 控制台表格：每次调用各文档的绝对分 + 名次
@@ -23,11 +23,15 @@ import json
 from pathlib import Path
 from statistics import mean, pstdev
 
+# 脚本位于 tools/，向上定位仓库根并加入 sys.path，便于 import rag_pipeline
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 # Windows 控制台默认 GBK，统一切换 UTF-8 防止 emoji 打印崩溃
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-from run_day13_pipeline import KspReranker
+from rag_pipeline.config import WIKI_DIR, EVALUATION_OUTPUT
+from rag_pipeline.retrieval.reranker import KspReranker
 
 # 压测用的固定输入：1 个查询 + 3 篇相关性不同的文档
 QUERY = "发邮件收到退信提示550 Mailbox not found，最可能是什么问题？"
@@ -48,7 +52,7 @@ def load_hc10_docs():
     chunker, _ = build_chunker(load_config())
     docs = []
     for card in HC10_CARDS:
-        _, children = chunker.split_wiki_document(f"output/wiki/{card}.md")
+        _, children = chunker.split_wiki_document(str(WIKI_DIR / f"{card}.md"))
         if children:
             docs.append((f"{card}#c0", children[0].page_content))
     return docs
@@ -219,9 +223,9 @@ def main():
     if args.scenario == "hc10":
         QUERY = HC10_QUERY
         DOCS = load_hc10_docs()
-        out_path = Path(args.out or "day13_output/rerank稳定性压测报告_hc10.html")
+        out_path = Path(args.out or str(EVALUATION_OUTPUT / "rerank稳定性压测报告_hc10.html"))
     else:
-        out_path = Path(args.out or "day13_output/rerank稳定性压测报告.html")
+        out_path = Path(args.out or str(EVALUATION_OUTPUT / "rerank稳定性压测报告.html"))
 
     print(f"🔬 压测 reranker：连续调用 {args.n} 次（每次间隔 {args.delay}s）...")
     print(f"   场景: {args.scenario} | Query: {QUERY[:40]}...")

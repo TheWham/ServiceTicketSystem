@@ -14,7 +14,7 @@ from langchain_core.documents import Document
 
 class WikiStructureAwareChunker:
     """
-    Day 12 结构感知切块引擎（自适应粒度）：
+    结构感知切块引擎（自适应粒度）：
     - YAML Frontmatter 自动解析与清洗
     - 短卡片整卡保持原子性（卡片即最小语义单元，落在 300~800 token 甜点区）
     - 长文档才降级：标题树粗切 -> 相邻小节合并到目标粒度 -> 递归微切兜底
@@ -135,7 +135,7 @@ class WikiStructureAwareChunker:
                     enhanced_content = f"【制度归属：{wiki_title}】\n{chunk.page_content}"
                 chunk.page_content = enhanced_content
 
-                # 1. 深度注入 Frontmatter 元数据（Day 13 前置硬过滤的基础）
+                # 1. 深度注入 Frontmatter 元数据（检索前置硬过滤的基础）
                 for k, v in frontmatter_meta.items():
                     # Chroma 等向量数据库要求元数据类型为 str/int/float/bool，
                     # list/dict 一律序列化为 JSON 字符串

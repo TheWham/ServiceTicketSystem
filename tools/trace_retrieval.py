@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-trace_retrieval.py — Day13 四轨检索过程追踪工具
+trace_retrieval.py — 四轨检索过程追踪工具
 
 把每道题在四个阶段的召回过程完整打印出来：
   ① BM25 字面召回  ② Dense 语义召回  ③ RRF 融合  ④ 全链路(+Rerank精排+按秩融合)
@@ -16,31 +16,37 @@ import sys
 import argparse
 from pathlib import Path
 
+# 脚本位于 tools/，向上定位仓库根并加入 sys.path，便于 import rag_pipeline
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 # Windows 控制台默认 GBK，统一切换 UTF-8 防止 emoji 打印崩溃
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 from langchain_community.vectorstores import Chroma
-from run_day12_pipeline import WikiStructureAwareChunker, KspEmbeddingProvider
-from run_day13_pipeline import IndustrialHybridRetriever, HARD_BENCHMARK_SUITE, load_ksp_config
+from rag_pipeline.config import WIKI_DIR, INDEXING_OUTPUT, load_rerank_config
+from rag_pipeline.chunking.structure_aware import WikiStructureAwareChunker
+from rag_pipeline.embedding import KspEmbeddingProvider
+from rag_pipeline.retrieval.hybrid import IndustrialHybridRetriever
+from rag_pipeline.evaluation.suite import HARD_BENCHMARK_SUITE
 
 
 def build_retriever():
-    """组装与 Day13 完全一致的混合检索器（切块器 + KSP embedding + BM25 + Reranker）"""
+    """组装与检索评测完全一致的混合检索器（切块器 + KSP embedding + BM25 + Reranker）"""
     chunker = WikiStructureAwareChunker()
     chunks = []
-    for w in sorted(Path("output/wiki").glob("*.md")):
+    for w in sorted(WIKI_DIR.glob("*.md")):
         if w.name == "_index.md":
             continue  # 目录导航页不入语料，避免污染检索
         chunks.extend(chunker.split_wiki_document(str(w)))
 
-    emb = KspEmbeddingProvider(cache_dir="day12_output/.emb_cache")
+    emb = KspEmbeddingProvider(cache_dir=str(INDEXING_OUTPUT / ".emb_cache"))
     db = Chroma(
-        persist_directory="day12_output/chroma_wiki_structured",
+        persist_directory=str(INDEXING_OUTPUT / "chroma_wiki_structured"),
         embedding_function=emb,
         collection_name="wiki_structured_kb",
     )
-    reranker_model = load_ksp_config().get("rerank_model", "qwen3-reranker-8b")
+    reranker_model = load_rerank_config().get("model", "qwen3-reranker-8b")
     return IndustrialHybridRetriever(vector_db=db, corpus_docs=chunks, reranker_model_name=reranker_model), chunks
 
 
@@ -91,7 +97,7 @@ def trace_one(retriever, chunks, query, expected=None, metadata_filter=None, k=3
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Day13 四轨检索过程追踪")
+    parser = argparse.ArgumentParser(description="四轨检索过程追踪")
     parser.add_argument("--query", default="", help="自定义查询（留空则跑内置 7 道题）")
     parser.add_argument("--k", type=int, default=3, help="每阶段展示 Top-K（默认 3）")
     args = parser.parse_args()

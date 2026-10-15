@@ -7,7 +7,7 @@ adversarial_benchmark.py — 版本冲突对抗压测（证明元数据过滤的
 本脚本注入"旧版废止"干扰卡（同关键词、冲突事实），模拟真实企业知识库
 "新旧版本并存"的痛点，量化回答两个问题：
   1. 纯语义/关键词检索能否区分"现行版"与"废止版"？（答案：不能，全部漏幻觉）
-  2. Day 12 注入的元数据（version）能否物理屏蔽废止版？（答案：能，全部干净）
+  2. 注入的元数据（version）能否物理屏蔽废止版？（答案：能，全部干净）
 
 用法（在 D:\\day12\\demos 目录下）：
   python adversarial_benchmark.py
@@ -19,6 +19,9 @@ import tempfile
 import argparse
 from pathlib import Path
 
+# 脚本位于 tools/，向上定位仓库根并加入 sys.path，便于 import rag_pipeline
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
@@ -27,8 +30,10 @@ warnings.filterwarnings("ignore")
 
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
-from run_day12_pipeline import WikiStructureAwareChunker, KspEmbeddingProvider
-from run_day13_pipeline import IndustrialHybridRetriever, load_ksp_config
+from rag_pipeline.config import WIKI_DIR, INDEXING_OUTPUT, EVALUATION_OUTPUT, load_rerank_config
+from rag_pipeline.chunking.structure_aware import WikiStructureAwareChunker
+from rag_pipeline.embedding import KspEmbeddingProvider
+from rag_pipeline.retrieval.hybrid import IndustrialHybridRetriever
 
 # ==============================================================================
 # 干扰卡：模拟"旧版废止"知识（同关键词、冲突事实、带 version/status 元数据）
@@ -89,7 +94,7 @@ CONFLICT_TESTS = [
 def build_corpus():
     """真实 35 卡 + 3 张干扰卡，组成带版本冲突的压测语料（内存，不污染真实库）"""
     chunker = WikiStructureAwareChunker()
-    real = [c for w in sorted(Path("output/wiki").glob("*.md"))
+    real = [c for w in sorted(WIKI_DIR.glob("*.md"))
             if w.name != "_index.md" for c in chunker.split_wiki_document(str(w))]
     fake = []
     for txt in DISTRACTORS:
@@ -118,17 +123,17 @@ def eval_lanes(retriever, query, metadata_filter=None):
 
 def main():
     parser = argparse.ArgumentParser(description="版本冲突对抗压测")
-    parser.add_argument("--output", default="day13_output/版本冲突对抗压测报告.md", help="报告落盘路径")
+    parser.add_argument("--output", default=str(EVALUATION_OUTPUT / "版本冲突对抗压测报告.md"), help="报告落盘路径")
     args = parser.parse_args()
 
     print("🧪 组装带版本冲突的压测语料（真实卡 + 旧版废止干扰卡）...")
     corpus, n_real, n_fake = build_corpus()
     print(f"   语料规模: 真实 {n_real} + 干扰 {n_fake} = {len(corpus)}")
 
-    emb = KspEmbeddingProvider(cache_dir="day12_output/.emb_cache")
+    emb = KspEmbeddingProvider(cache_dir=str(INDEXING_OUTPUT / ".emb_cache"))
     # 内存临时库，绝不覆盖持久化的真实向量库
     db = Chroma.from_documents(documents=corpus, embedding=emb, collection_name="adv_bench")
-    reranker_model = load_ksp_config().get("rerank_model", "Kimi3-reranker-8b")
+    reranker_model = load_rerank_config().get("model", "qwen3-reranker-8b")
     retriever = IndustrialHybridRetriever(vector_db=db, corpus_docs=corpus, reranker_model_name=reranker_model)
 
     records = []
@@ -192,7 +197,7 @@ def main():
         f"（{total_ye_hall/total_cells:.0%}），废止版被物理屏蔽。",
         "3. **工程启示**：在干净小语料上四轨全 100% 是'评测饱和'，不代表架构无盲区；"
         "一旦引入真实世界的版本冲突，**元数据前置过滤**才是区分现行/废止的唯一可靠手段——"
-        "这正是 Day 12 把 frontmatter 注入向量的价值所在。",
+        "这正是把 frontmatter 注入向量的价值所在。",
     ]
     out.write_text("\n".join(md), encoding="utf-8")
     print(f"\n🎉 报告已落盘：{out}")

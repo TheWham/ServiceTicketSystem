@@ -1,4 +1,4 @@
-"""索引构建主流水线（原 Day12）：切块 -> 向量化 -> 双库入库 -> A/B 评测 -> 元数据过滤 -> 报告。"""
+"""索引构建主流水线：切块 -> 向量化 -> 双库入库 -> A/B 评测 -> 元数据过滤 -> 报告。"""
 
 import json
 from pathlib import Path
@@ -16,12 +16,11 @@ from ..evaluation.suite import BENCHMARK_QUERIES
 
 
 def run_indexing(
-    wiki_kb_dir: str = "output/wiki",
-    raw_docs_dir: str = "day11/demos",
-    output_dir: str = "day12_output",
+    wiki_kb_dir: str = "artifacts/output/wiki",
+    output_dir: str = "artifacts/indexing",
     embedding_model: str = ""
 ):
-    """Day 12 主流水线：切块 -> 向量化 -> 双库入库 -> A/B 评测 -> 元数据过滤 -> 报告。
+    """索引构建主流水线：切块 -> 向量化 -> 双库入库 -> A/B 评测 -> 元数据过滤 -> 报告。
 
     流程概览：
       [1] 初始化嵌入引擎与切块器
@@ -31,14 +30,13 @@ def run_indexing(
       [5] 元数据前置硬过滤演示 + 报告落盘
     """
     print("=" * 80)
-    print("🚀 Day 12 企业知识库 Chunking 分块策略工程与 Embedding 向量化调优流水线")
+    print("🚀 企业知识库 Chunking 分块与 Embedding 向量化流水线")
     print("=" * 80)
 
     # 项目根 = 本文件上两级（rag_pipeline/pipelines/ -> 仓库根）
     project_root = Path(__file__).resolve().parents[2]
     cfg = load_config()
     wiki_path = project_root / wiki_kb_dir
-    raw_path = project_root / raw_docs_dir
     out_path = project_root / output_dir
     out_path.mkdir(parents=True, exist_ok=True)
 
@@ -59,17 +57,13 @@ def run_indexing(
     # 检查输入源（_index.md 是目录导航页非知识正文，排除避免污染检索）
     wiki_files = sorted(wiki_path.glob("*.md")) if wiki_path.exists() else []
     wiki_files = [f for f in wiki_files if f.name != "_index.md"]
-    if not wiki_files:
-        print(f"⚠️  未在 {wiki_path} 发现 Day 11 Wiki 卡片，尝试备用路径...")
-        wiki_files = sorted(project_root.glob("04_wiki_pipeline/output/wiki/*.md"))
-        wiki_files = [f for f in wiki_files if f.name != "_index.md"]
 
     if not wiki_files:
-        raise FileNotFoundError(f"❌ 找不到 Day 11 的 Wiki 知识卡片，请先运行 Day 11 流水线生成！")
+        raise FileNotFoundError(f"❌ 找不到 Wiki 知识卡片，请先运行 Wiki 清洗流水线生成！")
 
     print(f"\n[2/5] 执行数据分块阶段 (A/B 双轨并行)...")
     # 轨 A: 配置中心指定的切块策略（默认父子切片 Small-to-Big）——
-    # 子块入向量库做精确匹配，父块留作回溯上下文。与 Day13 共用 build_chunker 工厂，
+    # 子块入向量库做精确匹配，父块留作回溯上下文。与检索评测共用 build_chunker 工厂，
     # 保证两侧语料粒度永远一致（改 configs/pipeline.yaml 即全链路同步）。
     chunker, use_parent_child = build_chunker(cfg)
     structured_chunks: List[Document] = []   # 入库的"子块"
@@ -84,11 +78,9 @@ def run_indexing(
         structured_chunks.extend(children)
         print(f"    - 处理文件: {wf.name} -> 子块x{len(children)}")
 
-    # 轨 B: 朴素暴力切块（对照组）。若有原始 txt 用原始文档，
-    # 否则直接用同一份 wiki 文件做"纯字符无结构切块"，保证 A/B 对比语料一致、只变量是策略。
-    raw_files = list(raw_path.glob("*.txt")) if raw_path.exists() else []
-    if not raw_files:
-        raw_files = wiki_files
+    # 轨 B: 朴素暴力切块（对照组）。直接用同一份 wiki 文件做"纯字符无结构切块"，
+    # 保证 A/B 对比语料一致、只变量是策略。
+    raw_files = wiki_files
 
     naive_chunks: List[Document] = []
     print(f"  • [对照组: 朴素固定长度截断]")
@@ -100,7 +92,7 @@ def run_indexing(
     print(f"\n[3/5] 构建持久化 Chroma 向量数据库...")
     vsm = VectorStoreManager(base_persist_dir=str(out_path), embedding_provider=embed_provider)
 
-    # 入库 A（附带构建指纹 manifest，供 Day 13 加载前校验语料一致性）
+    # 入库 A（附带构建指纹 manifest，供检索评测加载前校验语料一致性）
     db_structured = vsm.build_store(
         collection_name="wiki_structured_kb",
         documents=structured_chunks,
@@ -167,7 +159,7 @@ def run_indexing(
 
     print(f"\n[5/5] 验证元数据前置硬过滤 (Metadata Pre-filtering 攻防演示)...")
     # 演示：按知识分类对「账号与权限问题」域进行强制过滤检索。
-    # 这是 Day 12 注入元数据的核心价值——检索前先按结构化标签收窄范围，
+    # 这是元数据注入的核心价值——检索前先按结构化标签收窄范围，
     # 物理屏蔽无关分类，杜绝跨域串扰导致的幻觉。
     target_filter = {"wiki_category": "账号与权限问题"}
     try:
@@ -189,7 +181,7 @@ def run_indexing(
         print(f"  ⚠️ 元数据过滤演示遇到轻微适配异常: {e}")
 
     # 出具评测报告
-    report_file = out_path / "Day12_Chunking与向量化评测报告.md"
+    report_file = out_path / "Chunking与向量化评测报告.md"
     _generate_markdown_report(report_file, structured_chunks, naive_chunks, eval_results)
     print(f"\n🎉 评测报告已成功落盘至：{report_file}")
     print(f"📂 向量数据库持久化目录：{out_path / 'chroma_wiki_structured'}")
@@ -197,10 +189,10 @@ def run_indexing(
 
 
 def _generate_markdown_report(report_path: Path, struct_chunks: List[Document], naive_chunks: List[Document], eval_results: List[Dict]):
-    """生成 Day12 评测报告：策略对照表 + 每题 Top-3 命中明细 + 结论与技术承接。"""
-    content = f"""# Day 12 工业级 Chunking 分块策略与向量化调优评测报告
+    """生成评测报告：策略对照表 + 每题 Top-3 命中明细 + 结论与技术承接。"""
+    content = f"""# Chunking 分块策略与向量化评测报告
 
-> 知识库来源：《IT常见问题RAG知识库.docx》→ Day 11 清洗重构产出的 35 张 Wiki 知识卡片
+> 知识库来源：《IT常见问题RAG知识库.docx》→ 清洗重构产出的 35 张 Wiki 知识卡片
 > Embedding 模型：KSP OpenAI 兼容端点 `qwen3-embedding-8b`（4096 维，余弦归一化）
 
 ## 一、 实验工程概览与参数对照
@@ -208,7 +200,7 @@ def _generate_markdown_report(report_path: Path, struct_chunks: List[Document], 
 | 维度指标 | 对照组 A：朴素固定长度分块 (Naive Fixed) | 实验组 B：Wiki 结构感知分块 (Structure-Aware) | 工业收益说明 |
 | :--- | :--- | :--- | :--- |
 | **切块策略** | 纯按 500 字符切分，忽略标题与段落 | Markdown 标题层级树 + 递归句子微切 | 保证每个切块语意自包含，无断头句 |
-| **元数据注入** | ❌ 无元数据注入（仅记录源文件名与切片号） | ✅ 深度注入 YAML Frontmatter (分类/部门/实体/关键词) | 支持 Day 13 混合检索的前置硬过滤 |
+| **元数据注入** | ❌ 无元数据注入（仅记录源文件名与切片号） | ✅ 深度注入 YAML Frontmatter (分类/部门/实体/关键词) | 支持混合检索的前置硬过滤 |
 | **切片总数量** | {len(naive_chunks)} 个切片 | {len(struct_chunks)} 个原子切片 | 整卡原子切片数量更少但语义完整，避免碎片化稀释向量 |
 | **平均切块长度** | 约 420 字符 | 约 700~950 字符 (整卡原子) | 命中一条切片即携带完整排查链路，无需二次拼接 |
 | **分类冲突防御** | ❌ 无法区分网络/账号/硬件等故障域 | ✅ 携带 `wiki_category` 与 `wiki_department` | 跨分类检索时物理屏蔽无关域干扰 |
@@ -237,12 +229,31 @@ def _generate_markdown_report(report_path: Path, struct_chunks: List[Document], 
     content += """## 三、 结论与阶段技术承接
 1. **自适应粒度切块价值确证**：对约 900 字符的短卡片整卡保持原子性（落在 300~800 token 甜点区），避免按标题切碎导致跨小节事实分裂；仅超长文档才标题切分+合并+递归兜底。切片完整包含了上下文排查链路（现象→根因→自助→进阶），未出现关键判定词遗漏；
 2. **元数据前置过滤完全生效**：借助 `wiki_category` 的过滤条件，检索链路成功将查询范围物理限定在目标故障域，屏蔽无关分类干扰；
-3. **技术承接**：本日持久化落盘的 `chroma_wiki_structured/` 数据库，将无缝对接 **Day 13 的 BM25 + Dense 双路召回与 Rerank 精排工程**。
+3. **技术承接**：本日持久化落盘的 `chroma_wiki_structured/` 数据库，将无缝对接 **BM25 + Dense 双路召回与 Rerank 精排工程**。
 """
 
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(content)
 
 
-# 向后兼容别名：旧入口与工具脚本仍可用 run_day12_pipeline
-run_day12_pipeline = run_indexing
+if __name__ == "__main__":
+    import sys
+    import argparse
+
+    # Windows 控制台默认 GBK，统一切换 UTF-8 防止 emoji 打印崩溃
+    if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
+
+    parser = argparse.ArgumentParser(description="切块 + 向量化 + 双库入库 + A/B 评测")
+    parser.add_argument("--wiki-dir", default="artifacts/output/wiki", help="Wiki 卡片输入目录")
+    parser.add_argument("--output-dir", default="artifacts/indexing", help="产物输出目录")
+    parser.add_argument("--model", default="", help="Embedding 模型名(默认取 EMBED_MODEL 或 qwen3-embedding-8b)")
+    args = parser.parse_args()
+
+    run_indexing(
+        wiki_kb_dir=args.wiki_dir,
+        output_dir=args.output_dir,
+        embedding_model=args.model
+    )

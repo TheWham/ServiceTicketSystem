@@ -20,15 +20,15 @@ from pathlib import Path
 # Windows 控制台默认 GBK 编码，直接 print emoji 会抛 UnicodeEncodeError，必须重配为 UTF-8
 sys.stdout.reconfigure(encoding="utf-8")
 
-# 实现已迁移至 rag_pipeline 包；本目录运行时把仓库根加入 sys.path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# 实现已迁移至 rag_pipeline 包；本目录位于 day11_demos/ 下，向上两级定位仓库根加入 sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from rag_pipeline.ingestion.clean_pipeline import CleanPipeline                  # Step 1：规则物理清洗引擎
 from rag_pipeline.ingestion.llm_synthesizer import LlmSynthesizer, load_api_config  # Step 2/3：双模型 LLM 清洗与萃取
 from rag_pipeline.ingestion.wiki_generator import generate_wiki                  # Step 4：Wiki 卡片渲染落盘
 
-DOCX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "IT常见问题RAG知识库.docx")
-OUTPUT_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "output")
+DOCX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "IT常见问题RAG知识库.docx")
+OUTPUT_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "artifacts", "output")
 
 
 def banner(text: str):
@@ -63,9 +63,9 @@ def main():
     synthesizer = None
     cfg = None
     if not args.offline:
-        cfg = load_api_config()  # key 优先级：环境变量 KSP_API_KEY > 项目根 .env
+        cfg = load_api_config()  # key 来源：环境变量 LLM_API_KEY > 项目根 .env
         if not cfg["api_key"]:
-            print("\n   [警告] 未找到 KSP_API_KEY，自动降级为离线模式")
+            print("\n   [警告] 未找到 LLM_API_KEY，自动降级为离线模式")
         else:
             print(f"\n   [配置] base_url={cfg['base_url']}")
             print(f"   [配置] 清洗模型={cfg['clean_model']} | 精修模型={cfg['chat_model']}")

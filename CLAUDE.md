@@ -11,28 +11,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 一键运行全部 3 个 Demo（串行，任一失败即中断）：
 
 ```bash
-python run_all_demos.py
+python day11_demos/run_all_demos.py
 ```
 
 单独运行某个专项（必须 cd 到子目录运行，脚本依赖相对路径的样本文件）：
 
 ```bash
-cd 01_pdf_governance && python run_demo.py
+cd day11_demos/01_pdf_governance && python run_demo.py
 ```
 
 Demo 4（知识库清洗 + Wiki 生成，依赖外部 LLM API，不挂入 run_all_demos.py）：
 
 ```bash
-cd 04_wiki_pipeline && python run_demo.py            # 全流程（需 KSP_API_KEY）
-python run_demo.py --offline                         # 离线降级（全规则兜底）
-python run_demo.py --limit 3                         # 调试前 N 条
+cd day11_demos/04_wiki_pipeline && python run_demo.py   # 全流程（需 LLM_API_KEY）
+python run_demo.py --offline                            # 离线降级（全规则兜底）
+python run_demo.py --limit 3                            # 调试前 N 条
 ```
 
 RAG 链路（切块建库 → 混合检索评测，依赖 Wiki 卡片与 LLM API）：
 
 ```bash
-python run_day12_pipeline.py   # 切块 + 嵌入 + Chroma 建库（含 manifest 指纹）
-python run_day13_pipeline.py   # 四轨检索评测（Dense/BM25/RRF/全链路+Rerank）
+python -m rag_pipeline.pipelines.indexing     # 切块 + 嵌入 + Chroma 建库（含 manifest 指纹）
+python -m rag_pipeline.pipelines.evaluation   # 四轨检索评测（Dense/BM25/RRF/全链路+Rerank）
 ```
 
 **配置中心 `configs/pipeline.yaml`**：切片规则（策略/child_size/H2 边界/前言合并/溯源剔除/检索增强注入范围/面包屑）、嵌入与重排模型、检索参数（top_k/rrf_k/融合权重/废止卡排除）。Day12 与 Day13 经 `rag_pipeline.config.build_chunker()` 共用同一切块器实例化路径；Day12 建库时在 manifest 落 `config_fingerprint`，Day13 加载前比对——改 YAML 任何切片参数，旧库自动判失效并重建内存索引。
@@ -44,20 +44,20 @@ rag_pipeline/
 ├── config.py          # 配置加载 + ChunkingConfig/RetrievalConfig + config_fingerprint + build_chunker
 ├── ingestion/         # 04 清洗生成三模块（clean_pipeline / llm_synthesizer / wiki_generator）
 ├── chunking/          # parent_child（父子切片+expand_to_parents）/ structure_aware（结构感知+朴素基线）/ fingerprint
-├── embedding.py       # KspEmbeddingProvider + load_ksp_config
+├── embedding.py       # KspEmbeddingProvider + load_embedding_config
 ├── store.py           # VectorStoreManager（全量重建 + manifest）
 ├── retrieval/         # tokenizer（分词+纯Python BM25）/ reranker（KSP /rerank+启发式兜底）/ hybrid（双路+RRF+按秩融合+Top-1/2共振保护）
 ├── evaluation/        # suite（Day12 TC + Day13 HC/NEG 题集）/ report（主报告+详细召回过程）
 └── pipelines/         # indexing.py（建库，原 day12）/ evaluation.py（检索评测，原 day13）
 ```
 
-根目录 `run_day12_pipeline.py` / `run_day13_pipeline.py` 是**薄入口**：转发到包内主流水线并再导出公开 API（`adversarial_benchmark.py`、`dump_chunks.py` 等工具脚本的旧 import 因此无需改动）。`ParentChildChunker(child_size=512)` 旧签名仍兼容，但新代码应传 `config=ChunkingConfig(...)`。
+主流水线自带 CLI 入口：`python -m rag_pipeline.pipelines.indexing`（建库）与 `python -m rag_pipeline.pipelines.evaluation`（评测），均可通过 API 调用（`from rag_pipeline.pipelines.indexing import run_indexing`）。工具/诊断脚本已归拢到 `tools/`，并**直连 `rag_pipeline.*`**（不依赖薄入口）；`rag_pipeline.config` 提供 `WIKI_DIR`/`INDEXING_OUTPUT`/`EVALUATION_OUTPUT`/`ARTIFACTS_ROOT` 路径常量，运行产物统一归档 `artifacts/`。`ParentChildChunker(child_size=512)` 旧签名仍兼容，但新代码应传 `config=ChunkingConfig(...)`。
 
-## 04_wiki_pipeline（IT 知识库清洗 + Wiki 生成）
+## day11_demos/04_wiki_pipeline（IT 知识库清洗 + Wiki 生成）
 
-两层架构的实现已迁移至 `rag_pipeline/ingestion/`：`clean_pipeline.py`（L1 规则物理清洗：保序解析 docx → 剔除分隔线/空段、2 列字段表摊平为结构化字段、按 H2 切条目）→ `llm_synthesizer.py`（双模型：deepseek-v4-flash 做语义级正文清洗，kimi-k3 做 frontmatter 元数据萃取，均有磁盘缓存 `output/.llm_cache/` 与规则兜底）→ `wiki_generator.py`（YAML frontmatter + 分节正文 + 溯源 → `output/wiki/`）。`04_wiki_pipeline/run_demo.py` 保留为入口（内部 import 指向 rag_pipeline.ingestion）。
+两层架构的实现已迁移至 `rag_pipeline/ingestion/`：`clean_pipeline.py`（L1 规则物理清洗：保序解析 docx → 剔除分隔线/空段、2 列字段表摊平为结构化字段、按 H2 切条目）→ `llm_synthesizer.py`（双模型：deepseek-v4-flash 做语义级正文清洗，kimi-k3 做 frontmatter 元数据萃取，均有磁盘缓存 `artifacts/output/.llm_cache/` 与规则兜底）→ `wiki_generator.py`（YAML frontmatter + 分节正文 + 溯源 → `artifacts/output/wiki/`）。`day11_demos/04_wiki_pipeline/run_demo.py` 保留为入口（内部 import 指向 rag_pipeline.ingestion）。
 
-- LLM 配置：OpenAI 兼容协议，`base_url` 通过环境变量 `KSP_BASE_URL` 或根目录 `.env` 提供（内网地址不入库）；key 只从环境变量 `KSP_API_KEY` 或根目录 `.env`（已被 .gitignore 忽略）读取。模型可用 `KSP_CHAT_MODEL`/`KSP_CLEAN_MODEL` 覆盖。
+- 三类模型配置：LLM / Embedding / Rerank **各自独立** `base_url` + `key`（环境变量 `LLM_*` / `EMBED_*` / `RERANK_*` 或根目录 `.env`，内网地址不入库、`.env` 已被 .gitignore 忽略）。LLM 的对话/清洗模型可用 `LLM_CHAT_MODEL`/`LLM_CLEAN_MODEL` 覆盖。
 - kimi-k3 不接受 temperature 参数（只允许 1），调用时勿传。
 - 输入文档《IT常见问题RAG知识库.docx》结构固定：35 个 H2 条目（32 个带【XXX-NNN】代码 + 3 个附录），每条 4 行 2 列字段表；改动文档结构需同步检查 `rag_pipeline/ingestion/clean_pipeline.py` 的 `FIELD_LABEL_RE` 与 `ENTRY_CODE_RE`。
 - Windows 控制台为 GBK，入口脚本必须 `sys.stdout.reconfigure(encoding="utf-8")` 否则 emoji 打印崩溃。

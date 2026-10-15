@@ -14,21 +14,25 @@ import sys
 import argparse
 from pathlib import Path
 
+# 脚本位于 tools/，向上定位仓库根并加入 sys.path，便于 import rag_pipeline
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 # Windows 控制台默认 GBK，统一切换 UTF-8 防止 emoji 打印崩溃
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 import chromadb
-from run_day12_pipeline import KspEmbeddingProvider
+from rag_pipeline.config import INDEXING_OUTPUT
+from rag_pipeline.embedding import KspEmbeddingProvider
 
-DEFAULT_DIR = "day12_output/chroma_wiki_structured"
-OUTPUT_ROOT = "day12_output"
+DEFAULT_DIR = str(INDEXING_OUTPUT / "chroma_wiki_structured")
+OUTPUT_ROOT = str(INDEXING_OUTPUT)
 
 
 def discover_collections() -> dict:
     """扫描 OUTPUT_ROOT 下所有 Chroma 持久化目录，返回 {集合名: 目录路径}。
 
-    为什么需要自动发现：Day12 把不同集合持久化到不同子目录
+    为什么需要自动发现：建库时把不同集合持久化到不同子目录
     （wiki_structured_kb -> chroma_wiki_structured，naive_fixed_kb -> chroma_naive，
     langchain -> chroma_db），它们不在同一个 Chroma 实例里。
     用 chroma.sqlite3 是否存在来判定"这是一个有效的 Chroma 持久化目录"。

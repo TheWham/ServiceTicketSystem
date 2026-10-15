@@ -8,5 +8,5 @@
   store       Chroma 向量库管理（含 manifest）
   retrieval   检索（分词 / BM25 / Reranker / 混合检索器）
   evaluation  评测题集与报告生成
-  pipelines   Day12 / Day13 主流水线入口
+  pipelines   索引构建 / 检索评测 主流水线入口
 """

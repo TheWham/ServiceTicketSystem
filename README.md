@@ -8,11 +8,8 @@
 
 ```text
 demos/
-├── configs/
-│   └── pipeline.yaml                 # ★ 配置中心：切片规则/模型/检索参数（唯一真源）
-│
-├── rag_pipeline/                     # ★ RAG 全链路包（可复用，供接入正式项目）
-│   ├── config.py                     # 配置加载 + 指纹 + 切块器工厂（build_chunker）
+├── rag_pipeline/                     # ★ RAG 全链路包（核心，可复用，供接入正式项目）
+│   ├── config.py                     # 配置加载 + 指纹 + 路径常量 + 切块器工厂（build_chunker）
 │   ├── ingestion/                    # 04 清洗生成：clean_pipeline / llm_synthesizer / wiki_generator
 │   ├── chunking/                     # parent_child（父子切片）/ structure_aware（对照）/ fingerprint
 │   ├── embedding.py                  # KspEmbeddingProvider（qwen3-embedding-8b，磁盘缓存）
@@ -23,26 +20,38 @@ demos/
 │       ├── indexing.py               # 索引构建主流水线（原 Day12）
 │       └── evaluation.py             # 检索评测主流水线（原 Day13）
 │
-├── run_all_demos.py                  # 一键串行运行 Day 11 的 3 大格式专项 Demo
-├── run_day12_pipeline.py             # Day12 薄入口（转发到 rag_pipeline.pipelines.indexing）
-├── run_day13_pipeline.py             # Day13 薄入口（转发到 rag_pipeline.pipelines.evaluation）
-├── adversarial_benchmark.py          # 版本冲突对抗压测（验证元数据过滤屏蔽废止卡）
-├── dump_chunks.py                    # 导出全部子块到 chunk_preview.md 供人工审阅
-├── ingest_vector_store.py            # 独立向量库批量入库脚本（可复用）
-├── inspect_chroma.py                 # Chroma 向量库内容查看/检索小工具
-├── trace_retrieval.py                # 检索轨迹追踪工具
+├── configs/
+│   └── pipeline.yaml                 # ★ 配置中心：切片规则/模型/检索参数（唯一真源）
 │
-├── 01_pdf_governance/                # 【Day 11 · Demo 1: PDF 文件专项治理】
-├── 02_docx_governance/               # 【Day 11 · Demo 2: Word 文件专项治理】
-├── 03_excel_governance/              # 【Day 11 · Demo 3: Excel 文件专项治理】
-├── 04_wiki_pipeline/                 # 【Day 11 · Demo 4 入口】（实现在 rag_pipeline/ingestion/）
+├── tools/                            # 工具/诊断脚本（直连 rag_pipeline，可独立运行）
+│   ├── adversarial_benchmark.py      # 版本冲突对抗压测（验证元数据过滤屏蔽废止卡）
+│   ├── dump_chunks.py                # 导出全部子块到 chunk_preview.md 供人工审阅
+│   ├── ingest_vector_store.py        # 独立向量库批量入库脚本（可复用）
+│   ├── inspect_chroma.py             # Chroma 向量库内容查看/检索小工具
+│   ├── trace_retrieval.py            # 检索轨迹追踪工具
+│   ├── test_rerank_stability.py      # Reranker 打分稳定性压测（绝对分漂移 vs 名次稳定）
+│   └── probe_rerank_zero.py          # 复现 /rerank 间歇全 0 现象的探针
 │
-├── output/                           # 【Day 11 产物】cleaned/ + wiki/（35 张 ITKB 卡片）
-├── day12_output/                     # 【Day 12 产物】向量库（含 manifest.json 指纹）+ 评测报告
-├── day13_output/                     # 【Day 13 产物】评测报告 + 对抗题详细召回过程报告
+├── day11_demos/                      # 【Day 11】三大格式专项治理 + Wiki 重构 Demo
+│   ├── run_all_demos.py              # 一键串行运行 3 大格式专项 Demo
+│   ├── 01_pdf_governance/            # Demo 1: PDF 文件专项治理
+│   ├── 02_docx_governance/           # Demo 2: Word 文件专项治理
+│   ├── 03_excel_governance/          # Demo 3: Excel 文件专项治理
+│   └── 04_wiki_pipeline/             # Demo 4: 知识库清洗 + Wiki 生成（实现在 rag_pipeline/ingestion/）
 │
-├── .env.example                      # KSP 配置模板（脱敏；复制为根目录 .env 并填真实 key）
+├── docs/                             # 讲义与讲稿
+│   ├── 武汉柯莱特企培_Day12_...讲义.md
+│   ├── 武汉柯莱特企培_Day13_...讲义.md
+│   └── 汇报讲稿_RAG检索链路实战.md
+│
+├── artifacts/                        # ★ 运行产物（output / indexing / evaluation 归档于此）
+│   ├── output/                       # 清洗产物：cleaned/ + wiki/（35 张 ITKB 卡片）
+│   ├── indexing/                     # 建库产物：向量库（含 manifest 指纹）+ 评测报告
+│   └── evaluation/                   # 评测产物：评测报告 + 详细召回过程报告
+│
 ├── IT常见问题RAG知识库.docx           # 源数据：IT 常见问题原始 Word 文档
+├── .env.example                      # KSP 配置模板（脱敏；复制为根目录 .env 并填真实 key）
+├── README.md                         # 工程说明（本文档）
 └── CLAUDE.md                         # 工程约定说明
 ```
 
@@ -60,7 +69,7 @@ demos/
 | | `merge_preamble` / `strip_trace_tail` | 前言并入首节 / 剔除溯源尾模板行 |
 | | `boost_injection` | 检索增强词注入范围：`first`（仅首块）/ `all` / `none` |
 | | `breadcrumb_header` | 【卡片：标题 > 小节】面包屑开关 |
-| `embedding` / `reranker` | `model` | 可被环境变量 `KSP_EMBED_MODEL` / `KSP_RERANK_MODEL` 覆盖 |
+| `embedding` / `reranker` | `model` | 可被环境变量 `EMBED_MODEL` / `RERANK_MODEL` 覆盖 |
 | `retrieval` | `top_k` / `rough_top_k` / `rrf_k` / `fuse_k` / `rrf_weight` / `rerank_weight` | 检索与融合参数 |
 | | `default_exclude` | 主链路默认物理屏蔽（如 `wiki_status: [已废止]`） |
 
@@ -81,7 +90,7 @@ demos/
 | **Excel** | 明细表 → SQLite Text2SQL；规则表 → 行级自包含切片 | 直接切词（算术幻觉）vs 确定性 SQL 聚合 |
 | **Wiki 重构** | 规则物理清洗 → 双模型 LLM 治理（正文清洗 + frontmatter 萃取）→ Wiki 卡片生成 | 产出 35 张带 YAML frontmatter 的 ITKB 卡片 |
 
-**产出**：`output/wiki/` 35 张高纯度 Wiki 知识卡片。
+**产出**：`artifacts/output/wiki/` 35 张高纯度 Wiki 知识卡片。
 
 ---
 
@@ -98,9 +107,9 @@ demos/
 - **A/B 对照**：父子切片库 vs 朴素切块库，5 道 IT 业务对抗题评测 Top-3 命中率。
 - **元数据前置过滤 + manifest 指纹**：`wiki_category` 等字段注入支持硬过滤；建库落 `config_fingerprint` 供 Day13 语料一致性校验。
 
-**产出**：`day12_output/chroma_wiki_structured/`（含 manifest）+ `chroma_naive/`（对照）+ 评测报告 + `chunk_preview.md`（切块人工审阅）。
+**产出**：`artifacts/indexing/chroma_wiki_structured/`（含 manifest）+ `chroma_naive/`（对照）+ 评测报告 + `chunk_preview.md`（切块人工审阅）。
 
-> 🛠️ 配套讲义：`武汉柯莱特企培_Day12_Chunking分块策略工程与Embedding向量化调优讲义.md`
+> 🛠️ 配套讲义：`docs/武汉柯莱特企培_Day12_Chunking分块策略工程与Embedding向量化调优讲义.md`
 
 ---
 
@@ -116,7 +125,7 @@ demos/
 - **四轨对比评测**：纯向量 vs 纯 BM25 vs RRF 融合 vs 全链路(+Rerank)，**12 道题**（7 硬匹配 + 3 同义改写 + 2 库外负样本）。
 - **卡级指标口径**：目标卡 Recall@3 / MRR / 事实覆盖（限目标卡内计数）/ 负样本误召回——替代旧的子串覆盖率（高频词误命中导致四轨全 100% 的饱和口径）。
 
-**产出**：`day13_output/Day13_混合检索与Rerank重排评测报告.md` + `Day13_对抗题详细召回过程.md`（含 🛡 保护标记）。
+**产出**：`artifacts/evaluation/混合检索与Rerank重排评测报告.md` + `对抗题详细召回过程.md`（含 🛡 保护标记）。
 
 ---
 
@@ -124,37 +133,38 @@ demos/
 
 ### Day 11 三大格式专项（可一键全跑）
 ```bash
-python run_all_demos.py
+python day11_demos/run_all_demos.py
 ```
 或单独运行某一专项（需 cd 到子目录）：
 ```bash
-cd 01_pdf_governance && python run_demo.py
+cd day11_demos/01_pdf_governance && python run_demo.py
 ```
 
 ### Day 11 · Wiki 清洗重构（依赖 KSP API）
 ```bash
-cd 04_wiki_pipeline && python run_demo.py            # 全流程
-python run_demo.py --offline                         # 离线规则兜底
-python run_demo.py --limit 3                         # 调试前 N 条
+cd day11_demos/04_wiki_pipeline && python run_demo.py   # 全流程
+python run_demo.py --offline                            # 离线规则兜底
+python run_demo.py --limit 3                            # 调试前 N 条
 ```
 
 ### Day 12 · 切块 + 向量化入库
 ```bash
-python run_day12_pipeline.py
-python dump_chunks.py                                # 导出切块结果人工审阅
+python -m rag_pipeline.pipelines.indexing
+python tools/dump_chunks.py                             # 导出切块结果人工审阅
 ```
 
 ### Day 13 · 混合检索 + Rerank 评测
 ```bash
-python run_day13_pipeline.py
-python adversarial_benchmark.py                      # 版本冲突对抗压测（可选）
+python -m rag_pipeline.pipelines.evaluation
+python tools/adversarial_benchmark.py                   # 版本冲突对抗压测（可选）
 ```
 
 ### 辅助工具
 ```bash
-python ingest_vector_store.py                        # 独立批量入库
-python inspect_chroma.py                             # 查看向量库内容
-python inspect_chroma.py --query "VPN报错806" --k 5   # 检索测试
+python tools/ingest_vector_store.py                     # 独立批量入库
+python tools/inspect_chroma.py                          # 查看向量库内容
+python tools/inspect_chroma.py --query "VPN报错806" --k 5   # 检索测试
+python tools/probe_rerank_zero.py --ids HC-04 HC-07 --n 10  # 复现 rerank 全 0 现象
 ```
 
 ---
@@ -166,12 +176,23 @@ pip install PyMuPDF pdfplumber Pillow python-docx pandas openpyxl openai \
             pyyaml langchain-text-splitters langchain-community chromadb jieba rank_bm25
 ```
 
-KSP API 配置（根目录 `.env`，已被 `.gitignore` 忽略，勿入库）：
+三类模型各自独立配置（根目录 `.env`，已被 `.gitignore` 忽略，勿入库）——可自由切换不同供应商、互不影响：
 ```ini
-KSP_API_KEY=sk-...
-KSP_BASE_URL=https://<你的接入点>/v1
-KSP_CHAT_MODEL=kimi-k3
-KSP_CLEAN_MODEL=deepseek-v4-flash
+# LLM（对话/清洗）
+LLM_API_KEY=sk-...
+LLM_BASE_URL=https://<你的接入点>/v1
+LLM_CHAT_MODEL=kimi-k3
+LLM_CLEAN_MODEL=deepseek-v4-flash
+
+# Embedding（向量化）
+EMBED_API_KEY=sk-...
+EMBED_BASE_URL=https://<你的接入点>/v1
+EMBED_MODEL=qwen3-embedding-8b
+
+# Rerank（重排）
+RERANK_API_KEY=sk-...
+RERANK_BASE_URL=https://<你的接入点>/v1
+RERANK_MODEL=qwen3-reranker-8b
 ```
 
 > 说明：`qwen3-embedding-8b` / `qwen3-reranker-8b` 由 KSP 端点提供，密集调用可能触发限流（403），重跑时稍等重试即可，脚本已带降级兜底。

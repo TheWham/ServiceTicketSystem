@@ -14,52 +14,22 @@ from typing import Any, Dict, Optional
 
 from openai import OpenAI
 
+from ..config import load_llm_config
 from .clean_pipeline import Entry
 
-DEFAULT_BASE_URL = ""  # 内部接入点不入库：请通过环境变量 KSP_BASE_URL 或 .env 提供
-DEFAULT_CHAT_MODEL = "kimi-k3"          # LLM 精修（元数据萃取）
-DEFAULT_CLEAN_MODEL = "deepseek-v4-flash"  # LLM 清洗（正文清洗规范化）
+DEFAULT_CLEAN_MODEL = "deepseek-v4-flash"  # LLM 清洗（正文清洗规范化，LlmSynthesizer 兜底用）
 
 
 # ==================== API 配置加载 ====================
 
-def _parse_env_file(path: str) -> Dict[str, str]:
-    kv: Dict[str, str] = {}
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            kv[k.strip()] = v.strip().strip('"').strip("'")
-    return kv
-
 
 def load_api_config(search_dir: Optional[str] = None) -> Dict[str, str]:
-    """加载 API 配置。优先级：进程环境变量 > 项目根 .env > 本目录 .env。
-    设计意图：key 绝不硬编码进代码，.env 已被 .gitignore 忽略，防止提交入库。"""
-    cfg: Dict[str, str] = {}
-    here = os.path.dirname(os.path.abspath(__file__))
-    candidates = [
-        os.path.join(here, ".env"),
-        os.path.join(os.path.dirname(here), ".env"),
-        # 仓库根（rag_pipeline/ingestion 上两级）：.env 约定放项目根
-        os.path.join(os.path.dirname(os.path.dirname(here)), ".env"),
-    ]
-    if search_dir:
-        candidates.insert(0, os.path.join(search_dir, ".env"))
-    for path in candidates:
-        if os.path.exists(path):
-            for k, v in _parse_env_file(path).items():
-                cfg.setdefault(k, v)
+    """加载 LLM 配置（包装 config.load_llm_config，保留旧函数名供 04_wiki_pipeline 调用）。
 
-    api_key = os.environ.get("KSP_API_KEY") or cfg.get("KSP_API_KEY", "")
-    return {
-        "api_key": api_key,
-        "base_url": os.environ.get("KSP_BASE_URL") or cfg.get("KSP_BASE_URL", DEFAULT_BASE_URL),
-        "chat_model": os.environ.get("KSP_CHAT_MODEL") or cfg.get("KSP_CHAT_MODEL", DEFAULT_CHAT_MODEL),
-        "clean_model": os.environ.get("KSP_CLEAN_MODEL") or cfg.get("KSP_CLEAN_MODEL", DEFAULT_CLEAN_MODEL),
-    }
+    返回 {api_key, base_url, chat_model, clean_model}，来源独立 LLM_* 环境变量。
+    key 绝不硬编码进代码，.env 已被 .gitignore 忽略，防止提交入库。
+    """
+    return load_llm_config()
 
 
 # ==================== LLM 萃取器 ====================
@@ -104,7 +74,7 @@ class LlmSynthesizer:
     def __init__(self, cfg: Dict[str, str], cache_dir: Optional[str] = None):
         if not cfg.get("base_url"):
             raise ValueError(
-                "未配置 KSP_BASE_URL：请设置环境变量或在 .env 中填写 base_url"
+                "未配置 LLM_BASE_URL：请设置环境变量或在 .env 中填写 base_url"
             )
         self.client = OpenAI(api_key=cfg["api_key"], base_url=cfg["base_url"])
         self.model = cfg["chat_model"]

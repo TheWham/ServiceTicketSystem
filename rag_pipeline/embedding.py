@@ -1,4 +1,4 @@
-"""KSP OpenAI 兼容嵌入提供者与配置加载（自 run_day12_pipeline 平移）。"""
+"""KSP OpenAI 兼容嵌入提供者与配置加载（自索引构建流水线平移）。"""
 
 import os
 import hashlib
@@ -7,34 +7,8 @@ import urllib.request
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
-# 项目根 = 本文件上两级（rag_pipeline/ -> 仓库根），.env 与产物目录均以此为基准
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-
-def _parse_env_file(path: Path) -> Dict[str, str]:
-    """解析 .env（KEY=VALUE），沿用 04_wiki_pipeline 约定：内网地址与 key 不入库"""
-    kv: Dict[str, str] = {}
-    if not path.exists():
-        return kv
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            kv[k.strip()] = v.strip().strip('"').strip("'")
-    return kv
-
-
-def load_ksp_config() -> Dict[str, str]:
-    """KSP 配置加载。优先级：进程环境变量 > 项目根 .env。key 绝不硬编码。"""
-    env_file = _parse_env_file(PROJECT_ROOT / ".env")
-    return {
-        "api_key": os.environ.get("KSP_API_KEY") or env_file.get("KSP_API_KEY", ""),
-        "base_url": os.environ.get("KSP_BASE_URL") or env_file.get("KSP_BASE_URL", ""),
-        "embed_model": os.environ.get("KSP_EMBED_MODEL") or env_file.get("KSP_EMBED_MODEL", "qwen3-embedding-8b"),
-        "rerank_model": os.environ.get("KSP_RERANK_MODEL") or env_file.get("KSP_RERANK_MODEL", ""),
-    }
+# Embedding 配置统一走 config.load_embedding_config（独立 EMBED_API_KEY/EMBED_BASE_URL/EMBED_MODEL）
+from .config import load_embedding_config
 
 
 class KspEmbeddingProvider:
@@ -47,8 +21,8 @@ class KspEmbeddingProvider:
 
     def __init__(self, cfg: Optional[Dict[str, str]] = None, cache_dir: Optional[str] = None,
                  batch_size: int = 32, model_override: Optional[str] = None):
-        self.cfg = cfg or load_ksp_config()
-        self.model = model_override or self.cfg["embed_model"]
+        self.cfg = cfg or load_embedding_config()
+        self.model = model_override or self.cfg["model"]
         self.batch_size = batch_size
         self.available = bool(self.cfg["api_key"] and self.cfg["base_url"])
         self._cache_dir = Path(cache_dir) if cache_dir else None
@@ -63,11 +37,11 @@ class KspEmbeddingProvider:
                 self.available = False
                 self.engine_type = f"KSP 不可用({e})，降级本地hash兜底"
         else:
-            self.engine_type = "未配置 KSP_API_KEY/KSP_BASE_URL，降级本地hash兜底"
+            self.engine_type = "未配置 EMBED_API_KEY/EMBED_BASE_URL，降级本地hash兜底"
 
     # ---- 缓存：以"文本 sha1"为键 ----
     # 为什么用内容哈希而不是自增 id：同一文本无论来自哪次运行、哪个脚本，
-    # 只要内容一致就命中缓存，保证 Day12/Day13/inspect 三个脚本共享同一份向量缓存。
+    # 只要内容一致就命中缓存，保证建库/评测/inspect 三个脚本共享同一份向量缓存。
     def _cache_path(self, text: str) -> Optional[Path]:
         if not self._cache_dir:
             return None

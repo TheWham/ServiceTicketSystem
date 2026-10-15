@@ -1,6 +1,6 @@
 # ==============================================================================
 # RAG 链路统一配置（唯一真源）
-# 改动本文件后重跑 python run_day12_pipeline.py 重建索引即可全链路生效；
+# 改动本文件后重跑 python -m rag_pipeline.pipelines.indexing 重建索引即可全链路生效；
 # Day13 加载持久化向量库前会比对配置指纹，切片参数变更自动触发重建。
 # ==============================================================================
 
@@ -17,11 +17,11 @@ chunking:
   struct_chunk_overlap: 80
 
 embedding:
-  model: qwen3-embedding-8b     # 可被环境变量 KSP_EMBED_MODEL 覆盖
-  cache_dir: day12_output/.emb_cache
+  model: qwen3-embedding-8b     # 可被环境变量 EMBED_MODEL 覆盖
+  cache_dir: artifacts/indexing/.emb_cache
 
 store:
-  persist_dir: day12_output/chroma_wiki_structured
+  persist_dir: artifacts/indexing/chroma_wiki_structured
   collection: wiki_structured_kb
 
 retrieval:
@@ -31,8 +31,13 @@ retrieval:
   fuse_k: 10                    # 按秩加权融合的小 k（增强名次区分度）
   rrf_weight: 0.6               # 召回侧权重
   rerank_weight: 0.4            # 精排侧权重
+  rerank_granularity: parent    # 精排粒度: child=逐子块打分 | parent=子块召回后对整卡全文打分(返回 Top-K 张卡)
+  query_rewrite: true           # 查询改写：LLM 删去用户对原因的猜测并补规范术语；原查询+改写查询四路召回，精排用改写查询
+  rewrite_model: ""             # 改写模型，空=取 .env 的 LLM_CLEAN_MODEL（deepseek-v4-flash）
+  reject_threshold: 0.40        # 低置信拒答：候选原始 rerank 最高分低于此值返回空（null=不启用）
   default_exclude:              # 主链路默认物理屏蔽的元数据坏值
     wiki_status: [已废止, 已下线]
 
 reranker:
-  model: qwen3-reranker-8b      # 可被环境变量 KSP_RERANK_MODEL 或 CLI --reranker 覆盖
+  model: qwen3-reranker-8b      # 可被环境变量 RERANK_MODEL 或 CLI --reranker 覆盖
+  backend: dashscope            # 仅走 KSP 网关时生效（.env 配了 RERANK_* 直连时忽略）
