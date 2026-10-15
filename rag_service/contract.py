@@ -91,6 +91,7 @@ class HealthResponse(BaseModel):
     mapping_loaded: bool = Field(alias="mappingLoaded")
     mapping_entries: int = Field(alias="mappingEntries")
     query_rewrite: bool = Field(alias="queryRewrite")
+    rewrite_timeout: float = Field(alias="rewriteTimeout")
     serialize_search: bool = Field(alias="serializeSearch")
     lock_wait_seconds: float = Field(alias="lockWaitSeconds")
     rerank_wait_budget: float = Field(alias="rerankWaitBudget")

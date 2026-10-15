@@ -90,6 +90,52 @@ def test_query_rewriter_offline_defaults_unchanged():
     assert rw.retries == 2                    # 离线默认两次尝试，行为不变
 
 
+def test_query_rewriter_bounds_sdk_retries_for_online_budget(monkeypatch):
+    """在线预算必须真的被 1.2s 约束住：OpenAI SDK 默认 max_retries=2，
+    会让一次改写实际耗时 = 超时 × 3 次 ≈ 5s+（实测 5443ms），把 Java 侧预算吃光。
+    服务侧必须显式传 max_retries=0。"""
+    captured = {}
+
+    class _FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    import sys
+    import types as _types
+    fake_mod = _types.ModuleType("openai")
+    fake_mod.OpenAI = _FakeOpenAI
+    monkeypatch.setitem(sys.modules, "openai", fake_mod)
+    monkeypatch.setenv("LLM_API_KEY", "sk-test-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://example.invalid/v1")
+
+    QueryRewriter(model="m", cache_dir=None, timeout=1.2, retries=1, max_retries=0)
+
+    assert captured.get("timeout") == 1.2
+    assert captured.get("max_retries") == 0, "在线模式必须关掉 SDK 重试，否则 1.2s 形同虚设"
+
+
+def test_query_rewriter_sdk_retries_default_preserved(monkeypatch):
+    """离线默认不显式设置 max_retries（沿用 SDK 默认），行为不变。"""
+    captured = {}
+
+    class _FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    import sys
+    import types as _types
+    fake_mod = _types.ModuleType("openai")
+    fake_mod.OpenAI = _FakeOpenAI
+    monkeypatch.setitem(sys.modules, "openai", fake_mod)
+    monkeypatch.setenv("LLM_API_KEY", "sk-test-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://example.invalid/v1")
+
+    QueryRewriter(model="m", cache_dir=None)
+
+    assert captured.get("timeout") == 30.0
+    assert "max_retries" not in captured
+
+
 def test_rerank_post_timeout_is_bounded_by_instance_attr(monkeypatch):
     """单次 /rerank 请求的超时必须可在线收紧：原先硬编码 120s，
     上游一次挂起就能把串行锁占住两分钟（Java 侧 4.2s 早已超时）。"""

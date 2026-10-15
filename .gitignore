@@ -15,3 +15,6 @@ evals/*.bak
 
 # SDD 执行工作区（本地脚本/日志，非交付物）
 .superpowers/
+
+# wiki→Java 灌库映射（sync 脚本生成的运行时状态，id 绑定具体环境，不入库）
+data/wiki_article_mapping.json

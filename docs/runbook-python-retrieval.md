@@ -36,6 +36,7 @@ RAG_HOME=$PWD python -m rag_service           # 默认 127.0.0.1:8310，单进�
 | `RAG_SERIALIZE_SEARCH` | `true` | 检索串行化（取锁超时 → HTTP 503 code=5031） |
 | `RAG_LOCK_WAIT_SECONDS` | `1.0` | 锁等待上限，超时快速失败（不排队） |
 | `RAG_DISABLE_QUERY_REWRITE` | `false` | `true` 关闭在线查询改写 |
+| `RAG_REWRITE_TIMEOUT` | `2.0` | 单次改写调用超时（秒）。网关实测延迟 0.8~2.1s（中位 1.7s）；SDK 自带重试已关闭（`max_retries=0`），超时即回落原查询。预算倒推：Java 客户端 4.2s = 改写 T + 向量/BM25 ~0.7s + 精排 ≤1.5s ⇒ T ≤ 2.0s |
 | `RAG_REWRITE_CACHE_DIR` | `artifacts/evaluation/.llm_cache/rewrite` | 改写磁盘缓存（复用 Day14 暖缓存） |
 | `RAG_RERANK_WAIT_BUDGET` | `1.5` | rerank 429 累计等待预算（在线收紧，离线评测为 90） |
 | `RAG_RERANK_MAX_RETRIES` | `8` | rerank 每组打分最大请求轮次（离线为 20） |
@@ -102,8 +103,10 @@ mvn -pl rag-service -am test                    # 82 tests（含 python 分支 1
    （0.25，可配置）；服务层另按 `refuse ⇔ 内核拒答 ∨ 无候选 ∨ max(score) < 0.40` 兜底，
    不以"是否走了远程 rerank"为条件，对抗题在降级时也不会泄漏作答。
    代价：降级且启发式分 < 0.25 的正样本会被误拒（可用性损失，方向安全）。
-3. **冷查询延迟**：改写缓存命中时全程 ~0.5-2.6s；缓存**未命中**且网关限流时，
-   单题可能超过 Java 侧 `python-timeout-ms=4200`（实测超时过一次）。
+3. **冷查询延迟**：改写缓存命中时全程 ~0.5-2.6s；缓存**未命中**时改写真实调用网关
+   （实测 0.8~2.1s，超时上限 `RAG_REWRITE_TIMEOUT=2.0`，超时回落原查询），
+   全链路约 1.5~4s，通常仍在 Java 侧 `python-timeout-ms=4200` 以内；
+   叠加网关限流时可能超预算（Java 侧按 `MODEL_UNAVAILABLE` 降级）。
    - 部署时预热缓存：先跑一遍黄金集（评测或回归脚本都会写入磁盘缓存）；
    - 延迟敏感的联调/压测可临时 `RAG_DISABLE_QUERY_REWRITE=true`
      ——注意：关闭改写会改变召回（改写参与四路召回），质量回归基线（Day14）仅对

@@ -92,12 +92,17 @@ class ServiceAssembly:
 
         # ---- 4) 查询改写（1.2s 短超时、不重试；可整体关闭）----
         self.rewrite_disabled = _env_bool("RAG_DISABLE_QUERY_REWRITE", False)
+        self.rewrite_timeout = float(os.environ.get("RAG_REWRITE_TIMEOUT", "2.0"))
         self.rewriter: Optional[QueryRewriter] = None
         if rc.query_rewrite and not self.rewrite_disabled:
             cache_dir = os.environ.get("RAG_REWRITE_CACHE_DIR") or str(
                 REPO_ROOT / "artifacts/evaluation/.llm_cache/rewrite")
+            # 预算倒推：Java 客户端 4.2s = 改写 T + 向量/BM25 ~0.7s + 精排 ≤1.5s（在线收紧后）
+            # ⇒ T ≤ 2.0s；实测网关改写延迟 0.8~2.1s（中位 1.7s），取 2.0s 兼顾成功率与预算。
+            # max_retries=0 必须显式传：SDK 默认自带重试会让一次改写变成 T×3。
             self.rewriter = QueryRewriter(
-                model=rc.rewrite_model, cache_dir=cache_dir, timeout=1.2, retries=1)
+                model=rc.rewrite_model, cache_dir=cache_dir,
+                timeout=self.rewrite_timeout, retries=1, max_retries=0)
 
         # ---- 5) wiki→Java 映射（缺失即 DEGRADED，不阻断启动）----
         self.mapping_path = Path(os.environ.get("RAG_MAPPING_PATH")
@@ -209,6 +214,7 @@ class ServiceAssembly:
             mapping_loaded=mapping_loaded,
             mapping_entries=len(self.mapping),
             query_rewrite=self.rewriter is not None,
+            rewrite_timeout=self.rewrite_timeout,
             serialize_search=self.serialize_search,
             lock_wait_seconds=self.lock_wait_seconds,
             rerank_wait_budget=self.rerank_wait_budget,

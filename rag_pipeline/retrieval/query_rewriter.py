@@ -17,12 +17,14 @@ REWRITE_PROMPT = """你是企业 IT 服务台的检索助手。把用户的问�
 class QueryRewriter:
     """LLM 对话接口做查询改写，带磁盘缓存（按 模型+提示词+原查询 的 sha1）。
 
-    timeout/retries 供在线服务模式收紧预算：默认 30s/2 次（离线评测行为不变），
-    服务化时传 1.2s/1 次，超时即回落原查询，不吃光 Java 客户端的总预算。
+    timeout/retries/max_retries 供在线服务模式收紧预算：默认 30s/2 次/沿用 SDK 重试
+    （离线评测行为不变）；服务化时传 1.2s/1 次/max_retries=0——注意 OpenAI SDK 默认
+    自带 max_retries=2，不关掉的话一次改写实际耗时 ≈ 超时 × 3（实测 5.4s），
+    1.2s 的短超时形同虚设，会吃光 Java 客户端的总预算。
     """
 
     def __init__(self, model: str = "", cache_dir: Optional[str] = None,
-                 timeout: float = 30.0, retries: int = 2):
+                 timeout: float = 30.0, retries: int = 2, max_retries: Optional[int] = None):
         cfg = load_llm_config()
         self.model = model or cfg["clean_model"]
         self.retries = max(1, int(retries))
@@ -36,7 +38,10 @@ class QueryRewriter:
         if api_key and not api_key.startswith("sk-replace-") and api_key != "sk-..." and cfg.get("base_url"):
             try:
                 from openai import OpenAI
-                self.client = OpenAI(api_key=api_key, base_url=cfg["base_url"], timeout=timeout)
+                kwargs = {"api_key": api_key, "base_url": cfg["base_url"], "timeout": timeout}
+                if max_retries is not None:
+                    kwargs["max_retries"] = max_retries
+                self.client = OpenAI(**kwargs)
             except ImportError:
                 print("       ⚠️ 未安装 openai 包，查询改写不可用，回落原查询")
 

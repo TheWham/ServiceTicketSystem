@@ -47,12 +47,30 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="黄金集服务化回归 vs Day14 基线")
     parser.add_argument("--base", default="http://127.0.0.1:8310")
     parser.add_argument("--baseline", default="artifacts/evals/day14_baseline.json")
-    parser.add_argument("--id-mode", choices=["wiki", "java"], default="wiki",
-                        help="wiki=灌库前（articleId 降级为 parent_id，可比对集合）；java=灌库后只比拒答")
+    parser.add_argument("--id-mode", choices=["wiki", "java", "auto"], default="auto",
+                        help="wiki=灌库前（articleId 降级为 parent_id）；java=灌库后将 articleId 经映射表翻回 wiki_id 再比对；"
+                             "auto=有映射表即按 java 口径")
+    parser.add_argument("--mapping", default="data/wiki_article_mapping.json",
+                        help="wiki→Java 映射表（java 口径下用于把 articleId 翻回 wiki_id）")
     parser.add_argument("--pace", type=float, default=1.0,
                         help="每题之间的间隔秒数；网关限流敏感，连续轰炸会导致 rerank 降级启发式")
     args = parser.parse_args()
     base = args.base.rstrip("/")
+
+    # 灌库后服务返回 Java 侧 articleId（art-…）；经映射表反查翻回 wiki_id，
+    # 才能与基线（wiki 侧 id）逐卡比对。
+    mapping_path = REPO_ROOT / args.mapping
+    wiki_of_article: dict = {}
+    if mapping_path.exists():
+        for wiki_id, entry in json.loads(mapping_path.read_text(encoding="utf-8")).items():
+            if entry.get("articleId"):
+                wiki_of_article[entry["articleId"]] = wiki_id
+    id_mode = args.id_mode
+    if id_mode == "auto":
+        id_mode = "java" if wiki_of_article else "wiki"
+    print(f"id 口径：{id_mode}（映射表 {mapping_path.name}：{len(wiki_of_article)} 条）")
+    if id_mode == "java" and not wiki_of_article:
+        print("⚠️ java 口径但映射表为空：无法把 articleId 翻回 wiki_id，集合/名次比对将跳过")
 
     def degraded_count() -> int:
         try:
@@ -88,6 +106,9 @@ def main() -> int:
         service_refused = (status == 200 and env.get("code") == 0
                            and data.get("suggestedReplyType") == "REFUSE" and not items)
         service_ids = [it.get("articleId") for it in items]
+        # java 口径：把服务返回的 articleId 翻回 wiki_id，与基线同口径比对
+        if id_mode == "java" and wiki_of_article:
+            service_ids = [wiki_of_article.get(a, a) for a in service_ids]
         service_top = data.get("topScore")
 
         refused_ok = bool(ref["rejected"]) == bool(service_refused)
@@ -98,10 +119,8 @@ def main() -> int:
         rank_ok = (ref.get("hit_rank") is None) or (service_target_rank == ref["hit_rank"])
         if ref["rejected"]:
             ids_ok = True          # 拒答题不比对集合
-        elif args.id_mode == "wiki":
-            ids_ok = set(ref["parent_ids"]) == set(service_ids)
         else:
-            ids_ok = True          # 灌库后 id 已换成 Java 侧，跳过集合比对
+            ids_ok = set(ref["parent_ids"]) == set(service_ids)
 
         if not refused_ok or not rank_ok or not ids_ok:
             rec = {
