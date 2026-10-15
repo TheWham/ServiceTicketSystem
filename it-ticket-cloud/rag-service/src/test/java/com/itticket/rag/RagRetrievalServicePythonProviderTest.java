@@ -189,6 +189,44 @@ public class RagRetrievalServicePythonProviderTest {
     }
 
     /**
+     * 契约自洽（评审 Important）：reliable 透传 Python 判定，但重算后的 topScore 必须与之一致。
+     * 若复核后幸存的唯一命中分数为 0，consultation 侧 `reliable && topScore.signum() > 0`
+     * 强校验会抛 INVALID_RESPONSE 且不重试——必须在此把 reliable 收敛为 false。
+     */
+    @Test
+    public void pythonProviderDropsReliabilityWhenSurvivingScoreIsZero() {
+        Mockito.when(articleMapper.selectBatchIds(any())).thenReturn(List.of(published("a1")));
+        Mockito.when(pythonClient.retrieve(anyString(), any(), anyInt()))
+                .thenReturn(pyAnswer(List.of(chunk("c1", "a1", "0.0000")), true));
+
+        RagRetrievalService.RetrievalOutcome outcome = service.retrieve("VPN 连不上怎么办", null, null);
+        RagRetrievalResponse response = service.toResponse(outcome);
+
+        Assertions.assertEquals(new BigDecimal("0.0000"), response.topScore());
+        Assertions.assertFalse(response.reliable(),
+                "topScore 为 0 时 reliable 必须为 false（consultation 强校验 reliable ⇒ topScore > 0）");
+        Assertions.assertNull(response.suggestedRefusalReason());
+        Assertions.assertEquals(AiReplyType.ANSWER, response.suggestedReplyType());
+    }
+
+    /**
+     * 透传语义保持：部分滤除后剩余命中分数较低（如 0.35）时仍透传 Python 的 reliable=true，
+     * 不重新引入 0.70 余弦阈值（拒答判定权在 Python 侧，计划已拍板）。
+     */
+    @Test
+    public void pythonProviderKeepsPassthroughReliabilityForLowerScoredSurvivor() {
+        Mockito.when(articleMapper.selectBatchIds(any())).thenReturn(List.of(published("a2")));
+        Mockito.when(pythonClient.retrieve(anyString(), any(), anyInt()))
+                .thenReturn(pyAnswer(List.of(chunk("c1", "a1", "0.9000"), chunk("c2", "a2", "0.3500")), true));
+
+        RagRetrievalResponse response = service.toResponse(service.retrieve("VPN 连不上怎么办", null, null));
+
+        Assertions.assertEquals(1, response.items().size());
+        Assertions.assertEquals(new BigDecimal("0.3500"), response.topScore());
+        Assertions.assertTrue(response.reliable(), "透传 Python 判定，不套 0.70 阈值");
+    }
+
+    /**
      * 配置默认值：provider 默认 es（零代码回滚路径），Python 地址默认 127.0.0.1:8310。
      */
     @Test

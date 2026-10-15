@@ -222,7 +222,12 @@ public class RagRetrievalService {
         if (remote.suggestedRefusalReason() != null) {
             return outcome(domain, false, null, List.of(), zero(), remote.suggestedRefusalReason(), false);
         }
-        return outcome(domain, false, null, verified, maxSimilarity(verified), null, remote.reliable());
+        BigDecimal topScore = maxSimilarity(verified);
+        // reliable 透传 Python 判定，但必须与重算后的 topScore 保持契约自洽：
+        // consultation 强校验 `reliable ⇒ items 非空且 topScore.signum() > 0`，
+        // 若最高分切片被 ④ 复核滤除、幸存切片分数为 0，透传 true 会让上游判 INVALID_RESPONSE 且不重试。
+        boolean reliable = remote.reliable() && topScore.signum() > 0;
+        return outcome(domain, false, null, verified, topScore, null, reliable);
     }
 
     /** Python 命中 → 内部 ChunkHit（indexVersion 缺失时退化为 versionId，保持不变量）。 */
