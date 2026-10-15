@@ -76,7 +76,7 @@ def main():
         return r.hybrid_rerank_search(
             query=q, final_top_k=rc.top_k, rrf_k=rc.rrf_k, rough_top_k=rc.rough_top_k,
             fuse_k=rc.fuse_k, rrf_weight=rc.rrf_weight, rerank_weight=rc.rerank_weight,
-            reject_threshold=None,  # 探针要看原始分，临时关闭物理拒答
+            reject_threshold=None, heuristic_reject_threshold=None,  # 探针要看原始分，临时关闭物理拒答（含降级路径）
             rerank_granularity=rc.rerank_granularity, rewrite_query=rewrite)
 
     # ---- ③ 拒答裕度：正/负样本 top-1 原始 rerank 分分布 ----

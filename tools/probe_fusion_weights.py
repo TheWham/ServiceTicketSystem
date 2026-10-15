@@ -120,7 +120,7 @@ def main():
             res = retriever.hybrid_rerank_search(
                 query=q["query"], final_top_k=rc.top_k, rrf_k=rc.rrf_k, rough_top_k=rc.rough_top_k,
                 fuse_k=rc.fuse_k, rrf_weight=rc.rrf_weight, rerank_weight=rc.rerank_weight,
-                reject_threshold=None,  # 扫描关注排序质量，关闭物理拒答
+                reject_threshold=None, heuristic_reject_threshold=None,  # 扫描关注排序质量，关闭物理拒答（含降级路径）
                 rerank_granularity=rc.rerank_granularity, rewrite_query=rewrite)
             cands = res.get("scored_all") or []
             per_query.append({"q": q, "cands": cands})
