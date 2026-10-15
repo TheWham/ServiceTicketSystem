@@ -14,11 +14,11 @@ demos/
 │   ├── chunking/                     # parent_child（父子切片）/ structure_aware（对照）/ fingerprint
 │   ├── embedding.py                  # KspEmbeddingProvider（qwen3-embedding-8b，磁盘缓存）
 │   ├── store.py                      # Chroma 入库管理（全量重建 + manifest 构建指纹）
-│   ├── retrieval/                    # tokenizer / reranker / hybrid（双路+RRF+精排+共振保护）
-│   ├── evaluation/                   # suite（评测题集）/ report（报告生成）
+│   ├── retrieval/                    # tokenizer / reranker（双后端）/ query_rewriter（查询改写）/ hybrid（双路+RRF+精排+共振保护+拒答）
+│   ├── evaluation/                   # suite（评测题集：主题/开发/测试）/ report（报告生成）
 │   └── pipelines/
-│       ├── indexing.py               # 索引构建主流水线（原 Day12）
-│       └── evaluation.py             # 检索评测主流水线（原 Day13）
+│       ├── indexing.py               # 索引构建主流水线
+│       └── evaluation.py             # 检索评测主流水线
 │
 ├── configs/
 │   └── pipeline.yaml                 # ★ 配置中心：切片规则/模型/检索参数（唯一真源）
@@ -30,7 +30,9 @@ demos/
 │   ├── inspect_chroma.py             # Chroma 向量库内容查看/检索小工具
 │   ├── trace_retrieval.py            # 检索轨迹追踪工具
 │   ├── test_rerank_stability.py      # Reranker 打分稳定性压测（绝对分漂移 vs 名次稳定）
-│   └── probe_rerank_zero.py          # 复现 /rerank 间歇全 0 现象的探针
+│   ├── probe_rerank_zero.py          # 复现 /rerank 间歇全 0 现象的探针
+│   ├── probe_reranker.py             # 重排服务验收探针（换供应商先跑它）
+│   └── dump_retrieval_log.py         # 检索全流程日志落盘（5 环节，供汇报翻看）
 │
 ├── day11_demos/                      # 【Day 11】三大格式专项治理 + Wiki 重构 Demo
 │   ├── run_all_demos.py              # 一键串行运行 3 大格式专项 Demo
@@ -71,6 +73,10 @@ demos/
 | | `breadcrumb_header` | 【卡片：标题 > 小节】面包屑开关 |
 | `embedding` / `reranker` | `model` | 可被环境变量 `EMBED_MODEL` / `RERANK_MODEL` 覆盖 |
 | `retrieval` | `top_k` / `rough_top_k` / `rrf_k` / `fuse_k` / `rrf_weight` / `rerank_weight` | 检索与融合参数 |
+| | `rerank_granularity` | 精排粒度：`parent`（子块召回后对整卡全文打分）/ `child`（逐子块） |
+| | `query_rewrite` / `rewrite_model` | 查询改写开关 + 改写模型（LLM 删猜测+补术语） |
+| | `reject_threshold` | 低置信拒答阈值（候选最高原始 rerank 分低于此值返回空；null 不启用） |
+| `reranker` | `backend` | 双后端限定：`dashscope`（仅走 KSP 网关时生效，直连供应商忽略） |
 | | `default_exclude` | 主链路默认物理屏蔽（如 `wiki_status: [已废止]`） |
 
 **同步机制**：Day12 与 Day13 经 `build_chunker(config)` 共用同一切块器实例化路径；Day12 建库时在 `manifest.json` 落 `config_fingerprint`，Day13 加载前比对——改 YAML 任何切片参数，旧库自动判失效并重建内存索引，杜绝"两处参数各改一处"的静默错配。
@@ -120,9 +126,13 @@ demos/
 - **双路召回（`retrieval/hybrid.py`）**：BM25 关键词倒排索引（术语归一化红利）+ Dense 向量语义检索。
 - **RRF 融合**：Reciprocal Rank Fusion（k=60）倒数排名融合，无需调参即可化解异构打分冲突。
 - **Cross-Encoder 精排**：KSP `qwen3-reranker-8b`（`/rerank` 接口），按秩加权融合（召回侧 0.6 托底，免疫远程分数漂移）。
+- **双后端修复**：KSP 网关随机分流 Jina/DashScope 两后端（旧代码只认 Jina，DashScope 响应被静默补 0），现双格式解析 + 并发对冲只收 dashscope 高质量打分。
+- **查询改写**：LLM 删去用户对原因的猜测、补规范术语，原查询+改写查询四路 RRF 召回。
+- **父块精排**：子块只负责召回，按父块（整卡）去重后对整卡全文精排，返回 Top-K 张卡。
+- **低置信拒答**：候选最高原始 rerank 分 < `reject_threshold`（0.40）时返回空，库外问题不再硬塞答案。
 - **Top-1/Top-2 双路共振保护**：召回两路都认可的父块不被精排单点踢出 Top-K。
 - **默认屏蔽废止卡**：`default_exclude` 把对抗压测结论固化进主链路。
-- **四轨对比评测**：纯向量 vs 纯 BM25 vs RRF 融合 vs 全链路(+Rerank)，**12 道题**（7 硬匹配 + 3 同义改写 + 2 库外负样本）。
+- **四轨对比评测**：纯向量 vs 纯 BM25 vs RRF 融合 vs 全链路(+Rerank)，**主题集 20 道**（7 硬匹配 + 3 同义改写 + 4 近邻混淆 + 6 库外负样本）+ 开发集 19 道 + 封存测试集 26 道。
 - **卡级指标口径**：目标卡 Recall@3 / MRR / 事实覆盖（限目标卡内计数）/ 负样本误召回——替代旧的子串覆盖率（高频词误命中导致四轨全 100% 的饱和口径）。
 
 **产出**：`artifacts/evaluation/混合检索与Rerank重排评测报告.md` + `对抗题详细召回过程.md`（含 🛡 保护标记）。
@@ -155,16 +165,21 @@ python tools/dump_chunks.py                             # 导出切块结果人�
 
 ### Day 13 · 混合检索 + Rerank 评测
 ```bash
-python -m rag_pipeline.pipelines.evaluation
-python tools/adversarial_benchmark.py                   # 版本冲突对抗压测（可选）
+python -m rag_pipeline.pipelines.evaluation              # 主题集（默认）
+python -m rag_pipeline.pipelines.evaluation --suite dev  # 开发集
+python -m rag_pipeline.pipelines.evaluation --suite test # 封存测试集（定稿后只跑一次）
+python -m rag_pipeline.pipelines.evaluation --verbose    # 每题打印检索全流程日志
+python tools/adversarial_benchmark.py                    # 版本冲突对抗压测（可选）
 ```
 
 ### 辅助工具
 ```bash
-python tools/ingest_vector_store.py                     # 独立批量入库
-python tools/inspect_chroma.py                          # 查看向量库内容
+python tools/probe_reranker.py                           # 重排验收探针（换供应商先跑它）
+python tools/ingest_vector_store.py                      # 独立批量入库
+python tools/inspect_chroma.py                           # 查看向量库内容
 python tools/inspect_chroma.py --query "VPN报错806" --k 5   # 检索测试
-python tools/probe_rerank_zero.py --ids HC-04 HC-07 --n 10  # 复现 rerank 全 0 现象
+python tools/probe_rerank_zero.py --ids HC-04 HC-07 --n 10   # 复现 rerank 全 0 现象
+python tools/dump_retrieval_log.py --ids HC-01 HC-10     # 检索全流程日志落盘
 ```
 
 ---
