@@ -15,11 +15,17 @@ REWRITE_PROMPT = """你是企业 IT 服务台的检索助手。把用户的问�
 
 
 class QueryRewriter:
-    """LLM 对话接口做查询改写，带磁盘缓存（按 模型+提示词+原查询 的 sha1）。"""
+    """LLM 对话接口做查询改写，带磁盘缓存（按 模型+提示词+原查询 的 sha1）。
 
-    def __init__(self, model: str = "", cache_dir: Optional[str] = None):
+    timeout/retries 供在线服务模式收紧预算：默认 30s/2 次（离线评测行为不变），
+    服务化时传 1.2s/1 次，超时即回落原查询，不吃光 Java 客户端的总预算。
+    """
+
+    def __init__(self, model: str = "", cache_dir: Optional[str] = None,
+                 timeout: float = 30.0, retries: int = 2):
         cfg = load_llm_config()
         self.model = model or cfg["clean_model"]
+        self.retries = max(1, int(retries))
         self.cache_dir = Path(cache_dir) if cache_dir else None
         if self.cache_dir:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -30,7 +36,7 @@ class QueryRewriter:
         if api_key and not api_key.startswith("sk-replace-") and api_key != "sk-..." and cfg.get("base_url"):
             try:
                 from openai import OpenAI
-                self.client = OpenAI(api_key=api_key, base_url=cfg["base_url"], timeout=30)
+                self.client = OpenAI(api_key=api_key, base_url=cfg["base_url"], timeout=timeout)
             except ImportError:
                 print("       ⚠️ 未安装 openai 包，查询改写不可用，回落原查询")
 
@@ -50,7 +56,7 @@ class QueryRewriter:
         if self.client is None:
             self.last_ok = False
             return query
-        for _ in range(2):
+        for _ in range(self.retries):
             try:
                 resp = self.client.chat.completions.create(
                     model=self.model,

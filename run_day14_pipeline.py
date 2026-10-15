@@ -43,8 +43,6 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 import warnings
 warnings.filterwarnings("ignore")
 
-from langchain_core.documents import Document
-
 REPO_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -53,9 +51,10 @@ try:
 except ImportError:
     Chroma = None
 
-from rag_pipeline.config import load_config, config_fingerprint, build_chunker, build_gate
+from rag_pipeline.config import load_config, config_fingerprint, build_gate
 from rag_pipeline.embedding import KspEmbeddingProvider
 from rag_pipeline.chunking.fingerprint import compute_wiki_fingerprint
+from rag_pipeline.chunking.corpus import load_corpus_with_deterministic_ids
 from rag_pipeline.retrieval.hybrid import IndustrialHybridRetriever
 from rag_pipeline.retrieval.query_rewriter import QueryRewriter
 
@@ -77,32 +76,9 @@ def _parent_id_of(ref: str) -> str:
 
 # ==============================================================================
 # 1. 确定性切片拓扑构建器（对齐 reference_chunk_ids）
+#    实现已迁入 rag_pipeline.chunking.corpus，由顶部 import 导出——
+#    旧引用 from run_day14_pipeline import load_corpus_with_deterministic_ids 仍然有效。
 # ==============================================================================
-
-def load_corpus_with_deterministic_ids(wiki_dir: Path, cfg) -> List[Document]:
-    """提取 Wiki 切片并绑定确定性可溯源 chunk_id，供黄金问题集精准归因。
-
-    与索引构建共用 build_chunker 工厂：父子切片下 chunk_id 即 metadata 的
-    child_id（ITKB-XXX-NNN#cN），黄金集的 reference_chunk_ids 按此体系书写。
-    """
-    chunker, use_parent_child = build_chunker(cfg)
-    wiki_files = sorted(p for p in wiki_dir.glob("*.md") if p.name != "_index.md")
-    if not wiki_files:
-        raise FileNotFoundError(f"❌ 未在 {wiki_dir} 找到 Wiki 卡片，请先运行 Wiki 清洗流水线！")
-
-    all_chunks: List[Document] = []
-    for wf in wiki_files:
-        if use_parent_child:
-            _parent, children = chunker.split_wiki_document(str(wf))
-        else:
-            children = chunker.split_wiki_document(str(wf))
-        for chunk in children:
-            # 确定性溯源 id：父子切片用 child_id；结构感知切片回退为 文件名#序号
-            if "child_id" not in chunk.metadata:
-                chunk.metadata["child_id"] = f"{wf.stem}#c{chunk.metadata.get('sub_idx', 0)}"
-            chunk.metadata["chunk_id"] = chunk.metadata["child_id"]
-            all_chunks.append(chunk)
-    return all_chunks
 
 
 # ==============================================================================

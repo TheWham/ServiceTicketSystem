@@ -3,6 +3,7 @@
 import re
 import json
 import time
+import threading
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -32,7 +33,10 @@ class KspReranker:
         self.backend_retries = backend_retries
         self.hedge_fanout = max(1, hedge_fanout) if backend != "any" else 1
         self.backend_stats = {"attempts": 0, "calls": 0, "rate_limited": 0}
-        self.last_used_remote = False
+        # last_used_remote 是线程本地状态：服务化后多请求共用同一 KspReranker 实例，
+        # 若为实例属性，并发请求会互相污染（A 线程降级启发式会把 B 线程的远程成功
+        # 覆盖成 False，导致 hybrid.py 的拒答/门控判定误判）。
+        self._local = threading.local()
         self.cfg = cfg or load_rerank_config()
         self.provider = self.cfg.get("provider", "ksp")
         if self.cfg.get("note"):
@@ -60,6 +64,15 @@ class KspReranker:
                 print(f"       -> rerank 服务不可用({e})，降级启发式交叉对齐打分")
         else:
             print(f"       -> 未配置有效 rerank 服务地址/key（RERANK_*），采用本地启发式交叉对齐重排打分")
+
+    @property
+    def last_used_remote(self) -> bool:
+        """本次 predict 是否真正走了远程 Cross-Encoder（线程本地，未打分默认 False）。"""
+        return getattr(self._local, "last_used_remote", False)
+
+    @last_used_remote.setter
+    def last_used_remote(self, value: bool) -> None:
+        self._local.last_used_remote = bool(value)
 
     def _candidate_endpoints(self) -> List[str]:
         base = self.cfg["base_url"].rstrip("/")

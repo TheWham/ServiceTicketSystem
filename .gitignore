@@ -12,3 +12,6 @@ output/run.log
 
 # 黄金题集旧版备份（仅本地留档）
 evals/*.bak
+
+# SDD 执行工作区（本地脚本/日志，非交付物）
+.superpowers/
