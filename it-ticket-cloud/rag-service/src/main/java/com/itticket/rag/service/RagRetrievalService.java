@@ -2,6 +2,7 @@ package com.itticket.rag.service;
 
 import com.itticket.common.api.BizException;
 import com.itticket.common.api.ErrorCode;
+import com.itticket.rag.client.PythonRetrievalClient;
 import com.itticket.rag.config.RagRetrievalProperties;
 import com.itticket.rag.dto.ai.KnowledgeCitation;
 import com.itticket.rag.entity.KnowledgeArticle;
@@ -63,6 +64,7 @@ public class RagRetrievalService {
     private final DomainClassifier domainClassifier;
     private final RagRetrievalProperties properties;
     private final KnowledgeArticleMapper articleMapper;
+    private final PythonRetrievalClient pythonRetrievalClient;
 
     /**
      * 检索与策略判定结果。
@@ -130,6 +132,12 @@ public class RagRetrievalService {
             return outcome(domain, false, null, List.of(), zero(), null, false);
         }
 
+        // 2/3) provider=python：检索内核（向量化 + 双路召回 + 精排 + 拒答判定）外包给 Python 服务；
+        //      ④ MySQL PUBLISHED 复核与领域判定仍在 Java 侧。Python 异常不静默回 ES，走既有失败路径。
+        if (properties.getProvider() == RagRetrievalProperties.Provider.python) {
+            return retrieveViaPython(domain, trimmed, categoryId, topK);
+        }
+
         // 2) 问题向量化；失败按依赖不可用降级，不退化到无依据回答（RD-006 · specs/04-resilience-degradation.md:67）
         List<Float> vector;
         try {
@@ -167,6 +175,63 @@ public class RagRetrievalService {
         BigDecimal topScore = maxSimilarity(hits);
         boolean reliable = !hits.isEmpty() && topScore.compareTo(properties.getConfidenceThreshold()) >= 0;
         return outcome(domain, false, null, hits, topScore, null, reliable);
+    }
+
+    /**
+     * provider=python 的检索分支：调用外置 Python 检索内核，再做与 ES 路径一致的
+     * ④ PUBLISHED 复核，最后按以下口径给出结局：
+     * <ul>
+     *   <li>Python 调用失败 → 依赖不可用 + MODEL_UNAVAILABLE（RD-006，不伪装空引用）；</li>
+     *   <li>复核后无命中 → reliable=false + 拒答（透传 Python 原因；Python 未给原因则低置信）；</li>
+     *   <li>Python 判拒答 → 原样透传（即使复核仍有命中也不回灌）；</li>
+     *   <li>正常命中 → 透传 Python 的 reliable，topScore 按复核后的剩余命中重算
+     *       （保证契约 topScore == max(items[].score)）。</li>
+     * </ul>
+     */
+    private RetrievalOutcome retrieveViaPython(OfficeDomain domain, String question,
+                                               String categoryId, Integer topK) {
+        final RagRetrievalResponse remote;
+        try {
+            remote = pythonRetrievalClient.retrieve(question, categoryId, resolveTopK(topK));
+        } catch (Exception e) {
+            log.warn("Python 检索内核调用失败，按依赖不可用降级: {}", e.getMessage());
+            return outcome(domain, true, "Python 检索服务不可用", List.of(), zero(),
+                    AiRefusalReason.MODEL_UNAVAILABLE, false);
+        }
+
+        List<RetrievedChunk> items = remote.items() == null ? List.of() : remote.items();
+        List<ChunkHit> hits = new ArrayList<>();
+        for (RetrievedChunk item : items) {
+            hits.add(toChunkHit(item));
+        }
+
+        // 与 ES 路径一致：按数据库当前发布版本复核，避免旧版本进入生成上下文
+        List<ChunkHit> verified;
+        try {
+            verified = filterPublishedCurrentHits(hits);
+        } catch (BizException e) {
+            return outcome(domain, true, "知识状态校验服务不可用", List.of(), zero(),
+                    AiRefusalReason.MODEL_UNAVAILABLE, false);
+        }
+
+        if (verified.isEmpty()) {
+            AiRefusalReason reason = remote.suggestedRefusalReason() != null
+                    ? remote.suggestedRefusalReason() : AiRefusalReason.LOW_CONFIDENCE;
+            return outcome(domain, false, null, List.of(), zero(), reason, false);
+        }
+        if (remote.suggestedRefusalReason() != null) {
+            return outcome(domain, false, null, List.of(), zero(), remote.suggestedRefusalReason(), false);
+        }
+        return outcome(domain, false, null, verified, maxSimilarity(verified), null, remote.reliable());
+    }
+
+    /** Python 命中 → 内部 ChunkHit（indexVersion 缺失时退化为 versionId，保持不变量）。 */
+    private static ChunkHit toChunkHit(RetrievedChunk item) {
+        String indexVersion = item.indexVersion() == null || item.indexVersion().isBlank()
+                ? item.versionId() : item.indexVersion();
+        return ChunkHit.raw(item.chunkId(), item.articleId(), item.versionId(), indexVersion,
+                item.title(), item.content(), item.categoryId(),
+                item.score() == null ? zero() : item.score());
     }
 
     /**

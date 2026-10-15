@@ -47,6 +47,27 @@ public class RagRetrievalProperties {
     /** 引用片段长度上限（契约 citation.snippet.maxLength=1000，AI-004.3 · specs/02-ai-api-json-schema.md:134） */
     private Integer snippetLength = 1000;
 
+    // ---------------- 检索内核提供方（es=本模块内 ES 双路；python=外置 Python 检索内核） ----------------
+
+    /** 检索内核提供方：es=本模块内 ES 双路（默认，零代码回滚）；python=外置 Python 检索内核服务 */
+    private Provider provider = Provider.es;
+
+    /** Python 检索内核服务地址（不带路径；检索端点为其下 /api/v1/rag/retrievals） */
+    private String pythonBaseUrl = "http://127.0.0.1:8310";
+
+    /** Python 检索调用整体超时（毫秒）：覆盖 Python 侧改写命中缓存态 + 余量 */
+    private Integer pythonTimeoutMs = 4200;
+
+    /** Python 检索连接建立超时（毫秒） */
+    private Integer pythonConnectTimeoutMs = 500;
+
+    public enum Provider {
+        /** 本模块内 ES 双路检索（默认） */
+        es,
+        /** 外置 Python 检索内核服务 */
+        python
+    }
+
     // ---------------- 领域判定词表（MR-004，全部可配置） ----------------
 
     /**
