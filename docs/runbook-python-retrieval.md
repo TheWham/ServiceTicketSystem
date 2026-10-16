@@ -82,15 +82,47 @@ RAG_RETRIEVAL_PROVIDER=python RAG_PYTHON_BASE_URL=http://127.0.0.1:8310 \
 ## 验证
 
 ```bash
-python -m pytest rag_service/tests -q            # 纯逻辑单测（23 例）
+python -m pytest rag_service/tests -q            # 纯逻辑单测（32 例）
 RAG_HOME=$PWD python -m rag_service &           # 启动后：
 python tools/check_contract.py                  # 契约不变量 69 项（含锁超时 5031、health 不抢锁）
 python tools/run_service_regression.py --pace 1.5   # 20 题 vs artifacts/evals/day14_baseline.json
 # Java 侧（worktree 或合并后）：
-mvn -pl rag-service -am test                    # 82 tests（含 python 分支 13 例）
+mvn -pl rag-service -am test                    # 85 tests（含 python 分支 15 例）
 ```
 
 重建基线（装配改动后）：`python tools/freeze_day14_baseline.py`（需远程 rerank，约 1-2 分钟）。
+
+## 三服务联调（已实测通过）
+
+链路：`consultation-service(:8301) → rag-service(:8302, provider=python) → Python 检索服务(:8310)`
+
+前置：Nacos(:8848)/Redis(:6379)/ES(:9200) 起来（`it-ticket-cloud/docker-compose.yml` 的前三者 +
+`rag-service/docker-compose.yml` 的 ES）；rag-service 的向量化凭据经 `EMBEDDING_BASE_URL/API_KEY/MODEL`
+注入（网关 `qwen3-embedding-8b` 支持 `dimensions=1024`，与 ES mapping 的 1024 维一致）。
+
+```bash
+# rag-service 用 python 内核 + 向量化凭据
+RAG_RETRIEVAL_PROVIDER=python RAG_PYTHON_BASE_URL=http://127.0.0.1:8310 \
+EMBEDDING_BASE_URL=... EMBEDDING_API_KEY=... EMBEDDING_MODEL=qwen3-embedding-8b \
+EMBEDDING_DIMENSIONS=1024 java -jar rag-service/target/it-ticket-rag-service-1.0.0.jar
+```
+
+实测结论（20 题里的代表用例）：
+- 「员工忘了密码登不进系统怎么办」→ `ANSWER` + 1 条引用（`art-…` 可反查映射表）、confidence 0.9、约 6.6s；
+- 「VPN 连不上怎么办」「打印机脱机无法打印」→ `ANSWER` + 引用，confidence 0.95；
+- 「今天天气怎么样的」→ Java 侧 `OFF_TOPIC` 短路，**不触达 Python**（4ms）；
+- 端到端时延 2.4~12s（含远程 LLM 生成，consultation 侧 `request-timeout-ms=120000` 足够）。
+
+**联调踩坑（重要）**：
+1. consultation 的模型客户端硬编码 `temperature=0.0` + `response_format=json_object`。
+   **`kimi-k3` 只接受 `temperature=1`**，用它会被网关 400 拒绝（表现为 `PERMANENT_HTTP` → 全量
+   `MODEL_UNAVAILABLE` 拒答，且 `costMs=0` 很迷惑）。联调/上线须选支持 `temperature∈[0,1]` 的模型
+   （实测 `deepseek-v4-flash` 可用）；`qwen3-vl-32b-thinking` 在本网关未开通（403）。
+2. consultation 的 `ai-secrets.yml` 里 `rag-base-url` 是**字面量**，会覆盖 `RAG_BASE_URL` 环境变量——
+   改地址要直接改该文件（或在其中写成 `${RAG_BASE_URL:http://127.0.0.1:8302}`）。
+3. 会话带 `categoryId` 时，检索会按该类目过滤（Python 侧 `_metadata_filter` 反查中文类目）——
+   跨类目提问会被过滤成低置信拒答（**预期行为**），联调提问要注意会话类目与问题匹配。
+4. 请求须带 `X-Request-Id` + `Idempotency-Key` 头，否则 consultation 侧 400。
 
 ## 已知行为与运维要点
 
