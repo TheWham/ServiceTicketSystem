@@ -1,62 +1,19 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-================================================================================
-Day 14 黄金问题集建设与 RAG 检索层量化评估基准工程流水线
-================================================================================
-前置承接：Wiki 清洗重构 -> 父子切块与向量库 -> 混合检索与重排（rag_pipeline 包）
-核心功能：
-  1. 自动化加载并解析 6:2:2 黄金问题集基准库 (evals/golden_dataset_v1.0.json)
-  2. 装配并调度主链路混合重排检索引擎 (IndustrialHybridRetriever，含废止卡屏蔽/共振保护)
-  3. 执行 Top-K 检索评测与名次统计 (Hit Rate@1 / Hit Rate@K)
-  4. 计算工业级度量指标 MRR (Mean Reciprocal Rank，平均倒数排名)
-  5. 专项评测版本冲突消歧正确率 (is_conflict_check)：命中现行卡且无"已废止"卡混入
-  6. 专项评测对抗样本置信度截断与防幻觉安全拦截率 (is_adversarial)
-  7. 自动化生成量化体检大盘报告落盘：《Day14_黄金问题集RAG评测基准报告.md》
+"""黄金问题集评测引擎（GoldenSetEvaluator）。
 
-与讲义参考实现的差异（均为适配本仓库实测结论的必要改造）：
-  - 语料/向量库：复用 rag_pipeline 配置中心与持久化库（manifest 指纹校验），
-    chunk_id 采用父子切片的确定性 child_id（ITKB-XXX-NNN#cN），与黄金集 reference 对齐；
-  - 拒答判定：主链路已实现低置信拒答（pipeline.yaml reject_threshold=0.40，精排原始分
-    低于阈值返回空结果），评测器直接复用该机制；另以"正样本 top-1 rerank 分最小值"
-    自动标定阈值作对照（Day13 压测证明 rerank 绝对分不可跨端点移植，讲义硬编码 0.40
-    仅对其端点成立），可用 --adversarial-threshold 覆盖；
-  - 冲突判定：讲义按"2024/v2.0/新规"词面判新版；本库以元数据 version/status 为准
-    （现行 v1.0 vs 废止 v0.9+status=已废止），判定=命中现行卡且 Top-K 无废止卡混入。
-================================================================================
+加载 evals/golden_dataset_v1.0.json（6:2:2 黄金结构），复用主链路混合重排检索器，
+计算 Hit@1 / Hit@K、MRR、版本冲突消歧率、越界拒答率，产出控制台大盘与 Markdown 报告。
+
+引擎与装配分离：本模块只含纯评测逻辑（供 tools 复用），CLI 装配入口见
+`rag_pipeline.pipelines.golden_evaluation`。
 """
 
-import sys
-import time
 import json
 import re
-import argparse
+import time
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
-# Windows 控制台默认 GBK，统一切换 UTF-8 防止 emoji 打印崩溃
-if sys.stdout and hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-if sys.stderr and hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8")
-
-import warnings
-warnings.filterwarnings("ignore")
-
-REPO_ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(REPO_ROOT))
-
-try:
-    from langchain_community.vectorstores import Chroma
-except ImportError:
-    Chroma = None
-
-from rag_pipeline.config import load_config, config_fingerprint, build_gate
-from rag_pipeline.embedding import KspEmbeddingProvider
-from rag_pipeline.chunking.fingerprint import compute_wiki_fingerprint
-from rag_pipeline.chunking.corpus import load_corpus_with_deterministic_ids
-from rag_pipeline.retrieval.hybrid import IndustrialHybridRetriever
-from rag_pipeline.retrieval.query_rewriter import QueryRewriter
+from ..config import build_gate
 
 DEPRECATED_STATUS = ("已废止", "已下线")
 
@@ -74,24 +31,13 @@ def _parent_id_of(ref: str) -> str:
     return _REF_SUFFIX_RE.sub("", ref)
 
 
-# ==============================================================================
-# 1. 确定性切片拓扑构建器（对齐 reference_chunk_ids）
-#    实现已迁入 rag_pipeline.chunking.corpus，由顶部 import 导出——
-#    旧引用 from run_day14_pipeline import load_corpus_with_deterministic_ids 仍然有效。
-# ==============================================================================
+class GoldenSetEvaluator:
+    """黄金评测基准引擎：读取六维 Schema 黄金集，计算 Hit@1/Hit@K/MRR 与专项达标率。
 
-
-# ==============================================================================
-# 2. 生产级 RAGEvaluator 评测中枢 (讲义第五篇标准实现，适配本仓库)
-# ==============================================================================
-
-class RAGEvaluator:
-    """
-    RAG 黄金评测基准引擎：
-    - 读取符合六维 Schema 的 golden_dataset.json
-    - 计算 Hit Rate@1, Hit Rate@K, MRR
-    - 分支路由处理 is_conflict_check 与 is_adversarial
-    - 输出控制台体检大盘与落盘 Markdown 报告
+    - 复用主链路低置信拒答（pipeline.yaml reject_threshold），并另以
+      "正样本 top-1 rerank 分最小值"自动标定阈值作对照（rerank 绝对分不可跨端点移植）；
+    - 版本冲突消歧：以元数据 version/status 为准（现行 v1.0 vs 废止 v0.9+已废止），
+      判定 = 命中现行卡且 Top-K 无废止卡混入。
     """
 
     def __init__(self, retriever: Any, golden_dataset_path: str, rc, rewriter=None):
@@ -176,7 +122,7 @@ class RAGEvaluator:
                                for r in retrieved_results],
             })
 
-        # ---- 拒答阈值标定（讲义 0.40 为其端点标定值，本端点按正样本分布自动标定）----
+        # ---- 拒答阈值标定（0.40 为其端点标定值，本端点按正样本分布自动标定）----
         positive_scores = [r["top_score"] for r in rows if not r["is_adversarial"] and r["top_score"] > 0]
         calibrated = min(positive_scores) if positive_scores else 0.40
         threshold = adversarial_threshold if adversarial_threshold is not None else calibrated
@@ -271,9 +217,8 @@ class RAGEvaluator:
         conflict_rows = [d for d in summary["details"] if d["is_conflict"]]
         adv_rows = [d for d in summary["details"] if d["is_adversarial"]]
 
-        content = f"""# Day 14 黄金问题集 (Golden Dataset) RAG 评测基准报告
+        content = f"""# 黄金问题集 (Golden Dataset) RAG 评测基准报告
 
-**所属阶段**：第二阶段 RAG 数据工程、黄金问题集与单 Agent 工具交付
 **评测版本**：`golden_dataset_v1.0.json` (6:2:2 黄金结构配比)
 **评估引擎**：Chroma 向量数据库 + BM25Okapi + Cross-Encoder 混合精排检索器（主链路同源装配）
 **生成日期**：{time.strftime("%Y-%m-%d %H:%M:%S")}
@@ -291,8 +236,8 @@ class RAGEvaluator:
 | **越界拒答截断率** | = 100.0% | **{summary['adversarial_refusal_rate']}** | {'✅ 达标' if pct('adversarial_refusal_rate') == 100 else '⚠️ 需调优'} | 检索层置信度截断（阈值 {thr:.4f}，{summary['adversarial_threshold_src']}），筑牢防幻觉底线 |
 | **平均检索时延** | 含远程精排往返 | **{summary['avg_latency_ms']}** | — | 双路召回 + RRF + 重排端到端延迟（远程 /rerank 为主开销） |
 
-> 拒答阈值说明：讲义参考实现的 0.40 为其重排端点标定值；Day13 压测已证明 rerank 绝对分
-> 不可跨端点/跨查询移植（本端点正样本 top-1 分普遍落在 0.2~0.4 区间），故本版默认以
+> 拒答阈值说明：0.40 为其重排端点标定值；rerank 绝对分不可跨端点/跨查询移植
+> （本端点正样本 top-1 分普遍落在 0.2~0.4 区间），故本版默认以
 > "正样本 top-1 rerank 分最小值"自动标定，保证"越界题置信度低于最弱正样本"这一语义成立。
 
 ---
@@ -334,115 +279,7 @@ class RAGEvaluator:
 2. **越界对抗用例低分拦截**：
    - 拒答题 top-1 重排分：{adv_desc}。
    - 工程意义：低于标定阈值的查询应在生成层触发"知识库未记载"拒答话术，而非强行作答。
-
----
-
-## 四、 后续交付承接
-
-- **Day 15**：将基于本评测保护体系，封装 FastAPI 知识库端点（带溯源角标 `[来源: 卡片id-章节名]`），完成全量回归并正式结营封版！
 """
         report_path.parent.mkdir(parents=True, exist_ok=True)
         with open(report_path, "w", encoding="utf-8") as f:
             f.write(content)
-
-
-# ==============================================================================
-# 3. 命令行主程序入口
-# ==============================================================================
-
-def run_day14_pipeline():
-    parser = argparse.ArgumentParser(description="Day 14 黄金问题集建设与 RAG 评测基准工程流水线")
-    parser.add_argument("--wiki-dir", default="artifacts/output/wiki", help="Wiki 卡片目录")
-    parser.add_argument("--chroma-dir", default="artifacts/indexing/chroma_wiki_structured", help="持久化向量库目录")
-    parser.add_argument("--golden-dataset", default="evals/golden_dataset_v1.0.json", help="黄金问题集路径")
-    parser.add_argument("--output-dir", default="artifacts/evaluation", help="评测产物输出目录")
-    parser.add_argument("--top-k", type=int, default=None, help="评测 Top-K（默认取 pipeline.yaml retrieval.top_k）")
-    parser.add_argument("--adversarial-threshold", type=float, default=None,
-                        help="拒答置信截断阈值（默认自动标定=正样本 top-1 rerank 分最小值）")
-    args = parser.parse_args()
-
-    print("=" * 80)
-    print("🎯 Day 14 黄金问题集建设与 RAG 检索层量化评估基准工程流水线")
-    print("=" * 80)
-
-    cfg = load_config()
-    top_k = args.top_k or cfg.retrieval.top_k
-    wiki_path = REPO_ROOT / args.wiki_dir
-    chroma_path = REPO_ROOT / args.chroma_dir
-    golden_path = REPO_ROOT / args.golden_dataset
-    output_path = REPO_ROOT / args.output_dir
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    # 1. 载入语料并绑定确定性 chunk_id（与黄金集 reference_chunk_ids 对齐）
-    print("\n[1/3] 提取 Wiki 知识切片语料并绑定确定性溯源 Chunk ID...")
-    corpus_docs = load_corpus_with_deterministic_ids(wiki_path, cfg)
-    print(f"       -> 成功提取并装配切片语料：{len(corpus_docs)} 个标准 Chunks")
-
-    # 2. 装配 IndustrialHybridRetriever（优先加载持久化库，manifest 指纹校验）
-    print("\n[2/3] 装配工业级双路混合检索与重排核心中枢...")
-    embed_provider = KspEmbeddingProvider(cache_dir=str(REPO_ROOT / cfg.embedding_cache_dir))
-    vector_db = None
-    stale_reason = None
-    manifest_file = chroma_path / "manifest.json"
-    if Chroma is not None and chroma_path.exists():
-        if not manifest_file.exists():
-            stale_reason = "无 manifest（旧版本向量库）"
-        else:
-            saved = json.loads(manifest_file.read_text(encoding="utf-8"))
-            wiki_files = sorted(p for p in wiki_path.glob("*.md") if p.name != "_index.md")
-            if saved.get("wiki_fingerprint") != compute_wiki_fingerprint(wiki_files):
-                stale_reason = "Wiki 卡片内容已变更"
-            elif saved.get("config_fingerprint") and saved["config_fingerprint"] != config_fingerprint(cfg):
-                stale_reason = "切片配置已变更（configs/pipeline.yaml）"
-        if stale_reason is None:
-            try:
-                vector_db = Chroma(persist_directory=str(chroma_path),
-                                   embedding_function=embed_provider,
-                                   collection_name=cfg.store_collection)
-                print(f"       -> 成功加载持久化向量数据库：{chroma_path.name}")
-            except Exception as e:
-                stale_reason = f"加载异常({e})"
-    if vector_db is None and Chroma is not None:
-        if stale_reason:
-            print(f"       ⚠️ 持久化库不可用（{stale_reason}），内存重建索引...")
-        vector_db = Chroma.from_documents(documents=corpus_docs, embedding=embed_provider,
-                                          collection_name="wiki_structured_golden_eval")
-
-    retriever = IndustrialHybridRetriever(
-        vector_db=vector_db,
-        corpus_docs=corpus_docs,
-        reranker_model_name=cfg.reranker_model,
-        default_exclude=cfg.retrieval.default_exclude,
-    )
-
-    # 查询改写器：与主链路评测同一装配（yaml query_rewrite 开关，缓存落评测产物目录）
-    rewriter = QueryRewriter(
-        model=cfg.retrieval.rewrite_model,
-        cache_dir=str(output_path / ".llm_cache" / "rewrite"),
-    ) if cfg.retrieval.query_rewrite else None
-    if rewriter:
-        print(f"       -> 查询改写已启用：{rewriter.model}（磁盘缓存 evaluation/.llm_cache/rewrite）")
-
-    # 3. 运行评测大盘
-    print(f"\n[3/3] 启动 RAGEvaluator 对《{golden_path.name}》进行量化评估...")
-    evaluator = RAGEvaluator(retriever=retriever, golden_dataset_path=str(golden_path),
-                             rc=cfg.retrieval, rewriter=rewriter)
-    summary = evaluator.run_evaluation(top_k=top_k, adversarial_threshold=args.adversarial_threshold)
-
-    # 门控档位分布（生产级可观测性：说明融合权重是固定还是按置信度切换）
-    gate_modes = [d.get("gate_mode", "off") for d in summary["details"]]
-    if any(m != "off" for m in gate_modes):
-        print(f"置信度门控：高置信 {gate_modes.count('high')} 题（放权精排 "
-              f"{cfg.retrieval.gate_conf_weights}）/ 低置信 {gate_modes.count('low')} 题（召回托底 "
-              f"{cfg.retrieval.gate_low_weights}）（门槛 top-1 ≥{cfg.retrieval.gate_min_score} "
-              f"且 margin ≥{cfg.retrieval.gate_min_margin}）")
-
-    # 4. 报告落盘
-    report_file = output_path / "Day14_黄金问题集RAG评测基准报告.md"
-    evaluator.generate_markdown_report(report_file, summary, top_k=top_k)
-    print(f"\n🎉 评测报告已成功落盘至：{report_file}")
-    print("=" * 80)
-
-
-if __name__ == "__main__":
-    run_day14_pipeline()

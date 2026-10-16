@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """确定性语料装载的守护测试：chunk_id 必须与父子切片的 child_id 对齐。
 
-rag_service 装配与黄金集评测共用同一份语料装载（从 run_day14_pipeline 迁入
-rag_pipeline.chunking.corpus），两侧口径必须逐字一致，否则黄金集归因失效。
+rag_service 装配与黄金集评测共用同一份语料装载（rag_pipeline.chunking.corpus），
+两侧口径必须逐字一致，否则黄金集归因失效。
 """
 
 import sys
@@ -28,11 +28,7 @@ def test_chunk_ids_align_with_children():
     assert any(c.metadata.get("wiki_status") == "已废止" for c in chunks)
 
 
-def test_run_day14_reexports_same_function():
-    import run_day14_pipeline
-    assert run_day14_pipeline.load_corpus_with_deterministic_ids is load_corpus_with_deterministic_ids
-
-
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main([__file__, "-q"]))
+

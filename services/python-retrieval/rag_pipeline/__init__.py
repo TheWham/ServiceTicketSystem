@@ -7,6 +7,6 @@
   embedding   KSP 嵌入提供者
   store       Chroma 向量库管理（含 manifest）
   retrieval   检索（分词 / BM25 / Reranker / 混合检索器）
-  evaluation  评测题集与报告生成
-  pipelines   索引构建 / 检索评测 主流水线入口
+  evaluation  评测（题集 / 报告 / 黄金集评测引擎 golden）
+  pipelines   索引构建 / 四轨检索评测 / 黄金集评测 主流水线入口
 """

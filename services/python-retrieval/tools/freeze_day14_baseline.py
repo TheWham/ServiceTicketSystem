@@ -4,7 +4,7 @@
 freeze_day14_baseline.py — 固化 Day14 黄金集检索基线（服务化回归的对照真源）
 
 以与 rag_service 服务完全一致的装配路径（evaluation.py 的 retriever 装配 +
-run_day14 的确定性 chunk_id 语料）跑 evals/golden_dataset_v1.0.json 全部 20 题，
+确定性 chunk_id 语料）跑 evals/golden_dataset_v1.0.json 全部 20 题，
 把每题的命中父卡集合 / 拒答标记 / top-1 rerank 分 / 时延冻结为 JSON，供
 tools/run_service_regression.py 逐题比对 HTTP 服务端点的行为一致性。
 
@@ -39,9 +39,10 @@ except ImportError:
 from rag_pipeline.config import load_config, config_fingerprint, build_gate
 from rag_pipeline.embedding import KspEmbeddingProvider
 from rag_pipeline.chunking.fingerprint import compute_wiki_fingerprint
+from rag_pipeline.chunking.corpus import load_corpus_with_deterministic_ids
 from rag_pipeline.retrieval.hybrid import IndustrialHybridRetriever
 from rag_pipeline.retrieval.query_rewriter import QueryRewriter
-from run_day14_pipeline import RAGEvaluator, load_corpus_with_deterministic_ids
+from rag_pipeline.evaluation.golden import GoldenSetEvaluator
 
 
 def main():
@@ -102,7 +103,7 @@ def main():
         print(f"       -> 查询改写已启用：{rewriter.model}（磁盘缓存复用 Day14）")
 
     print(f"[3/3] 跑黄金集 {args.golden_dataset} 全量 20 题（远程 rerank，需数分钟）...")
-    evaluator = RAGEvaluator(retriever=retriever, golden_dataset_path=str(golden_path),
+    evaluator = GoldenSetEvaluator(retriever=retriever, golden_dataset_path=str(golden_path),
                              rc=rc, rewriter=rewriter)
     t0 = time.time()
     summary = evaluator.run_evaluation(top_k=rc.top_k)

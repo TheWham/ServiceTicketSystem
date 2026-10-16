@@ -3,8 +3,7 @@
 
 与索引构建共用 build_chunker 工厂：父子切片下 chunk_id 即 metadata 的
 child_id（ITKB-XXX-NNN#cN），黄金集 reference_chunk_ids 与 rag_service 装配
-均按此体系对齐。原实现位于 run_day14_pipeline.py，迁入 rag_pipeline 以便
-服务包不依赖 demo 根脚本。
+均按此体系对齐（黄金集评测入口见 rag_pipeline.pipelines.golden_evaluation）。
 """
 
 from pathlib import Path

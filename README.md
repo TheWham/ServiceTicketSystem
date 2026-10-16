@@ -125,7 +125,7 @@ services/python-retrieval/
 │   └── indexing/chroma_wiki_structured/   # 向量库(manifest 指纹校验)
 ├── evals/                   # 黄金问题集(golden_dataset_v1.0.json)
 ├── tools/                   # sync 灌库 / check_contract 契约校验 / run_service_regression 回归 / freeze 基线
-├── run_day14_pipeline.py    # Day14 黄金集评测入口
+├── rag_pipeline/…           # 内核含评测：python -m rag_pipeline.pipelines.golden_evaluation（黄金集评测）
 └── docs/runbook-python-retrieval.md       # 运维手册(启动/灌库/联调/已知行为) ⭐
 ```
 
