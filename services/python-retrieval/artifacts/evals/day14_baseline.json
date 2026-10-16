@@ -1,0 +1,370 @@
+{
+  "generated_at": "2026-10-15 08:16:24",
+  "wall_seconds": 66.6,
+  "golden_dataset": "evals/golden_dataset_v1.0.json",
+  "wiki_fingerprint": "2f30568c7737ce067c5df7bb8a15ac950dcb7f56",
+  "config_fingerprint": "bed020b9404c4dfd1f28dc13245b3b279bf51f82",
+  "reranker_model": "qwen3-reranker-8b",
+  "reranker_backend": "dashscope",
+  "top_k": 3,
+  "reject_threshold": 0.4,
+  "rerank_backend_stats": {
+    "attempts": 332,
+    "calls": 34,
+    "rate_limited": 144
+  },
+  "summary_metrics": {
+    "hit_rate_top1": "100.0%",
+    "hit_rate_top3": "100.0%",
+    "mrr": 1.0,
+    "conflict_accuracy": "100.0%",
+    "adversarial_refusal_rate": "100.0%",
+    "avg_latency_ms": "3328.9ms"
+  },
+  "results": [
+    {
+      "id": "GOLDEN-QA-001",
+      "query": "员工登录公司系统时提示密码已过期或密码不符合复杂度要求，公司密码策略要求每隔多少天定期更换密码？",
+      "category": "账号与权限",
+      "is_adversarial": false,
+      "is_conflict": false,
+      "parent_ids": [
+        "ITKB-ACC-002",
+        "ITKB-ACC-001",
+        "ITKB-NET-001"
+      ],
+      "rejected": false,
+      "refused": false,
+      "hit_rank": 1,
+      "top_score": 0.7842,
+      "gate_mode": "high",
+      "latency_ms": 1388.0
+    },
+    {
+      "id": "GOLDEN-QA-002",
+      "query": "登录系统时手机 Authenticator 动态验证码总是提示验证失败，手机时间与服务器时间偏差超过多少秒会导致验证失败？",
+      "category": "账号与权限",
+      "is_adversarial": false,
+      "is_conflict": false,
+      "parent_ids": [
+        "ITKB-ACC-004",
+        "ITKB-MAIL-003",
+        "ITKB-APPENDIX-2"
+      ],
+      "rejected": false,
+      "refused": false,
+      "hit_rank": 1,
+      "top_score": 0.7309,
+      "gate_mode": "high",
+      "latency_ms": 356.2
+    },
+    {
+      "id": "GOLDEN-QA-003",
+      "query": "工位调整后插入网线电脑右下角网络图标显示红叉，员工自助排查时如何通过网口指示灯状态判断物理链路是否正常？",
+      "category": "网络连接",
+      "is_adversarial": false,
+      "is_conflict": false,
+      "parent_ids": [
+        "ITKB-NET-002",
+        "ITKB-NET-001",
+        "ITKB-APPENDIX-1"
+      ],
+      "rejected": false,
+      "refused": false,
+      "hit_rank": 1,
+      "top_score": 0.9016,
+      "gate_mode": "high",
+      "latency_ms": 720.1
+    },
+    {
+      "id": "GOLDEN-QA-004",
+      "query": "电脑右下角显示黄色感叹号并提示 IP 地址冲突，IT 工程师在交换机上如何定位冲突源并防范私接路由器？",
+      "category": "网络连接",
+      "is_adversarial": false,
+      "is_conflict": false,
+      "parent_ids": [
+        "ITKB-NET-005",
+        "ITKB-NET-003",
+        "ITKB-NET-002"
+      ],
+      "rejected": false,
+      "refused": false,
+      "hit_rank": 1,
+      "top_score": 0.9832,
+      "gate_mode": "high",
+      "latency_ms": 1783.1
+    },
+    {
+      "id": "GOLDEN-QA-005",
+      "query": "电脑频繁蓝屏显示 MEMORY_MANAGEMENT 错误代码，员工自助检查内存与 IT 工程师分析 dump 文件分别使用什么工具？",
+      "category": "系统与软件",
+      "is_adversarial": false,
+      "is_conflict": false,
+      "parent_ids": [
+        "ITKB-SYS-001",
+        "ITKB-SYS-004",
+        "ITKB-APPENDIX-1"
+      ],
+      "rejected": false,
+      "refused": false,
+      "hit_rank": 1,
+      "top_score": 0.9713,
+      "gate_mode": "high",
+      "latency_ms": 1493.4
+    },
+    {
+      "id": "GOLDEN-QA-006",
+      "query": "Windows 更新安装失败报错 0x80070002，C 盘至少需要多少临时空间？IT 工程师手动重置更新组件需重命名哪两个文件夹？",
+      "category": "系统与软件",
+      "is_adversarial": false,
+      "is_conflict": false,
+      "parent_ids": [
+        "ITKB-SYS-003",
+        "ITKB-ACC-003",
+        "ITKB-STO-003"
+      ],
+      "rejected": false,
+      "refused": false,
+      "hit_rank": 1,
+      "top_score": 0.9328,
+      "gate_mode": "high",
+      "latency_ms": 2581.4
+    },
+    {
+      "id": "GOLDEN-QA-007",
+      "query": "发送打印任务后打印机毫无反应且队列中文档卡住，IT 工程师在后台重启 Print Spooler 服务前需要清空哪个系统目录？",
+      "category": "硬件与外设",
+      "is_adversarial": false,
+      "is_conflict": false,
+      "parent_ids": [
+        "ITKB-HW-002",
+        "ITKB-APPENDIX-1",
+        "ITKB-SYS-002"
+      ],
+      "rejected": false,
+      "refused": false,
+      "hit_rank": 1,
+      "top_score": 0.7671,
+      "gate_mode": "high",
+      "latency_ms": 2088.3
+    },
+    {
+      "id": "GOLDEN-QA-008",
+      "query": "从苹果 Mac 电脑拷贝资料的移动硬盘插到 Windows 电脑上提示需要格式化，真实根因是什么？该如何安全处理？",
+      "category": "硬件与外设",
+      "is_adversarial": false,
+      "is_conflict": false,
+      "parent_ids": [
+        "ITKB-HW-004",
+        "ITKB-OFF-001",
+        "ITKB-STO-002"
+      ],
+      "rejected": false,
+      "refused": false,
+      "hit_rank": 1,
+      "top_score": 0.6109,
+      "gate_mode": "high",
+      "latency_ms": 1621.9
+    },
+    {
+      "id": "GOLDEN-QA-009",
+      "query": "在 Outlook 发送邮件收到退信提示「552 Message size exceeds fixed maximum message size」，公司邮箱附件大小限制是多少？超限如何解决？",
+      "category": "邮件与通讯",
+      "is_adversarial": false,
+      "is_conflict": false,
+      "parent_ids": [
+        "ITKB-MAIL-001",
+        "ITKB-MAIL-002",
+        "ITKB-OFF-001"
+      ],
+      "rejected": false,
+      "refused": false,
+      "hit_rank": 1,
+      "top_score": 0.8323,
+      "gate_mode": "high",
+      "latency_ms": 574.4
+    },
+    {
+      "id": "GOLDEN-QA-010",
+      "query": "Excel 单元格输入公式后只显示公式文本或修改数据后不自动计算，除了将计算选项设为自动外，可用什么快捷键切换显示公式与强制重算？",
+      "category": "办公软件",
+      "is_adversarial": false,
+      "is_conflict": false,
+      "parent_ids": [
+        "ITKB-OFF-004",
+        "ITKB-SYS-001",
+        "ITKB-OFF-002"
+      ],
+      "rejected": false,
+      "refused": false,
+      "hit_rank": 1,
+      "top_score": 0.7722,
+      "gate_mode": "high",
+      "latency_ms": 1016.6
+    },
+    {
+      "id": "GOLDEN-QA-011",
+      "query": "重要文件被 Shift+Delete 永久删除且回收站已清空，在联系 IT 使用卷影副本或恢复软件前，员工必须立即执行什么防覆盖动作？",
+      "category": "数据存储",
+      "is_adversarial": false,
+      "is_conflict": false,
+      "parent_ids": [
+        "ITKB-STO-001",
+        "ITKB-ACC-003",
+        "ITKB-SYS-004"
+      ],
+      "rejected": false,
+      "refused": false,
+      "hit_rank": 1,
+      "top_score": 0.7695,
+      "gate_mode": "high",
+      "latency_ms": 848.9
+    },
+    {
+      "id": "GOLDEN-QA-012",
+      "query": "OneDrive 或 WPS 云盘一直显示正在同步或报红叉同步错误，文件路径超过多少字符会导致同步失败？重置 OneDrive 客户端的命令是什么？",
+      "category": "数据存储",
+      "is_adversarial": false,
+      "is_conflict": false,
+      "parent_ids": [
+        "ITKB-STO-003",
+        "ITKB-OFF-003",
+        "ITKB-STO-002"
+      ],
+      "rejected": false,
+      "refused": false,
+      "hit_rank": 1,
+      "top_score": 0.979,
+      "gate_mode": "high",
+      "latency_ms": 658.4
+    },
+    {
+      "id": "GOLDEN-QA-013",
+      "query": "出差在酒店连公司 VPN 一直报错 806 无法连接，现行 v1.0 规范推荐改用哪种 VPN 协议穿透性最好？旧版 v0.9 推荐的 PPTP 协议是否依然有效？",
+      "category": "制度消歧",
+      "is_adversarial": false,
+      "is_conflict": true,
+      "parent_ids": [
+        "ITKB-VPN-001",
+        "ITKB-VPN-002",
+        "ITKB-MAIL-003"
+      ],
+      "rejected": false,
+      "refused": false,
+      "hit_rank": 1,
+      "top_score": 0.6746,
+      "gate_mode": "high",
+      "latency_ms": 377.0
+    },
+    {
+      "id": "GOLDEN-QA-014",
+      "query": "依据现行 v1.0 域账号安全规范，员工密码连续输错几次会被锁定？等待多久可自动解锁？旧版 v0.9 输错 3 次锁定且不自动解锁的规定是否有效？",
+      "category": "制度消歧",
+      "is_adversarial": false,
+      "is_conflict": true,
+      "parent_ids": [
+        "ITKB-ACC-001",
+        "ITKB-ACC-002",
+        "ITKB-APPENDIX-2"
+      ],
+      "rejected": false,
+      "refused": false,
+      "hit_rank": 1,
+      "top_score": 0.6018,
+      "gate_mode": "high",
+      "latency_ms": 43875.6
+    },
+    {
+      "id": "GOLDEN-QA-015",
+      "query": "电脑能上 QQ 但打不开网页提示 DNS_PROBE_FINISHED_NXDOMAIN，现行 v1.0 规范如何清缓存及配置阿里公共 DNS？旧版 v0.9 禁用 223.5.5.5 强制改 10.0.0.1 的规定是否还有效？",
+      "category": "制度消歧",
+      "is_adversarial": false,
+      "is_conflict": true,
+      "parent_ids": [
+        "ITKB-NET-004",
+        "ITKB-VPN-002",
+        "ITKB-APPENDIX-3"
+      ],
+      "rejected": false,
+      "refused": false,
+      "hit_rank": 1,
+      "top_score": 0.7604,
+      "gate_mode": "high",
+      "latency_ms": 389.8
+    },
+    {
+      "id": "GOLDEN-QA-016",
+      "query": "在家连上公司 VPN 后显示已连接，但内网 OA 和共享文件夹全都打不开，用远程桌面（mstsc）连工位电脑也提示失败，跨卡片排查时应如何区分并检查路由与端口？",
+      "category": "制度消歧",
+      "is_adversarial": false,
+      "is_conflict": true,
+      "parent_ids": [
+        "ITKB-VPN-002",
+        "ITKB-VPN-003",
+        "ITKB-VPN-001"
+      ],
+      "rejected": false,
+      "refused": false,
+      "hit_rank": 1,
+      "top_score": 0.867,
+      "gate_mode": "high",
+      "latency_ms": 692.1
+    },
+    {
+      "id": "GOLDEN-QA-017",
+      "query": "公司目前是否允许员工使用个人住房公积金向财务部申请企业内部低息购房免息贷款？",
+      "category": "安全防越界",
+      "is_adversarial": true,
+      "is_conflict": false,
+      "parent_ids": [],
+      "rejected": true,
+      "refused": true,
+      "hit_rank": null,
+      "top_score": 0.212,
+      "gate_mode": "low",
+      "latency_ms": 1344.1
+    },
+    {
+      "id": "GOLDEN-QA-018",
+      "query": "员工因私出国旅游度假期间能否申请报销国际漫游话费与境外自驾租车补贴？",
+      "category": "安全防越界",
+      "is_adversarial": true,
+      "is_conflict": false,
+      "parent_ids": [],
+      "rejected": true,
+      "refused": true,
+      "hit_rank": null,
+      "top_score": 0.2064,
+      "gate_mode": "low",
+      "latency_ms": 1136.8
+    },
+    {
+      "id": "GOLDEN-QA-019",
+      "query": "集团驻海外办事处（如欧美分部）的外币出差伙食津贴每日按何种基准汇率折算人民币报销？",
+      "category": "安全防越界",
+      "is_adversarial": true,
+      "is_conflict": false,
+      "parent_ids": [],
+      "rejected": true,
+      "refused": true,
+      "hit_rank": null,
+      "top_score": 0.2018,
+      "gate_mode": "low",
+      "latency_ms": 2197.1
+    },
+    {
+      "id": "GOLDEN-QA-020",
+      "query": "员工在办理离职交接当月是否可以申请提取企业年金并一次性办理未归属股票期权折现？",
+      "category": "安全防越界",
+      "is_adversarial": true,
+      "is_conflict": false,
+      "parent_ids": [],
+      "rejected": true,
+      "refused": true,
+      "hit_rank": null,
+      "top_score": 0.1958,
+      "gate_mode": "low",
+      "latency_ms": 1434.1
+    }
+  ]
+}
