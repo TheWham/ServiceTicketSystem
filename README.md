@@ -47,6 +47,8 @@ it-ticket-system/
 │   ├── tests/                # pytest 测试套件(含 TC-10 注入防护)
 │   ├── scripts/              # 评测执行脚本
 │   └── reports/              # 评测报告输出
+├── services/
+│   └── python-retrieval/     # Python RAG 检索内核 + HTTP 服务(rag-service provider=python 的后端)
 ├── docs/IT服务工单系统PRD-Ultimate.md # 当前产品需求基线（2.2）
 ├── docs/specs/               # 数据字段、接口、SQL 和实现差异清单
 └── README.md                 # 本文档
@@ -99,6 +101,54 @@ cd frontend && npm install && npm run dev    # 5173,proxy /api → 8080 网关
 | U_ENG01 | 演示工程师 | ENGINEER |
 | U_ADM01 | 平台管理员 | PLATFORM_ADMIN |
 | U_KBA01 | 知识库管理员 | KNOWLEDGE_ADMIN |
+
+## Python 检索服务（services/python-retrieval）
+
+`rag-service` 的检索内核支持可插拔 provider：默认 `es`（本模块内 ES 双路），设
+`RAG_RETRIEVAL_PROVIDER=python` 时改由本目录的 Python 检索服务承担「向量化 + 双路召回 +
+RRF + Cross-Encoder 精排 + 低置信拒答」，Java 侧只保留领域判定与 MySQL PUBLISHED 复核。
+对外契约 `POST /api/v1/rag/retrievals` 不变，回滚只需去掉该环境变量。
+
+```text
+services/python-retrieval/
+├── rag_service/             # HTTP 服务层(FastAPI)：/api/v1/rag/retrievals、/api/health
+│   ├── app.py               # 端点定义 + 异常映射(5031 锁超时/4000 参数/5000 兜底)
+│   ├── assembly.py          # 进程级装配：配置/语料/向量库/检索器/映射/检索锁
+│   ├── contract.py          # 对 Java 的契约镜像(Pydantic, camelCase)
+│   ├── mapping.py           # 检索结果 → 契约字段(整卡全文/articleId 反查/拒答判定)
+│   ├── requirements.txt     # fastapi / uvicorn[standard] / pydantic
+│   └── tests/               # 纯逻辑单测(32 例)
+├── rag_pipeline/            # 检索内核库：config/chunking/embedding/store/retrieval/evaluation/ingestion
+├── configs/pipeline.yaml    # 检索唯一配置源(切片/模型/参数/拒答阈值)
+├── artifacts/
+│   ├── output/wiki/         # 35 张现行 Wiki 卡片(+3 废止) = 检索语料
+│   └── indexing/chroma_wiki_structured/   # 向量库(manifest 指纹校验)
+├── evals/                   # 黄金问题集(golden_dataset_v1.0.json)
+├── tools/                   # sync 灌库 / check_contract 契约校验 / run_service_regression 回归 / freeze 基线
+├── run_day14_pipeline.py    # Day14 黄金集评测入口
+└── docs/runbook-python-retrieval.md       # 运维手册(启动/灌库/联调/已知行为) ⭐
+```
+
+```bash
+cd services/python-retrieval
+pip install -r rag_service/requirements.txt
+RAG_HOME=$PWD python -m rag_service                 # 127.0.0.1:8310，单进程
+
+# 验证
+python -m pytest rag_service/tests -q              # 32 例
+python tools/check_contract.py                     # 对 Java 的契约不变量 69 项
+python tools/run_service_regression.py --pace 1.5  # 黄金集 20 题过 HTTP vs 冻结基线
+```
+
+Java 侧启用（rag-service 启动参数）：
+
+```bash
+RAG_RETRIEVAL_PROVIDER=python RAG_PYTHON_BASE_URL=http://127.0.0.1:8310
+```
+
+先决条件：**先灌库**（`python tools/sync_wiki_to_rag_service.py`，把卡片灌进 rag-service 的
+MySQL+ES 并产出 `data/wiki_article_mapping.json`），否则 Python 返回的 articleId 过不了 Java 侧
+④ MySQL 复核、items 恒为空。详细见 [services/python-retrieval/docs/runbook-python-retrieval.md](services/python-retrieval/docs/runbook-python-retrieval.md)。
 
 ## API 一览
 
