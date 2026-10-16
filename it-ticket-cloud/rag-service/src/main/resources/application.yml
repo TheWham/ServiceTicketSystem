@@ -79,6 +79,13 @@ rag:
     # 旧配置保留兼容，不再参与可靠性或拒答判定。
     low-confidence-threshold: ${RAG_LOW_CONFIDENCE_THRESHOLD:0.45}
     snippet-length: 1000
+    # 检索内核提供方：es=本模块内 ES 双路（默认，零代码回滚）；python=外置 Python 检索内核服务
+    provider: ${RAG_RETRIEVAL_PROVIDER:es}
+    # Python 检索内核服务地址（不带路径，检索端点为其下 /api/v1/rag/retrievals）
+    python-base-url: ${RAG_PYTHON_BASE_URL:http://127.0.0.1:8310}
+    # 整体超时（毫秒）：覆盖 Python 侧查询改写命中缓存态 + 余量；须小于咨询侧 5000ms 预算
+    python-timeout-ms: ${RAG_PYTHON_TIMEOUT_MS:4200}
+    python-connect-timeout-ms: ${RAG_PYTHON_CONNECT_TIMEOUT_MS:500}
 
 logging:
   level:
