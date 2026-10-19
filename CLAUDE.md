@@ -53,6 +53,24 @@ rag_pipeline/
 
 主流水线自带 CLI 入口：`python -m rag_pipeline.pipelines.indexing`（建库）与 `python -m rag_pipeline.pipelines.evaluation`（评测），均可通过 API 调用（`from rag_pipeline.pipelines.indexing import run_indexing`）。工具/诊断脚本已归拢到 `tools/`，并**直连 `rag_pipeline.*`**（不依赖薄入口）；`rag_pipeline.config` 提供 `WIKI_DIR`/`INDEXING_OUTPUT`/`EVALUATION_OUTPUT`/`ARTIFACTS_ROOT` 路径常量，运行产物统一归档 `artifacts/`。`ParentChildChunker(child_size=512)` 旧签名仍兼容，但新代码应传 `config=ChunkingConfig(...)`。
 
+## day16（企业级单 Agent 工具交付，已落地）
+
+顶层**独立目录**，与 RAG 检索内核（`rag_pipeline`/`rag_service`）**无耦合**，只复用 `rag_pipeline.config.load_llm_config()` 读 `.env` 模型配置。Text2SQL 直连企业真实业务库 `it_ticket_system`（IT 服务工单系统，MySQL 8）。核心构件：
+
+```
+day16/
+├── agent.py               # EnterpriseReActAgent：tools schema + ReAct 循环 + 确定性沙箱兜底
+├── text2sql.py            # SafeText2SQLEngine：五重门禁只读 SQL 拦截器（连真实库，分号/危险动词/白名单/LIMIT 注入）
+├── gateway.py             # ExternalAPIGateway：超时 + 指数退避 + 抖动 + 熔断降级（工单升级协同）
+├── prompts.py             # AGENT_SYSTEM_PROMPT（客观第三人称/封闭世界/错误反思三军规）
+├── schemas.py             # Pydantic 严格入参契约（pattern/gt/le）+ 对外出参模型
+├── api.py                 # FastAPI 演示页 + /api/v1/agent/chat + /health + /tools（端口 8321）
+├── config.py              # DAY16_* 环境变量（HOST/PORT/OFFLINE/LLM_TIMEOUT/REPORT_DIR + DAY16_DB_* 真实库连接）
+└── run_day16_pipeline.py  # 3 验收用例回归 + 报告落盘 artifacts/day16/；--serve 转发服务
+```
+
+实现要点：LLM 经 `load_llm_config()` 装配（默认取 `clean_model`=deepseek-v4-flash，可用 `DAY16_AGENT_MODEL` 覆盖，**不显式传 temperature**）；`SafeText2SQLEngine` 用 pymysql 连 `it_ticket_system`，白名单 = 真实表（`ticket`/`ticket_transition`/`knowledge_article`/`knowledge_version`/`category`/`consultation`…），查询工单故障流程与知识库卡片；未配置 LLM / 断网 / `DAY16_OFFLINE=1` 时走 `_run_deterministic_mock` 确定性沙箱（仍直查真实库，恶意注入 `DROP TABLE` 优先于业务关键词判定，注入语句夹带合法关键词也能正确拦截）；SQL 一律过五重门禁后才 `cursor.execute`，无 LIMIT 自动注入 `LIMIT 50`；回归 3/3 通过（工单查询/恶意 DROP 拦截/知识库卡片查询）。讲义见 `docs/武汉柯莱特企培_Day16_...讲义.md`。
+
 ## day11_demos/04_wiki_pipeline（IT 知识库清洗 + Wiki 生成）
 
 两层架构的实现已迁移至 `rag_pipeline/ingestion/`：`clean_pipeline.py`（L1 规则物理清洗：保序解析 docx → 剔除分隔线/空段、2 列字段表摊平为结构化字段、按 H2 切条目）→ `llm_synthesizer.py`（双模型：deepseek-v4-flash 做语义级正文清洗，kimi-k3 做 frontmatter 元数据萃取，均有磁盘缓存 `artifacts/output/.llm_cache/` 与规则兜底）→ `wiki_generator.py`（YAML frontmatter + 分节正文 + 溯源 → `artifacts/output/wiki/`）。`day11_demos/04_wiki_pipeline/run_demo.py` 保留为入口（内部 import 指向 rag_pipeline.ingestion）。
