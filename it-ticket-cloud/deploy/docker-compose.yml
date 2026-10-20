@@ -194,6 +194,11 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_MODEL: ${AI_MODEL:-}
       AI_API_KEY: ${AI_API_KEY:-}
+      # ---- Function Calling 智能体（开启后生成侧走 Python agent-service）----
+      AI_AGENT_ENABLED: ${AI_AGENT_ENABLED:-false}
+      AGENT_SERVICE_BASE_URL: http://agent-service:8320
+      # 工单是 ticket-service 事实源，咨询域不跨库读；「确认建单」经此内部接口
+      TICKET_SERVICE_BASE_URL: http://ticket-service:8201
     extra_hosts: *extra-hosts
     volumes:
       - it-ticket-attachments:/app/data/attachments
@@ -201,6 +206,31 @@ services:
       nacos:
         condition: service_healthy
       rag-service:
+        condition: service_started
+    networks:
+      - it-ticket-net
+
+  # Python Function Calling 智能体：ReAct 循环 + 白名单工具（查工单 / 建单草稿 / 查知识库）。
+  # 生成侧下沉：LLM 调用与工具执行都在此；Java 只做编排、守卫与建单确认。
+  # 当 consultation-service 的 AI_AGENT_ENABLED=true 时才会调它。
+  agent-service:
+    image: ${IMAGE_PREFIX:?请在 .env 里设置 IMAGE_PREFIX}/it-ticket-python-ai:latest
+    restart: unless-stopped
+    command: ["python", "-m", "agent_service"]
+    environment:
+      AGENT_SERVICE_HOST: 0.0.0.0
+      AGENT_SERVICE_PORT: "8320"
+      RAG_HOME: /app
+      # ---- 生成模型（需支持原生 tools）----
+      AGENT_LLM_BASE_URL: ${AI_BASE_URL:-}
+      AGENT_LLM_API_KEY: ${AI_API_KEY:-}
+      AGENT_LLM_MODEL: ${AI_AGENT_MODEL:-deepseek-v4-flash}
+      # ---- 工具依赖（容器名互访）----
+      TICKET_SERVICE_BASE_URL: http://ticket-service:8201
+      KNOWLEDGE_SEARCH_BASE_URL: http://consultation-service:8301
+    extra_hosts: *extra-hosts
+    depends_on:
+      ticket-service:
         condition: service_started
     networks:
       - it-ticket-net

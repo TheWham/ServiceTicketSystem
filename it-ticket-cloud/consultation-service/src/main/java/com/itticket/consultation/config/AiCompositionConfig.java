@@ -1,5 +1,6 @@
 package com.itticket.consultation.config;
 import com.itticket.consultation.adapter.*;
+import com.itticket.consultation.adapter.agent.PythonAgentClient;
 import com.itticket.consultation.adapter.generation.*;
 import com.itticket.consultation.adapter.model.*;
 import com.itticket.consultation.adapter.policy.*;
@@ -29,14 +30,25 @@ public class AiCompositionConfig {
             default -> throw new IllegalArgumentException("Unsupported AI provider");
         };
     }
-    @Bean public AnswerGenerator answerGenerator(ConsultationProperties properties, OpenAiCompatibleModelClient model) {
+    @Bean public RetrievalPolicy retrievalPolicy(KnowledgeQueryService knowledge) { return new RetrievalPolicy(knowledge); }
+
+    // ---- Function Calling 智能体:生成侧下沉 Python agent_service(tools.* 已启用时生效)----
+    @Bean public PythonAgentClient pythonAgentClient(ConsultationProperties properties, DependencyHttpClient http) {
+        return new PythonAgentClient(properties, http);
+    }
+    /** 工单内部接口客户端:仅用于员工确认建单后回写工单(工单是 ticket-service 事实源)。 */
+    @Bean public TicketServiceClient ticketServiceClient(ConsultationProperties properties, DependencyHttpClient http) {
+        return new TicketServiceClient(properties, http);
+    }
+
+    @Bean public AnswerGenerator answerGenerator(ConsultationProperties properties, OpenAiCompatibleModelClient model,
+            PythonAgentClient pythonAgentClient) {
         return switch (properties.getAi().getProvider()) {
             case "local" -> new LocalKnowledgeAnswerGenerator();
-            case "openai-compatible" -> new OpenAiCompatibleAnswerGenerator(model, properties);
+            case "openai-compatible" -> new OpenAiCompatibleAnswerGenerator(model, properties, pythonAgentClient);
             default -> throw new IllegalArgumentException("Unsupported AI provider");
         };
     }
-    @Bean public RetrievalPolicy retrievalPolicy(KnowledgeQueryService knowledge) { return new RetrievalPolicy(knowledge); }
     @Bean public RagAdapter ragAdapter(OfficeDomainClassifier classifier, KnowledgeRetriever retriever,
             RetrievalPolicy policy, AnswerGenerator generator) {
         return new ComposedRagAdapter(classifier, retriever, policy, generator);
