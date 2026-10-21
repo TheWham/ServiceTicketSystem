@@ -11,6 +11,7 @@
 """
 
 from typing import Any, Dict, List
+import uuid
 
 import httpx
 
@@ -21,14 +22,19 @@ _PRIORITIES = {"HIGH", "MEDIUM", "LOW"}
 
 
 class ToolContext:
-    """一次 ReAct 调用的上下文：已认证主体 + 草稿收集。"""
+    """一次 ReAct 调用的上下文：已认证主体 + 草稿收集 + 追踪 ID。"""
 
-    __slots__ = ("user_id", "role", "draft")
+    __slots__ = ("user_id", "role", "draft", "request_id")
 
-    def __init__(self, user_id: str, role: str):
+    def __init__(self, user_id: str, role: str, request_id: str = ""):
         self.user_id = user_id or ""
         self.role = role or ""
         self.draft: TicketDraft = None
+        # 追踪 ID：优先透传上游（Java 侧 DependencyHttpClient 会带 X-Request-Id），
+        # 缺失时本次 ReAct 自生成一个 —— 下游 consultation-service 的知识搜索接口
+        # **强制要求**该头，缺失即 400 VALIDATION_ERROR（工具恒失败）。
+        # 一次 run 内稳定，便于把同一轮里的多次工具调用串成一条链路。
+        self.request_id = request_id or uuid.uuid4().hex
 
     def capture_draft(self, draft: TicketDraft) -> None:
         self.draft = draft
@@ -103,13 +109,24 @@ def dispatch(name: str, arguments: Dict[str, Any], ctx: ToolContext) -> Dict[str
 # ---------------------------------------------------------------- 具体实现
 
 def _http_get(url: str, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    headers = {"X-User-Id": ctx.user_id, "X-User-Role": ctx.role}
+    # X-Request-Id 为下游强制头（consultation 的知识搜索缺它即 400），随 ctx 透传/生成。
+    headers = {"X-User-Id": ctx.user_id, "X-User-Role": ctx.role,
+               "X-Request-Id": ctx.request_id}
     with httpx.Client(timeout=acfg.TOOL_TIMEOUT) as client:
         resp = client.get(url, params=params, headers=headers)
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            # 带上响应体片段：缺头/校验失败这类问题只在 body 里说得清，
+            # 否则上层只能看到一句 "HTTPStatusError"，排查成本很高。
+            raise RuntimeError(
+                f"下游 HTTP {resp.status_code}: {resp.text[:300]}")
         body = resp.json()
-    if not isinstance(body, dict) or body.get("code") != 0:
-        raise RuntimeError(f"下游业务错误 code={body.get('code') if isinstance(body, dict) else '?'}")
+    # 两个下游的成功包络**不同**，不能统一按 code==0 判：
+    #   ticket-service（Result）      -> {"code": 0, "msg": ...}
+    #   consultation-service（21.1）  -> {"code": "SUCCESS", "message": ...}
+    # 只认 int 0 会把知识搜索的每次成功都判成失败，且失败得毫无声响。
+    code = body.get("code") if isinstance(body, dict) else None
+    if code not in (0, "SUCCESS"):
+        raise RuntimeError(f"下游业务错误 code={code!r}")
     return body
 
 
@@ -127,7 +144,7 @@ def _search_knowledge(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     try:
         body = _http_get(base.rstrip("/") + "/api/v1/knowledge/search", params, ctx)
     except Exception as e:  # noqa: BLE001
-        return {"success": False, "error": f"知识搜索失败: {type(e).__name__}"}
+        return {"success": False, "error": f"知识搜索失败: {e}"}
     data = body.get("data") or {}
     items = data.get("items") or []
     return {"success": True, "total": data.get("total", len(items)),
@@ -150,7 +167,7 @@ def _query_my_tickets(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     try:
         body = _http_get(base.rstrip("/") + "/api/internal/tickets", params, ctx)
     except Exception as e:  # noqa: BLE001
-        return {"success": False, "error": f"工单系统暂时不可用: {type(e).__name__}"}
+        return {"success": False, "error": f"工单系统暂时不可用: {e}"}
     data = body.get("data")
     return {"success": True, "tickets": data if isinstance(data, list) else []}
 

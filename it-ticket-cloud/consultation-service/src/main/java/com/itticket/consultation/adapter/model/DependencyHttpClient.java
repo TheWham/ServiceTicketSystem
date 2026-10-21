@@ -8,7 +8,12 @@ import java.time.Duration;
 import java.util.Map;
 /** Shared bounded JSON transport. No redirects, body logging or implicit retries. */
 public final class DependencyHttpClient {
-    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5))
+    // 必须显式 HTTP/1.1：JDK 默认优先 HTTP/2，对明文 http:// 会先做 h2c Upgrade 协商；
+    // 下游多为 uvicorn/FastAPI（不支持 h2c），协商失败时请求体被静默丢弃、只回 400 空 body，
+    // 表现为 PERMANENT_HTTP 依赖降级。同因修复见 rag-service PythonRetrievalClient。
+    private final HttpClient http = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
+            .connectTimeout(Duration.ofSeconds(5))
             .followRedirects(HttpClient.Redirect.NEVER).build();
     private final ObjectMapper json = new ObjectMapper();
 

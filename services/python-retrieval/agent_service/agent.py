@@ -73,8 +73,9 @@ class AgentRunner:
         self.model = model_client or ModelClient()
         self.max_steps = max(1, max_steps or acfg.MAX_STEPS)
 
-    def run(self, req: AgentChatRequest, user_id: str, role: str) -> AgentChatResponse:
-        ctx = ToolContext(user_id, role)
+    def run(self, req: AgentChatRequest, user_id: str, role: str,
+            request_id: str = "") -> AgentChatResponse:
+        ctx = ToolContext(user_id, role, request_id)
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": _system_prompt()},
             {"role": "user", "content": _build_user_input(req)},

@@ -57,12 +57,13 @@ def create_app(runner: AgentRunner = None) -> FastAPI:
     @app.post("/api/v1/agent/chat")
     def chat(req: AgentChatRequest,
              x_user_id: str = Header(default="", alias="X-User-Id"),
-             x_user_role: str = Header(default="", alias="X-User-Role")):
+             x_user_role: str = Header(default="", alias="X-User-Role"),
+             x_request_id: str = Header(default="", alias="X-Request-Id")):
         runner_ = app.state.runner
         if runner_ is None:                       # 懒加载：模型未配置时启动不崩，请求时才报 503
             runner_ = AgentRunner()
             app.state.runner = runner_
-        response = runner_.run(req, x_user_id, x_user_role)
+        response = runner_.run(req, x_user_id, x_user_role, x_request_id)
         return ResultEnvelope.ok(response.model_dump(by_alias=True, exclude_none=True)) \
             .model_dump(by_alias=True, exclude_none=True)
 

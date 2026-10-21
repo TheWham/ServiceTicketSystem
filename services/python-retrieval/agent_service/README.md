@@ -64,7 +64,7 @@ docker push <IMAGE_PREFIX>/it-ticket-python-ai
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/v1/agent/chat` | ReAct 生成；主体经 `X-User-Id` / `X-User-Role` 头透传 |
+| POST | `/api/v1/agent/chat` | ReAct 生成；主体经 `X-User-Id` / `X-User-Role` 头透传，`X-Request-Id` 透传为工具调用的追踪 ID（缺失则本次自生成） |
 | GET | `/api/health` | 自检（模型/工具是否已配置），不调模型 |
 
 请求体：`{question, history[], material[], categoryId?, assetId?}`
