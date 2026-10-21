@@ -95,7 +95,7 @@ RAG_RETRIEVAL_PROVIDER=python RAG_PYTHON_BASE_URL=http://127.0.0.1:8310 \
 ## 验证
 
 ```bash
-python -m pytest rag_service/tests -q            # 纯逻辑单测（32 例）
+python -m pytest rag_service/tests -q            # 纯逻辑单测（68 例，含版本消歧与端点契约）
 RAG_HOME=$PWD python -m rag_service &           # 启动后：
 python tools/check_contract.py                  # 契约不变量 69 项（含锁超时 5031、health 不抢锁）
 python tools/run_service_regression.py --pace 1.5   # 20 题 vs artifacts/evals/day14_baseline.json
