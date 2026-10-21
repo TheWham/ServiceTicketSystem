@@ -225,6 +225,29 @@ CREATE TABLE exception_queue (
  priority VARCHAR(32)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ============================================================================
+-- 派单草案（HITL 写操作门禁）—— 见 db/migration/V2_5__dispatch_approval_draft.sql
+-- 需求依据：docs/IT服务工单系统-需求归因文档.md 功能 D
+--   「强制 Human-in-the-Loop 人机确认（派单草案主管点击才生效）」
+-- 单份待确认草案由生成列 uk_dispatch_draft_pending 保证（同 ai_provider_config 惯例）。
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS dispatch_draft (
+  draft_id VARCHAR(64) PRIMARY KEY, ticket_id VARCHAR(32) NOT NULL,
+  status VARCHAR(32) NOT NULL, engineer_id VARCHAR(64) NOT NULL, engineer_name VARCHAR(255),
+  team_id VARCHAR(64), priority VARCHAR(32), category_id VARCHAR(64),
+  selection_note VARCHAR(500), payload_json JSON NOT NULL,
+  idempotency_key VARCHAR(128) NOT NULL, version BIGINT NOT NULL DEFAULT 0,
+  expires_at DATETIME(6) NOT NULL,
+  claimed_by VARCHAR(64), claimed_at DATETIME(6),
+  resolved_by VARCHAR(64), resolved_at DATETIME(6), reason TEXT,
+  created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL,
+  pending_ticket_id VARCHAR(32) GENERATED ALWAYS AS (CASE WHEN status='PENDING' THEN ticket_id ELSE NULL END) STORED,
+  UNIQUE KEY uk_dispatch_draft_pending (pending_ticket_id),
+  UNIQUE KEY uk_dispatch_draft_idem (ticket_id, idempotency_key),
+  KEY idx_dispatch_draft_status (status, created_at),
+  CONSTRAINT ck_dispatch_draft_status CHECK (status IN ('PENDING','APPROVED','REJECTED','EXPIRED'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE outbox_delivery (
   delivery_id VARCHAR(64) PRIMARY KEY, event_id VARCHAR(64) NOT NULL,
   stream_name VARCHAR(128) NOT NULL, consumer_group VARCHAR(128) NOT NULL,

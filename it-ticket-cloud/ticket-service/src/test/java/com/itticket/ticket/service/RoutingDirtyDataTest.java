@@ -13,6 +13,7 @@ import com.itticket.ticket.mapper.CategoryRouteMapper;
 import com.itticket.ticket.mapper.TeamMemberMapper;
 import com.itticket.ticket.mapper.TicketFlowLogMapper;
 import com.itticket.ticket.mapper.TicketMapper;
+import com.itticket.ticket.service.DispatchDraftService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -65,7 +66,7 @@ class RoutingDirtyDataTest {
         exceptionQueue = mock(ExceptionQueueService.class);
         notifications = mock(NotificationService.class);
         service = new RoutingService(routes, members, assignments, tickets, users,
-                mock(WorkCalendarService.class), exceptionQueue, notifications, mock(TicketFlowLogMapper.class));
+                mock(WorkCalendarService.class), exceptionQueue, notifications, mock(TicketFlowLogMapper.class), mock(DispatchDraftService.class));
     }
 
     private TeamMember member(String engineerId) {
@@ -205,7 +206,7 @@ class RoutingDirtyDataTest {
         when(routes.selectList(any())).thenReturn(List.of());
         when(users.admins()).thenThrow(new IllegalStateException("user-service unavailable"));
 
-        assertNull(service.route(t));
+        assertEquals(RouteOutcome.Kind.ROUTE_FAILED, service.route(t).kind());
 
         // 即使通知管理员的链路整体故障，异常队列写入已经完成且 route() 正常返回
         verify(exceptionQueue).raise(eq("TICKET"), eq("TK02"),
@@ -224,7 +225,7 @@ class RoutingDirtyDataTest {
                 List.of(new UserInfo("U_ADM01", "管理员A", "PLATFORM_ADMIN", "IT", "ACTIVE"),
                         new UserInfo("U_ADM02", "管理员B", "PLATFORM_ADMIN", "IT", "ACTIVE"))));
 
-        assertNull(service.route(t));
+        assertEquals(RouteOutcome.Kind.ROUTE_FAILED, service.route(t).kind());
 
         verify(notifications).sendNotification("TK03", "ROUTE_FAILED", "U_ADM01");
         verify(notifications).sendNotification("TK03", "ROUTE_FAILED", "U_ADM02");

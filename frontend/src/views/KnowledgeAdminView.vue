@@ -22,7 +22,7 @@
             </template>
 
             <el-form label-position="top" size="default">
-              <el-form-item label="选择文档 (.md, .txt)">
+              <el-form-item label="选择文档 (.md, .txt, .docx)">
                 <el-upload
                   drag
                   action="#"
@@ -30,7 +30,7 @@
                   :limit="1"
                   :on-change="handleFileChange"
                   :on-remove="handleFileRemove"
-                  accept=".md,.txt,.markdown"
+                  accept=".md,.txt,.markdown,.docx"
                   class="kb-uploader"
                 >
                   <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
@@ -39,7 +39,7 @@
                   </div>
                   <template #tip>
                     <div class="el-upload__tip">
-                      支持 Markdown (.md) 与 纯文本 (.txt) 文件，单文件上限 20MB
+                      支持 Markdown (.md)、纯文本 (.txt) 与 Word (.docx，需部署 doc-ingest-service 预处理服务) 文件，单文件上限 20MB
                     </div>
                   </template>
                 </el-upload>

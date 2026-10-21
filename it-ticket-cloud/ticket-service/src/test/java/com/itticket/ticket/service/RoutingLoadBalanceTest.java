@@ -12,6 +12,7 @@ import com.itticket.ticket.mapper.CategoryRouteMapper;
 import com.itticket.ticket.mapper.TeamMemberMapper;
 import com.itticket.ticket.mapper.TicketFlowLogMapper;
 import com.itticket.ticket.mapper.TicketMapper;
+import com.itticket.ticket.service.DispatchDraftService;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -47,7 +48,7 @@ class RoutingLoadBalanceTest {
         when(routes.selectList(any())).thenReturn(List.of(route));
         return new RoutingService(routes, members, mock(AssignmentMapper.class),
                 tickets, users, mock(WorkCalendarService.class), mock(ExceptionQueueService.class),
-                mock(NotificationService.class), mock(TicketFlowLogMapper.class));
+                mock(NotificationService.class), mock(TicketFlowLogMapper.class), mock(DispatchDraftService.class));
     }
 
     /** 按给定顺序生成团队候选（顺序即 route_order 含义，平局时依赖它裁决） */
