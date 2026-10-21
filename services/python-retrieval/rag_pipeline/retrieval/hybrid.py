@@ -68,11 +68,15 @@ class IndustrialHybridRetriever:
         self,
         query: str,
         top_k: int = 15,
-        metadata_filter: Optional[Dict[str, Any]] = None
+        metadata_filter: Optional[Dict[str, Any]] = None,
+        include_excluded: bool = False
     ) -> List[Tuple[Document, int, float]]:
         """BM25 关键词精确检索通道，返回 [(Doc, Rank, BM25_Score)]。
 
         注意：严格过滤 BM25_Score <= 0 的未命中文档，防止 0 分无关卡片按字典序混入 RRF 融合。
+
+        include_excluded=True 时不套用 default_exclude——给「版本消歧」这类需要看见
+        废止卡（判断它在某时刻是否有效）的调用方用。默认 False，行为与改前逐字一致。
         """
         tokenized_query = ChineseTokenizer.tokenize(query)
         scores = self.bm25.get_scores(tokenized_query)
@@ -84,7 +88,7 @@ class IndustrialHybridRetriever:
             if scores[idx] <= 0.0:
                 break
             doc = self.corpus_docs[idx]
-            if self._is_excluded(doc.metadata):
+            if not include_excluded and self._is_excluded(doc.metadata):
                 continue
             if metadata_filter:
                 match = all(doc.metadata.get(k) == v for k, v in metadata_filter.items())
@@ -100,18 +104,23 @@ class IndustrialHybridRetriever:
         self,
         query: str,
         top_k: int = 15,
-        metadata_filter: Optional[Dict[str, Any]] = None
+        metadata_filter: Optional[Dict[str, Any]] = None,
+        include_excluded: bool = False
     ) -> List[Tuple[Document, int, float]]:
-        """Dense 语义向量检索通道，返回 [(Doc, Rank, Cosine_Similarity)]。"""
+        """Dense 语义向量检索通道，返回 [(Doc, Rank, Cosine_Similarity)]。
+
+        include_excluded 语义同 bm25_search：为 True 时连废止卡一起召回。
+        """
         if self.vector_db is None:
             return []
 
+        apply_exclude = bool(self.default_exclude) and not include_excluded
         # 存在默认排除清单时先多取 3 倍再筛：防止被屏蔽卡占满 top_k 名额导致有效候选不足
-        fetch_k = top_k * 3 if self.default_exclude else top_k
+        fetch_k = top_k * 3 if apply_exclude else top_k
         docs_with_scores = self.vector_db.similarity_search_with_relevance_scores(
             query, k=fetch_k, filter=metadata_filter
         )
-        if self.default_exclude:
+        if apply_exclude:
             docs_with_scores = [
                 (d, s) for d, s in docs_with_scores if not self._is_excluded(d.metadata)
             ][:top_k]
@@ -181,6 +190,7 @@ class IndustrialHybridRetriever:
         rerank_granularity: str = "child",
         rewrite_query: Optional[str] = None,
         gate: Optional[Dict[str, Any]] = None,
+        include_excluded: bool = False,
         verbose: bool = False
     ) -> Dict[str, Any]:
         """端到端检索流水线：元数据过滤 -> 双路召回 -> RRF 粗排 -> Rerank 精排 -> 按秩融合（可门控）-> 共振保护 -> 低置信拒答。
@@ -188,6 +198,9 @@ class IndustrialHybridRetriever:
         gate：置信度动态门控参数（见 config.build_gate）。开启后按本次 rerank 打分分布切换
         Step 4 的融合权重——高置信放权精排翻盘、低置信/启发式降级时召回侧托底，解决
         "固定权重既怕精排误杀、又怕压制精排上限"的两难。默认 None = 固定权重（旧行为）。
+
+        include_excluded：为 True 时双路召回都跳过 default_exclude，把废止卡也纳入候选。
+        默认 False，行为与改前逐字一致。
         """
         t0 = time.time()
 
@@ -196,8 +209,10 @@ class IndustrialHybridRetriever:
             return t[:w] + ("…" if len(t) > w else "")
 
         # Step 1: 双路并行粗排召回
-        bm25_res = self.bm25_search(query, top_k=rough_top_k, metadata_filter=metadata_filter)
-        dense_res = self.dense_search(query, top_k=rough_top_k, metadata_filter=metadata_filter)
+        bm25_res = self.bm25_search(query, top_k=rough_top_k, metadata_filter=metadata_filter,
+                                    include_excluded=include_excluded)
+        dense_res = self.dense_search(query, top_k=rough_top_k, metadata_filter=metadata_filter,
+                                      include_excluded=include_excluded)
 
         if verbose:
             print(f"\n{'=' * 72}")

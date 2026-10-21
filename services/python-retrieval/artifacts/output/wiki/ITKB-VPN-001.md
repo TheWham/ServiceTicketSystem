@@ -3,8 +3,10 @@ id: "ITKB-VPN-001"
 title: "VPN连接失败（拨号/认证失败）"
 category: "VPN与远程办公"
 department: "IT 部"
+effective_date: "2024-03-01"
+effective_date_source: "demo-constructed"
 version: "v1.0"
-replaces: []
+replaces: ["ITKB-LEG-VPN-001"]
 entities: ["VPN", "SSL VPN", "L2TP", "IPSec", "PPTP", "IKEv2", "AD账号", "预共享密钥"]
 keywords: ["VPN", "远程办公", "拨号", "连接失败", "认证失败", "L2TP", "SSL VPN", "在家办公"]
 summary: "针对远程办公VPN拨号/认证失败问题，提供从本地网络、客户端配置到服务器与账号状态的分层排查处置方法。"

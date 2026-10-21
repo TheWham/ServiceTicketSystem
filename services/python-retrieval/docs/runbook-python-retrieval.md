@@ -21,10 +21,23 @@ consultation-service 不需要任何改动。
 ## 启动 Python 检索服务
 
 ```bash
-cd /path/to/demos
+cd /path/to/demos/services/python-retrieval
 pip install -r rag_service/requirements.txt   # fastapi / uvicorn[standard] / pydantic>=2
-RAG_HOME=$PWD python -m rag_service           # 默认 127.0.0.1:8310，单进程
+RAG_HOME=$PWD python -m rag_service           # 默认 127.0.0.1:8310
 ```
+
+> ⚠️ **`RAG_HOME` 同时定位三样东西，而它们在仓库里不在同一个根**：
+> `configs/pipeline.yaml`、`artifacts/` 在 `services/python-retrieval/` 下，
+> 但 `.env` 在本仓库根 `demos/.env`。
+>
+> - `RAG_HOME=services/python-retrieval` → 配置与产物路径正确，**但读不到 `.env`**
+>   （嵌入/精排会静默降级为本地 hash 兜底与启发式打分，检索质量下降且不报错）；
+> - `RAG_HOME=<仓库根>` → 读得到 `.env`，但 `artifacts/` 会指到 `<仓库根>/artifacts/`（不存在）。
+>
+> 本地联调时把 `.env` 里的键**导出为进程环境变量**再设
+> `RAG_HOME=services/python-retrieval`（`load_embedding_config` 优先读进程环境变量）。
+> 这是既有结构的不一致，实质修法是把 `.env` 挪到服务目录或让 `config.py` 分别定位，
+> 未在本次改动范围内。
 
 环境变量：
 
@@ -152,6 +165,74 @@ EMBEDDING_DIMENSIONS=1024 java -jar rag-service/target/it-ticket-rag-service-1.0
 6. **灌库前（映射缺失）**：服务 `DEGRADED`，`articleId` 降级为 wiki 卡 id、
    `versionId` 降级为 `wiki_version`——经 Java ④ 复核 items 必空（全部滤除），
    即"先灌库后联调"。
+
+## 版本消歧查询（`rag_pipeline.policy`）
+
+回答「在某个时间点，哪一版规约有效」，产出该版本的溯源角标与条文。
+
+```python
+from rag_service.assembly import ServiceAssembly
+from rag_pipeline.policy import PolicyResolver
+
+asm = ServiceAssembly()
+res = PolicyResolver(asm.retriever, asm.corpus).resolve("域账号锁定 解锁", at="2024-01-15")
+# res.status == "RESOLVED"  →  res.citation == "[来源: ITKB-LEG-ACC-001@v0.9 《…（旧版·宽松策略，已废止）》]"
+```
+
+### 与 `default_exclude` 的分工（别把两者混为一谈）
+
+| | 用途 | 召回行为 |
+|---|---|---|
+| `retrieval.default_exclude` | 别把**废止做法**教给员工 | 召回**前置**物理屏蔽 `wiki_status ∈ {已废止, 已下线}` |
+| `rag_pipeline.policy` | 判断**某时刻哪一版有效** | 必须**看得见**废止卡（`include_excluded=True`），否则无从消歧 |
+
+两者需求相反，所以 `IndustrialHybridRetriever` 的三个检索方法新增了
+`include_excluded: bool = False` 形参。**默认值保持改前行为**——普通检索路径仍然屏蔽废止卡。
+
+### 四种结论，不互相冒充
+
+| status | 含义 |
+|---|---|
+| `RESOLVED` | 选中该时刻有效的一版（沿命中主题的 `replaces` 版本链选，不是全局取日期最大值） |
+| `NO_EFFECTIVE_VERSION` | 相关规约在该时刻**尚未生效** |
+| `UNDATED` | 命中的版本链上没有任何一张带 `effective_date`，**无法**做时间判定 —— 不猜 |
+| `NO_MATCH` | 检索零命中 |
+
+`UNDATED` 是最要紧的一态：39 张卡里只有 6 张带生效日期，其余 33 张没有。
+对没日期的卡唯一诚实的回答是「无法判定」，不能默认它永远有效。
+
+### 演示用的版本数据是**构造**的（重跑语料会丢）
+
+源文档 `IT常见问题RAG知识库.docx` 里**没有任何日期**（连版本号都没有），
+清洗中间产物同样为 0 个日期。所以分水岭消歧的日期是为了演示**显式构造**的：
+
+| 版本链 | 生效日 | `replaces` |
+|---|---|---|
+| `ITKB-LEG-ACC-001` (v0.9, 已废止) → `ITKB-ACC-001` (v1.0) | 2022-01-01 → 2024-03-01 | 新版声明取代旧版 |
+| `ITKB-LEG-NET-004` (v0.9, 已废止) → `ITKB-NET-004` (v1.0) | 同上 | 同上 |
+| `ITKB-LEG-VPN-001` (v0.9, 已废止) → `ITKB-VPN-001` (v1.0) | 同上 | 同上 |
+
+这 6 张卡的 frontmatter 里带 `effective_date_source: "demo-constructed"` 标明来源——
+不是模型抽取的，也不是从源文档读到的。这与 `llm_synthesizer` 的「不得编造日期」铁律
+不冲突：铁律管的是**自动抽取环节**不许幻觉；人工声明的演示数据是另一回事，只要标明白。
+
+> ⚠️ **重跑 `wiki_generator` 流水线会丢掉这些字段**（它只渲染 `llm_synthesizer` 给出的
+> `effective_date`）。`rag_service/tests/test_policy.py` 末尾的
+> `test_real_corpus_keeps_the_three_demo_version_chains` 就是那个提醒用例。
+
+### 改动语料后必须重建索引
+
+`manifest.json` 的 `wiki_fingerprint` 按**原始字节**算（`chunking/fingerprint.py`），
+改一张卡就会漂移，`ServiceAssembly` 加载时 fail-fast：
+「向量库与当前 Wiki 卡片不一致，请重建索引」。
+
+```bash
+cd services/python-retrieval
+RAG_HOME=$PWD python -m rag_pipeline.pipelines.indexing \
+    --wiki-dir artifacts/output/wiki --output-dir artifacts/indexing
+```
+
+**行尾必须是 LF**（`.gitattributes` 已固定）。CRLF 会改变字节级指纹，让 fresh clone 启动失败。
 
 ## 存储两阶段规划
 

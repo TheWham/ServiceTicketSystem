@@ -3,6 +3,8 @@ id: "ITKB-LEG-VPN-001"
 title: "VPN连接失败处理（旧版·PPTP，已废止）"
 category: "VPN与远程办公"
 department: "IT 部"
+effective_date: "2022-01-01"
+effective_date_source: "demo-constructed"
 version: "v0.9"
 replaces: []
 entities: ["VPN", "SSL VPN", "L2TP", "IPSec", "PPTP", "IKEv2", "AD账号", "预共享密钥"]
