@@ -153,6 +153,39 @@ EMBEDDING_DIMENSIONS=1024 java -jar rag-service/target/it-ticket-rag-service-1.0
    跨类目提问会被过滤成低置信拒答（**预期行为**），联调提问要注意会话类目与问题匹配。
 4. 请求须带 `X-Request-Id` + `Idempotency-Key` 头，否则 consultation 侧 400。
 
+## agent_service（Function Calling 智能体）
+
+生成侧下沉到 Python：ReAct 循环 + 白名单工具（查本人工单 / 产建单草稿 / 补搜知识），
+由 Java consultation-service 经 `POST /api/v1/agent/chat` 调用（开关 `AI_AGENT_ENABLED`）。
+职责边界与工具语义见 `agent_service/README.md`。
+
+```bash
+cd services/python-retrieval
+export AGENT_LLM_BASE_URL=... AGENT_LLM_API_KEY=...    # 生成模型凭据
+export AGENT_LLM_MODEL=deepseek-v4-flash               # ← 必须是支持原生 tools 的对话模型
+export TICKET_SERVICE_BASE_URL=http://127.0.0.1:8201   # 查工单 / 建单
+export KNOWLEDGE_SEARCH_BASE_URL=http://127.0.0.1:8301 # 补搜知识
+python -m agent_service                                 # 默认 127.0.0.1:8320
+```
+
+> ⚠️ **`AGENT_LLM_MODEL` 别顺手用 `LLM_CHAT_MODEL` 代。**
+> `.env` 的 `LLM_CHAT_MODEL=kimi-k3` 是**思考型模型**——每次回答前先输出一大段推理：
+> 实测直连问一句「你好」，单次 `completion_tokens=90`，其中 `reasoning_content` 323 字、
+> 真正的回答只有 22 字。拿它跑 ReAct 时，系统提示词（规则 + 工具 schema + JSON 契约）
+> 会把这段推理放大数倍，再叠上多轮往返，单次问答要 14~60s。
+
+模型选了思考型时，延迟差一个数量级（本地全栈实测）：
+
+| 场景 | kimi-k3（思考型） | deepseek-v4-flash |
+| --- | --- | --- |
+| 「你好」 | 14.4s | 4.5s |
+| 带材料的知识问答 | 30.4s | 2.3s |
+| 查本人工单（1 次工具调用） | 25.6s | 9.3s |
+
+两者的原生 tools 能力无差异（都实测能正确触发 `query_my_tickets` / `prepare_ticket`），
+差别只在延迟。**`config.py`、`docker-compose.yml`、`agent_service/README.md` 里的默认值
+本来就是 `deepseek-v4-flash`**，只有手工启动时才容易被 `LLM_CHAT_MODEL` 覆盖掉。
+
 ## 已知行为与运维要点
 
 1. **网关限流降级**：KSP 网关 429 密集时，收紧后的在线预算（1.5s/8 次）可能拿不到
