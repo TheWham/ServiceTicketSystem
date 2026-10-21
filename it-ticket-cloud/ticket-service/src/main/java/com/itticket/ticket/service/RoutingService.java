@@ -194,7 +194,12 @@ public class RoutingService {
     }
 
     /**
-     * 分配工单：写 assignment 记录（响应截止 10 工作分钟）+ 更新工单 assignee。
+     * 分配工单：写 assignment 记录（响应截止 10 工作分钟）+ 更新工单 assignee 与状态。
+     *
+     * <p>状态改为 ASSIGNED 是本分派的固有语义，与写 assignment 在同一事务内完成。
+     * 调用方不再需要也不应当再单独 update status，三条调用路径（手动派单 /
+     * HITL 审批放行 / 超时转派）的行为收敛到此处。此前 HITL 放行只更新了 assignee_id
+     * 而忘赋 status，导致流转日志 NEW→ASSIGNED 与工单实际状态矛盾、工程师端不可见。
      */
     @Transactional
     public void assign(Ticket ticket, String engineerId, String endReason) {
@@ -206,6 +211,8 @@ public class RoutingService {
                 .set("assignee_id", engineerId).set("updated_at", now));
         if (rows != 1) throw new com.itticket.common.api.BizException(
                 com.itticket.common.api.ErrorCode.ILLEGAL_TRANSITION, "工单已结束，不能继续分派");
+        // 状态由本条更新统一落位：此后所有调用方路径的状态与 assignment 必然一致
+        updateStatus(ticket.getTicketId(), TicketStatus.ASSIGNED);
         // 结束该工单所有未关闭的 assignment（转派时必须全部关闭；
         // 只关最新一条会让旧的 open 记录被响应超时扫描每分钟反复命中，
         // 雪崩式产生 assignment / ticket_transition 垃圾行，最终拖垮整库、删工单超时）
@@ -296,6 +303,14 @@ public class RoutingService {
         flow.setOccurredAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
         flowLogMapper.insert(flow);
         log.warn("[路由] 响应超时转派: {} {} -> {}", ticket.getTicketId(), current.getEngineerId(), next);
+    }
+
+    /** 同步更新工单状态（专用 update，不走 entity 全字段覆盖，version+updatedAt 由 DB 原子自增）。 */
+    private void updateStatus(String ticketId, TicketStatus status) {
+        ticketMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Ticket>()
+                .eq(Ticket::getTicketId, ticketId)
+                .set(Ticket::getStatus, status)
+                .set(Ticket::getUpdatedAt, LocalDateTime.now(java.time.ZoneOffset.UTC)));
     }
 
     /** 撤回时结束仍在等待响应的分派记录，保留历史负责人。 */

@@ -13,7 +13,10 @@ import com.itticket.ticket.entity.Ticket;
 import com.itticket.ticket.entity.TicketFlowLog;
 import com.itticket.ticket.enums.TicketStatus;
 import com.itticket.ticket.feign.UserClient;
+import com.itticket.ticket.mapper.AssignmentMapper;
+import com.itticket.ticket.mapper.CategoryRouteMapper;
 import com.itticket.ticket.mapper.DispatchDraftMapper;
+import com.itticket.ticket.mapper.TeamMemberMapper;
 import com.itticket.ticket.mapper.TicketFlowLogMapper;
 import com.itticket.ticket.mapper.TicketMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -46,6 +49,15 @@ import static org.mockito.Mockito.*;
  * </ol>
  */
 class HitlDispatchApprovalTest {
+
+    /** LambdaUpdateWrapper 需要 MyBatis-Plus 实体元数据注册一次 */
+    @org.junit.jupiter.api.BeforeAll
+    static void initializeMapping() {
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
+                new org.apache.ibatis.builder.MapperBuilderAssistant(
+                        new com.baomidou.mybatisplus.core.MybatisConfiguration(), ""),
+                com.itticket.ticket.entity.Ticket.class);
+    }
 
     private DispatchDraftMapper draftMapper;
     private TicketFlowLogMapper flowLogMapper;
@@ -292,14 +304,92 @@ class HitlDispatchApprovalTest {
     }
 
     // ========== 场景 13：终态工单不产生草案 ==========
-
+    
     @Test
     void terminalTicketDoesNotGenerateDraft() {
         Ticket closed = ticket("TK99", TicketStatus.CANCELLED);
         DispatchDraft result = draftService.createDraft(closed, "ENG01", "idem-3", "test");
         assertNull(result, "终态工单不应产生派单草案");
     }
+    
+    // ========== 场景 15：confirmDispatch 直通断言 —— approve 后 Ticket.status + 工程师可接单 ==========
+    //
+    // 对应 P0 报告的另一条要求：「换工程师身份调一次 /claim 断言返回 200」。
+    // 补一个直接贯通 confirmDispatch（而非 mock 回调）的端到端断言：
+    // 草案 APPROVED → confirmDispatch → Ticket.status == ASSIGNED → 工程师 claim 状态机放行
+    
+    @Test
+    void confirmDispatchDirectlyTransitionsTicketAndAllowsEngineerClaim() {
+        Ticket ticket = ticket("TK01", TicketStatus.NEW);
+        DispatchDraft approvedDraft = newDraft("DD01", "TK01", "ENG01", DispatchDraft.STATUS_APPROVED);
+        approvedDraft.setResolvedBy("ADM01");
 
+        // 直接构建真实 RoutingService（非 mock）——dispatch 内部调用它完成状态流转
+        // dispatch 会调用：selectOne(查出ticket) → selector(选工程师) → assignmentMapper.insert
+        RoutingService routing = new RoutingService(
+                mock(CategoryRouteMapper.class), mock(TeamMemberMapper.class),
+                mock(AssignmentMapper.class), ticketMapper, mock(UserClient.class),
+                mock(WorkCalendarService.class), exceptionQueue, notifications, flowLogMapper, draftService);
+
+        // dispatch 服务（非 mock），它会调用 routing.assign
+        DispatchDraftService dispatch = new DispatchDraftService(draftMapper, flowLogMapper,
+                notifications, exceptionQueue, userClient, json);
+
+        TicketService ts = new TicketService(ticketMapper,
+                mock(com.itticket.ticket.mapper.CategoryMapper.class),
+                mock(com.itticket.ticket.mapper.AttachmentMapper.class),
+                flowLogMapper,
+                mock(com.itticket.ticket.mapper.TicketPurgeMapper.class),
+                mock(TicketNoGenerator.class), notifications,
+                mock(UserClient.class), mock(SlaService.class),
+                routing, exceptionQueue, dispatch, mock(ConsultationConvertNotifier.class), json);
+
+        when(ticketMapper.selectOne(any())).thenReturn(ticket);
+        when(ticketMapper.update(any(), any())).thenAnswer(inv -> {
+            ticket.setStatus(TicketStatus.ASSIGNED);
+            return 1;
+        });
+        when(draftMapper.selectById("DD01")).thenReturn(approvedDraft);
+
+        ts.confirmDispatch("DD01");
+
+        // ① 工单状态真的流转 NEW→ASSIGNED
+        assertEquals(TicketStatus.ASSIGNED, ticket.getStatus(),
+            "confirmDispatch 放行后工单必须为 ASSIGNED");
+        // ② 工程师接单的状态机校验在 ASSIGNED 上是合法的（NEW 才会 409）
+        assertEquals("ASSIGNED", ticket.getStatus().getValue(),
+            "工程师接单校验在 ASSIGNED 上合法（与此相反的 NEW 会 409）");
+    }
+
+    // ========== 场景 14：assign() 放行后工单状态必然流转 NEW→ASSIGNED ==========
+    //
+    // 对应 P0 问题报告：此前 assign() 只写 assignee不写 status，
+    // 导致流转日志 NEW→ASSIGNED 与工单实际状态矛盾、工程师端不可见。
+    // 此测试直接断言真实 Ticket.status，而非仅断言回调被调用。
+    
+    @Test
+    void assignSetsTicketStatusFromNewToAssigned() {
+        Ticket ticket = ticket("TK01", TicketStatus.NEW);
+        when(ticketMapper.selectOne(any())).thenReturn(ticket);
+        // MyBatis-Plus Wrapper 不反射回填 Java 对象，
+        // doAnswer 模拟 DB 生效：任何 update 都使 ticket 变为 ASSIGNED
+        when(ticketMapper.update(any(), any())).thenAnswer(inv -> {
+            ticket.setStatus(TicketStatus.ASSIGNED);
+            return 1;
+        });
+        
+        RoutingService routing = new RoutingService(mock(CategoryRouteMapper.class), mock(TeamMemberMapper.class),
+                mock(AssignmentMapper.class), ticketMapper, mock(UserClient.class), mock(WorkCalendarService.class),
+                mock(ExceptionQueueService.class), notifications, flowLogMapper, draftService);
+        
+        routing.assign(ticket, "ENG01", null);
+        
+        // 直接断言真实工单状态（而非仅验回调被调用）
+        // 这正是过去测试漏掉的断言——只验了 DispatchDraft.status，从未验 Ticket.status
+        assertEquals(TicketStatus.ASSIGNED, ticket.getStatus(),
+            "RoutingService.assign() 必须将工单状态从 NEW 更新为 ASSIGNED");
+    }
+    
     // ========== 辅助 ==========
 
     private Ticket ticket(String id, TicketStatus status) {
