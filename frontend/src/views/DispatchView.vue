@@ -407,9 +407,34 @@ async function loadDrafts() {
 async function openDraft(row) {
   try {
     const res = await dispatchDraftApi.detail(row.draftId)
-    draftDetail.value = res.data || null
+    draftDetail.value = normalizeDraftDetail(res.data)
     draftDialogVisible.value = true
   } catch (e) { ElMessage.error(e.message) }
+}
+
+/**
+ * 详情端点的字段是 snake_case，列表端点却是 camelCase —— 同一个资源两套命名：
+ * 列表返回原始实体（Jackson 默认驼峰），详情返回 DispatchDraftPayload
+ * （显式 @JsonProperty("draft_id")，对齐讲义的结构化载荷契约）。
+ * 这里两种都认，避免任一侧调整后再炸一次。
+ */
+function normalizeDraftDetail(p) {
+  if (!p) return null
+  const pick = (...keys) => {
+    for (const k of keys) if (p[k] !== undefined && p[k] !== null) return p[k]
+    return null
+  }
+  return {
+    ticketId: pick('ticketId', 'ticket_id'),
+    title: pick('title'),
+    categoryId: pick('categoryId', 'category_id'),
+    priority: pick('priority'),
+    proposedEngineerId: pick('proposedEngineerId', 'proposed_engineer_id'),
+    proposedEngineerName: pick('proposedEngineerName', 'proposed_engineer_name'),
+    selectionNote: pick('selectionNote', 'selection_note'),
+    expiresAt: pick('expiresAt', 'expires_at'),
+    generatedAt: pick('generatedAt', 'generated_at')
+  }
 }
 
 async function claimDraft(row) {
