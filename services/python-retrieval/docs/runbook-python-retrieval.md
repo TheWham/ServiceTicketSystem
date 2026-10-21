@@ -79,18 +79,32 @@ python tools/sync_wiki_to_rag_service.py            # 幂等；--force 强制重
 - 中文类目 → Java 类目编码映射见脚本 `JAVA_CATEGORY_BY_WIKI_CATEGORY`；
 - 灌库后重启 Python 服务，`/api/health` 应为 `status=UP, mappingEntries=35`。
 
-## Java 侧启用与回滚
+## Java 侧默认值与回滚
+
+**默认 `provider=python`**，定义在两处，改的时候两处都要动：
+`RagRetrievalProperties.provider` 与 `rag-service/src/main/resources/application.yml` 的
+`${RAG_RETRIEVAL_PROVIDER:...}`。启动通常只需给地址：
 
 ```bash
-# 启用 Python 检索内核
-RAG_RETRIEVAL_PROVIDER=python RAG_PYTHON_BASE_URL=http://127.0.0.1:8310 \
+RAG_PYTHON_BASE_URL=http://127.0.0.1:8310 \
   RAG_PYTHON_TIMEOUT_MS=4200 RAG_PYTHON_CONNECT_TIMEOUT_MS=500 \
-  ./mvnw -pl rag-service spring-boot:run
-# 回滚（零代码）：RAG_RETRIEVAL_PROVIDER=es（默认）
+  mvn -pl rag-service spring-boot:run
 ```
 
-- `provider=es`（默认）行为与 main 完全一致；
-- python 分支异常 → 依赖不可用（`MODEL_UNAVAILABLE`），**不**静默回 ES。
+回滚到 ES 是零代码的：
+
+```bash
+RAG_RETRIEVAL_PROVIDER=es mvn -pl rag-service spring-boot:run
+```
+
+- ⚠️ **默认取 python 之后，Python 检索服务必须可访问**：python 分支异常 → 依赖不可用
+  （`MODEL_UNAVAILABLE`），**不**静默回 ES。这是刻意的——静默回退会把「Python 挂了」
+  表现成「检索结果变差」，没人会发现。
+- `provider=es` 与本次改动前的行为完全一致。
+- 改动默认值时要同步看两个测试：`RagRetrievalServiceTest` 已显式钉住 `es`（专测 ES 路径，
+  不再依赖默认值），`RagRetrievalServicePythonProviderTest.pythonIsDefaultProvider` 断言默认值。
+
+> 注：本文档早先写的 `./mvnw` 在本仓库并不存在（没有 maven wrapper），已改为 `mvn`。
 
 ## 验证
 

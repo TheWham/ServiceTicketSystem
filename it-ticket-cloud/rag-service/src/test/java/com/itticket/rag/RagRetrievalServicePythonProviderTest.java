@@ -227,12 +227,16 @@ public class RagRetrievalServicePythonProviderTest {
     }
 
     /**
-     * 配置默认值：provider 默认 es（零代码回滚路径），Python 地址默认 127.0.0.1:8310。
+     * 配置默认值：provider 默认 **python**（外置检索内核），Python 地址默认 127.0.0.1:8310。
+     *
+     * <p>默认值由 es 改为 python 是有意的部署策略调整。这条断言同时是一句提醒：
+     * python 分支失败**不静默回退到 es**，所以默认取 python 之后，Python 检索服务
+     * 必须可访问，否则检索全部以依赖不可用收场。回滚设 {@code RAG_RETRIEVAL_PROVIDER=es}。
      */
     @Test
-    public void esRemainsDefaultProvider() {
+    public void pythonIsDefaultProvider() {
         RagRetrievalProperties defaults = new RagRetrievalProperties();
-        Assertions.assertEquals(RagRetrievalProperties.Provider.es, defaults.getProvider());
+        Assertions.assertEquals(RagRetrievalProperties.Provider.python, defaults.getProvider());
         Assertions.assertEquals("http://127.0.0.1:8310", defaults.getPythonBaseUrl());
         Assertions.assertEquals(4200, defaults.getPythonTimeoutMs().intValue());
     }

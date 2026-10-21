@@ -104,10 +104,12 @@ cd frontend && npm install && npm run dev    # 5173,proxy /api → 8080 网关
 
 ## Python 检索服务（services/python-retrieval）
 
-`rag-service` 的检索内核支持可插拔 provider：默认 `es`（本模块内 ES 双路），设
-`RAG_RETRIEVAL_PROVIDER=python` 时改由本目录的 Python 检索服务承担「向量化 + 双路召回 +
-RRF + Cross-Encoder 精排 + 低置信拒答」，Java 侧只保留领域判定与 MySQL PUBLISHED 复核。
-对外契约 `POST /api/v1/rag/retrievals` 不变，回滚只需去掉该环境变量。
+`rag-service` 的检索内核支持可插拔 provider：**默认 `python`**，由本目录的 Python 检索服务
+承担「向量化 + 双路召回 + RRF + Cross-Encoder 精排 + 低置信拒答」，Java 侧只保留领域判定与
+MySQL PUBLISHED 复核。对外契约 `POST /api/v1/rag/retrievals` 不变。
+
+> ⚠️ **默认取 python 意味着 Python 检索服务必须可访问**：python 分支失败**不静默回退到 ES**，
+> 每次检索都会以依赖不可用收场。回滚是零代码的——设 `RAG_RETRIEVAL_PROVIDER=es` 即可。
 
 此外本服务还提供 **`POST /api/v1/policy/resolve`（版本消歧查询）**：给定主题与时间点，
 解析该时刻**有效**的规约版本，输出版本号、生效日、被取代日与溯源角标。它回答的是
@@ -148,10 +150,11 @@ python tools/check_contract.py                     # 对 Java 的契约不变量
 python tools/run_service_regression.py --pace 1.5  # 黄金集 20 题过 HTTP vs 冻结基线
 ```
 
-Java 侧启用（rag-service 启动参数）：
+Java 侧启动参数（**默认已是 python**，通常只需给地址；要回到 ES 才显式设 provider）：
 
 ```bash
-RAG_RETRIEVAL_PROVIDER=python RAG_PYTHON_BASE_URL=http://127.0.0.1:8310
+RAG_PYTHON_BASE_URL=http://127.0.0.1:8310
+# 回滚：RAG_RETRIEVAL_PROVIDER=es
 ```
 
 先决条件：**先灌库**（`python tools/sync_wiki_to_rag_service.py`，把卡片灌进 rag-service 的

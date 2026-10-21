@@ -49,8 +49,15 @@ public class RagRetrievalProperties {
 
     // ---------------- 检索内核提供方（es=本模块内 ES 双路；python=外置 Python 检索内核） ----------------
 
-    /** 检索内核提供方：es=本模块内 ES 双路（默认，零代码回滚）；python=外置 Python 检索内核服务 */
-    private Provider provider = Provider.es;
+    /**
+     * 检索内核提供方：python=外置 Python 检索内核服务（默认）；es=本模块内 ES 双路（零代码回滚）。
+     *
+     * <p><b>改这个默认值前必读</b>：python 分支失败**不会静默回退到 es**
+     * （见 {@link com.itticket.rag.service.RagRetrievalService}），
+     * 所以默认取 python 之后，Python 检索服务必须可访问——否则每一次检索都以依赖不可用收场，
+     * 而不是降级到 ES。回滚只要设 {@code RAG_RETRIEVAL_PROVIDER=es}。
+     */
+    private Provider provider = Provider.python;
 
     /** Python 检索内核服务地址（不带路径；检索端点为其下 /api/v1/rag/retrievals） */
     private String pythonBaseUrl = "http://127.0.0.1:8310";
@@ -62,9 +69,9 @@ public class RagRetrievalProperties {
     private Integer pythonConnectTimeoutMs = 500;
 
     public enum Provider {
-        /** 本模块内 ES 双路检索（默认） */
+        /** 本模块内 ES 双路检索（回滚路径） */
         es,
-        /** 外置 Python 检索内核服务 */
+        /** 外置 Python 检索内核服务（默认） */
         python
     }
 
