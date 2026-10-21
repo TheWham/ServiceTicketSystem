@@ -62,11 +62,15 @@ public class RagRetrievalServiceTest {
     private final ElasticsearchIndexService indexService = Mockito.mock(ElasticsearchIndexService.class);
     private final EmbeddingClientService embeddingService = Mockito.mock(EmbeddingClientService.class);
     private final KnowledgeArticleMapper articleMapper = Mockito.mock(KnowledgeArticleMapper.class);
+    private final com.itticket.rag.client.PythonRetrievalClient pythonClient =
+            Mockito.mock(com.itticket.rag.client.PythonRetrievalClient.class);
     private final RagRetrievalProperties properties = new RagRetrievalProperties();
     private final DomainClassifier domainClassifier = new DomainClassifier(properties);
 
+    // 默认 provider=es：本类全部用例走 ES 旧路径（python 分支见 RagRetrievalServicePythonProviderTest）
     private final RagRetrievalService service =
-            new RagRetrievalService(embeddingService, indexService, domainClassifier, properties, articleMapper);
+            new RagRetrievalService(embeddingService, indexService, domainClassifier, properties,
+                    articleMapper, pythonClient);
 
     /**
      * 桩：embedding 服务正常返回一个向量（维度/模型名仅留痕，不参与断言）。

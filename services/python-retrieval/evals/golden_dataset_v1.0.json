@@ -1,0 +1,325 @@
+[
+  {
+    "id": "GOLDEN-QA-001",
+    "category": "账号与权限",
+    "difficulty": "EASY",
+    "query": "员工登录公司系统时提示密码已过期或密码不符合复杂度要求，公司密码策略要求每隔多少天定期更换密码？",
+    "ground_truth_answer": "公司密码策略要求定期更换密码（周期为 90 天），新密码须满足长度、大小写、数字及特殊字符等复杂度要求；忘记或过期可通过公司自助密码重置平台或联系 IT 支持重置。",
+    "reference_chunk_ids": [
+      "ITKB-ACC-002_chunk_2",
+      "ITKB-ACC-002_chunk_1",
+      "ITKB-ACC-002#c1",
+      "ITKB-ACC-002#c0",
+      "ITKB-ACC-002"
+    ],
+    "expected_keywords": ["90天", "复杂度", "密码"],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-002",
+    "category": "账号与权限",
+    "difficulty": "EASY",
+    "query": "登录系统时手机 Authenticator 动态验证码总是提示验证失败，手机时间与服务器时间偏差超过多少秒会导致验证失败？",
+    "ground_truth_answer": "当手机时间与服务器时间不同步、Authenticator 时间偏差超过 30 秒时会导致验证失败；需在手机日期和时间设置中开启自动设置，并在 Authenticator App 内执行时间校正。",
+    "reference_chunk_ids": [
+      "ITKB-ACC-004_chunk_2",
+      "ITKB-ACC-004_chunk_3",
+      "ITKB-ACC-004#c1",
+      "ITKB-ACC-004#c2",
+      "ITKB-ACC-004"
+    ],
+    "expected_keywords": ["30秒", "时间偏差", "时间校正"],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-003",
+    "category": "网络连接",
+    "difficulty": "EASY",
+    "query": "工位调整后插入网线电脑右下角网络图标显示红叉，员工自助排查时如何通过网口指示灯状态判断物理链路是否正常？",
+    "ground_truth_answer": "重新插拔网线两端确认插紧后观察网口指示灯：绿灯常亮表示链路正常，绿灯闪烁表示有数据传输，指示灯不亮表示物理不通。",
+    "reference_chunk_ids": [
+      "ITKB-NET-002_chunk_3",
+      "ITKB-NET-002_chunk_1",
+      "ITKB-NET-002#c2",
+      "ITKB-NET-002#c0",
+      "ITKB-NET-002"
+    ],
+    "expected_keywords": ["网口指示灯", "绿灯", "物理不通"],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-004",
+    "category": "网络连接",
+    "difficulty": "MEDIUM",
+    "query": "电脑右下角显示黄色感叹号并提示 IP 地址冲突，IT 工程师在交换机上如何定位冲突源并防范私接路由器？",
+    "ground_truth_answer": "IT 工程师可在交换机上查看 ARP 表定位冲突 IP 对应的两个 MAC 地址，再通过 MAC 地址表追踪到冲突设备所在的交换机端口；同时扫描私接路由器并在交换机启用 DHCP Snooping 防止私接 DHCP 服务器。",
+    "reference_chunk_ids": [
+      "ITKB-NET-005_chunk_4",
+      "ITKB-NET-005_chunk_1",
+      "ITKB-NET-005#c3",
+      "ITKB-NET-005#c0",
+      "ITKB-NET-005"
+    ],
+    "expected_keywords": ["ARP表", "MAC地址", "DHCP Snooping"],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-005",
+    "category": "系统与软件",
+    "difficulty": "MEDIUM",
+    "query": "电脑频繁蓝屏显示 MEMORY_MANAGEMENT 错误代码，员工自助检查内存与 IT 工程师分析 dump 文件分别使用什么工具？",
+    "ground_truth_answer": "员工可通过 Win+R 输入 mdsched.exe 重启进行内存诊断，并运行 sfc /scannow 扫描修复系统文件；IT 工程师使用 BlueScreenView 分析 C:\\Windows\\Minidump 下的 dump 文件，并使用 MemTest86 进行深度内存检测。",
+    "reference_chunk_ids": [
+      "ITKB-SYS-001_chunk_3",
+      "ITKB-SYS-001_chunk_4",
+      "ITKB-SYS-001#c2",
+      "ITKB-SYS-001#c3",
+      "ITKB-SYS-001"
+    ],
+    "expected_keywords": ["mdsched", "BlueScreenView", "MemTest86"],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-006",
+    "category": "系统与软件",
+    "difficulty": "MEDIUM",
+    "query": "Windows 更新安装失败报错 0x80070002，C 盘至少需要多少临时空间？IT 工程师手动重置更新组件需重命名哪两个文件夹？",
+    "ground_truth_answer": "Windows 更新需要 C 盘至少保留 10-20GB 临时空间；IT 工程师手动重置 Windows Update 组件时，需停止 wuauserv、bits、cryptsvc 服务，重命名 SoftwareDistribution 和 Catroot2 文件夹后再重启服务。",
+    "reference_chunk_ids": [
+      "ITKB-SYS-003_chunk_2",
+      "ITKB-SYS-003_chunk_4",
+      "ITKB-SYS-003#c1",
+      "ITKB-SYS-003#c3",
+      "ITKB-SYS-003"
+    ],
+    "expected_keywords": ["10-20GB", "SoftwareDistribution", "Catroot2"],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-007",
+    "category": "硬件与外设",
+    "difficulty": "EASY",
+    "query": "发送打印任务后打印机毫无反应且队列中文档卡住，IT 工程师在后台重启 Print Spooler 服务前需要清空哪个系统目录？",
+    "ground_truth_answer": "IT 工程师需先停止 Print Spooler 打印服务，清空 C:\\Windows\\System32\\spool\\PRINTERS 目录下的全部卡住缓存文件，然后重新启动 Print Spooler 服务。",
+    "reference_chunk_ids": [
+      "ITKB-HW-002_chunk_4",
+      "ITKB-HW-002_chunk_3",
+      "ITKB-HW-002#c3",
+      "ITKB-HW-002#c2",
+      "ITKB-HW-002"
+    ],
+    "expected_keywords": ["Print Spooler", "spool\\PRINTERS"],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-008",
+    "category": "硬件与外设",
+    "difficulty": "MEDIUM",
+    "query": "从苹果 Mac 电脑拷贝资料的移动硬盘插到 Windows 电脑上提示需要格式化，真实根因是什么？该如何安全处理？",
+    "ground_truth_answer": "真实根因是文件系统不兼容（Mac 的 APFS 格式在 Windows 上无法直接读取）。严禁直接点击格式化，应插回 Mac 电脑备份数据后重新格式化为 exFAT，或由 IT 使用 R-Studio / DiskGenius 恢复数据。",
+    "reference_chunk_ids": [
+      "ITKB-HW-004_chunk_2",
+      "ITKB-HW-004_chunk_4",
+      "ITKB-HW-004#c1",
+      "ITKB-HW-004#c3",
+      "ITKB-HW-004"
+    ],
+    "expected_keywords": ["APFS", "exFAT", "R-Studio"],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-009",
+    "category": "邮件与通讯",
+    "difficulty": "EASY",
+    "query": "在 Outlook 发送邮件收到退信提示「552 Message size exceeds fixed maximum message size」，公司邮箱附件大小限制是多少？超限如何解决？",
+    "ground_truth_answer": "552 退信表示附件超过大小限制，公司邮箱通常限制附件在 20-50MB 以内；超过限制的附件应上传至 OneDrive 或公司内部云盘，改用云盘链接替代。",
+    "reference_chunk_ids": [
+      "ITKB-MAIL-001_chunk_2",
+      "ITKB-MAIL-001_chunk_3",
+      "ITKB-MAIL-001#c1",
+      "ITKB-MAIL-001#c2",
+      "ITKB-MAIL-001"
+    ],
+    "expected_keywords": ["552", "20-50MB", "云盘"],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-010",
+    "category": "办公软件",
+    "difficulty": "EASY",
+    "query": "Excel 单元格输入公式后只显示公式文本或修改数据后不自动计算，除了将计算选项设为自动外，可用什么快捷键切换显示公式与强制重算？",
+    "ground_truth_answer": "可在「公式 → 计算选项」中选择「自动」，按 Ctrl+`（反引号）切换显示公式模式，按 F9 强制全部重新计算，并检查是否存在循环引用或文本格式单元格。",
+    "reference_chunk_ids": [
+      "ITKB-OFF-004_chunk_3",
+      "ITKB-OFF-004_chunk_2",
+      "ITKB-OFF-004#c2",
+      "ITKB-OFF-004#c1",
+      "ITKB-OFF-004"
+    ],
+    "expected_keywords": ["计算选项", "Ctrl+`", "F9"],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-011",
+    "category": "数据存储",
+    "difficulty": "MEDIUM",
+    "query": "重要文件被 Shift+Delete 永久删除且回收站已清空，在联系 IT 使用卷影副本或恢复软件前，员工必须立即执行什么防覆盖动作？",
+    "ground_truth_answer": "员工必须立即停止往该磁盘分区写入任何新文件（不下载、不保存、不安装软件），防止新数据覆盖已删文件的扇区；随后由 IT 检查 NAS 快照（卷影副本）或使用 Recuva / R-Studio 恢复。",
+    "reference_chunk_ids": [
+      "ITKB-STO-001_chunk_3",
+      "ITKB-STO-001_chunk_4",
+      "ITKB-STO-001#c2",
+      "ITKB-STO-001#c3",
+      "ITKB-STO-001"
+    ],
+    "expected_keywords": ["停止", "覆盖", "卷影副本", "Recuva"],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-012",
+    "category": "数据存储",
+    "difficulty": "EASY",
+    "query": "OneDrive 或 WPS 云盘一直显示正在同步或报红叉同步错误，文件路径超过多少字符会导致同步失败？重置 OneDrive 客户端的命令是什么？",
+    "ground_truth_answer": "文件路径超过 256 字符限制或文件名含特殊字符会导致同步失败，需缩短路径或移至浅层目录；IT 工程师可通过执行 onedrive.exe /reset 重置 OneDrive 客户端。",
+    "reference_chunk_ids": [
+      "ITKB-STO-003_chunk_2",
+      "ITKB-STO-003_chunk_4",
+      "ITKB-STO-003#c1",
+      "ITKB-STO-003#c3",
+      "ITKB-STO-003"
+    ],
+    "expected_keywords": ["256字符", "onedrive.exe /reset"],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-013",
+    "category": "制度消歧",
+    "difficulty": "HARD",
+    "query": "出差在酒店连公司 VPN 一直报错 806 无法连接，现行 v1.0 规范推荐改用哪种 VPN 协议穿透性最好？旧版 v0.9 推荐的 PPTP 协议是否依然有效？",
+    "ground_truth_answer": "现行 v1.0 规范推荐切换为 SSL VPN（走 HTTPS 443 端口，穿透性最好，不易被酒店 WiFi 防火墙阻断）。旧版 v0.9 推荐的 PPTP 协议（TCP 1723 与 GRE 47）因易被阻断且不安全已全面废止。",
+    "reference_chunk_ids": [
+      "ITKB-VPN-001_chunk_1",
+      "ITKB-VPN-001_chunk_4",
+      "ITKB-VPN-001#c0",
+      "ITKB-VPN-001#c3",
+      "ITKB-VPN-001"
+    ],
+    "expected_keywords": ["806", "SSL VPN", "防火墙"],
+    "is_conflict_check": true,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-014",
+    "category": "制度消歧",
+    "difficulty": "HARD",
+    "query": "依据现行 v1.0 域账号安全规范，员工密码连续输错几次会被锁定？等待多久可自动解锁？旧版 v0.9 输错 3 次锁定且不自动解锁的规定是否有效？",
+    "ground_truth_answer": "依据现行 v1.0 规范，密码连续输错超过 5 次触发域账号锁定，员工等待 15-30 分钟部分策略会自动解锁，IT 工程师可查看安全日志事件 ID 4740 定位锁定源；旧版 v0.9 输错 3 次锁定且不自动解锁的策略已废止。",
+    "reference_chunk_ids": [
+      "ITKB-ACC-001_chunk_1",
+      "ITKB-ACC-001_chunk_3",
+      "ITKB-ACC-001_chunk_4",
+      "ITKB-ACC-001#c0",
+      "ITKB-ACC-001#c2",
+      "ITKB-ACC-001#c3",
+      "ITKB-ACC-001"
+    ],
+    "expected_keywords": ["5次", "15-30分钟", "4740"],
+    "is_conflict_check": true,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-015",
+    "category": "制度消歧",
+    "difficulty": "HARD",
+    "query": "电脑能上 QQ 但打不开网页提示 DNS_PROBE_FINISHED_NXDOMAIN，现行 v1.0 规范如何清缓存及配置阿里公共 DNS？旧版 v0.9 禁用 223.5.5.5 强制改 10.0.0.1 的规定是否还有效？",
+    "ground_truth_answer": "依据现行 v1.0 规范，员工应运行 ipconfig /flushdns 清除 DNS 缓存，并将 DNS 改为 223.5.5.5（阿里 DNS）或现行公司内部 DNS；旧版 v0.9 强制改 10.0.0.1 且禁止公共 DNS 的规定已废止，DNS 迁移后需将旧 DNS 从所有 DHCP 作用域中移除。",
+    "reference_chunk_ids": [
+      "ITKB-NET-004_chunk_3",
+      "ITKB-NET-004_chunk_4",
+      "ITKB-NET-004#c2",
+      "ITKB-NET-004#c3",
+      "ITKB-NET-004"
+    ],
+    "expected_keywords": ["ipconfig /flushdns", "223.5.5.5", "DHCP"],
+    "is_conflict_check": true,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-016",
+    "category": "制度消歧",
+    "difficulty": "HARD",
+    "query": "在家连上公司 VPN 后显示已连接，但内网 OA 和共享文件夹全都打不开，用远程桌面（mstsc）连工位电脑也提示失败，跨卡片排查时应如何区分并检查路由与端口？",
+    "ground_truth_answer": "需跨卡片分步排查：① VPN 已连接但内网不通（ITKB-VPN-002）是因为 split tunnel 路由未推送、本地网段（如 192.168.1.x）与公司内网 IP 段冲突或内部 DNS 未生效，需用 route print 检查路由表；② 远程桌面连接失败（ITKB-VPN-003）需额外检查工位电脑是否休眠、远程桌面是否开启以及防火墙 TCP 3389 端口与 NLA 设置。",
+    "reference_chunk_ids": [
+      "ITKB-VPN-002_chunk_2",
+      "ITKB-VPN-002_chunk_4",
+      "ITKB-VPN-003_chunk_2",
+      "ITKB-VPN-003_chunk_4",
+      "ITKB-VPN-002#c1",
+      "ITKB-VPN-002#c3",
+      "ITKB-VPN-003#c1",
+      "ITKB-VPN-003#c3",
+      "ITKB-VPN-002",
+      "ITKB-VPN-003"
+    ],
+    "expected_keywords": ["路由", "192.168.1.x", "内部DNS"],
+    "is_conflict_check": true,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-017",
+    "category": "安全防越界",
+    "difficulty": "HARD",
+    "query": "公司目前是否允许员工使用个人住房公积金向财务部申请企业内部低息购房免息贷款？",
+    "ground_truth_answer": "对不起，当前企业 IT 知识库中未记载任何关于企业内部低息购房贷款的规章制度，建议咨询集团工会或人力资源部门。",
+    "reference_chunk_ids": [],
+    "expected_keywords": ["未记载", "无相关规定", "咨询"],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "GOLDEN-QA-018",
+    "category": "安全防越界",
+    "difficulty": "HARD",
+    "query": "员工因私出国旅游度假期间能否申请报销国际漫游话费与境外自驾租车补贴？",
+    "ground_truth_answer": "对不起，当前知识库仅包含企业 IT 运维排障规程，未包含任何关于因私出国度假报销漫游话费或租车补贴的规定，请咨询财务部。",
+    "reference_chunk_ids": [],
+    "expected_keywords": ["未包含", "无规定", "未查询到"],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "GOLDEN-QA-019",
+    "category": "安全防越界",
+    "difficulty": "HARD",
+    "query": "集团驻海外办事处（如欧美分部）的外币出差伙食津贴每日按何种基准汇率折算人民币报销？",
+    "ground_truth_answer": "对不起，当前知识库中未记载任何关于海外办事处外币差旅伙食津贴的汇率折算规定，请咨询国际业务财务处。",
+    "reference_chunk_ids": [],
+    "expected_keywords": ["未记载", "汇率", "咨询"],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "GOLDEN-QA-020",
+    "category": "安全防越界",
+    "difficulty": "HARD",
+    "query": "员工在办理离职交接当月是否可以申请提取企业年金并一次性办理未归属股票期权折现？",
+    "ground_truth_answer": "对不起，当前知识库中未查询到关于离职员工提取企业年金或股票期权折现的相关规章，建议咨询人力资源薪酬福利部。",
+    "reference_chunk_ids": [],
+    "expected_keywords": ["未查询到", "无相关规章", "咨询"],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  }
+]

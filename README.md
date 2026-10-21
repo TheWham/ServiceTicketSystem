@@ -82,13 +82,15 @@ it-ticket-system/
 │   └── README.md             # 微服务版详细技术文档 ⭐
 ├── frontend/                 # Vue 3 前端（dev :5175，Playwright 测试 :5176）
 │   └── src/
+<<<<<<< HEAD
 │       ├── api/              # Axios 封装（自动注入 Bearer；咨询侧独立实例 + Idempotency-Key）
 │       ├── router/           # 路由 + 角色守卫（EMPLOYEE/ENGINEER/PLATFORM_ADMIN/KNOWLEDGE_ADMIN）
 │       ├── views/            # 员工服务台 / 智能客服 / 工程师工作台 / 主管派单 / 账号管理 / 知识管理
 │       ├── components/       # ConsultationChat、NotificationBell、SlaBadge/SlaTimer、WorkspaceSearch...
 │       └── styles/           # service-desk.css + future-desk.css（见 design-system/）
 ├── acceptance/               # 验收评测：pytest 27 项用例（提单链路 P0）+ ai-rag-smoke.mjs RAG 冒烟
-├── dify-kb/                  # Dify/知识库语料：359 篇英文 + 359 篇中文翻译 + 自撰中文排障文档
+├── services/
+│   └── python-retrieval/     # Python RAG 检索内核 + HTTP 服务（rag-service provider=python 的后端）
 ├── design-system/            # it-service-desk 已实施设计规范（MASTER.md）
 ├── db/                       # 根级单文件初始化脚本 it_ticket_system_init_v2.sql（41 表，与 db/init 等价）
 ├── docs/                     # PRD、技术 SPEC、验收协议 V2、specs/ 契约 01-11、superpowers/ 设计与计划
@@ -181,6 +183,54 @@ npm run dev                                                # http://127.0.0.1:51
 - **转人工**：加权负载选工程师（候选上限 8）→ 10 工作分钟响应 SLA → 人工会话 → 提交结论 → 员工确认 → 24h 内可重开；可一键转工单（预填标题/描述，经 ticket-service 建单后回写 `CONVERTED_TO_TICKET`）。
 - **知识生命周期（SM-KNOWLEDGE-001）**：DRAFT → PENDING_REVIEW → PUBLISHED → OFFLINE，作者不得自审（AC-25）、高风险须平台管理员、发布后写 ES（失败标 PENDING_COMPENSATION 可补偿重建）。
 - **AI 反馈沉淀**：员工对 AI 回答点"已解决"后，反馈经脱敏自动沉淀为待审核知识文章（Redis 幂等标记，5s 扫描 `ai_interaction`），审核发布后进入检索。
+
+## Python 检索服务（services/python-retrieval）
+
+`rag-service` 的检索内核支持可插拔 provider：默认 `es`（本模块内 ES 双路），设
+`RAG_RETRIEVAL_PROVIDER=python` 时改由本目录的 Python 检索服务承担「向量化 + 双路召回 +
+RRF + Cross-Encoder 精排 + 低置信拒答」，Java 侧只保留领域判定与 MySQL PUBLISHED 复核。
+对外契约 `POST /api/v1/rag/retrievals` 不变，回滚只需去掉该环境变量。
+
+```text
+services/python-retrieval/
+├── rag_service/             # HTTP 服务层(FastAPI)：/api/v1/rag/retrievals、/api/health
+│   ├── app.py               # 端点定义 + 异常映射(5031 锁超时/4000 参数/5000 兜底)
+│   ├── assembly.py          # 进程级装配：配置/语料/向量库/检索器/映射/检索锁
+│   ├── contract.py          # 对 Java 的契约镜像(Pydantic, camelCase)
+│   ├── mapping.py           # 检索结果 → 契约字段(整卡全文/articleId 反查/拒答判定)
+│   ├── requirements.txt     # fastapi / uvicorn[standard] / pydantic
+│   └── tests/               # 纯逻辑单测(32 例)
+├── rag_pipeline/            # 检索内核库：config/chunking/embedding/store/retrieval/evaluation/ingestion
+├── configs/pipeline.yaml    # 检索唯一配置源(切片/模型/参数/拒答阈值)
+├── artifacts/
+│   ├── output/wiki/         # 35 张现行 Wiki 卡片(+3 废止) = 检索语料
+│   └── indexing/chroma_wiki_structured/   # 向量库(manifest 指纹校验)
+├── evals/                   # 黄金问题集(golden_dataset_v1.0.json)
+├── tools/                   # sync 灌库 / check_contract 契约校验 / run_service_regression 回归 / freeze 基线
+├── rag_pipeline/…           # 内核含评测：python -m rag_pipeline.pipelines.golden_evaluation（黄金集评测）
+└── docs/runbook-python-retrieval.md       # 运维手册(启动/灌库/联调/已知行为) ⭐
+```
+
+```bash
+cd services/python-retrieval
+pip install -r rag_service/requirements.txt
+RAG_HOME=$PWD python -m rag_service                 # 127.0.0.1:8310，单进程
+
+# 验证
+python -m pytest rag_service/tests -q              # 32 例
+python tools/check_contract.py                     # 对 Java 的契约不变量 69 项
+python tools/run_service_regression.py --pace 1.5  # 黄金集 20 题过 HTTP vs 冻结基线
+```
+
+Java 侧启用（rag-service 启动参数）：
+
+```bash
+RAG_RETRIEVAL_PROVIDER=python RAG_PYTHON_BASE_URL=http://127.0.0.1:8310
+```
+
+先决条件：**先灌库**（`python tools/sync_wiki_to_rag_service.py`，把卡片灌进 rag-service 的
+MySQL+ES 并产出 `data/wiki_article_mapping.json`），否则 Python 返回的 articleId 过不了 Java 侧
+④ MySQL 复核、items 恒为空。详细见 [services/python-retrieval/docs/runbook-python-retrieval.md](services/python-retrieval/docs/runbook-python-retrieval.md)。
 
 ## API 一览
 

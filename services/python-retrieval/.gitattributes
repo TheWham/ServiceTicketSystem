@@ -1,0 +1,8 @@
+# 固定 LF 行尾：避免 core.autocrlf=true 在不同平台 checkout 时转换行尾，
+# 导致 wiki 卡片的 manifest 指纹（按原始字节算）漂移、rag_service 启动时 fail-fast。
+* text=auto eol=lf
+*.sqlite3 binary
+*.bin binary
+*.docx binary
+*.pdf binary
+*.xlsx binary

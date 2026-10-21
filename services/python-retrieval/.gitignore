@@ -1,0 +1,20 @@
+.env
+config.ini
+__pycache__/
+*.pyc
+.DS_Store
+.idea/
+# 产物入库，仅排除可再生成的缓存与日志
+**/.llm_cache/
+**/.emb_cache/
+**/.probe_cache/
+output/run.log
+
+# 黄金题集旧版备份（仅本地留档）
+evals/*.bak
+
+# SDD 执行工作区（本地脚本/日志，非交付物）
+.superpowers/
+
+# wiki→Java 灌库映射（sync 脚本生成的运行时状态，id 绑定具体环境，不入库）
+data/wiki_article_mapping.json
