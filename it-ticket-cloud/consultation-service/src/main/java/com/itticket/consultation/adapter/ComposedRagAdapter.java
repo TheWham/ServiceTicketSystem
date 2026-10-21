@@ -49,8 +49,10 @@ public final class ComposedRagAdapter implements RagAdapter {
             if (general && text != null && !text.isBlank())
                 text = "以下为通用办公 IT 建议，无知识库依据。\n\n" + text;
             if (text != null && text.length() > 12000) throw DependencyFailure.invalid();
-            return new RagResult(RagStatus.SUCCESS, generated.replyType(), text, citations,
+            RagResult answered = new RagResult(RagStatus.SUCCESS, generated.replyType(), text, citations,
                     generated.confidence(), null, generated.modelVersion(), retrieved, 0, null, general, false);
+            // 人机回环:AI 只产建单草稿(不落库),随结果返回员工确认后才建单
+            return generated.ticketDraft() == null ? answered : answered.withTicketDraft(generated.ticketDraft());
         } catch (RetrievalPolicy.StaleKnowledge stale) {
             return RagResult.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, null, retrieved);
         } catch (DependencyFailure failure) {

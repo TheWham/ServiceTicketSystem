@@ -59,6 +59,11 @@
 | user-service | 8101 | 登录(BCrypt+JWT)、忘记/修改密码、账号管理、用户查询、提单草稿 |
 | ticket-service | 8201 | 工单全业务：提单、自动路由、状态机、SLA、通知、异常队列 |
 
+> **Python AI 服务**（仓库根 `services/python-retrieval/`，可选）：`rag_service`（检索内核，8310）
+> 与 `agent_service`（Function Calling 智能体，8320）。consultation-service 经 `AI_AGENT_ENABLED=true`
+> 启用 agent_service，让大模型经原生 tools 协议查工单 / 查知识库 / 生成建单草稿（ReAct 循环）；
+> 部署见 `deploy/docker-compose.yml` 的 `agent-service`，细节见 `services/python-retrieval/agent_service/README.md`。
+
 ---
 
 ## 项目结构

@@ -1,27 +1,59 @@
 package com.itticket.consultation.adapter.generation;
 import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.itticket.consultation.adapter.*;
+import com.itticket.consultation.adapter.agent.PythonAgentClient;
 import com.itticket.consultation.adapter.model.OpenAiCompatibleModelClient;
 import com.itticket.consultation.adapter.retrieval.RetrievedKnowledge;
 import com.itticket.consultation.config.ConsultationProperties;
+import com.itticket.consultation.dto.TicketDraftDto;
 import com.itticket.consultation.enums.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
+/**
+ * 生成器。
+ *
+ * <p>两条路径:
+ * <ul>
+ *   <li>Function Calling 开启({@link PythonAgentClient#enabled})→ 生成侧下沉 Python agent_service,
+ *       由其完成 LLM 调用 + ReAct 循环 + 白名单工具,返回 6 键结果 + 带外建单草稿;</li>
+ *   <li>否则 → 本地单轮「强制 JSON」生成(现状不变)。</li>
+ * </ul>
+ * 两条路径的最终校验一致:严格 6 键 JSON(供 AiAnswerGuard / 溯源链路消费)。
+ */
 public final class OpenAiCompatibleAnswerGenerator implements AnswerGenerator {
     private final OpenAiCompatibleModelClient model;
     private final ConsultationProperties.Ai ai;
+    private final PythonAgentClient agent;
     private final ObjectMapper json = new ObjectMapper();
-    public OpenAiCompatibleAnswerGenerator(OpenAiCompatibleModelClient model, ConsultationProperties properties) {
-        this.model = model; this.ai = properties.getAi();
+
+    /**
+     * @param agent Python agent 客户端;为 null 或不 enabled 时走本地单轮生成。
+     */
+    public OpenAiCompatibleAnswerGenerator(OpenAiCompatibleModelClient model, ConsultationProperties properties,
+                                           PythonAgentClient agent) {
+        this.model = model; this.ai = properties.getAi(); this.agent = agent;
     }
+
     @Override public GenerationResult generate(RagQuery query, List<RetrievedKnowledge> material, RagCallContext context) {
         // Structured untrusted input. Exactly the bounded evidence used to rebuild citations.
         var input = json.createObjectNode().put("question", query.question());
         input.set("priorTurns", json.valueToTree(query.priorTurns()));
         if (query.assetId() != null) input.put("assetId", query.assetId());
         input.set("material", json.valueToTree(material));
-        JsonNode payload = model.complete(systemPrompt(), input.toString(), ai.getMaxOutputTokens(), context);
+
+        TicketDraftDto draft = null;
+        JsonNode payload;
+        if (agent != null && agent.enabled()) {
+            // 生成侧在 Python:ReAct + 白名单工具;data 含 6 键 + 带外 ticketDraft
+            PythonAgentClient.AgentResult result = agent.chat(query, material, context);
+            payload = sixKeys(result.payload());
+            draft = result.draft();
+        } else {
+            payload = model.complete(systemPrompt(), input.toString(), ai.getMaxOutputTokens(), context);
+        }
+
         if (payload.size() != 6 || !payload.path("replyType").isTextual()
                 || !Set.of("ANSWER", "REFUSE").contains(payload.path("replyType").asText())
                 || !payload.path("answerText").isTextual()
@@ -45,8 +77,22 @@ public final class OpenAiCompatibleAnswerGenerator implements AnswerGenerator {
                 : payload.path("knowledgeConflict").booleanValue() ? AiRefusalReason.CONFLICTING_KNOWLEDGE
                 : replyType == AiReplyType.REFUSE ? AiRefusalReason.NO_RELIABLE_KNOWLEDGE : null;
         return new GenerationResult(replyType, text, List.copyOf(used),
-                payload.path("confidence").decimalValue().setScale(4, RoundingMode.HALF_UP), reason, model.modelVersion());
+                payload.path("confidence").decimalValue().setScale(4, RoundingMode.HALF_UP), reason,
+                model.modelVersion(), draft);
     }
+
+    /** 从 Python 返回的 data(含 ticketDraft)中抽出 6 键,套用同一套严格校验。 */
+    private ObjectNode sixKeys(JsonNode data) {
+        ObjectNode node = json.createObjectNode();
+        node.set("replyType", data.path("replyType"));
+        node.set("answerText", data.path("answerText"));
+        node.set("usedVersionIds", data.path("usedVersionIds"));
+        node.set("confidence", data.path("confidence"));
+        node.set("knowledgeConflict", data.path("knowledgeConflict"));
+        node.set("offTopic", data.path("offTopic"));
+        return node;
+    }
+
     private static String systemPrompt() {
         return """
                 你是企业内部 IT 服务台的知识问答助手。严格遵守以下规则:

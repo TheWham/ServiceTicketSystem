@@ -13,6 +13,7 @@ import com.itticket.consultation.dto.AiChatRequest;
 import com.itticket.consultation.dto.AiChatResponse;
 import com.itticket.consultation.dto.AiFeedbackRequest;
 import com.itticket.consultation.dto.AiFeedbackResponse;
+import com.itticket.consultation.dto.TicketDraftDto;
 import com.itticket.consultation.entity.AiInteraction;
 import com.itticket.consultation.entity.Consultation;
 import com.itticket.consultation.enums.AiReplyType;
@@ -118,6 +119,10 @@ public class AiConsultationService {
                     sessionId, verdict.refusalReason(), RequestContext.get());
         }
 
+        // 建单草稿只在正常回答时透出(拒答不携带草稿);员工确认后才经 /ticket-draft/confirm 建单
+        TicketDraftDto draft = verdict.replyType() == AiReplyType.REFUSE
+                ? null : (result == null ? null : result.ticketDraft());
+
         return new AiChatResponse(
                 sessionId,
                 verdict.replyType(),
@@ -127,7 +132,8 @@ public class AiConsultationService {
                 verdict.suggestTransfer(),
                 verdict.refusalReason(),
                 modelVersionOf(result),
-                interactionId);
+                interactionId,
+                draft);
     }
 
     /** AI-006 AI_SESSION_NOT_ACTIVE:只有 AI_ACTIVE 的会话接受 AI 消息。 */

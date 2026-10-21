@@ -87,7 +87,8 @@ class ConsultationCloseTest {
         when(idempotency.execute(anyString(), anyString(), anyString(), any(), eq(ConsultationProjection.class), any()))
                 .thenAnswer(call -> new IdempotentResult<>(((Supplier<?>) call.getArgument(5)).get(), false));
         ConsultationService service = new ConsultationService(mock(ConsultationMapper.class), transitions,
-                messageService, assignments, sla, authz, idempotency, mock(OutboxService.class), properties);
+                messageService, assignments, sla, authz, idempotency, mock(OutboxService.class), properties,
+                mock(com.itticket.consultation.adapter.model.TicketServiceClient.class));
 
         ConsultationProjection result = service.close(employee, "S1", "close-1");
 
