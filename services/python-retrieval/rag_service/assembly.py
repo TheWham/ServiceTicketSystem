@@ -215,7 +215,7 @@ class ServiceAssembly:
         from rag_pipeline.policy import PolicyResolver
 
         if self._policy_resolver is None:
-            self._policy_resolver = PolicyResolver(self.retriever, self.corpus)
+            self._policy_resolver = PolicyResolver(self.retriever)
 
         if self.serialize_search:
             if not self._lock.acquire(timeout=self.lock_wait_seconds):

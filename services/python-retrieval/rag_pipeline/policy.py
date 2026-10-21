@@ -60,6 +60,10 @@ class PolicyCandidate:
 
     @property
     def citation(self) -> str:
+        """须携带的溯源角标：`[来源: <卡号>@<版本> 《<标题>》]`。
+
+        没有版本号时省略 `@版本` 段——宁可少写，不拼一个空的 `@`。
+        """
         suffix = f"@{self.version}" if self.version else ""
         return f"[来源: {self.article_id}{suffix} 《{self.title}》]"
 
@@ -80,6 +84,17 @@ class PolicyCandidate:
 
 @dataclass(frozen=True)
 class PolicyResolution:
+    """一次消歧的完整结论。
+
+    **先看 `status` 再读其余字段**：只有 `RESOLVED` 时 `citation` / `article_id` /
+    `version` / `content` 才有值；其余三态这些字段一律为 None。
+    这一点是刻意的——不让调用方从「字段是否为空」去猜结论，直接读 `status`。
+
+    `chain` 是判定所依据的版本链（便于人工核对与现场讲解），
+    `candidates` 是本次检索捞回的全部卡片（含链外的不相关卡），
+    `undated_articles` 是链内「有被召回、但没有生效日期」的卡号。
+    """
+
     status: str
     citation: Optional[str] = None
     article_id: Optional[str] = None
@@ -146,6 +161,10 @@ def _as_str_list(raw: Any) -> List[str]:
 
 
 def _first_str(value: Any) -> Optional[str]:
+    """取字符串值；`None` 与**空白串**都按「没有这个字段」处理。
+
+    元数据里的空串与字段缺失在语义上等价——区分它们只会让下游到处写空串判断。
+    """
     return None if value is None else (str(value).strip() or None)
 
 
@@ -156,9 +175,13 @@ class PolicyResolver:
     已经做了这件事，本类不重复造一份装配，只消费它的 retriever 与 corpus。
     """
 
-    def __init__(self, retriever, corpus_docs: Sequence[Any]):
+    def __init__(self, retriever):
+        """:param retriever: 已装配的 `IndustrialHybridRetriever`，本类只调它的检索方法。
+
+        不需要语料列表：检索返回的 metadata 里已经带了 `parent_id` /
+        `parent_content` / `wiki_*` 全字段，判定所需的一切都在其中。
+        """
         self.retriever = retriever
-        self.corpus_docs = corpus_docs
 
     # ------------------------------------------------------------------ 入口
 

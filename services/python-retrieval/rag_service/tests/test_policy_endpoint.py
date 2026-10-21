@@ -97,12 +97,11 @@ def post(assembly, payload):
 
 
 def resolved_resolution():
-    return PolicyResolver(FakeRetriever(ACC_CHAIN), corpus_docs=[]) \
-        .resolve("域账号锁定", at="2024-06-01")
+    return PolicyResolver(FakeRetriever(ACC_CHAIN)).resolve("域账号锁定", at="2024-06-01")
 
 
 def undated_resolution():
-    return PolicyResolver(FakeRetriever([chunk("ITKB-HW-002", score=0.8)]), corpus_docs=[]) \
+    return PolicyResolver(FakeRetriever([chunk("ITKB-HW-002", score=0.8)])) \
         .resolve("打印机脱机", at="2024-06-01")
 
 
@@ -112,7 +111,6 @@ def _bare_assembly(results: List[Dict[str, Any]]) -> ServiceAssembly:
     """绕过 __init__（不加载向量库），只为测 resolve_policy 的方法体。"""
     asm = ServiceAssembly.__new__(ServiceAssembly)
     asm.retriever = FakeRetriever(results)
-    asm.corpus = []
     asm.serialize_search = True
     asm.lock_wait_seconds = 5.0
     asm._lock = threading.Lock()
@@ -185,7 +183,7 @@ def test_undated_is_a_normal_answer_not_an_error():
 
 
 def test_no_match_is_also_a_normal_answer():
-    stub = StubAssembly(PolicyResolver(FakeRetriever([]), corpus_docs=[])
+    stub = StubAssembly(PolicyResolver(FakeRetriever([]))
                         .resolve("查不到", at="2024-06-01"))
     resp = post(stub, {"query": "查不到"})
     assert resp.status_code == 200

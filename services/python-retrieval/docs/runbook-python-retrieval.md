@@ -203,7 +203,7 @@ from rag_service.assembly import ServiceAssembly
 from rag_pipeline.policy import PolicyResolver
 
 asm = ServiceAssembly()
-res = PolicyResolver(asm.retriever, asm.corpus).resolve("域账号锁定 解锁", at="2024-01-15")
+res = PolicyResolver(asm.retriever).resolve("域账号锁定 解锁", at="2024-01-15")
 # 或复用装配（与 search() 共用同一把检索锁）：
 res = asm.resolve_policy("域账号锁定 解锁", at="2024-01-15")
 ```

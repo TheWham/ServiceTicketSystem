@@ -64,7 +64,7 @@ class FakeRetriever:
 
 def build(results: List[Dict[str, Any]]):
     retriever = FakeRetriever(results)
-    return PolicyResolver(retriever, corpus_docs=[]), retriever
+    return PolicyResolver(retriever), retriever
 
 
 # 一条干净的两版链：旧版 2022-01-01 起，新版 2024-03-01 起并取代旧版
