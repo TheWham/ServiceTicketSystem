@@ -63,6 +63,20 @@ class PolicyCandidate:
         suffix = f"@{self.version}" if self.version else ""
         return f"[来源: {self.article_id}{suffix} 《{self.title}》]"
 
+    def to_dict(self) -> Dict[str, Any]:
+        """对外 JSON（camelCase）。不含 content——候选列表只用于人工核对。"""
+        return {
+            "articleId": self.article_id,
+            "title": self.title,
+            "version": self.version,
+            "status": self.status,
+            "effectiveDate": self.effective_date,
+            "replaces": list(self.replaces),
+            "supersededAt": self.superseded_at,
+            "citation": self.citation,
+            "score": round(self.score, 4),
+        }
+
 
 @dataclass(frozen=True)
 class PolicyResolution:
@@ -79,6 +93,24 @@ class PolicyResolution:
     candidates: Sequence[PolicyCandidate] = field(default_factory=tuple)
     chain: Sequence[PolicyCandidate] = field(default_factory=tuple)
     undated_articles: Sequence[str] = field(default_factory=tuple)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """对外 JSON（camelCase），可直接作为 HTTP 响应的 data。"""
+        return {
+            "status": self.status,
+            "citation": self.citation,
+            "articleId": self.article_id,
+            "title": self.title,
+            "version": self.version,
+            "effectiveDate": self.effective_date,
+            "supersededAt": self.superseded_at,
+            "replacedArticles": list(self.replaced_articles),
+            "content": self.content,
+            "reason": self.reason,
+            "undatedArticles": list(self.undated_articles),
+            "chain": [c.to_dict() for c in self.chain],
+            "candidates": [c.to_dict() for c in self.candidates],
+        }
 
 
 def _as_date(value: Any) -> Optional[date]:

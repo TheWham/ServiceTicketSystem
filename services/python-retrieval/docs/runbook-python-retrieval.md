@@ -170,13 +170,42 @@ EMBEDDING_DIMENSIONS=1024 java -jar rag-service/target/it-ticket-rag-service-1.0
 
 回答「在某个时间点，哪一版规约有效」，产出该版本的溯源角标与条文。
 
+### HTTP 出口
+
+`POST /api/v1/policy/resolve`（与 `/api/v1/rag/retrievals` 同款 Result 包络与错误映射）
+
+```bash
+curl -s -X POST http://127.0.0.1:8310/api/v1/policy/resolve \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"域账号锁定 解锁","at":"2024-01-15","topK":6}'
+```
+
+```json
+{"code":0,"msg":"success","data":{
+  "status":"RESOLVED",
+  "citation":"[来源: ITKB-LEG-ACC-001@v0.9 《域账号锁定处理（旧版·宽松策略，已废止）》]",
+  "articleId":"ITKB-LEG-ACC-001","version":"v0.9",
+  "effectiveDate":"2022-01-01","supersededAt":"2024-03-01",
+  "replacedArticles":[],"content":"…","reason":"2024-01-15 时刻适用 …",
+  "undatedArticles":[],"chain":[…],"candidates":[…]}}
+```
+
+请求字段：`query`（必填）、`at`（`YYYY-MM-DD`，留空取当天 UTC）、`topK`（1..20，默认 8）。
+错误映射沿用服务既有约定：参数非法 400/4000、检索锁繁忙 503/5031、兜底 500/5000。
+
+> `UNDATED`（无生效日期、无法判定）是**结论不是错误**，返回 HTTP 200 + code 0。
+> 把它当成失败去重试或告警都是误读。
+
+### 库内直接调用
+
 ```python
 from rag_service.assembly import ServiceAssembly
 from rag_pipeline.policy import PolicyResolver
 
 asm = ServiceAssembly()
 res = PolicyResolver(asm.retriever, asm.corpus).resolve("域账号锁定 解锁", at="2024-01-15")
-# res.status == "RESOLVED"  →  res.citation == "[来源: ITKB-LEG-ACC-001@v0.9 《…（旧版·宽松策略，已废止）》]"
+# 或复用装配（与 search() 共用同一把检索锁）：
+res = asm.resolve_policy("域账号锁定 解锁", at="2024-01-15")
 ```
 
 ### 与 `default_exclude` 的分工（别把两者混为一谈）
@@ -233,6 +262,21 @@ RAG_HOME=$PWD python -m rag_pipeline.pipelines.indexing \
 ```
 
 **行尾必须是 LF**（`.gitattributes` 已固定）。CRLF 会改变字节级指纹，让 fresh clone 启动失败。
+
+### 跑一次服务就会把索引文件改脏（正常，别提交）
+
+`artifacts/indexing/chroma_wiki_structured/` 是**活库**，被入库了。只要 `ServiceAssembly`
+打开过它，Chroma 就会做 SQLite 页面重排与 HNSW 同步计数，`chroma.sqlite3` 与
+`length.bin` 的字节随之变化 —— 而**数据一行没变**（实测 `embeddings` 144 行、
+`embedding_metadata` 3216 行，前后一致）。
+
+所以：跑完服务看到这两个文件显示为 modified 是预期的，直接
+
+```bash
+git checkout -- services/python-retrieval/artifacts/indexing
+```
+
+回滚即可，不要提交这类噪音。判断「是不是真变了」用行数比对，别看 `git status`。
 
 ## 存储两阶段规划
 

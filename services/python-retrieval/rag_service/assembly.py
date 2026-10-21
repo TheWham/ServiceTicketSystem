@@ -119,6 +119,8 @@ class ServiceAssembly:
         self.lock_wait_seconds = float(os.environ.get("RAG_LOCK_WAIT_SECONDS", "1.0"))
         self._lock = threading.Lock()
         self.rerank_degraded_count = 0
+        # 版本消歧解析器（懒构造，与检索器共用同一份语料与向量库）
+        self._policy_resolver: Optional[Any] = None
 
     # ------------------------------------------------------------------ 装配细节
 
@@ -201,6 +203,28 @@ class ServiceAssembly:
         if len(chinese) == 1:
             return {"wiki_category": next(iter(chinese))}
         return None
+
+    # ------------------------------------------------------------------ 版本消歧
+
+    def resolve_policy(self, query: str, at: Optional[str] = None, top_k: int = 8):
+        """版本消歧查询：给定主题与时间点，解析该时刻有效的规约版本。
+
+        见 `rag_pipeline.policy`。与 `search()` 共用同一把检索锁——两者都会跑一次完整
+        检索，不串行会让 rerank 的限流预算互相挤占。
+        """
+        from rag_pipeline.policy import PolicyResolver
+
+        if self._policy_resolver is None:
+            self._policy_resolver = PolicyResolver(self.retriever, self.corpus)
+
+        if self.serialize_search:
+            if not self._lock.acquire(timeout=self.lock_wait_seconds):
+                raise LockBusy(f"检索锁等待超过 {self.lock_wait_seconds}s")
+            try:
+                return self._policy_resolver.resolve(query, at=at, top_k=top_k)
+            finally:
+                self._lock.release()
+        return self._policy_resolver.resolve(query, at=at, top_k=top_k)
 
     # ------------------------------------------------------------------ 自检
 

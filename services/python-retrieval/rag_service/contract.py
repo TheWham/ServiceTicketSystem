@@ -31,6 +31,21 @@ class RetrievalRequest(BaseModel):
     top_k: int = Field(default=5, alias="topK", ge=1, le=20)
 
 
+class PolicyResolveRequest(BaseModel):
+    """版本消歧查询请求。
+
+    问的是「在某个时间点，哪一版规约有效」，与 `RetrievalRequest` 的
+    「把相关片段找出来」是两件事——所以用独立端点，不复用检索契约。
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    query: str = Field(min_length=1, max_length=8000)
+    at: Optional[str] = Field(default=None, max_length=32,
+                              description="时间点 YYYY-MM-DD；留空取当天（UTC）")
+    top_k: int = Field(default=8, alias="topK", ge=1, le=20)
+
+
 class RetrievedChunk(BaseModel):
     """对齐 Java RetrievedChunk（consultation 侧要求 chunkId/.../content 均非空白）。"""
 
