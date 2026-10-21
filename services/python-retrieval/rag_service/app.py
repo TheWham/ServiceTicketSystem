@@ -3,6 +3,9 @@
 
 - `POST /api/v1/rag/retrievals`：**同步 def**（Starlette 线程池执行，不阻塞事件循环），
   内部经 search_lock 串行（可配置）；取锁超时 → HTTP 503 + code=5031。
+- `POST /api/v1/policy/resolve`：**同步 def**，同上走线程池与 search_lock。
+  版本消歧查询（见 `rag_pipeline.policy`）：给定主题与时间点，解析该时刻有效的规约版本。
+  注意 `data.status` 有四态，其中 `UNDATED` / `NO_MATCH` 是**结论不是失败**，仍是 HTTP 200。
 - `GET /api/health`：**async def**，不抢检索锁——检索打满时仍 0ms 级响应，
   并回显在线预算（rerankWaitBudget/rerankMaxRetries）便于确认收紧已生效。
 - 统一 Result 包络（{code,msg,data}，code=0 成功），异常映射：锁定 5031 / 参数 4000 / 兜底 5000。

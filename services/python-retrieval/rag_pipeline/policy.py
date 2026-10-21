@@ -190,8 +190,11 @@ class PolicyResolver:
         """解析 `query` 主题在 `at` 时刻（默认今天）适用的规约版本。
 
         :param at: 时间点，接受 'YYYY-MM-DD' / date / datetime；None 取当天（UTC）。
-        :param config: 检索参数覆盖（rrf_k / rough_top_k / reject_threshold 等），
-                       默认取 `rag_pipeline.config` 的当前配置。
+        :param config: 检索参数覆盖，可含 `rrf_k` / `rough_top_k` / `fuse_k` /
+                       `rrf_weight` / `rerank_weight` / `metadata_filter`；
+                       缺省项取 `rag_pipeline.config` 的当前配置。
+                       **拒答阈值与废止卡屏蔽不在此列**——它们被本方法刻意强制关掉
+                       （原因见 `_search`）。
         """
         at_date = _as_date(at) or datetime.now(timezone.utc).date()
 
@@ -271,7 +274,11 @@ class PolicyResolver:
             rrf_weight=config.get("rrf_weight", rc.rrf_weight),
             rerank_weight=config.get("rerank_weight", rc.rerank_weight),
             metadata_filter=config.get("metadata_filter"),
-            # 消歧要自己判时间，不能在召回阶段就把废止卡掐掉
+            # 两个参数各关一件事，别混为一谈：
+            # - 拒答门按打分阈值把低分候选整个丢掉；消歧要靠候选做时间判定，
+            #   候选被丢了就只能报 NO_MATCH，所以这里关掉；
+            # - include_excluded 关掉的是「废止卡物理屏蔽」——分水岭消歧恰恰
+            #   需要看见废止卡，才能判断它在目标时刻是否还有效。
             reject_threshold=None,
             heuristic_reject_threshold=None,
             rerank_granularity=rc.rerank_granularity,
