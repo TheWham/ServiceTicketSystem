@@ -101,7 +101,8 @@ class RagCompositionHttpTest {
         var model = new OpenAiCompatibleModelClient(config, http);
         client = new GuardedRagClient(new ComposedRagAdapter(new SemanticOfficeDomainClassifier(model),
                 new RagServiceKnowledgeRetriever(config, http), new RetrievalPolicy(knowledge),
-                new OpenAiCompatibleAnswerGenerator(model, config, null)), config);
+                new OpenAiCompatibleAnswerGenerator(model, config, null),
+                new com.itticket.consultation.adapter.policy.ToolIntentDetector(false)), config);
     }
     private RagResult ask() {
         return client.answer(new RagQuery("S1", "开会别人听不到我", "C_NET", "ASSET1", 5,

@@ -78,7 +78,7 @@ class GuardedRagDeadlineTest {
                     }
                     return new GenerationResult(AiReplyType.ANSWER, "检查输入设备。", List.of("V1"),
                             BigDecimal.ONE, null, "test");
-                });
+                }, new com.itticket.consultation.adapter.policy.ToolIntentDetector(false));
         var client = new GuardedRagClient(adapter, properties);
         try {
             long began = System.nanoTime();

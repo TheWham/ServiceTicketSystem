@@ -12,12 +12,17 @@ public final class ComposedRagAdapter implements RagAdapter {
     private final KnowledgeRetriever retriever;
     private final RetrievalPolicy policy;
     private final AnswerGenerator generator;
+    private final ToolIntentDetector toolIntent;
     public ComposedRagAdapter(OfficeDomainClassifier classifier, KnowledgeRetriever retriever,
-                              RetrievalPolicy policy, AnswerGenerator generator) {
+                              RetrievalPolicy policy, AnswerGenerator generator, ToolIntentDetector toolIntent) {
         this.classifier = classifier; this.retriever = retriever; this.policy = policy; this.generator = generator;
+        this.toolIntent = toolIntent;
     }
     @Override public RagResult answer(RagQuery query, RagCallContext context) {
         List<String> retrieved = List.of();
+        // 工具意图（查工单/建单）：预检索无果时不直接拒答，放行给 agent 用工具去查。
+        // 领域门禁（OFF_TOPIC/HIGH_RISK/UNCERTAIN）不受影响，仍在下方先行生效。
+        boolean toolIntentBypass = toolIntent.matches(query.question());
         try {
             RagResult domainVerdict = restrict(classifier.classify(query, context));
             if (domainVerdict != null) return domainVerdict;
@@ -26,7 +31,8 @@ public final class ComposedRagAdapter implements RagAdapter {
             context.audit().recordRetrievedVersions(retrieved);
             domainVerdict = restrict(result.domain());
             if (domainVerdict != null) return domainVerdict;
-            if (result.refusalReason() != null) return RagResult.refuse(result.refusalReason(), null, retrieved);
+            if (result.refusalReason() != null && !toolIntentBypass)
+                return RagResult.refuse(result.refusalReason(), null, retrieved);
             List<RetrievedKnowledge> material = policy.material(result, context);
             if (result.reliable() && material.isEmpty())
                 return RagResult.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, null, retrieved);
@@ -46,7 +52,9 @@ public final class ComposedRagAdapter implements RagAdapter {
                             item.title(), item.score(), item.snippet())).toList();
             boolean general = material.isEmpty();
             String text = generated.answerText();
-            if (general && text != null && !text.isBlank())
+            // 工具意图越过的作答是「凭工具查到的实据」（如本人工单列表），不是通用建议——
+            // 加这句前缀会与正文自相矛盾。general 标记本身保留（确实无知识库引用），只是不展示该措辞。
+            if (general && !toolIntentBypass && text != null && !text.isBlank())
                 text = "以下为通用办公 IT 建议，无知识库依据。\n\n" + text;
             if (text != null && text.length() > 12000) throw DependencyFailure.invalid();
             RagResult answered = new RagResult(RagStatus.SUCCESS, generated.replyType(), text, citations,

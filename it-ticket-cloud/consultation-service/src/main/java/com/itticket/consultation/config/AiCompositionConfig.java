@@ -49,8 +49,16 @@ public class AiCompositionConfig {
             default -> throw new IllegalArgumentException("Unsupported AI provider");
         };
     }
+    /**
+     * 工具意图识别器。仅在 Function Calling 开启时放行 —— 未开 agent 时越过拒答
+     * 只会得到无依据的作答，属放宽拒答策略，不是本意（见 {@link ToolIntentDetector}）。
+     */
+    @Bean public ToolIntentDetector toolIntentDetector(PythonAgentClient pythonAgentClient) {
+        return new ToolIntentDetector(pythonAgentClient.enabled());
+    }
+
     @Bean public RagAdapter ragAdapter(OfficeDomainClassifier classifier, KnowledgeRetriever retriever,
-            RetrievalPolicy policy, AnswerGenerator generator) {
-        return new ComposedRagAdapter(classifier, retriever, policy, generator);
+            RetrievalPolicy policy, AnswerGenerator generator, ToolIntentDetector toolIntentDetector) {
+        return new ComposedRagAdapter(classifier, retriever, policy, generator, toolIntentDetector);
     }
 }
