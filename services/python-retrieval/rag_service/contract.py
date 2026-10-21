@@ -1,9 +1,17 @@
 # -*- coding: utf-8 -*-
-"""Java `/api/v1/rag/retrievals` 契约的 Pydantic 镜像。
+"""rag_service 的 HTTP 契约模型。
 
-逐字对齐 origin/main `it-ticket-cloud/rag-service` 的对外 VO 与 consultation-service
-`RagServiceKnowledgeRetriever.parse` 的强校验：字段名（camelCase）与值域不得偏离，
-否则上游判 INVALID_RESPONSE 且不重试。
+分两类，别混：
+
+1. **Java 契约镜像** —— `RetrievalRequest` / `RetrievedChunk` / `RagRetrievalResponse`。
+   逐字对齐 origin/main `it-ticket-cloud/rag-service` 的对外 VO 与 consultation-service
+   `RagServiceKnowledgeRetriever.parse` 的强校验：字段名（camelCase）与值域**不得偏离**，
+   否则上游判 INVALID_RESPONSE 且不重试。改这几个模型前先看 `tools/check_contract.py`。
+2. **本服务自有端点** —— `PolicyResolveRequest`（`POST /api/v1/policy/resolve`）。
+   它**没有 Java 消费方**，不参与上面那套强校验。响应体由
+   `rag_pipeline.policy.PolicyResolution.to_dict()` 直接产出，未做 Pydantic 镜像。
+
+`ResultEnvelope` / `HealthResponse` 为两类端点共用。
 """
 
 from typing import List, Literal, Optional

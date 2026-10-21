@@ -146,7 +146,7 @@ RAG_HOME=$PWD python -m rag_service                 # 127.0.0.1:8310，单进程
 
 # 验证
 python -m pytest rag_service/tests -q              # 68 例
-python tools/check_contract.py                     # 对 Java 的契约不变量 69 项
+python tools/check_contract.py                     # HTTP 黑盒契约不变量 85 项
 python tools/run_service_regression.py --pace 1.5  # 黄金集 20 题过 HTTP vs 冻结基线
 ```
 

@@ -111,7 +111,9 @@ RAG_RETRIEVAL_PROVIDER=es mvn -pl rag-service spring-boot:run
 ```bash
 python -m pytest rag_service/tests -q            # 纯逻辑单测（68 例，含版本消歧与端点契约）
 RAG_HOME=$PWD python -m rag_service &           # 启动后：
-python tools/check_contract.py                  # 契约不变量 69 项（含锁超时 5031、health 不抢锁）
+python tools/check_contract.py                  # HTTP 黑盒契约不变量 85 项
+                                                #（对 Java 的检索契约 + 锁超时 5031 + health 不抢锁
+                                                #  + 版本消歧的分水岭与四态）
 python tools/run_service_regression.py --pace 1.5   # 20 题 vs artifacts/evals/day14_baseline.json
 # Java 侧（worktree 或合并后）：
 mvn -pl rag-service -am test                    # 85 tests（含 python 分支 15 例）
