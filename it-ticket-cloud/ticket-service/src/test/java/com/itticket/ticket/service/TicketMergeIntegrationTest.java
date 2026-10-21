@@ -11,6 +11,7 @@ import com.itticket.ticket.entity.Ticket;
 import com.itticket.ticket.enums.TicketStatus;
 import com.itticket.ticket.feign.UserClient;
 import com.itticket.ticket.mapper.*;
+import com.itticket.ticket.service.DispatchDraftService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,7 +55,8 @@ class TicketMergeIntegrationTest {
         com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
                 new org.apache.ibatis.builder.MapperBuilderAssistant(new com.baomidou.mybatisplus.core.MybatisConfiguration(), ""), Ticket.class);
         service = new TicketService(tickets, categories, attachments, flows, mock(com.itticket.ticket.mapper.TicketPurgeMapper.class), numbers,
-                notifications, mock(UserClient.class), sla, routing, mock(ExceptionQueueService.class), conversions, json);
+                notifications, mock(UserClient.class), sla, routing, mock(ExceptionQueueService.class),
+                mock(DispatchDraftService.class), conversions, json);
         // 分类桩：叶子分类 C_NET 存在且 ACTIVE；无同名冲突（selectCount=0）
         Category leaf = new Category();
         leaf.setCategoryId("C_NET");
@@ -90,8 +92,8 @@ class TicketMergeIntegrationTest {
      *  1) 落库工单字段逐项固化（状态 NEW、默认 MEDIUM、INCIDENT 性质、会话来源、幂等键、
      *     分类名称快照、字段定义快照含 ai_summary、未接婚前无 first_response_at）；
      *  2) 提交前：派单/会话回执均未触发（尚在事务内）；
-     *  3) 手工触发 afterCommit 后：会话回执 + 自动派单执行；
-     *  4) 流转日志两条依次是 TICKET_CREATE、TICKET_ASSIGN。
+     *  3) 手工触发 afterCommit 后：会话回执 + 路由执行（产出派单草案而非直接派单 —— HITL A1）；
+     *  4) 流转日志一条：只有 TICKET_CREATE。TICKET_ASSIGN 待主管确认草案后才写入。
      */
     @Test
     void consultationCreateRetainsMainRoutingAndSlaAndContext() throws Exception {
@@ -110,7 +112,7 @@ class TicketMergeIntegrationTest {
         assertNull(saved.getFirstResponseAt());
         assertFalse(outcome.duplicated());
         when(tickets.selectById("TK001")).thenReturn(saved);
-        when(routing.route(saved)).thenReturn("ENG01");
+        when(routing.route(saved)).thenReturn(RouteOutcome.draftPending("ENG01", "DRAFT001"));
         when(tickets.update(isNull(), any())).thenReturn(1);
         // 事务未提交：派单与咨询回执不可见（防回滚后脏副作用）
         verifyNoInteractions(conversions, routing);
@@ -119,10 +121,10 @@ class TicketMergeIntegrationTest {
         TransactionSynchronizationManager.getSynchronizations().forEach(s -> s.afterCommit());
         verify(conversions).notifyConverted("CS001", "TK001", employee);
         verify(routing).route(saved);
+        // HITL：此时只产生了派单草案，工单仍为 NEW，流转日志只有创建，没有 TICKET_ASSIGN
         var flowCaptor = ArgumentCaptor.forClass(com.itticket.ticket.entity.TicketFlowLog.class);
-        verify(flows, times(2)).insert(flowCaptor.capture());
-        assertEquals("TICKET_CREATE", flowCaptor.getAllValues().get(0).getEvent());
-        assertEquals("TICKET_ASSIGN", flowCaptor.getAllValues().get(1).getEvent());
+        verify(flows).insert(flowCaptor.capture());
+        assertEquals("TICKET_CREATE", flowCaptor.getValue().getEvent());
     }
 
     /**

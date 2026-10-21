@@ -10,6 +10,7 @@ import com.itticket.ticket.entity.TicketFlowLog;
 import com.itticket.ticket.enums.TicketStatus;
 import com.itticket.ticket.feign.UserClient;
 import com.itticket.ticket.mapper.*;
+import com.itticket.ticket.service.DispatchDraftService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -44,7 +45,7 @@ class TicketActionEventTest {
     private final TicketService service = new TicketService(tickets, mock(CategoryMapper.class), mock(AttachmentMapper.class),
             flows, mock(com.itticket.ticket.mapper.TicketPurgeMapper.class), mock(TicketNoGenerator.class), notifications,
             mock(UserClient.class), sla, routing,
-            mock(ExceptionQueueService.class), mock(ConsultationConvertNotifier.class), new ObjectMapper());
+            mock(ExceptionQueueService.class), mock(DispatchDraftService.class), mock(ConsultationConvertNotifier.class), new ObjectMapper());
 
     /**
      * 造一张处于指定状态的工单并配好 mock：
@@ -144,7 +145,7 @@ class TicketActionEventTest {
         Ticket ticket = ticket(TicketStatus.ASSIGNED);
         RoutingService actual = spy(new RoutingService(mock(CategoryRouteMapper.class), mock(TeamMemberMapper.class),
                 mock(AssignmentMapper.class), tickets, mock(UserClient.class), mock(WorkCalendarService.class),
-                mock(ExceptionQueueService.class), notifications, flows));
+                mock(ExceptionQueueService.class), notifications, flows, mock(DispatchDraftService.class)));
         doReturn("ENG02").when(actual).selectEngineer(eq("C_NET"), anySet());
         Assignment assignment = new Assignment();
         assignment.setBizType("TICKET");

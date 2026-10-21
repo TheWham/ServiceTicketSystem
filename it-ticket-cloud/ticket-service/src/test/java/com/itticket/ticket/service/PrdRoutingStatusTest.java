@@ -5,6 +5,7 @@ import com.itticket.ticket.entity.CategoryRoute;
 import com.itticket.ticket.entity.TeamMember;
 import com.itticket.ticket.mapper.*;
 import com.itticket.ticket.feign.UserClient;
+import com.itticket.ticket.service.DispatchDraftService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import java.util.List;
@@ -40,7 +41,7 @@ class PrdRoutingStatusTest {
         when(users.engineers()).thenThrow(new IllegalStateException("Identity service unavailable"));
         RoutingService service = new RoutingService(routes, members, mock(AssignmentMapper.class),
                 tickets, users, mock(WorkCalendarService.class), mock(ExceptionQueueService.class),
-                mock(NotificationService.class), mock(TicketFlowLogMapper.class));
+                mock(NotificationService.class), mock(TicketFlowLogMapper.class), mock(DispatchDraftService.class));
         assertNull(service.selectEngineer("CATEGORY01", Set.of()));
         verifyNoInteractions(tickets);
     }
@@ -60,7 +61,7 @@ class PrdRoutingStatusTest {
         when(members.selectList(any())).thenReturn(List.of());
         RoutingService service = new RoutingService(routes, members, mock(AssignmentMapper.class),
                 mock(TicketMapper.class), mock(UserClient.class), mock(WorkCalendarService.class),
-                mock(ExceptionQueueService.class), mock(NotificationService.class), mock(TicketFlowLogMapper.class));
+                mock(ExceptionQueueService.class), mock(NotificationService.class), mock(TicketFlowLogMapper.class), mock(DispatchDraftService.class));
         assertNull(service.selectEngineer("CATEGORY01", Set.of()));
         ArgumentCaptor<QueryWrapper<TeamMember>> query = ArgumentCaptor.forClass(QueryWrapper.class);
         verify(members).selectList(query.capture());

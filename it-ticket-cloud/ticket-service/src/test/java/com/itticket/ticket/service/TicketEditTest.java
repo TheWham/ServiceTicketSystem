@@ -12,6 +12,7 @@ import com.itticket.ticket.enums.TicketStatus;
 import com.itticket.ticket.feign.UserClient;
 import com.itticket.ticket.mapper.*;
 import com.itticket.ticket.vo.TicketVO;
+import com.itticket.ticket.service.DispatchDraftService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -34,7 +35,7 @@ class TicketEditTest {
     private final TicketService service = new TicketService(tickets, mock(CategoryMapper.class), attachments,
             flows, mock(TicketPurgeMapper.class), numbers, mock(NotificationService.class),
             mock(UserClient.class), sla, routing, mock(ExceptionQueueService.class),
-            mock(ConsultationConvertNotifier.class), new ObjectMapper());
+            mock(DispatchDraftService.class), mock(ConsultationConvertNotifier.class), new ObjectMapper());
     private final UserContext.CurrentUser owner = new UserContext.CurrentUser("EMP01", "Employee", "EMPLOYEE", "IT");
 
     private Ticket ticket(TicketStatus status) {

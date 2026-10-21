@@ -9,6 +9,7 @@ import com.itticket.ticket.mapper.AttachmentMapper;
 import com.itticket.ticket.mapper.CategoryMapper;
 import com.itticket.ticket.mapper.TicketFlowLogMapper;
 import com.itticket.ticket.mapper.TicketMapper;
+import com.itticket.ticket.service.DispatchDraftService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -47,7 +48,7 @@ class UserLookupDegradationTest {
                 mock(TicketFlowLogMapper.class), mock(com.itticket.ticket.mapper.TicketPurgeMapper.class), mock(TicketNoGenerator.class),
                 mock(NotificationService.class), userClient, mock(SlaService.class),
                 mock(RoutingService.class), mock(ExceptionQueueService.class),
-                mock(ConsultationConvertNotifier.class), new ObjectMapper());
+                mock(DispatchDraftService.class), mock(ConsultationConvertNotifier.class), new ObjectMapper());
         batchUsers = TicketService.class.getDeclaredMethod("batchUsers", Collection.class);
         batchUsers.setAccessible(true);
     }

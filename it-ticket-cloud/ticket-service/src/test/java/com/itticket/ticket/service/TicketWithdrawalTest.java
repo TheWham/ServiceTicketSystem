@@ -17,6 +17,7 @@ import com.itticket.ticket.controller.SlaController;
 import com.itticket.ticket.enums.TicketStatus;
 import com.itticket.ticket.feign.UserClient;
 import com.itticket.ticket.mapper.*;
+import com.itticket.ticket.service.DispatchDraftService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -37,7 +38,7 @@ class TicketWithdrawalTest {
     private final RoutingService routing = mock(RoutingService.class);
     private final TicketService service = new TicketService(tickets, mock(CategoryMapper.class), attachments, flows,
             purge, mock(TicketNoGenerator.class), mock(NotificationService.class), mock(UserClient.class), sla,
-            routing, mock(ExceptionQueueService.class), mock(ConsultationConvertNotifier.class), new ObjectMapper());
+            routing, mock(ExceptionQueueService.class), mock(DispatchDraftService.class), mock(ConsultationConvertNotifier.class), new ObjectMapper());
     private final UserContext.CurrentUser owner = new UserContext.CurrentUser("EMP01", "Employee", "EMPLOYEE", "IT");
     private final UserContext.CurrentUser engineer = new UserContext.CurrentUser("ENG01", "Engineer", "ENGINEER", "IT");
     private final UserContext.CurrentUser admin = new UserContext.CurrentUser("ADMIN", "Admin", "PLATFORM_ADMIN", "IT");
@@ -139,7 +140,7 @@ class TicketWithdrawalTest {
         AssignmentMapper assignments = mock(AssignmentMapper.class);
         RoutingService actual = new RoutingService(mock(CategoryRouteMapper.class), mock(TeamMemberMapper.class),
                 assignments, tickets, mock(UserClient.class), mock(WorkCalendarService.class),
-                mock(ExceptionQueueService.class), mock(NotificationService.class), flows);
+                mock(ExceptionQueueService.class), mock(NotificationService.class), flows, mock(DispatchDraftService.class));
         assertThrows(BizException.class, () -> actual.assign(stale, "ENG02", "TRANSFERRED"));
         verifyNoInteractions(assignments, flows);
     }
@@ -152,7 +153,7 @@ class TicketWithdrawalTest {
         CategoryRouteMapper routes = mock(CategoryRouteMapper.class);
         RoutingService actual = new RoutingService(routes, mock(TeamMemberMapper.class), assignments, tickets,
                 mock(UserClient.class), mock(WorkCalendarService.class), mock(ExceptionQueueService.class),
-                mock(NotificationService.class), flows);
+                mock(NotificationService.class), flows, mock(DispatchDraftService.class));
         Assignment previous = new Assignment(); previous.setBizType("TICKET"); previous.setBizId("TK01"); previous.setEngineerId("ENG01");
         actual.transferOnTimeout(previous);
         verifyNoInteractions(routes, assignments, flows);

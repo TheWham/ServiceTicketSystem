@@ -6,6 +6,7 @@ import com.itticket.common.user.UserInfo;
 import com.itticket.ticket.entity.Assignment;
 import com.itticket.ticket.entity.CategoryRoute;
 import com.itticket.ticket.entity.TeamMember;
+import com.itticket.ticket.entity.DispatchDraft;
 import com.itticket.ticket.entity.Ticket;
 import com.itticket.ticket.entity.TicketFlowLog;
 import com.itticket.ticket.mapper.TicketFlowLogMapper;
@@ -49,32 +50,50 @@ public class RoutingService {
     private final ExceptionQueueService exceptionQueueService;
     private final NotificationService notificationService;
     private final TicketFlowLogMapper flowLogMapper;
+    private final DispatchDraftService dispatchDraftService;
 
     /** 响应 SLA：10 工作分钟（§12.2） */
     private static final long RESPONSE_DEADLINE_SECONDS = 10 * 60L;
 
     /**
-     * 自动路由：为工单选择工程师。返回分配的工程师 ID；无候选返回 null。
-     */
-    @Transactional
-    public String route(Ticket ticket) {
-        ticket = ticketMapper.selectOne(new QueryWrapper<Ticket>()
-                .eq("ticket_id", ticket.getTicketId()).last("FOR UPDATE"));
-        if (ticket == null || ticket.getStatus() == null || ticket.getStatus().isTerminal()) return null;
-        String engineerId = selectEngineer(ticket.getCategoryId(), Collections.emptySet());
-        if (engineerId == null) {
-            log.warn("[路由] 路由失败（无候选工程师）: {} 分类={}", ticket.getTicketId(), ticket.getCategoryId());
-            exceptionQueueService.raise("TICKET", ticket.getTicketId(),
-                    ExceptionQueueService.TYPE_ROUTE_FAILED,
-                    "自动路由失败", "分类【" + ticket.getCategoryId() + "】无可分配工程师", ticket.getPriority());
-            // PRD §9.3：路由失败保持 NEW，通知平台管理员
-            notifyAdminsRouteFailed(ticket);
-            return null;
-        }
-        assign(ticket, engineerId, null);
-        log.info("[路由] 已分配: {} -> {}", ticket.getTicketId(), engineerId);
-        return engineerId;
-    }
+     * 自动路由：为工单选择工程师，<b>产出派单草案挂起待人工确认，不直接落分派</b>。
+     *
+     * <p>需求依据 docs/IT服务工单系统-需求归因文档.md:50「强制 Human-in-the-Loop 人机确认
+     * （派单草案主管点击才生效）」。F-06 的自动派单在此只到「草案」为止，
+     * 真正的 assignment / 状态流转由 {@code TicketService.confirmDispatch} 在
+     * 审批人确认后执行 —— 这是系统内唯一的 AI/自动分派写入口，必须留刹车片。
+     *
+     * @return 路由结局；{@link RouteOutcome.Kind#DRAFT_PENDING} 表示已挂起草待确认
+          */
+         @Transactional
+         public RouteOutcome route(Ticket ticket) {
+             ticket = ticketMapper.selectOne(new QueryWrapper<Ticket>()
+                     .eq("ticket_id", ticket.getTicketId()).last("FOR UPDATE"));
+             if (ticket == null || ticket.getStatus() == null || ticket.getStatus().isTerminal()) {
+                 return RouteOutcome.skipped();
+             }
+             String engineerId = selectEngineer(ticket.getCategoryId(), Collections.emptySet());
+             if (engineerId == null) {
+                 log.warn("[路由] 路由失败（无候选工程师）: {} 分类={}", ticket.getTicketId(), ticket.getCategoryId());
+                 exceptionQueueService.raise("TICKET", ticket.getTicketId(),
+                         ExceptionQueueService.TYPE_ROUTE_FAILED,
+                         "自动路由失败", "分类【" + ticket.getCategoryId() + "】无可分配工程师", ticket.getPriority());
+                 // PRD §9.3：路由失败保持 NEW，通知平台管理员
+                 notifyAdminsRouteFailed(ticket);
+                 return RouteOutcome.routeFailed();
+             }
+             // 幂等键：同一工单 + 同一候选工程师 = 同一轮路由，重复触发不产生第二份草案
+             String idemKey = "ROUTE:" + ticket.getTicketId() + ":" + engineerId;
+             DispatchDraft draft = dispatchDraftService.createDraft(ticket, engineerId, idemKey,
+                     "分类路由优先 + 在线可用 + 当前负载最少");
+             if (draft == null) {
+                 // 草案未生成只可能是工单在加锁期间转终态，属正常空结果
+                 return RouteOutcome.skipped();
+             }
+             log.info("[路由] 已生成待确认派单草案: {} -> {} 草案={}",
+                     ticket.getTicketId(), engineerId, draft.getDraftId());
+             return RouteOutcome.draftPending(engineerId, draft.getDraftId());
+         }
 
     /** 路由失败时通知所有平台管理员（PRD §9.3）。失败不阻断主流程。 */
     private void notifyAdminsRouteFailed(Ticket ticket) {

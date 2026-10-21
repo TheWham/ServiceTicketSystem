@@ -19,6 +19,7 @@ import com.itticket.ticket.dto.UpdateTicketRequest;
 import com.itticket.ticket.dto.RatingRequest;
 import com.itticket.ticket.entity.Attachment;
 import com.itticket.ticket.entity.Category;
+import com.itticket.ticket.entity.DispatchDraft;
 import com.itticket.ticket.entity.Ticket;
 import com.itticket.ticket.entity.TicketFlowLog;
 import com.itticket.ticket.enums.TicketNature;
@@ -70,6 +71,7 @@ public class TicketService {
     private final SlaService slaService;
     private final RoutingService routingService;
     private final ExceptionQueueService exceptionQueueService;
+    private final DispatchDraftService dispatchDraftService;
     private final ConsultationConvertNotifier convertNotifier;
     private final ObjectMapper objectMapper;
 
@@ -895,8 +897,9 @@ public class TicketService {
     }
 
     /**
-     * 创建后后处理（事务提交后异步）：SLA 起算（§11.2）+ 自动路由（F-06）。
-     * 路由成功：NEW → ASSIGNED，并通知工程师（§14.2）。
+     * 创建后后处理（事务提交后异步）：SLA 起算（§11.2）+ 自动路由发起（F-06）。
+     * 自动路由只产出<b>待确认派单草案</b>，工单保持 NEW，由 confirmDispatch 在
+     * 审批人确认后置 ASSIGNED 并通知工程师 —— 见 DispatchDraftService（HITL 写操作门禁）。
      * 路由失败：RoutingService 已落异常队列，工单保持 NEW 待管理员处理。
      */
     private void afterCreate(String ticketId) {
@@ -908,24 +911,47 @@ public class TicketService {
             // 1. SLA 起算（完成 SLA 创建起算，新单默认 MEDIUM）
 
 
-            // 2. 自动路由
-            String engineerId = routingService.route(ticket);
-            if (engineerId == null) {
-                return; // 路由失败已入异常队列
-            }
-            // NEW → ASSIGNED
-            int assigned = ticketMapper.update(null, new LambdaUpdateWrapper<Ticket>()
-                    .eq(Ticket::getTicketId, ticketId)
-                    .eq(Ticket::getStatus, TicketStatus.NEW)
-                    .set(Ticket::getStatus, TicketStatus.ASSIGNED)
-                    .set(Ticket::getUpdatedAt, LocalDateTime.now(java.time.ZoneOffset.UTC)));
-            if (assigned != 1) return; // 路由完成后被撤回，不再发送派单通知或记录旧状态。
-            insertFlowLog(ticketId, TicketStatus.NEW.getValue(), TicketStatus.ASSIGNED.getValue(),
-                    "TICKET_ASSIGN", "SYSTEM", "自动路由分配: " + engineerId);
-            notificationService.sendNotification(ticketId, "ASSIGNED", engineerId);
+            // 2. 自动路由 —— 只挂草案，不落分派（需求归因文档:50 强制 HITL）
+            routingService.route(ticket);
         } catch (Exception e) {
             log.error("[TICKET] 创建后处理失败: " + ticketId, e);
         }
+    }
+
+    /**
+     * 确认派单草案 —— 门禁的<b>唯一放行执行点</b>。
+     *
+     * <p>审批人对草案 approve 后（DispatchDraftService.decide 判定通过）由
+     * DispatchDraftController 调用本方法，真正落分派：
+     * 写 assignment、NEW → ASSIGNED、记流转日志、通知工程师。
+     * 事务由调用方（DispatchDraftService.decide）持有，本方法不再自开事务。
+     *
+     * <p>这里重新校验工单当前状态而不是信任调用方：草案可能在挂起期间因用户撤回、
+     * 重复建单合并等原因离开 NEW；此时必须拒绝放行并抛出，不允许把
+     * ASSIGNED 写到一个已终态的工单上。
+     *
+     * @throws BizException 工单不存在或已不是 NEW（草案失效，需驳回后重路由）
+     */
+    public void confirmDispatch(String draftId) {
+        DispatchDraft draft = dispatchDraftService.get(draftId);
+        if (draft == null) {
+            throw new BizException(ErrorCode.TICKET_NOT_FOUND, "派单草案不存在");
+        }
+        String ticketId = draft.getTicketId();
+        Ticket ticket = ticketMapper.selectOne(new QueryWrapper<Ticket>()
+                .eq("ticket_id", ticketId).last("FOR UPDATE"));
+        if (ticket == null) {
+            throw new BizException(ErrorCode.TICKET_NOT_FOUND, "工单不存在");
+        }
+        if (ticket.getStatus() != TicketStatus.NEW) {
+            throw new BizException(ErrorCode.ILLEGAL_TRANSITION,
+                                "工单当前状态为 " + ticket.getStatus() + "，该派单草案已失效");
+        }
+        routingService.assign(ticket, draft.getEngineerId(), "首次分派");
+        insertFlowLog(ticketId, TicketStatus.NEW.getValue(), TicketStatus.ASSIGNED.getValue(),
+                "TICKET_ASSIGN", "PLATFORM_ADMIN",
+                "审批人确认派单草案 " + draftId + "，分配工程师: " + draft.getEngineerId());
+        notificationService.sendNotification(ticketId, "ASSIGNED", draft.getEngineerId());
     }
 
     private Collection<String> collectUserIds(List<Ticket> tickets) {
