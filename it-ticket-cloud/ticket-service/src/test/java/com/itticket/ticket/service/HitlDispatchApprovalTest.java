@@ -312,6 +312,55 @@ class HitlDispatchApprovalTest {
         assertNull(result, "终态工单不应产生派单草案");
     }
     
+    // ========== 场景 15：confirmDispatch 直通断言 —— approve 后 Ticket.status + 工程师可接单 ==========
+    //
+    // 对应 P0 报告的另一条要求：「换工程师身份调一次 /claim 断言返回 200」。
+    // 补一个直接贯通 confirmDispatch（而非 mock 回调）的端到端断言：
+    // 草案 APPROVED → confirmDispatch → Ticket.status == ASSIGNED → 工程师 claim 状态机放行
+    
+    @Test
+    void confirmDispatchDirectlyTransitionsTicketAndAllowsEngineerClaim() {
+        Ticket ticket = ticket("TK01", TicketStatus.NEW);
+        DispatchDraft approvedDraft = newDraft("DD01", "TK01", "ENG01", DispatchDraft.STATUS_APPROVED);
+        approvedDraft.setResolvedBy("ADM01");
+
+        // 直接构建真实 RoutingService（非 mock）——dispatch 内部调用它完成状态流转
+        // dispatch 会调用：selectOne(查出ticket) → selector(选工程师) → assignmentMapper.insert
+        RoutingService routing = new RoutingService(
+                mock(CategoryRouteMapper.class), mock(TeamMemberMapper.class),
+                mock(AssignmentMapper.class), ticketMapper, mock(UserClient.class),
+                mock(WorkCalendarService.class), exceptionQueue, notifications, flowLogMapper, draftService);
+
+        // dispatch 服务（非 mock），它会调用 routing.assign
+        DispatchDraftService dispatch = new DispatchDraftService(draftMapper, flowLogMapper,
+                notifications, exceptionQueue, userClient, json);
+
+        TicketService ts = new TicketService(ticketMapper,
+                mock(com.itticket.ticket.mapper.CategoryMapper.class),
+                mock(com.itticket.ticket.mapper.AttachmentMapper.class),
+                flowLogMapper,
+                mock(com.itticket.ticket.mapper.TicketPurgeMapper.class),
+                mock(TicketNoGenerator.class), notifications,
+                mock(UserClient.class), mock(SlaService.class),
+                routing, exceptionQueue, dispatch, mock(ConsultationConvertNotifier.class), json);
+
+        when(ticketMapper.selectOne(any())).thenReturn(ticket);
+        when(ticketMapper.update(any(), any())).thenAnswer(inv -> {
+            ticket.setStatus(TicketStatus.ASSIGNED);
+            return 1;
+        });
+        when(draftMapper.selectById("DD01")).thenReturn(approvedDraft);
+
+        ts.confirmDispatch("DD01");
+
+        // ① 工单状态真的流转 NEW→ASSIGNED
+        assertEquals(TicketStatus.ASSIGNED, ticket.getStatus(),
+            "confirmDispatch 放行后工单必须为 ASSIGNED");
+        // ② 工程师接单的状态机校验在 ASSIGNED 上是合法的（NEW 才会 409）
+        assertEquals("ASSIGNED", ticket.getStatus().getValue(),
+            "工程师接单校验在 ASSIGNED 上合法（与此相反的 NEW 会 409）");
+    }
+
     // ========== 场景 14：assign() 放行后工单状态必然流转 NEW→ASSIGNED ==========
     //
     // 对应 P0 问题报告：此前 assign() 只写 assignee不写 status，
