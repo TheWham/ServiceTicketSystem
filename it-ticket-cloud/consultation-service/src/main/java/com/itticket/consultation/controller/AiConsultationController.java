@@ -8,6 +8,8 @@ import com.itticket.consultation.dto.AiFeedbackRequest;
 import com.itticket.consultation.dto.AiFeedbackResponse;
 import com.itticket.consultation.dto.TransferRequest;
 import com.itticket.consultation.dto.TransferResponse;
+import com.itticket.consultation.dto.TicketDraftConfirmRequest;
+import com.itticket.consultation.dto.TicketDraftConfirmResponse;
 import com.itticket.consultation.service.AiConsultationService;
 import com.itticket.consultation.service.AuthzService;
 import com.itticket.consultation.service.ConsultationService;
@@ -66,6 +68,21 @@ public class AiConsultationController {
             @Valid @RequestBody TransferRequest request) {
         CurrentUser user = authzService.currentUser();
         return ok(consultationService.transfer(user, id, request, idempotencyKey));
+    }
+
+    /**
+     * 人机回环第二步:员工确认 AI 建单草稿后真正建单。
+     *
+     * <p>AI 只产草稿(随 AI 消息回复的 ticketDraft),员工在前端确认(可编辑字段)后调本接口,
+     * 由服务端经 ticket-service 建单并把咨询转为工单。AI 自身无法建单。
+     */
+    @PostMapping("/{id}/ticket-draft/confirm")
+    public ApiEnvelope<TicketDraftConfirmResponse> confirmTicketDraft(
+            @PathVariable String id,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @Valid @RequestBody TicketDraftConfirmRequest request) {
+        CurrentUser user = authzService.currentUser();
+        return ok(consultationService.confirmTicketDraft(user, id, request, idempotencyKey));
     }
 
     private static <T> ApiEnvelope<T> ok(T data) {

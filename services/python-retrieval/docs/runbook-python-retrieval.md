@@ -21,10 +21,23 @@ consultation-service 不需要任何改动。
 ## 启动 Python 检索服务
 
 ```bash
-cd /path/to/demos
+cd /path/to/demos/services/python-retrieval
 pip install -r rag_service/requirements.txt   # fastapi / uvicorn[standard] / pydantic>=2
-RAG_HOME=$PWD python -m rag_service           # 默认 127.0.0.1:8310，单进程
+RAG_HOME=$PWD python -m rag_service           # 默认 127.0.0.1:8310
 ```
+
+> ⚠️ **`RAG_HOME` 同时定位三样东西，而它们在仓库里不在同一个根**：
+> `configs/pipeline.yaml`、`artifacts/` 在 `services/python-retrieval/` 下，
+> 但 `.env` 在本仓库根 `demos/.env`。
+>
+> - `RAG_HOME=services/python-retrieval` → 配置与产物路径正确，**但读不到 `.env`**
+>   （嵌入/精排会静默降级为本地 hash 兜底与启发式打分，检索质量下降且不报错）；
+> - `RAG_HOME=<仓库根>` → 读得到 `.env`，但 `artifacts/` 会指到 `<仓库根>/artifacts/`（不存在）。
+>
+> 本地联调时把 `.env` 里的键**导出为进程环境变量**再设
+> `RAG_HOME=services/python-retrieval`（`load_embedding_config` 优先读进程环境变量）。
+> 这是既有结构的不一致，实质修法是把 `.env` 挪到服务目录或让 `config.py` 分别定位，
+> 未在本次改动范围内。
 
 环境变量：
 
@@ -66,25 +79,41 @@ python tools/sync_wiki_to_rag_service.py            # 幂等；--force 强制重
 - 中文类目 → Java 类目编码映射见脚本 `JAVA_CATEGORY_BY_WIKI_CATEGORY`；
 - 灌库后重启 Python 服务，`/api/health` 应为 `status=UP, mappingEntries=35`。
 
-## Java 侧启用与回滚
+## Java 侧默认值与回滚
+
+**默认 `provider=python`**，定义在两处，改的时候两处都要动：
+`RagRetrievalProperties.provider` 与 `rag-service/src/main/resources/application.yml` 的
+`${RAG_RETRIEVAL_PROVIDER:...}`。启动通常只需给地址：
 
 ```bash
-# 启用 Python 检索内核
-RAG_RETRIEVAL_PROVIDER=python RAG_PYTHON_BASE_URL=http://127.0.0.1:8310 \
+RAG_PYTHON_BASE_URL=http://127.0.0.1:8310 \
   RAG_PYTHON_TIMEOUT_MS=4200 RAG_PYTHON_CONNECT_TIMEOUT_MS=500 \
-  ./mvnw -pl rag-service spring-boot:run
-# 回滚（零代码）：RAG_RETRIEVAL_PROVIDER=es（默认）
+  mvn -pl rag-service spring-boot:run
 ```
 
-- `provider=es`（默认）行为与 main 完全一致；
-- python 分支异常 → 依赖不可用（`MODEL_UNAVAILABLE`），**不**静默回 ES。
+回滚到 ES 是零代码的：
+
+```bash
+RAG_RETRIEVAL_PROVIDER=es mvn -pl rag-service spring-boot:run
+```
+
+- ⚠️ **默认取 python 之后，Python 检索服务必须可访问**：python 分支异常 → 依赖不可用
+  （`MODEL_UNAVAILABLE`），**不**静默回 ES。这是刻意的——静默回退会把「Python 挂了」
+  表现成「检索结果变差」，没人会发现。
+- `provider=es` 与本次改动前的行为完全一致。
+- 改动默认值时要同步看两个测试：`RagRetrievalServiceTest` 已显式钉住 `es`（专测 ES 路径，
+  不再依赖默认值），`RagRetrievalServicePythonProviderTest.pythonIsDefaultProvider` 断言默认值。
+
+> 注：本文档早先写的 `./mvnw` 在本仓库并不存在（没有 maven wrapper），已改为 `mvn`。
 
 ## 验证
 
 ```bash
-python -m pytest rag_service/tests -q            # 纯逻辑单测（32 例）
+python -m pytest rag_service/tests -q            # 纯逻辑单测（68 例，含版本消歧与端点契约）
 RAG_HOME=$PWD python -m rag_service &           # 启动后：
-python tools/check_contract.py                  # 契约不变量 69 项（含锁超时 5031、health 不抢锁）
+python tools/check_contract.py                  # HTTP 黑盒契约不变量 85 项
+                                                #（对 Java 的检索契约 + 锁超时 5031 + health 不抢锁
+                                                #  + 版本消歧的分水岭与四态）
 python tools/run_service_regression.py --pace 1.5   # 20 题 vs artifacts/evals/day14_baseline.json
 # Java 侧（worktree 或合并后）：
 mvn -pl rag-service -am test                    # 85 tests（含 python 分支 15 例）
@@ -152,6 +181,118 @@ EMBEDDING_DIMENSIONS=1024 java -jar rag-service/target/it-ticket-rag-service-1.0
 6. **灌库前（映射缺失）**：服务 `DEGRADED`，`articleId` 降级为 wiki 卡 id、
    `versionId` 降级为 `wiki_version`——经 Java ④ 复核 items 必空（全部滤除），
    即"先灌库后联调"。
+
+## 版本消歧查询（`rag_pipeline.policy`）
+
+回答「在某个时间点，哪一版规约有效」，产出该版本的溯源角标与条文。
+
+### HTTP 出口
+
+`POST /api/v1/policy/resolve`（与 `/api/v1/rag/retrievals` 同款 Result 包络与错误映射）
+
+```bash
+curl -s -X POST http://127.0.0.1:8310/api/v1/policy/resolve \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"域账号锁定 解锁","at":"2024-01-15","topK":6}'
+```
+
+```json
+{"code":0,"msg":"success","data":{
+  "status":"RESOLVED",
+  "citation":"[来源: ITKB-LEG-ACC-001@v0.9 《域账号锁定处理（旧版·宽松策略，已废止）》]",
+  "articleId":"ITKB-LEG-ACC-001","version":"v0.9",
+  "effectiveDate":"2022-01-01","supersededAt":"2024-03-01",
+  "replacedArticles":[],"content":"…","reason":"2024-01-15 时刻适用 …",
+  "undatedArticles":[],"chain":[…],"candidates":[…]}}
+```
+
+请求字段：`query`（必填）、`at`（`YYYY-MM-DD`，留空取当天 UTC）、`topK`（1..20，默认 8）。
+错误映射沿用服务既有约定：参数非法 400/4000、检索锁繁忙 503/5031、兜底 500/5000。
+
+> `UNDATED`（无生效日期、无法判定）是**结论不是错误**，返回 HTTP 200 + code 0。
+> 把它当成失败去重试或告警都是误读。
+
+### 库内直接调用
+
+```python
+from rag_service.assembly import ServiceAssembly
+from rag_pipeline.policy import PolicyResolver
+
+asm = ServiceAssembly()
+res = PolicyResolver(asm.retriever).resolve("域账号锁定 解锁", at="2024-01-15")
+# 或复用装配（与 search() 共用同一把检索锁）：
+res = asm.resolve_policy("域账号锁定 解锁", at="2024-01-15")
+```
+
+### 与 `default_exclude` 的分工（别把两者混为一谈）
+
+| | 用途 | 召回行为 |
+|---|---|---|
+| `retrieval.default_exclude` | 别把**废止做法**教给员工 | 召回**前置**物理屏蔽 `wiki_status ∈ {已废止, 已下线}` |
+| `rag_pipeline.policy` | 判断**某时刻哪一版有效** | 必须**看得见**废止卡（`include_excluded=True`），否则无从消歧 |
+
+两者需求相反，所以 `IndustrialHybridRetriever` 的三个检索方法新增了
+`include_excluded: bool = False` 形参。**默认值保持改前行为**——普通检索路径仍然屏蔽废止卡。
+
+### 四种结论，不互相冒充
+
+| status | 含义 |
+|---|---|
+| `RESOLVED` | 选中该时刻有效的一版（沿命中主题的 `replaces` 版本链选，不是全局取日期最大值） |
+| `NO_EFFECTIVE_VERSION` | 相关规约在该时刻**尚未生效** |
+| `UNDATED` | 命中的版本链上没有任何一张带 `effective_date`，**无法**做时间判定 —— 不猜 |
+| `NO_MATCH` | 检索零命中 |
+
+`UNDATED` 是最要紧的一态：39 张卡里只有 6 张带生效日期，其余 33 张没有。
+对没日期的卡唯一诚实的回答是「无法判定」，不能默认它永远有效。
+
+### 演示用的版本数据是**构造**的（重跑语料会丢）
+
+源文档 `IT常见问题RAG知识库.docx` 里**没有任何日期**（连版本号都没有），
+清洗中间产物同样为 0 个日期。所以分水岭消歧的日期是为了演示**显式构造**的：
+
+| 版本链 | 生效日 | `replaces` |
+|---|---|---|
+| `ITKB-LEG-ACC-001` (v0.9, 已废止) → `ITKB-ACC-001` (v1.0) | 2022-01-01 → 2024-03-01 | 新版声明取代旧版 |
+| `ITKB-LEG-NET-004` (v0.9, 已废止) → `ITKB-NET-004` (v1.0) | 同上 | 同上 |
+| `ITKB-LEG-VPN-001` (v0.9, 已废止) → `ITKB-VPN-001` (v1.0) | 同上 | 同上 |
+
+这 6 张卡的 frontmatter 里带 `effective_date_source: "demo-constructed"` 标明来源——
+不是模型抽取的，也不是从源文档读到的。这与 `llm_synthesizer` 的「不得编造日期」铁律
+不冲突：铁律管的是**自动抽取环节**不许幻觉；人工声明的演示数据是另一回事，只要标明白。
+
+> ⚠️ **重跑 `wiki_generator` 流水线会丢掉这些字段**（它只渲染 `llm_synthesizer` 给出的
+> `effective_date`）。`rag_service/tests/test_policy.py` 末尾的
+> `test_real_corpus_keeps_the_three_demo_version_chains` 就是那个提醒用例。
+
+### 改动语料后必须重建索引
+
+`manifest.json` 的 `wiki_fingerprint` 按**原始字节**算（`chunking/fingerprint.py`），
+改一张卡就会漂移，`ServiceAssembly` 加载时 fail-fast：
+「向量库与当前 Wiki 卡片不一致，请重建索引」。
+
+```bash
+cd services/python-retrieval
+RAG_HOME=$PWD python -m rag_pipeline.pipelines.indexing \
+    --wiki-dir artifacts/output/wiki --output-dir artifacts/indexing
+```
+
+**行尾必须是 LF**（`.gitattributes` 已固定）。CRLF 会改变字节级指纹，让 fresh clone 启动失败。
+
+### 跑一次服务就会把索引文件改脏（正常，别提交）
+
+`artifacts/indexing/chroma_wiki_structured/` 是**活库**，被入库了。只要 `ServiceAssembly`
+打开过它，Chroma 就会做 SQLite 页面重排与 HNSW 同步计数，`chroma.sqlite3` 与
+`length.bin` 的字节随之变化 —— 而**数据一行没变**（实测 `embeddings` 144 行、
+`embedding_metadata` 3216 行，前后一致）。
+
+所以：跑完服务看到这两个文件显示为 modified 是预期的，直接
+
+```bash
+git checkout -- services/python-retrieval/artifacts/indexing
+```
+
+回滚即可，不要提交这类噪音。判断「是不是真变了」用行数比对，别看 `git status`。
 
 ## 存储两阶段规划
 

@@ -64,10 +64,20 @@ public class RagRetrievalServiceTest {
     private final KnowledgeArticleMapper articleMapper = Mockito.mock(KnowledgeArticleMapper.class);
     private final com.itticket.rag.client.PythonRetrievalClient pythonClient =
             Mockito.mock(com.itticket.rag.client.PythonRetrievalClient.class);
-    private final RagRetrievalProperties properties = new RagRetrievalProperties();
+    private final RagRetrievalProperties properties = esProperties();
     private final DomainClassifier domainClassifier = new DomainClassifier(properties);
 
-    // 默认 provider=es：本类全部用例走 ES 旧路径（python 分支见 RagRetrievalServicePythonProviderTest）
+    /**
+     * 本类专测 ES 路径，**显式钉住 provider=es**，不依赖全局默认值——
+     * 默认值随部署策略调整（现为 python）时，这里必须还能稳定测到 ES 分支。
+     * python 分支见 {@link RagRetrievalServicePythonProviderTest}。
+     */
+    private static RagRetrievalProperties esProperties() {
+        RagRetrievalProperties p = new RagRetrievalProperties();
+        p.setProvider(RagRetrievalProperties.Provider.es);
+        return p;
+    }
+
     private final RagRetrievalService service =
             new RagRetrievalService(embeddingService, indexService, domainClassifier, properties,
                     articleMapper, pythonClient);

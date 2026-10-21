@@ -186,21 +186,31 @@ npm run dev                                                # http://127.0.0.1:51
 
 ## Python 检索服务（services/python-retrieval）
 
-`rag-service` 的检索内核支持可插拔 provider：默认 `es`（本模块内 ES 双路），设
-`RAG_RETRIEVAL_PROVIDER=python` 时改由本目录的 Python 检索服务承担「向量化 + 双路召回 +
-RRF + Cross-Encoder 精排 + 低置信拒答」，Java 侧只保留领域判定与 MySQL PUBLISHED 复核。
-对外契约 `POST /api/v1/rag/retrievals` 不变，回滚只需去掉该环境变量。
+`rag-service` 的检索内核支持可插拔 provider：**默认 `python`**，由本目录的 Python 检索服务
+承担「向量化 + 双路召回 + RRF + Cross-Encoder 精排 + 低置信拒答」，Java 侧只保留领域判定与
+MySQL PUBLISHED 复核。对外契约 `POST /api/v1/rag/retrievals` 不变。
+
+> ⚠️ **默认取 python 意味着 Python 检索服务必须可访问**：python 分支失败**不静默回退到 ES**，
+> 每次检索都会以依赖不可用收场。回滚是零代码的——设 `RAG_RETRIEVAL_PROVIDER=es` 即可。
+
+此外本服务还提供 **`POST /api/v1/policy/resolve`（版本消歧查询）**：给定主题与时间点，
+解析该时刻**有效**的规约版本，输出版本号、生效日、被取代日与溯源角标。它回答的是
+「某时刻该用哪一版」，与 `default_exclude` 的「别把废止做法教给员工」是两件事——
+因此它**刻意看得见废止卡**（`include_excluded=True`）。四种结论分得很清：
+`RESOLVED` / `NO_EFFECTIVE_VERSION` / `UNDATED`（没有生效日期，无法判定，不猜）/ `NO_MATCH`。
+详见 [`docs/runbook-python-retrieval.md`](services/python-retrieval/docs/runbook-python-retrieval.md)。
 
 ```text
 services/python-retrieval/
-├── rag_service/             # HTTP 服务层(FastAPI)：/api/v1/rag/retrievals、/api/health
+├── rag_service/             # HTTP 服务层(FastAPI)：/api/v1/rag/retrievals、/api/v1/policy/resolve、/api/health
 │   ├── app.py               # 端点定义 + 异常映射(5031 锁超时/4000 参数/5000 兜底)
-│   ├── assembly.py          # 进程级装配：配置/语料/向量库/检索器/映射/检索锁
+│   ├── assembly.py          # 进程级装配：配置/语料/向量库/检索器/映射/检索锁；含 resolve_policy 接线
 │   ├── contract.py          # 对 Java 的契约镜像(Pydantic, camelCase)
 │   ├── mapping.py           # 检索结果 → 契约字段(整卡全文/articleId 反查/拒答判定)
 │   ├── requirements.txt     # fastapi / uvicorn[standard] / pydantic
-│   └── tests/               # 纯逻辑单测(32 例)
-├── rag_pipeline/            # 检索内核库：config/chunking/embedding/store/retrieval/evaluation/ingestion
+│   └── tests/               # 纯逻辑单测(68 例，含版本消歧与端点契约)
+├── rag_pipeline/            # 检索内核库：config/chunking/embedding/store/retrieval/policy/evaluation/ingestion
+│   └── policy.py            # 版本消歧：沿 replaces 版本链按时间点解析有效规约版本
 ├── configs/pipeline.yaml    # 检索唯一配置源(切片/模型/参数/拒答阈值)
 ├── artifacts/
 │   ├── output/wiki/         # 35 张现行 Wiki 卡片(+3 废止) = 检索语料
@@ -217,15 +227,16 @@ pip install -r rag_service/requirements.txt
 RAG_HOME=$PWD python -m rag_service                 # 127.0.0.1:8310，单进程
 
 # 验证
-python -m pytest rag_service/tests -q              # 32 例
-python tools/check_contract.py                     # 对 Java 的契约不变量 69 项
+python -m pytest rag_service/tests -q              # 68 例
+python tools/check_contract.py                     # HTTP 黑盒契约不变量 85 项
 python tools/run_service_regression.py --pace 1.5  # 黄金集 20 题过 HTTP vs 冻结基线
 ```
 
-Java 侧启用（rag-service 启动参数）：
+Java 侧启动参数（**默认已是 python**，通常只需给地址；要回到 ES 才显式设 provider）：
 
 ```bash
-RAG_RETRIEVAL_PROVIDER=python RAG_PYTHON_BASE_URL=http://127.0.0.1:8310
+RAG_PYTHON_BASE_URL=http://127.0.0.1:8310
+# 回滚：RAG_RETRIEVAL_PROVIDER=es
 ```
 
 先决条件：**先灌库**（`python tools/sync_wiki_to_rag_service.py`，把卡片灌进 rag-service 的

@@ -24,7 +24,9 @@ public record AiChatResponse(
         /** 仅 REFUSE 时出现。 */
         @JsonInclude(JsonInclude.Include.NON_NULL) AiRefusalReason refusalReason,
         String modelVersion,
-        String interactionId) {
+        String interactionId,
+        /** 建单草稿(人机回环):AI 只产草稿,员工确认后才建单;非建单场景省略。 */
+        @JsonInclude(JsonInclude.Include.NON_NULL) TicketDraftDto ticketDraft) {
 
     /**
      * AI-004.3 把 citations 与 confidence 列为 required(REFUSE 分支同样必须出现),
@@ -33,5 +35,14 @@ public record AiChatResponse(
     public AiChatResponse {
         citations = citations == null ? List.of() : citations;
         confidence = confidence == null ? BigDecimal.ZERO.setScale(4) : confidence;
+    }
+
+    /** 向后兼容构造(无建单草稿)。 */
+    public AiChatResponse(String sessionId, AiReplyType replyType, String answerText,
+                          List<KnowledgeCitationDto> citations, BigDecimal confidence,
+                          boolean suggestTransfer, AiRefusalReason refusalReason,
+                          String modelVersion, String interactionId) {
+        this(sessionId, replyType, answerText, citations, confidence, suggestTransfer,
+                refusalReason, modelVersion, interactionId, null);
     }
 }

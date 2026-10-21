@@ -310,7 +310,8 @@ class ConsultationAttachmentServiceTest {
                 new ConsultationProperties());
         var consultations = new ConsultationService(mock(ConsultationMapper.class),transitions,chat,
                 mock(AssignmentService.class),mock(ConsultationSlaService.class),new AuthzService(new ConsultationProperties()),
-                idempotency,mock(OutboxService.class),new ConsultationProperties());
+                idempotency,mock(OutboxService.class),new ConsultationProperties(),
+                mock(com.itticket.consultation.adapter.model.TicketServiceClient.class));
         String id=transactionalAttachments.upload(creator,"S1",file()).attachmentId();
         ContentRequest request=new ContentRequest(null,"retry-client",List.of(id));
         when(messages.insert(any(ConsultationMessage.class))).thenThrow(new IllegalStateException("message write failed"));

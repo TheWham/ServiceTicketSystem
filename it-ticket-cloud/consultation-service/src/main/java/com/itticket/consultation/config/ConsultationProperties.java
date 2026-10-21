@@ -83,7 +83,7 @@ public class ConsultationProperties {
         private String apiKey;
 
         /** 模型 ID,由端点决定。 */
-        private String model = "qwen3-vl-32b-thinking";
+        private String model = "deepseek-v4-flash";
 
         /**
          * 生成 token 上限。
@@ -120,5 +120,21 @@ public class ConsultationProperties {
         private long circuitOpenMillis = 30000;
         private int circuitHalfOpenSuccessThreshold = 3;
         /** AI-001:高风险主题关键词,命中即拒答并引导转人工。 */
+
+        /** Function Calling 智能体配置(生成侧下沉到 Python agent_service)。 */
+        private Agent agent = new Agent();
+    }
+
+    /**
+     * Function Calling 智能体配置。默认关闭;开启后生成层改为调 Python `agent_service`
+     * (ReAct 循环 + 白名单工具),关闭时维持本地单轮「强制 JSON」生成(现状不变)。
+     */
+    @Data
+    public static class Agent {
+        private boolean enabled = false;
+        /** Python agent_service 基址,如 http://127.0.0.1:8320。 */
+        private String serviceBaseUrl;
+        /** ticket-service 内部接口基址(供「确认建单」回写工单;工单是 ticket-service 事实源)。 */
+        private String ticketServiceBaseUrl;
     }
 }

@@ -3,8 +3,10 @@ id: "ITKB-ACC-001"
 title: "域账号锁定排查与解锁处理"
 category: "账号与权限问题"
 department: "IT 部"
+effective_date: "2024-03-01"
+effective_date_source: "demo-constructed"
 version: "v1.0"
-replaces: []
+replaces: ["ITKB-LEG-ACC-001"]
 entities: ["AD域(Active Directory)", "Active Directory用户和计算机", "事件ID 4740", "组策略", "账户锁定策略", "自助密码重置平台", "安全日志"]
 keywords: ["账号锁定", "密码错误", "登录失败", "AD域", "账号禁用", "多次输错密码", "解锁账号"]
 summary: "针对密码多次输错等原因引发的域账号锁定，提供员工自助排查步骤及IT侧AD解锁与锁定溯源流程。"

@@ -4,10 +4,14 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.itticket.consultation.adapter.RagCallContext;
+import com.itticket.consultation.adapter.RagExecutionAudit;
+import com.itticket.consultation.adapter.model.TicketServiceClient;
 import com.itticket.consultation.api.ApiCode;
 import com.itticket.consultation.api.ApiException;
 import com.itticket.consultation.api.FieldIssue;
 import com.itticket.consultation.api.PagedData;
+import com.itticket.consultation.api.RequestContext;
 import com.itticket.consultation.config.ConsultationProperties;
 import com.itticket.consultation.dto.ConsultationCreatedResponse;
 import com.itticket.consultation.dto.ConsultationProjection;
@@ -15,6 +19,8 @@ import com.itticket.consultation.dto.ConsultationResolutionRequest;
 import com.itticket.consultation.dto.CreateConsultationRequest;
 import com.itticket.consultation.dto.ReasonRequest;
 import com.itticket.consultation.dto.QueueStatusResponse;
+import com.itticket.consultation.dto.TicketDraftConfirmRequest;
+import com.itticket.consultation.dto.TicketDraftConfirmResponse;
 import com.itticket.consultation.dto.TicketDraftResponse;
 import com.itticket.consultation.dto.TransferRequest;
 import com.itticket.consultation.dto.TransferResponse;
@@ -73,6 +79,7 @@ public class ConsultationService {
     private final IdempotencyService idempotencyService;
     private final OutboxService outboxService;
     private final ConsultationProperties properties;
+    private final TicketServiceClient ticketServiceClient;
 
     // ---------------------------------------------------------------- 创建
 
@@ -431,6 +438,32 @@ public class ConsultationService {
                     slaService.cancel(sessionId);
                     return ConsultationProjection.of(after);
                 }).value();
+    }
+
+    /**
+     * 人机回环第二步:员工确认 AI 建单草稿后真正建单。
+     *
+     * <p>AI 只产草稿(prepare_ticket 工具,不落库);本方法由员工显式确认触发:
+     * 先经 ticket-service 内部接口建单(咨询域不持有工单事实,架构 8.1),
+     * 再复用 {@link #markConverted} 把咨询转为工单。已转工单的会话幂等返回原工单号,
+     * 不重复建单(AX-001 归属校验 + RD-002 幂等)。
+     */
+    public TicketDraftConfirmResponse confirmTicketDraft(CurrentUser user, String sessionId,
+                                                         TicketDraftConfirmRequest request, String idempotencyKey) {
+        Consultation consultation = transitionService.load(sessionId);
+        authzService.requireCreator(user, consultation);
+        if (consultation.getConvertedTicketId() != null && !consultation.getConvertedTicketId().isBlank()) {
+            return new TicketDraftConfirmResponse(consultation.getConvertedTicketId());
+        }
+        RagCallContext call = new RagCallContext(RequestContext.get(),
+                System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(15),
+                new RagExecutionAudit());
+        String ticketId = ticketServiceClient.createTicket(user.userId(),
+                user.role() == null ? null : user.role().name(),
+                request.title(), request.category(), request.description(), request.priority(),
+                "ai-draft:" + idempotencyKey, call);
+        markConverted(user, sessionId, ticketId, idempotencyKey);
+        return new TicketDraftConfirmResponse(ticketId);
     }
 
     private void endActiveAssignment(String sessionId) {

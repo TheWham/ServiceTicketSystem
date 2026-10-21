@@ -4,9 +4,12 @@
 check_contract.py — rag_service 对外契约运行时校验（HTTP 黑盒）
 
 逐条断言 consultation-service `RagServiceKnowledgeRetriever.parse` 强校验的不变量，
-外加两项服务化专属要求：
+外加三项服务化专属要求：
   - content 必须取到整卡全文（parent_content），长度显著大于子块预算（防"半截卡"回归）；
-  - 检索打满时 /api/health 仍须秒回，且锁等待不得把并发请求排队几十秒（5031 快速失败）。
+  - 检索打满时 /api/health 仍须秒回，且锁等待不得把并发请求排队几十秒（5031 快速失败）；
+  - `/api/v1/policy/resolve`（版本消歧）：它没有 Java 消费方，但同样是本服务对外的
+    HTTP 契约。核心断言是**分水岭**——同一主题在两个日期必须给出不同版本；
+    同时校验「非 RESOLVED 态不返回半截结论」与参数校验。
 
 用法：
     python tools/check_contract.py
@@ -70,7 +73,7 @@ def main():
     positive = next(q for q in golden if not q.get("is_adversarial"))
     adversarial = next(q for q in golden if q.get("is_adversarial"))
 
-    print(f"\n[1/6] /api/health 自检（含在线预算回显）—— {base}")
+    print(f"\n[1/7] /api/health 自检（含在线预算回显）—— {base}")
     status, health = get(base, "/api/health")
     check("health 200", status == 200, f"status={status}")
     check("health.status ∈ {UP, DEGRADED}", health.get("status") in ("UP", "DEGRADED"),
@@ -85,7 +88,7 @@ def main():
     check("health 携带 chunkCount>0", isinstance(health.get("chunkCount"), int) and health["chunkCount"] > 0)
     check("rerank 远程可用", health.get("rerankAvailable") is True, str(health.get("rerankAvailable")))
 
-    print(f"\n[2/6] 正向检索契约（{positive['id']}）")
+    print(f"\n[2/7] 正向检索契约（{positive['id']}）")
     status, env = post(base, "/api/v1/rag/retrievals",
                        {"question": positive["query"], "topK": 3})
     check("HTTP 200", status == 200, f"status={status}")
@@ -124,7 +127,7 @@ def main():
     else:
         check("topScore 存在", "topScore" in data)
 
-    print(f"\n[3/6] 拒答契约（{adversarial['id']}）")
+    print(f"\n[3/7] 拒答契约（{adversarial['id']}）")
     status, env = post(base, "/api/v1/rag/retrievals",
                        {"question": adversarial["query"], "topK": 3})
     check("HTTP 200", status == 200, f"status={status}")
@@ -140,18 +143,18 @@ def main():
     check("topScore == 0.0", data.get("topScore") == 0.0, str(data.get("topScore")))
     check("publishedOnly == true", data.get("publishedOnly") is True)
 
-    print("\n[4/6] topK 上限钳制（topK=20）")
+    print("\n[4/7] topK 上限钳制（topK=20）")
     status, env = post(base, "/api/v1/rag/retrievals",
                        {"question": positive["query"], "topK": 20})
     items = (env.get("data") or {}).get("items") or []
     check("items ≤ 20", len(items) <= 20, str(len(items)))
 
-    print("\n[5/6] 非法请求（question 缺失）")
+    print("\n[5/7] 非法请求（question 缺失）")
     status, env = post(base, "/api/v1/rag/retrievals", {"topK": 3})
     check("HTTP 4xx", 400 <= status < 500, f"status={status}")
     check("code != 0", env.get("code") != 0, str(env.get("code")))
 
-    print("\n[6/6] 并发与锁：健康检查不抢锁 + 锁等待快速失败（不排队）")
+    print("\n[6/7] 并发与锁：健康检查不抢锁 + 锁等待快速失败（不排队）")
     lock_wait = float(health.get("lockWaitSeconds") or 1.0)
     token = str(time.time_ns())
     results = []
@@ -187,6 +190,60 @@ def main():
     else:
         print(f"  ℹ️ 本轮并发未触发锁竞争（3 请求均成功，总耗时 {total}s）——非失败项")
     check("无请求排队超过 30s", all(el < 30 for _, _, el in results), str(results))
+
+    print("\n[7/7] 版本消歧契约（/api/v1/policy/resolve）")
+    # 这个端点没有 Java 消费方，但它同样是本服务对外的 HTTP 契约，一并黑盒校验。
+    # 核心断言是**分水岭**：同一主题在两个日期必须给出不同版本，否则这个端点没有存在意义。
+    FOUR_STATES = {"RESOLVED", "NO_EFFECTIVE_VERSION", "UNDATED", "NO_MATCH"}
+    st_old, env_old = post(base, "/api/v1/policy/resolve",
+                           {"query": "域账号锁定 解锁", "at": "2024-01-15", "topK": 6})
+    st_new, env_new = post(base, "/api/v1/policy/resolve",
+                           {"query": "域账号锁定 解锁", "at": "2024-06-01", "topK": 6})
+    d_old, d_new = env_old.get("data") or {}, env_new.get("data") or {}
+
+    check("HTTP 200", st_old == 200 and st_new == 200, f"{st_old}/{st_new}")
+    check("code == 0", env_old.get("code") == 0 and env_new.get("code") == 0,
+          f"{env_old.get('code')}/{env_new.get('code')}")
+    check("status ∈ 四态",
+          d_old.get("status") in FOUR_STATES and d_new.get("status") in FOUR_STATES,
+          f"{d_old.get('status')}/{d_new.get('status')}")
+    check("分水岭两侧命中**不同**版本（相同则消歧失效）",
+          d_old.get("articleId") is not None and d_old.get("articleId") != d_new.get("articleId"),
+          f"old={d_old.get('articleId')} new={d_new.get('articleId')}"
+          "（相同通常意味着语料里的演示版本链丢了，见 runbook）")
+
+    for label, d in (("旧规", d_old), ("新规", d_new)):
+        ck = d.get("citation") or ""
+        check(f"{label} citation 形如 [来源: 卡号@版本 《标题》]",
+              ck.startswith("[来源: ") and "@" in ck and "《" in ck, ck[:60])
+        check(f"{label} articleId/version/effectiveDate 均非空",
+              all(d.get(k) for k in ("articleId", "version", "effectiveDate")), str(d)[:60])
+    check("旧规 supersededAt 非空（已被取代）", bool(d_old.get("supersededAt")),
+          str(d_old.get("supersededAt")))
+    check("新规 supersededAt 为空（现行）", d_new.get("supersededAt") is None,
+          str(d_new.get("supersededAt")))
+    check("chain 至少含新旧两版", len(d_new.get("chain") or []) >= 2,
+          str(len(d_new.get("chain") or [])))
+
+    # 非 RESOLVED 态不得带出半截结论：三字段要么齐、要么全空（不让人从「字段为空」反推结论）
+    st_un, env_un = post(base, "/api/v1/policy/resolve",
+                         {"query": "打印机脱机无法打印", "at": "2024-06-01"})
+    d_un = env_un.get("data") or {}
+    check("非 RESOLVED 态三字段必须同时为 null（不返回半截结论）",
+          d_un.get("status") == "RESOLVED"
+          or (d_un.get("citation") is None and d_un.get("articleId") is None
+              and d_un.get("version") is None),
+          f"status={d_un.get('status')} citation={d_un.get('citation')!r}")
+    check("UNDATED/NO_MATCH 是结论不是失败（HTTP 200 + code 0）",
+          d_un.get("status") in ("RESOLVED", "NO_EFFECTIVE_VERSION", "UNDATED", "NO_MATCH")
+          and st_un == 200 and env_un.get("code") == 0,
+          f"status={st_un} code={env_un.get('code')}")
+
+    st_noq, env_noq = post(base, "/api/v1/policy/resolve", {"topK": 6})
+    check("缺 query → HTTP 4xx", 400 <= st_noq < 500, f"status={st_noq}")
+    check("缺 query → code != 0", env_noq.get("code") != 0, str(env_noq.get("code")))
+    st_topk, _ = post(base, "/api/v1/policy/resolve", {"query": "VPN", "topK": 99})
+    check("topK 越界 → HTTP 4xx", 400 <= st_topk < 500, f"status={st_topk}")
 
     print(f"\n{'=' * 72}")
     print(f"契约校验结果：{len(PASS)} 通过 / {len(FAIL)} 失败")

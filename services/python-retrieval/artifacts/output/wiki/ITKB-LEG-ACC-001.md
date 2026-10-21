@@ -3,6 +3,8 @@ id: "ITKB-LEG-ACC-001"
 title: "域账号锁定处理（旧版·宽松策略，已废止）"
 category: "账号与权限问题"
 department: "IT 部"
+effective_date: "2022-01-01"
+effective_date_source: "demo-constructed"
 version: "v0.9"
 replaces: []
 entities: ["AD域", "账号锁定", "密码错误", "解锁账号", "安全日志", "4740"]

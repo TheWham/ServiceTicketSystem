@@ -3,6 +3,8 @@ id: "ITKB-LEG-NET-004"
 title: "DNS解析故障处理（旧版·强制内网DNS，已废止）"
 category: "网络连接"
 department: "IT 部"
+effective_date: "2022-01-01"
+effective_date_source: "demo-constructed"
 version: "v0.9"
 replaces: []
 entities: ["DNS", "DHCP", "223.5.5.5", "10.0.0.1", "flushdns"]

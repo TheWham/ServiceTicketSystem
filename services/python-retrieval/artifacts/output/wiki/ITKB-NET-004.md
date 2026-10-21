@@ -3,8 +3,10 @@ id: "ITKB-NET-004"
 title: "DNS解析失败故障排查与处置"
 category: "网络连接问题"
 department: "IT 部"
+effective_date: "2024-03-01"
+effective_date_source: "demo-constructed"
 version: "v1.0"
-replaces: []
+replaces: ["ITKB-LEG-NET-004"]
 entities: ["DNS", "nslookup", "ipconfig /flushdns", "hosts文件", "DHCP", "UDP 53端口", "阿里DNS(223.5.5.5)", "DNS_PROBE_FINISHED_NXDOMAIN"]
 keywords: ["DNS", "打不开网页", "QQ能上", "域名解析", "nslookup", "DNS_PROBE_FINISHED"]
 summary: "解决DNS解析失败致网页无法打开（QQ等正常）的问题：清缓存、改DNS、查hosts与代理，并排查公司DNS/DHCP/防火墙。"
