@@ -146,6 +146,29 @@
                   </el-popover>
                 </div>
 
+                <!-- AI 建单草稿（人机回环）：AI 只起草、不落库，员工确认后才真正建单 -->
+                <div v-if="msg.ticketDraft" class="ticket-draft-card">
+                  <div class="ticket-draft-head">
+                    <el-icon><Tickets /></el-icon>
+                    <span>AI 拟好的工单草稿 <em>（确认前不会创建工单）</em></span>
+                  </div>
+                  <div class="ticket-draft-body">
+                    <div class="ticket-draft-row"><span class="k">标题</span><span class="v">{{ msg.ticketDraft.title }}</span></div>
+                    <div class="ticket-draft-row"><span class="k">分类</span><span class="v">{{ msg.ticketDraft.category || '—' }}</span></div>
+                    <div class="ticket-draft-row"><span class="k">优先级</span><span class="v">{{ msg.ticketDraft.priority || 'MEDIUM' }}</span></div>
+                    <div class="ticket-draft-row"><span class="k">描述</span><span class="v">{{ msg.ticketDraft.description }}</span></div>
+                  </div>
+                  <div class="ticket-draft-actions">
+                    <template v-if="msg.draftTicketId">
+                      <el-tag type="success" size="small">已创建工单 {{ msg.draftTicketId }}</el-tag>
+                    </template>
+                    <el-button v-else type="primary" size="small" :icon="Tickets"
+                               :loading="msg.draftSubmitting" @click="submitTicketDraft(msg)">
+                      确认建单
+                    </el-button>
+                  </div>
+                </div>
+
                 <!-- 解决反馈只挂在最后一条非本地 AI 回复的气泡底部 -->
                 <div v-if="showAnswerFeedback(msg)" class="answer-feedback">
                   <template v-if="msg.feedback === null">
@@ -509,6 +532,26 @@ function pushLocal(senderType, content, extra = {}) {
 
 const GREETING_TEXT = '你好，我是 IT 智能助手小 T 👋 我可以帮你解决 VPN 连不上、邮箱收不到邮件、打印机故障、账号权限等常见 IT 问题。请描述你遇到的情况，我会先尝试帮你解决；如果解决不了，可以随时转接人工客服。'
 
+/**
+ * 确认 AI 拟好的建单草稿 —— 人机回环第二步。
+ * 草稿此前只存在于回答里，服务端没有写任何工单；这一步才真正创建，归属由服务端绑定当前员工。
+ */
+async function submitTicketDraft(msg) {
+  if (msg.draftSubmitting || msg.draftTicketId) return
+  const sid = session.value?.sessionId
+  if (!sid) return
+  msg.draftSubmitting = true
+  try {
+    const res = await consultationApi.confirmTicketDraft(sid, msg.ticketDraft)
+    msg.draftTicketId = res.ticketId
+    pushLocal('SYSTEM', `已为你创建工单 ${res.ticketId}，可在「我的工单」中跟进；工程师接单后会有通知。`)
+  } catch (e) {
+    ElMessage.error(e.message || '建单失败，请重试')
+  } finally {
+    msg.draftSubmitting = false
+  }
+}
+
 function createGreeting() {
   return {
     id: `local-greeting-${++localSeq}`,
@@ -553,7 +596,9 @@ async function send(event) {
           interactionId: res.interactionId,
           suggestTransfer: res.suggestTransfer,
           replyType: res.replyType,
-          generalAnswer: res.replyType === 'ANSWER' && !hasCitations
+          generalAnswer: res.replyType === 'ANSWER' && !hasCitations,
+          // AI 只产草稿不落库；由员工点「确认建单」才真正创建（人机回环）
+          ticketDraft: res.ticketDraft || null
         })
         if (res.replyType === 'ANSWER' && !hasCitations) {
           pushLocal('SYSTEM', '这条回答暂无知识库依据，仅供排查参考。你可以继续补充问题、反馈是否解决，或转人工处理。')
@@ -970,6 +1015,23 @@ onUnmounted(stopPolling)
 
 /* 引用 */
 .citations { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--el-border-color); }
+/* AI 建单草稿：视觉上刻意做成「待确认的草稿」而非已成立的工单 */
+.ticket-draft-card {
+  margin-top: 10px; padding: 10px 12px; border-radius: 8px;
+  border: 1px dashed var(--el-color-primary-light-5);
+  background: var(--el-color-primary-light-9);
+}
+.ticket-draft-head {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 600; color: var(--el-color-primary);
+  margin-bottom: 8px;
+}
+.ticket-draft-head em { font-style: normal; font-weight: 400; color: var(--el-text-color-secondary); font-size: 12px; }
+.ticket-draft-body { display: flex; flex-direction: column; gap: 4px; }
+.ticket-draft-row { display: flex; gap: 8px; font-size: 13px; line-height: 1.6; }
+.ticket-draft-row .k { flex: 0 0 48px; color: var(--el-text-color-secondary); }
+.ticket-draft-row .v { flex: 1; word-break: break-word; }
+.ticket-draft-actions { margin-top: 10px; display: flex; align-items: center; gap: 10px; }
 .general-answer-note {
   margin-top: 8px; padding: 6px 10px; border-radius: 6px;
   background: var(--el-color-info-light-9);

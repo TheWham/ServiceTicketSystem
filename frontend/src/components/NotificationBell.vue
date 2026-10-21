@@ -76,10 +76,18 @@ async function loadList() {
 
 // 点击通知 → 跳转待办行动入口（action_url），查看≠行动
 function onOpen(n) {
-  if (n.action_url) {
-    router.push(n.action_url)
+  const url = normalizeActionUrl(n.action_url)
+  if (url) {
+    router.push(url)
   }
   loadCount()
+}
+
+// 兼容历史通知：早期派单通知存的是 /exceptions/dispatch-drafts/{id}，而该路由不存在，
+// 点下去会被兜回登录页。新通知已改为 /supervisor?draft=，这里再兜一层旧数据。
+function normalizeActionUrl(url) {
+  const legacy = /^\/exceptions\/dispatch-drafts\/(.+)$/.exec(url || '')
+  return legacy ? `/supervisor?draft=${legacy[1]}` : url
 }
 
 function formatTime(t) {

@@ -27,7 +27,8 @@ spring:
         - id: ticket-service
           uri: lb://ticket-service
           predicates:
-            - Path=/api/v1/tickets/**,/api/v1/ticket-drafts/**
+            # dispatch-drafts 是 HITL 派单门禁的对外端点（认领/裁决）；漏了它前端一律 404
+            - Path=/api/v1/tickets/**,/api/v1/ticket-drafts/**,/api/v1/dispatch-drafts/**
         - id: consultation-service
           uri: lb://consultation-service
           predicates:

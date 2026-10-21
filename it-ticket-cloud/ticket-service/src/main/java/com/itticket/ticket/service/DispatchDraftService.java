@@ -323,7 +323,7 @@ public class DispatchDraftService {
                         "【派单待确认】" + draft.getEngineerId(),
                         "工单 " + draft.getTicketId() + " 的派单草案待确认，截止 "
                                 + draft.getExpiresAt() + "，逾期自动失效。",
-                        "/exceptions/dispatch-drafts/" + draft.getDraftId());
+                        "/supervisor?draft=" + draft.getDraftId());
             }
             if (admins.isEmpty()) {
                 log.warn("[派单草案] 无平台管理员可通知（草案仍可在待办列表处理）: {}", draft.getDraftId());
@@ -342,7 +342,7 @@ public class DispatchDraftService {
             for (UserInfo admin : admins()) {
                 notificationService.sendInbox("DISPATCH_DRAFT_RESULT:" + draft.getDraftId() + ":" + draft.getStatus(),
                         admin.getUserId(), "【派单草案】" + draft.getTicketId(), message,
-                        "/exceptions/dispatch-drafts/" + draft.getDraftId());
+                        "/supervisor?draft=" + draft.getDraftId());
             }
         } catch (Exception e) {
             log.error("[派单草案] 通知结果失败（不阻断）: {}", e.getMessage());

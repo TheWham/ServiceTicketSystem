@@ -9,6 +9,91 @@
       <el-button :icon="Refresh" :loading="loading" @click="loadTickets">刷新工单</el-button>
     </div>
 
+    <!-- 派单待确认（HITL 写操作门禁）：自动路由只产草案，这里点头才真正落分派 -->
+    <el-card shadow="never" class="draft-card">
+      <template #header>
+        <div class="draft-head">
+          <span class="section-title">派单待确认</span>
+          <el-tag v-if="drafts.length" type="warning" effect="dark" size="small">{{ drafts.length }} 待处理</el-tag>
+          <span class="draft-hint">
+            自动路由已算好建议人选并落了草案，<strong>工单仍停在「新建」</strong>——放行后才真正分派
+          </span>
+          <el-button :icon="Refresh" size="small" :loading="draftsLoading" @click="loadDrafts">刷新</el-button>
+        </div>
+      </template>
+      <el-empty v-if="!draftsLoading && drafts.length === 0" description="没有待确认的派单草案" :image-size="60" />
+      <el-table
+        v-else
+        v-loading="draftsLoading"
+        :data="drafts"
+        size="small"
+        :row-class-name="draftRowClass"
+      >
+        <el-table-column prop="ticketId" label="工单号" width="180" />
+        <el-table-column label="建议工程师" width="170">
+          <template #default="{ row }">
+            {{ row.engineerName || '—' }}<span class="draft-dim">（{{ row.engineerId }}）</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="优先级" width="90">
+          <template #default="{ row }">
+            <el-tag size="small" :type="PRIORITY_TYPE[row.priority] || 'info'">{{ priorityLabel(row.priority) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="候选依据" min-width="200">
+          <template #default="{ row }">{{ row.selectionNote || '—' }}</template>
+        </el-table-column>
+        <el-table-column label="截止" width="170">
+          <template #default="{ row }">{{ formatTime(row.expiresAt) }}</template>
+        </el-table-column>
+        <el-table-column label="认领人" width="110">
+          <template #default="{ row }">
+            <span v-if="row.claimedBy">{{ row.claimedBy }}</span>
+            <span v-else class="draft-dim">未认领</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="200" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" size="small" @click.stop="openDraft(row)">详情</el-button>
+            <el-button
+              v-if="!row.claimedBy"
+              link type="warning" size="small"
+              :loading="draftActing === row.draftId"
+              @click.stop="claimDraft(row)"
+            >认领</el-button>
+            <el-button
+              link type="success" size="small"
+              :disabled="!!row.claimedBy && row.claimedBy !== currentUserId"
+              :loading="draftActing === row.draftId"
+              @click.stop="approveDraft(row)"
+            >放行</el-button>
+            <el-button
+              link type="danger" size="small"
+              :disabled="!!row.claimedBy && row.claimedBy !== currentUserId"
+              :loading="draftActing === row.draftId"
+              @click.stop="rejectDraft(row)"
+            >驳回</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- 草案详情：审批人看到的必须是裁决那一刻的依据（落库快照，不按当前数据重算） -->
+    <el-dialog v-model="draftDialogVisible" title="派单草案详情" width="560px">
+      <el-descriptions v-if="draftDetail" :column="1" border size="small">
+        <el-descriptions-item label="工单号">{{ draftDetail.ticketId }}</el-descriptions-item>
+        <el-descriptions-item label="工单标题">{{ draftDetail.title }}</el-descriptions-item>
+        <el-descriptions-item label="建议工程师">
+          {{ draftDetail.proposedEngineerName || '—' }}（{{ draftDetail.proposedEngineerId }}）
+        </el-descriptions-item>
+        <el-descriptions-item label="分类">{{ draftDetail.categoryId || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="优先级">{{ priorityLabel(draftDetail.priority) }}</el-descriptions-item>
+        <el-descriptions-item label="候选依据">{{ draftDetail.selectionNote || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="生成时间">{{ formatTime(draftDetail.generatedAt) }}</el-descriptions-item>
+        <el-descriptions-item label="截止时间">{{ formatTime(draftDetail.expiresAt) }}</el-descriptions-item>
+      </el-descriptions>
+    </el-dialog>
+
     <p class="scope-note">统计仅涵盖当前筛选下已加载的 {{ tickets.length }} 张工单；符合筛选的工单共 {{ total }} 张。</p>
     <div class="stat-row">
       <div v-for="s in stats" :key="s.label" class="stat-card">
@@ -257,9 +342,13 @@ import {
   DataAnalysis, Refresh, RefreshRight,
   Clock, Loading, CircleCheck, Finished, Document
 } from '@element-plus/icons-vue'
-import { ticketApi, userApi, categoryApi } from '../api/index.js'
+import { ticketApi, userApi, categoryApi, dispatchDraftApi } from '../api/index.js'
+import { useUserStore } from '../stores/user.js'
 import { loadPhotoUrls, revokePhotoUrls } from '../utils/attachmentPhotos.js'
 import SlaBadge from '../components/SlaBadge.vue'
+
+const userStore = useUserStore()
+const currentUserId = computed(() => userStore.userId)
 
 // 状态/优先级映射（PRD §9.2 九态 + HIGH/MEDIUM/LOW）
 const STATUS_LABEL = {
@@ -291,6 +380,81 @@ const page = ref(1)
 const pageSize = 15
 const filter = ref({ status: '', category: '', assignee: '' })
 const engineers = ref([])
+
+// ---- 派单待确认（HITL 写操作门禁）----
+// 自动路由只产出 PENDING 草案；认领→裁决之后工单才从 NEW 落到 ASSIGNED。
+const drafts = ref([])
+const draftsLoading = ref(false)
+const draftActing = ref('')
+const draftDetail = ref(null)
+const draftDialogVisible = ref(false)
+const highlightDraft = ref('')
+
+async function loadDrafts() {
+  draftsLoading.value = true
+  try {
+    const res = await dispatchDraftApi.list({ page: 1, pageSize: 50 })
+    drafts.value = res.data?.list || []
+  } catch (e) {
+    // 草案端点异常不应拖垮工单管理主流程，退化为空列表
+    drafts.value = []
+    console.error('加载派单草案失败', e)
+  } finally {
+    draftsLoading.value = false
+  }
+}
+
+async function openDraft(row) {
+  try {
+    const res = await dispatchDraftApi.detail(row.draftId)
+    draftDetail.value = res.data || null
+    draftDialogVisible.value = true
+  } catch (e) { ElMessage.error(e.message) }
+}
+
+async function claimDraft(row) {
+  draftActing.value = row.draftId
+  try {
+    await dispatchDraftApi.claim(row.draftId)
+    ElMessage.success('已认领，请核对依据后裁决')
+    await loadDrafts()
+  } catch (e) { ElMessage.error(e.message) } finally { draftActing.value = '' }
+}
+
+async function approveDraft(row) {
+  draftActing.value = row.draftId
+  try {
+    await dispatchDraftApi.decide(row.draftId, { approve: true, reason: '主管确认放行' })
+    ElMessage.success('已放行，工单已分派给工程师')
+    await Promise.all([loadDrafts(), loadTickets()])
+  } catch (e) { ElMessage.error(e.message) } finally { draftActing.value = '' }
+}
+
+async function rejectDraft(row) {
+  // 驳回必须说明原因——服务端强校验，前端先拦一道，避免拿 40001 当交互
+  let reason
+  try {
+    const { value } = await ElMessageBox.prompt('驳回必须说明原因（工单保持「新建」，不做静默改派）', '驳回派单草案', {
+      inputPlaceholder: '例如：该工程师不熟悉此分类',
+      inputValidator: v => (v && v.trim().length > 0) || '原因不能为空',
+      confirmButtonText: '确认驳回',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    reason = value.trim()
+  } catch { return }  // 用户取消
+
+  draftActing.value = row.draftId
+  try {
+    await dispatchDraftApi.decide(row.draftId, { approve: false, reason })
+    ElMessage.success('已驳回，工单保持待路由')
+    await loadDrafts()
+  } catch (e) { ElMessage.error(e.message) } finally { draftActing.value = '' }
+}
+
+function draftRowClass({ row }) {
+  return row.draftId === highlightDraft.value ? 'draft-row-hit' : ''
+}
 
 // 统计
 const stats = computed(() => {
@@ -445,19 +609,48 @@ onMounted(async () => {
     categories.value = res.data || []
   } catch (e) { console.error('加载分类失败', e) }
   await loadTickets()
+  await loadDrafts()
   // 通知跳转：URL 带 ?ticket=xxx 时自动打开该工单详情
   if (route.query.ticket) {
     openDetail({ ticket_id: route.query.ticket })
   }
+  // 通知跳转：URL 带 ?draft=xxx 时高亮对应草案（「派单待确认」通知的落点）
+  if (route.query.draft) highlightDraft.value = String(route.query.draft)
 })
 
 // 同页点击通知只改 query，组件不重挂载——watch query 变化自动打开详情
 watch(() => route.query.ticket, (tid) => {
   if (tid) openDetail({ ticket_id: tid })
 })
+
+watch(() => route.query.draft, (did) => {
+  if (did) {
+    highlightDraft.value = String(did)
+    loadDrafts()
+  }
+})
 </script>
 
 <style scoped>
+.draft-card {
+  margin-bottom: 16px;
+}
+.draft-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.draft-head .draft-hint {
+  flex: 1;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+.draft-dim {
+  color: var(--el-text-color-secondary);
+}
+:deep(.draft-row-hit) {
+  background: var(--el-color-warning-light-9);
+}
 .page-head {
   display: flex;
   align-items: flex-start;

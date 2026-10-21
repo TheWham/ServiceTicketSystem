@@ -140,6 +140,17 @@ export const consultationApi = {
   /** OpenAPI 05 getTicketDraftFromConsultation:咨询转单预填(员工可修改) */
   ticketDraft: (id) => http.get(`/consultations/${id}/ticket-draft`),
 
+  /**
+   * 员工确认 AI 拟好的建单草稿 —— 人机回环第二步。
+   * AI 只能起草(不落库),这一步才是建单真正发生的地方;归属由服务端绑定当前登录员工。
+   */
+  confirmTicketDraft: (id, draft) => http.post(`/consultations/${id}/ticket-draft/confirm`, {
+    title: draft.title,
+    category: draft.category || null,
+    description: draft.description,
+    priority: draft.priority || 'MEDIUM'
+  }),
+
   /** AI-API-005 知识搜索,只返回已发布版本 */
   searchKnowledge: (query, category, page = 1, pageSize = 10) =>
     http.get('/knowledge/search', { params: { query, category, page, pageSize } })

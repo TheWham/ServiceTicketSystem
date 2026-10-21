@@ -104,6 +104,16 @@ export const notificationApi = {
   pendingCount: () => api.get('/notifications/pending-count')
 }
 
+// ---- 派单草案 API（HITL 写操作门禁：认领 → 裁决）----
+// 自动路由只产出待确认草案，工单保持 NEW；approve 才真正落分派（PLATFORM_ADMIN 专属）。
+export const dispatchDraftApi = {
+  list: (params) => api.get('/dispatch-drafts', { params }),
+  detail: (draftId) => api.get(`/dispatch-drafts/${draftId}`),
+  claim: (draftId) => api.post(`/dispatch-drafts/${draftId}/claim`),
+  // approve=false 时 reason 必填（驳回必须说明原因，服务端强校验）
+  decide: (draftId, data) => api.post(`/dispatch-drafts/${draftId}/decide`, data)
+}
+
 // ---- SLA 计时 API ----
 export const slaApi = {
   byTicket: (ticketId) => api.get(`/sla/${ticketId}`)
