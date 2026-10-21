@@ -584,13 +584,9 @@ public class TicketService {
         String oldAssignee = ticket.getAssigneeId();
         boolean isReassign = oldAssignee != null && !oldAssignee.equals(req.getAssigneeId());
 
-        // 写 assignment 分配记录（转派不删历史责任 §12.3）
+        // 写 assignment 分配记录（内部已统一落 status=ASSIGNED，与 HITL 放行/超时转派共用同一语义）
         routingService.assign(ticket, req.getAssigneeId(), isReassign ? "TRANSFERRED" : null);
 
-        ticketMapper.update(null, new LambdaUpdateWrapper<Ticket>()
-                .eq(Ticket::getTicketId, ticketId)
-                .set(Ticket::getStatus, TicketStatus.ASSIGNED)
-                .set(Ticket::getUpdatedAt, LocalDateTime.now(java.time.ZoneOffset.UTC)));
         insertFlowLog(ticketId, ticket.getStatus().getValue(), TicketStatus.ASSIGNED.getValue(),
                 isReassign ? "TICKET_REASSIGN" : "TICKET_ASSIGN", operator.getUserId(), (isReassign ? "改派: " : "派单: ") + (req.getReason() == null || req.getReason().isBlank() ? "无" : req.getReason()));
 

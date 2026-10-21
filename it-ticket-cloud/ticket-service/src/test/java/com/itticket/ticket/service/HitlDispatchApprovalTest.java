@@ -13,7 +13,10 @@ import com.itticket.ticket.entity.Ticket;
 import com.itticket.ticket.entity.TicketFlowLog;
 import com.itticket.ticket.enums.TicketStatus;
 import com.itticket.ticket.feign.UserClient;
+import com.itticket.ticket.mapper.AssignmentMapper;
+import com.itticket.ticket.mapper.CategoryRouteMapper;
 import com.itticket.ticket.mapper.DispatchDraftMapper;
+import com.itticket.ticket.mapper.TeamMemberMapper;
 import com.itticket.ticket.mapper.TicketFlowLogMapper;
 import com.itticket.ticket.mapper.TicketMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -46,6 +49,15 @@ import static org.mockito.Mockito.*;
  * </ol>
  */
 class HitlDispatchApprovalTest {
+
+    /** LambdaUpdateWrapper 需要 MyBatis-Plus 实体元数据注册一次 */
+    @org.junit.jupiter.api.BeforeAll
+    static void initializeMapping() {
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
+                new org.apache.ibatis.builder.MapperBuilderAssistant(
+                        new com.baomidou.mybatisplus.core.MybatisConfiguration(), ""),
+                com.itticket.ticket.entity.Ticket.class);
+    }
 
     private DispatchDraftMapper draftMapper;
     private TicketFlowLogMapper flowLogMapper;
@@ -292,14 +304,43 @@ class HitlDispatchApprovalTest {
     }
 
     // ========== 场景 13：终态工单不产生草案 ==========
-
+    
     @Test
     void terminalTicketDoesNotGenerateDraft() {
         Ticket closed = ticket("TK99", TicketStatus.CANCELLED);
         DispatchDraft result = draftService.createDraft(closed, "ENG01", "idem-3", "test");
         assertNull(result, "终态工单不应产生派单草案");
     }
-
+    
+    // ========== 场景 14：assign() 放行后工单状态必然流转 NEW→ASSIGNED ==========
+    //
+    // 对应 P0 问题报告：此前 assign() 只写 assignee不写 status，
+    // 导致流转日志 NEW→ASSIGNED 与工单实际状态矛盾、工程师端不可见。
+    // 此测试直接断言真实 Ticket.status，而非仅断言回调被调用。
+    
+    @Test
+    void assignSetsTicketStatusFromNewToAssigned() {
+        Ticket ticket = ticket("TK01", TicketStatus.NEW);
+        when(ticketMapper.selectOne(any())).thenReturn(ticket);
+        // MyBatis-Plus Wrapper 不反射回填 Java 对象，
+        // doAnswer 模拟 DB 生效：任何 update 都使 ticket 变为 ASSIGNED
+        when(ticketMapper.update(any(), any())).thenAnswer(inv -> {
+            ticket.setStatus(TicketStatus.ASSIGNED);
+            return 1;
+        });
+        
+        RoutingService routing = new RoutingService(mock(CategoryRouteMapper.class), mock(TeamMemberMapper.class),
+                mock(AssignmentMapper.class), ticketMapper, mock(UserClient.class), mock(WorkCalendarService.class),
+                mock(ExceptionQueueService.class), notifications, flowLogMapper, draftService);
+        
+        routing.assign(ticket, "ENG01", null);
+        
+        // 直接断言真实工单状态（而非仅验回调被调用）
+        // 这正是过去测试漏掉的断言——只验了 DispatchDraft.status，从未验 Ticket.status
+        assertEquals(TicketStatus.ASSIGNED, ticket.getStatus(),
+            "RoutingService.assign() 必须将工单状态从 NEW 更新为 ASSIGNED");
+    }
+    
     // ========== 辅助 ==========
 
     private Ticket ticket(String id, TicketStatus status) {
