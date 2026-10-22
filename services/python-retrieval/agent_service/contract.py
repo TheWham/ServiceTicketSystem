@@ -64,3 +64,6 @@ class AgentChatResponse(BaseModel):
     knowledge_conflict: bool = Field(default=False, alias="knowledgeConflict")
     off_topic: bool = Field(default=False, alias="offTopic")
     ticket_draft: Optional[TicketDraft] = Field(default=None, alias="ticketDraft")
+    # 链路追踪 ID（= 请求的 X-Request-Id）。Java 侧不读它也不受影响；汇报/排查时用它
+    # 在 agent 日志里把这轮 ReAct 的 generation / 工具 span 全部串起来。
+    trace_id: str = Field(default="", alias="traceId")

@@ -8,7 +8,10 @@
 
 import json
 import logging
+import uuid
 from typing import Any, Dict, List, Optional
+
+from rag_pipeline.observability.tracer import Tracer
 
 from . import config as acfg
 from .contract import AgentChatRequest, AgentChatResponse, TicketDraft
@@ -78,6 +81,11 @@ class AgentRunner:
 
     def run(self, req: AgentChatRequest, user_id: str, role: str,
             request_id: str = "") -> AgentChatResponse:
+        # 一轮 ReAct 一棵 Trace：generation span 记每轮模型调用，span 记每次工具调用。
+        # trace_id 复用请求的 X-Request-Id —— Java 侧日志本就带它，全链由此可串。
+        tracer = Tracer(trace_id=f"trace-{request_id or uuid.uuid4().hex[:12]}",
+                        name="agent.chat", workflow="Function Calling 智能体",
+                        user_id=user_id or "")
         ctx = ToolContext(user_id, role, request_id)
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": _system_prompt()},
@@ -88,7 +96,10 @@ class AgentRunner:
 
         for step in range(self.max_steps):
             last_step = step == self.max_steps - 1
-            turn = self.model.complete_with_tools(messages, specs, "none" if last_step else "auto")
+            with tracer.generation(f"ReAct轮{step + 1}", model=acfg.LLM_MODEL) as gen_span:
+                turn = self.model.complete_with_tools(messages, specs, "none" if last_step else "auto")
+                gen_span.record(output={"toolCalls": [c.name for c in turn.tool_calls],
+                                        "hasToolCalls": turn.has_tool_calls})
             if not turn.has_tool_calls:
                 final_content = turn.content or ""
                 break
@@ -101,20 +112,27 @@ class AgentRunner:
                                for c in turn.tool_calls],
             })
             for call in turn.tool_calls:
-                result = dispatch(call.name, call.arguments, ctx)
+                with tracer.span(f"tool.{call.name}") as span:
+                    span.record(input=call.arguments)
+                    result = dispatch(call.name, call.arguments, ctx)
+                    span.record(output={"success": result.get("success")})
                 messages.append({"role": "tool", "tool_call_id": call.id,
                                  "content": json.dumps(result, ensure_ascii=False)})
 
         if final_content is None:
             raise ModelError("ReAct 步数超限")
+        tracer.finish()   # 打上 Trace 结束时间：端到端总时延 = 起点到这一刻
         # 最终 JSON 落日志：拒答/答非所问时，能回放「模型当时到底输出了什么」——
         # 这是 Day17 那句「坏例当时的 prompt」的最小实现。
         log.info("[生成] 最终 JSON requestId=%s: %s", ctx.request_id, (final_content or "")[:600])
+        log.info("[链路] %s", json.dumps(tracer.summary(), ensure_ascii=False)[:400])
         try:
             payload = json.loads(final_content)
         except ValueError as e:
             raise ModelError(f"模型输出不是合法 JSON: {e}") from e
-        return _to_response(payload, ctx.draft)
+        response = _to_response(payload, ctx.draft)
+        response.trace_id = tracer.trace_id
+        return response
 
 
 def _to_response(payload: Any, draft: Optional[TicketDraft]) -> AgentChatResponse:
