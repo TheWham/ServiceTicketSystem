@@ -50,7 +50,12 @@ public final class DependencyHttpClient {
                 throw new DependencyFailure(RagStatus.UNAVAILABLE, "AUTH_FAILED", false);
             if (status == 429) throw new DependencyFailure(RagStatus.UNAVAILABLE, "RATE_LIMITED", true);
             if (status >= 500) throw new DependencyFailure(RagStatus.UNAVAILABLE, "UNAVAILABLE", true);
-            if (status != 200) throw new DependencyFailure(RagStatus.UNAVAILABLE, "PERMANENT_HTTP", false);
+            if (status != 200) {
+                // 4xx 的真实原因在响应体里（如「分类不存在」「分类不能为空」）——
+                // 只抛 errorClass 的话，前端只能看到一句 internal error，用户无从修正。
+                throw new DependencyFailure(RagStatus.UNAVAILABLE, "PERMANENT_HTTP", false,
+                        response.body() == null ? null : response.body());
+            }
             JsonNode root;
             try { root = json.readTree(response.body()); }
             catch (com.fasterxml.jackson.core.JsonProcessingException invalid) { throw DependencyFailure.invalid(); }

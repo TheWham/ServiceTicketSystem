@@ -6,9 +6,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.itticket.consultation.adapter.DependencyFailure;
 import com.itticket.consultation.adapter.RagCallContext;
 import com.itticket.consultation.adapter.RagStatus;
+import com.itticket.consultation.api.ApiCode;
+import com.itticket.consultation.api.ApiException;
 import com.itticket.consultation.config.ConsultationProperties;
 
 import java.net.URI;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -43,11 +46,32 @@ public final class TicketServiceClient {
         if (category != null && !category.isBlank()) body.put("category", category.trim());
         if (priority != null && !priority.isBlank()) body.put("priority", priority.trim());
         if (clientToken != null && !clientToken.isBlank()) body.put("client_token", clientToken);
-        JsonNode data = dataOf(http.post(URI.create(endpoint()), body, headers(userId, role),
-                ctx, REQUEST_TIMEOUT_MS));
+        JsonNode data;
+        try {
+            data = dataOf(http.post(URI.create(endpoint()), body, headers(userId, role),
+                    ctx, REQUEST_TIMEOUT_MS));
+        } catch (DependencyFailure failure) {
+            // 建单被工单系统以 4xx 拒绝（如「分类不存在」「分类不能为空」）——
+            // 把真实原因带回给员工，让他能改草稿重试，而不是一句 internal error。
+            // 传输层失败照旧上抛（交给断路器/重试，语义完全不同）。
+            if ("PERMANENT_HTTP".equals(failure.getMessage()) && failure.detail() != null)
+                throw new ApiException(ApiCode.VALIDATION_ERROR, "工单系统拒绝建单：" + briefReason(failure.detail()));
+            throw failure;
+        }
         String ticketId = data.path("ticket_id").asText("");
         if (ticketId.isBlank()) throw DependencyFailure.invalid();
         return ticketId;
+    }
+
+    /** 从下游 4xx 响应体里提取人可读的原因（优先 msg/message 字段，否则原文截断）。 */
+    private static String briefReason(String responseBody) {
+        try {
+            JsonNode node = new ObjectMapper().readTree(responseBody);
+            for (String field : List.of("msg", "message", "error"))
+                if (node.path(field).isTextual() && !node.path(field).asText().isBlank())
+                    return node.path(field).asText();
+        } catch (Exception ignored) { /* 非 JSON 就用原文 */ }
+        return responseBody.length() > 120 ? responseBody.substring(0, 120) : responseBody;
     }
 
     private String endpoint() {
