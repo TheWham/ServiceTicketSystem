@@ -137,6 +137,9 @@ class ToolIntentBypassTest {
         assertThat(result.replyType()).isEqualTo(AiReplyType.ANSWER);
         assertThat(result.refusalReason()).isNull();
         assertThat(result.answerText()).contains("工单草稿");
+        // 关键：必须标记为「无知识依据」通道——下游 AiAnswerGuard 第 8 条对
+        // 「知识回答零引用」一律拒答，只有 generalAnswer=true 才按置信度放行
+        assertThat(result.generalAnswer()).isTrue();
     }
 
     @Test

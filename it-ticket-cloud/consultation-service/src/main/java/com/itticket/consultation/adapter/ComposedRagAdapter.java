@@ -65,7 +65,10 @@ public final class ComposedRagAdapter implements RagAdapter {
             List<KnowledgeCitationDto> citations = generated.usedVersionIds().stream().distinct()
                     .map(byVersion::get).map(item -> new KnowledgeCitationDto(item.articleId(), item.versionId(),
                             item.title(), item.score(), item.snippet())).toList();
-            boolean general = material.isEmpty();
+            // 工具意图的作答实据来自工具返回（工单列表/建单草稿），不来自知识引用——
+            // 即使检索带出了材料也按「无知识依据」通道放行（AiAnswerGuard 第 7 条），
+            // 否则会被第 8 条「知识回答必须带引用」当伪造拒掉。置信度门槛照常约束。
+            boolean general = material.isEmpty() || (toolBypass && generated.usedVersionIds().isEmpty());
             String text = generated.answerText();
             // 工具意图越过的作答是「凭工具查到的实据」（如本人工单列表），不是通用建议——
             // 加这句前缀会与正文自相矛盾。general 标记本身保留（确实无知识库引用），只是不展示该措辞。
