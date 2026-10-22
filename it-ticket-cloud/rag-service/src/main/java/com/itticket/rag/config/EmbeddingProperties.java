@@ -36,8 +36,8 @@ public class EmbeddingProperties {
     /** 访问密钥 API Key —— 一律由环境变量 EMBEDDING_API_KEY 注入，不提供默认值（MR-002 · specs/10-model-rag-integration.md:40：禁止明文入库） */
     private String apiKey;
 
-    /** 向量嵌入模型标识 */
-    private String model = "qwen3.7-text-embedding";
+    /** 向量嵌入模型标识 —— 不设样例默认，未配置时按依赖不可用降级并给出明确报错 */
+    private String model = "";
 
     /** 向量空间维度 */
     private Integer dimensions = 1024;
