@@ -10,7 +10,7 @@
 失败一律返回 `{"success": false, "error": ...}`（不抛），以 role="tool" 回传给模型触发反思自愈。
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import json
 import logging
 import uuid
@@ -23,6 +23,9 @@ from .contract import TicketDraft
 log = logging.getLogger(__name__)
 
 _PRIORITIES = {"HIGH", "MEDIUM", "LOW"}
+# 建单分类兜底：种子里的「其他」末级分类（有路由规则，建单后可由管理员调整）。
+_CATEGORY_FALLBACK = "C_OTH"
+_LEAF_CACHE: Dict[str, Any] = {"ids": None}
 
 
 class ToolContext:
@@ -87,13 +90,16 @@ def tool_specs() -> List[Dict[str, Any]]:
             "function": {
                 "name": "prepare_ticket",
                 "description": "把员工的 IT 故障/服务请求整理成工单草稿（标题、描述、可选分类与优先级）。"
-                               "重要：只生成草稿，不会真正建单；草稿需员工确认后才会创建工单。",
+                               "重要：只生成草稿，不会真正建单；草稿需员工确认后才会创建工单。"
+                               "无法确定分类时不要编造，直接省略 category。",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "title": {"type": "string", "description": "工单标题，简洁概括问题"},
                         "description": {"type": "string", "description": "问题描述：现象、已做排查、影响范围"},
-                        "category": {"type": "string", "description": "可选分类 ID，如 C_HW_PC/C_NET/C_SW/C_ACC"},
+                        "category": {"type": "string", "description": "可选分类 ID，仅限系统启用末级分类："
+                                                                       "C_HW_PC/C_HW_PR/C_SW/C_NET/C_ACC/C_OTH；"
+                                                                       "不确定就省略，不要编造"},
                         "priority": {"type": "string", "description": "可选优先级：HIGH/MEDIUM/LOW"},
                     },
                     "required": ["title", "description"],
@@ -193,6 +199,28 @@ def _query_my_tickets(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     return {"success": True, "tickets": data if isinstance(data, list) else []}
 
 
+def _leaf_category_ids(ctx: "ToolContext") -> Optional[set]:
+    """拉取系统启用的末级分类 ID（ticket-service /api/v1/categories/leaf），进程级缓存。
+
+    模型会编造分类（“硬件”“C_硬件”这类），直接透传会让确认建单 400。
+    拉取失败返回 None —— 此时无法校验，按“缺省兜底分类”处理。
+    """
+    if _LEAF_CACHE["ids"] is not None:
+        return _LEAF_CACHE["ids"]
+    base = acfg.TICKET_SERVICE_BASE_URL
+    if not base:
+        return None
+    try:
+        body = _http_get(base.rstrip("/") + "/api/v1/categories/leaf", {}, ctx)
+        ids = {c.get("categoryId") or c.get("category_id") for c in (body.get("data") or [])}
+        ids.discard(None)
+        if ids:
+            _LEAF_CACHE["ids"] = ids
+    except Exception:  # noqa: BLE001 —— 拉取失败不缓存，下次再试
+        return None
+    return _LEAF_CACHE["ids"]
+
+
 def _prepare_ticket(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     title = str(args.get("title") or "").strip()[:acfg.DRAFT_TITLE_MAX]
     description = str(args.get("description") or "").strip()[:acfg.DRAFT_DESC_MAX]
@@ -204,6 +232,16 @@ def _prepare_ticket(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
     priority = str(args.get("priority") or "").strip().upper()
     if priority not in _PRIORITIES:
         priority = "MEDIUM"
+    # 分类兜底：建单契约要求分类必填且必须是启用末级分类。模型常给空或编造
+    # （“硬件”/不存在的 ID），直接透传会让员工确认建单时收到 internal error。
+    # 统一兜底到「其他 C_OTH」并在结果里说明，工单落库后管理员仍可改派/调整。
+    category_note = None
+    leaves = _leaf_category_ids(ctx)
+    if category is None or (leaves is not None and category not in leaves):
+        invalid = category
+        category = _CATEGORY_FALLBACK
+        category_note = (f"原分类「{invalid}」不在系统启用分类内"
+                         if invalid else "未识别到分类") + f"，已按「其他（{_CATEGORY_FALLBACK}）」建单。"
     draft = TicketDraft(title=title, category=category, description=description, priority=priority)
     ctx.capture_draft(draft)
     out: Dict[str, Any] = {"success": True,
@@ -211,6 +249,8 @@ def _prepare_ticket(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
                            "title": title, "description": description, "priority": priority}
     if category:
         out["category"] = category
+    if category_note:
+        out["note"] = (out["note"] or "") + category_note
     return out
 
 
