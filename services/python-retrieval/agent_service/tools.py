@@ -55,7 +55,8 @@ def tool_specs() -> List[Dict[str, Any]]:
             "function": {
                 "name": "search_knowledge",
                 "description": "在企业知识库中检索已发布（PUBLISHED）的 IT 办公知识条目，返回标题与摘要。"
-                               "需要依据公司内部知识回答时使用。",
+                               "需要依据公司内部知识回答时使用。"
+                               "注意：输入 material 里已包含与问题相关的资料时，直接依据 material 作答，不必调用本工具。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -171,9 +172,12 @@ def _search_knowledge(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         return {"success": False, "error": f"知识搜索失败: {e}"}
     data = body.get("data") or {}
     items = data.get("items") or []
+    # 刻意不回传 versionId：Java 侧引用守卫只认预检索 material 里的 versionId，
+    # 补搜结果的 id 一旦被模型写进 usedVersionIds，整次回答会被判伪造作废。
+    # 补搜的价值在内容（完善排查思路），引用一律以 material 为准。
     return {"success": True, "total": data.get("total", len(items)),
-            "items": [{"articleId": i.get("articleId"), "versionId": i.get("versionId"),
-                       "title": i.get("title"), "summary": i.get("summary")} for i in items]}
+            "items": [{"articleId": i.get("articleId"), "title": i.get("title"),
+                       "summary": i.get("summary")} for i in items]}
 
 
 def _query_my_tickets(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:

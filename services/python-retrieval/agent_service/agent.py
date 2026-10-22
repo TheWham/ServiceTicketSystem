@@ -49,7 +49,11 @@ def _system_prompt() -> str:
 {
   "replyType": "ANSWER 或 REFUSE",
   "answerText": "面向员工的回答,分步骤写清楚;REFUSE 时留空字符串",
-  "usedVersionIds": ["实际依据的资料 versionId,必须原样抄写,不得编造;无资料时留空数组"],
+  "usedVersionIds": ["只能原样抄写输入 material 数组里出现过的 versionId——那是服务端预检索并会逐条复核的依据。"
+                     "search_knowledge 工具查到的条目不得写入（服务端没有它的原文，写了整次作废）；"
+                     "无 material 或未依据任何资料时留空数组。"
+                     "search_knowledge 的结果只用于完善排查思路与措辞，其内容若被写进回答，"
+                     "须与资料结论明确区分，不得声称出自公司知识库"],
   "confidence": 0.0,
   "knowledgeConflict": false,
   "offTopic": false
