@@ -109,7 +109,7 @@ class TicketWithdrawalTest {
     @Test @SuppressWarnings({"rawtypes", "unchecked"})
     void engineerListExcludesWithdrawnBeforePaginationEvenWithExplicitStatusFilter() {
         when(tickets.selectPage(any(Page.class), any())).thenReturn(new Page<Ticket>());
-        service.list(engineer, "CANCELLED", null, null, null, null, null, null, 1, 10);
+        service.list(engineer, "CANCELLED", null, null, null, null, null, null, null, 1, 10);
         ArgumentCaptor<QueryWrapper> query = ArgumentCaptor.forClass(QueryWrapper.class);
         verify(tickets).selectPage(any(Page.class), query.capture());
         assertTrue(query.getValue().getSqlSegment().contains("status <>"));
@@ -119,7 +119,7 @@ class TicketWithdrawalTest {
     @Test @SuppressWarnings({"rawtypes", "unchecked"})
     void adminCanFilterWithdrawnArchives() {
         when(tickets.selectPage(any(Page.class), any())).thenReturn(new Page<Ticket>());
-        service.list(admin, "CANCELLED", null, null, null, null, null, null, 1, 10);
+        service.list(admin, "CANCELLED", null, null, null, null, null, null, null, 1, 10);
         ArgumentCaptor<QueryWrapper> query = ArgumentCaptor.forClass(QueryWrapper.class);
         verify(tickets).selectPage(any(Page.class), query.capture());
         assertFalse(query.getValue().getSqlSegment().contains("status <>"));

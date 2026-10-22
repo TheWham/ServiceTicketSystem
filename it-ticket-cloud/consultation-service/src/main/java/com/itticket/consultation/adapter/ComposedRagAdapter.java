@@ -6,35 +6,46 @@ import com.itticket.consultation.dto.KnowledgeCitationDto;
 import com.itticket.consultation.enums.*;
 import java.math.BigDecimal;
 import java.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 /** The only answer orchestrator. Providers are selected in Spring assembly, never here. */
 public final class ComposedRagAdapter implements RagAdapter {
-    private final OfficeDomainClassifier classifier;
+    private static final Logger log = LoggerFactory.getLogger(ComposedRagAdapter.class);
+    private final RequestClassifier classifier;
     private final KnowledgeRetriever retriever;
     private final RetrievalPolicy policy;
     private final AnswerGenerator generator;
-    private final ToolIntentDetector toolIntent;
-    public ComposedRagAdapter(OfficeDomainClassifier classifier, KnowledgeRetriever retriever,
-                              RetrievalPolicy policy, AnswerGenerator generator, ToolIntentDetector toolIntent) {
+    /** 仅当 Function Calling 开启时为 true —— agent 关了就不消费判定结果里的 tool。 */
+    private final boolean toolBypassEnabled;
+    public ComposedRagAdapter(RequestClassifier classifier, KnowledgeRetriever retriever,
+                              RetrievalPolicy policy, AnswerGenerator generator, boolean toolBypassEnabled) {
         this.classifier = classifier; this.retriever = retriever; this.policy = policy; this.generator = generator;
-        this.toolIntent = toolIntent;
+        this.toolBypassEnabled = toolBypassEnabled;
     }
     @Override public RagResult answer(RagQuery query, RagCallContext context) {
         List<String> retrieved = List.of();
-        // 工具意图（查工单/建单）：预检索无果时不直接拒答，放行给 agent 用工具去查。
-        // 领域门禁（OFF_TOPIC/HIGH_RISK/UNCERTAIN）不受影响，仍在下方先行生效。
-        boolean toolIntentBypass = toolIntent.matches(query.question());
         try {
-            RagResult domainVerdict = restrict(classifier.classify(query, context));
+            // 一次判定给全「走哪条路」与「要不要调工具」；拒答/澄清的门禁仍最靠前，不被工具意图越过
+            RequestVerdict verdict = classifier.classify(query, context);
+            log.info("[判定] domain={} tool={} requestId={}", verdict.domain(), verdict.tool(), context.requestId());
+            RagResult domainVerdict = restrict(verdict.domain());
             if (domainVerdict != null) return domainVerdict;
             RetrievalResult result = retriever.retrieve(query, context);
             retrieved = result.items().stream().map(RetrievedKnowledge::versionId).distinct().toList();
             context.audit().recordRetrievedVersions(retrieved);
-            domainVerdict = restrict(result.domain());
-            if (domainVerdict != null) return domainVerdict;
-            if (result.refusalReason() != null && !toolIntentBypass)
+            // 检索侧的 domain 是关键词粗判，实测会误伤（「我上周报的」含子串「周报」→ OFF_TOPIC）。
+            // 语义判定是主判且已放行到这里的必为 OFFICE_IT，故关键词粗判只在 HIGH_RISK 红线上
+            // 保留否决权（语义说能走、检索说高危时，宁可拦下）；OFF_TOPIC/UNCERTAIN 不得反悔。
+            if (result.domain() == OfficeDomain.HIGH_RISK) {
+                RagResult blocked = restrict(OfficeDomain.HIGH_RISK);
+                if (blocked != null) return blocked;
+            }
+            // 工具意图（查工单/建单）：预检索无果时不直接拒答，放行给 agent 用工具去查。
+            boolean toolBypass = toolBypassEnabled && !RequestVerdict.NO_TOOL.equals(verdict.tool());
+            if (result.refusalReason() != null && !toolBypass)
                 return RagResult.refuse(result.refusalReason(), null, retrieved);
             List<RetrievedKnowledge> material = policy.material(result, context);
-            if (result.reliable() && material.isEmpty())
+            if (result.reliable() && material.isEmpty() && !toolBypass)
                 return RagResult.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, null, retrieved);
             context.timeoutMillis(Long.MAX_VALUE);
             GenerationResult generated = generator.generate(query, material, context);
@@ -54,7 +65,7 @@ public final class ComposedRagAdapter implements RagAdapter {
             String text = generated.answerText();
             // 工具意图越过的作答是「凭工具查到的实据」（如本人工单列表），不是通用建议——
             // 加这句前缀会与正文自相矛盾。general 标记本身保留（确实无知识库引用），只是不展示该措辞。
-            if (general && !toolIntentBypass && text != null && !text.isBlank())
+            if (general && !toolBypass && text != null && !text.isBlank())
                 text = "以下为通用办公 IT 建议，无知识库依据。\n\n" + text;
             if (text != null && text.length() > 12000) throw DependencyFailure.invalid();
             RagResult answered = new RagResult(RagStatus.SUCCESS, generated.replyType(), text, citations,

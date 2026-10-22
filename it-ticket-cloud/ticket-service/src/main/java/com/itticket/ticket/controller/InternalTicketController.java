@@ -3,6 +3,7 @@ package com.itticket.ticket.controller;
 import com.itticket.common.api.Result;
 import com.itticket.common.web.UserContext;
 import com.itticket.ticket.dto.CreateTicketRequest;
+import com.itticket.ticket.enums.TicketStatus;
 import com.itticket.ticket.service.TicketService;
 import com.itticket.ticket.vo.TicketListVO;
 import com.itticket.ticket.vo.TicketVO;
@@ -37,14 +38,23 @@ public class InternalTicketController {
 
     private final TicketService ticketService;
 
-    /** 查工单列表(按 creator_id / status 过滤),供「查我的工单」工具。 */
+    /** 查工单列表(按 creator_id / status 过滤),供「查我的工单」工具。
+     *
+     *  槽位化查询：SQL 骨架在 TicketService.list 的 Wrapper 里固定，这里只收「值槽」——
+     *  模型（agent_service 的 query_my_tickets）填参，非法值一律弃用该槽位回默认，
+     *  绝不让模型输出参与 SQL 结构。槽位与 agent_service tool_specs() 的参数一一对应。
+     */
     @GetMapping
     public Result<List<TicketVO>> list(@RequestParam("creator_id") String creatorId,
                                        @RequestParam(required = false) String status,
+                                       @RequestParam(required = false) String category,
+                                       @RequestParam(required = false) String created_after,
                                        @RequestParam(defaultValue = "20") int limit) {
         int size = Math.max(1, Math.min(MAX_LIMIT, limit <= 0 ? DEFAULT_LIMIT : limit));
-        TicketListVO page = ticketService.list(UserContext.get(), status, null, null, creatorId,
-                null, null, null, 1, size);
+        // status 枚举校验：不在九态里就弃用该槽位（而非报错），模型填错最多查得宽一点
+        String validStatus = TicketStatus.fromValue(status) == null ? null : status;
+        TicketListVO page = ticketService.list(UserContext.get(), validStatus, category, null, creatorId,
+                null, null, null, created_after, 1, size);
         return Result.ok(page == null || page.getList() == null ? new ArrayList<>() : page.getList());
     }
 

@@ -8,6 +8,7 @@
 """
 
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI, Header
 from fastapi.exceptions import RequestValidationError
@@ -19,6 +20,10 @@ from . import config as acfg
 from .agent import AgentRunner
 from .contract import AgentChatRequest
 from .model_client import ModelError
+
+# uvicorn 只配置它自己的 logger，不碰 root —— 不显式设级别，本服务的 INFO 日志
+# （如 [工具] 调用 xxx）根本不会输出，排查时只能从回答反推。
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 def create_app(runner: AgentRunner = None) -> FastAPI:

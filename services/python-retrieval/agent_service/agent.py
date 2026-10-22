@@ -7,12 +7,15 @@
 """
 
 import json
+import logging
 from typing import Any, Dict, List, Optional
 
 from . import config as acfg
 from .contract import AgentChatRequest, AgentChatResponse, TicketDraft
 from .model_client import ModelClient, ModelError
 from .tools import ToolContext, dispatch, tool_specs
+
+log = logging.getLogger(__name__)
 
 
 def _system_prompt() -> str:
@@ -104,6 +107,9 @@ class AgentRunner:
 
         if final_content is None:
             raise ModelError("ReAct 步数超限")
+        # 最终 JSON 落日志：拒答/答非所问时，能回放「模型当时到底输出了什么」——
+        # 这是 Day17 那句「坏例当时的 prompt」的最小实现。
+        log.info("[生成] 最终 JSON requestId=%s: %s", ctx.request_id, (final_content or "")[:600])
         try:
             payload = json.loads(final_content)
         except ValueError as e:

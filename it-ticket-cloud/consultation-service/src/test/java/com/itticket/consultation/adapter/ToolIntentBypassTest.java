@@ -2,7 +2,7 @@ package com.itticket.consultation.adapter;
 
 import com.itticket.consultation.adapter.generation.GenerationResult;
 import com.itticket.consultation.adapter.policy.OfficeDomain;
-import com.itticket.consultation.adapter.policy.ToolIntentDetector;
+import com.itticket.consultation.adapter.policy.RequestVerdict;
 import com.itticket.consultation.adapter.retrieval.RetrievalPolicy;
 import com.itticket.consultation.adapter.retrieval.RetrievalResult;
 import com.itticket.consultation.enums.AiRefusalReason;
@@ -24,10 +24,11 @@ import static org.mockito.Mockito.mock;
  *
  * <p>背景：agent 的工具（查本人工单 / 产建单草稿 / 补搜知识）恰恰只在预检索没拿到知识时才被需要，
  * 而那条路原先等价于直接拒答 —— 工具因此永不可达。这些用例钉住放行条件，以及**放行不该越过的边界**。
+ * 判定结果现在由 {@link RequestClassifier} 一次给出（domain + tool），这里用桩直接喂。
  */
 class ToolIntentBypassTest {
 
-    /** 检索无果：OfficeDomain 在域内、reliable=false、带低置信拒答原因（线上真实形态）。 */
+    /** 检索无果：域内、reliable=false、带低置信拒答原因（线上真实形态）。 */
     private static RetrievalResult nothingFound() {
         return new RetrievalResult(OfficeDomain.OFFICE_IT, false,
                 AiRefusalReason.LOW_CONFIDENCE, List.of(), BigDecimal.ZERO);
@@ -41,27 +42,26 @@ class ToolIntentBypassTest {
         return new RagCallContext("req-test", System.nanoTime() + 5_000_000_000L, new RagExecutionAudit());
     }
 
-    private static ComposedRagAdapter adapter(OfficeDomain domain, boolean agentEnabled, boolean toolIntent,
+    private static ComposedRagAdapter adapter(OfficeDomain domain, boolean agentEnabled, String tool,
                                               RetrievalResult retrieval, AtomicReference<String> answerText) {
         var knowledge = mock(KnowledgeQueryService.class);
         return new ComposedRagAdapter(
-                (query, ctx) -> domain,
+                (query, ctx) -> RequestVerdict.of(domain, tool),
                 (query, ctx) -> retrieval,
                 new RetrievalPolicy(knowledge),
                 (query, material, ctx) -> {
-                    // 记录 agent 是否真的被调用：material 必须为空才是「无依据的工具有依据」路径
                     answerText.set("已为您查询到名下最近的 10 条工单。");
                     return new GenerationResult(AiReplyType.ANSWER, answerText.get(), List.of(),
                             BigDecimal.ONE, null, "agent", null);
                 },
-                new ToolIntentDetector(toolIntent && agentEnabled));
+                agentEnabled);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"帮我查询一下最近工单", "我的工单处理得怎么样了", "打印机坏了帮我提交报修"})
+    @ValueSource(strings = {"帮我查询一下最近工单", "我上周报的那个东西怎么样了", "打印机坏了帮我提交报修"})
     void toolIntentBypassesLowConfidenceRefusalWhenAgentEnabled(String question) {
         var text = new AtomicReference<String>();
-        RagResult result = adapter(OfficeDomain.OFFICE_IT, true, true, nothingFound(), text)
+        RagResult result = adapter(OfficeDomain.OFFICE_IT, true, "query_my_tickets", nothingFound(), text)
                 .answer(ask(question), context());
 
         assertThat(result.replyType()).isEqualTo(AiReplyType.ANSWER);
@@ -76,7 +76,7 @@ class ToolIntentBypassTest {
     @Test
     void toolIntentDoesNotBypassWhenAgentDisabled() {
         var text = new AtomicReference<String>();
-        RagResult result = adapter(OfficeDomain.OFFICE_IT, false, true, nothingFound(), text)
+        RagResult result = adapter(OfficeDomain.OFFICE_IT, false, "query_my_tickets", nothingFound(), text)
                 .answer(ask("帮我查询一下最近工单"), context());
 
         // 未开 agent 时越过拒答只会得到无依据作答 —— 那是放宽拒答策略，必须维持原行为
@@ -87,7 +87,7 @@ class ToolIntentBypassTest {
     @Test
     void nonToolIntentIsStillRefusedEvenWhenAgentEnabled() {
         var text = new AtomicReference<String>();
-        RagResult result = adapter(OfficeDomain.OFFICE_IT, true, true, nothingFound(), text)
+        RagResult result = adapter(OfficeDomain.OFFICE_IT, true, RequestVerdict.NO_TOOL, nothingFound(), text)
                 .answer(ask("会议室投影仪怎么连"), context());
 
         assertThat(result.replyType()).isEqualTo(AiReplyType.REFUSE);
@@ -97,7 +97,7 @@ class ToolIntentBypassTest {
     @Test
     void toolIntentNeverCrossesTheDomainGate() {
         var text = new AtomicReference<String>();
-        RagResult result = adapter(OfficeDomain.OFF_TOPIC, true, true, nothingFound(), text)
+        RagResult result = adapter(OfficeDomain.OFF_TOPIC, true, "query_my_tickets", nothingFound(), text)
                 .answer(ask("帮我查询一下最近工单，顺便写首诗"), context());
 
         // 领域门禁先于检索生效，工具意图不得把它顶开

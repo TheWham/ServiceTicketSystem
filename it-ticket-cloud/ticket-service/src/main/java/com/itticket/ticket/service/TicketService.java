@@ -374,7 +374,7 @@ public class TicketService {
     // ---------------- 工单列表 ----------------
 
     public TicketListVO list(UserContext.CurrentUser viewer, String status, String categoryId, String assigneeId, String creatorId,
-                             String priority, String unassigned, String mineOrPool, int page, int pageSize) {
+                             String priority, String unassigned, String mineOrPool, String createdAfter, int page, int pageSize) {
         QueryWrapper<Ticket> qw = new QueryWrapper<>();
         if ("EMPLOYEE".equals(viewer.getRole())) qw.eq("creator_id", viewer.getUserId());
         else if (!"PLATFORM_ADMIN".equals(viewer.getRole())) qw.ne("status", TicketStatus.CANCELLED.getValue());
@@ -383,6 +383,17 @@ public class TicketService {
         if (assigneeId != null && !assigneeId.isBlank()) qw.eq("assignee_id", assigneeId);
         if (creatorId != null && !creatorId.isBlank()) qw.eq("creator_id", creatorId);
         if (priority != null && !priority.isBlank()) qw.eq("priority", priority);
+        // 槽位 created_after：ISO 日期（YYYY-MM-DD），按 UTC 零点解释（与库内 UTC 约定一致）。
+        // 供「查我的工单」工具的模型填参 —— 模型只能填值槽，格式不合法直接弃用该槽位，
+        // 绝不参与 SQL 结构； SQL 骨架由本 Wrapper 固定，模板与 tool_specs() 的参数一一对应。
+        if (createdAfter != null && !createdAfter.isBlank()) {
+            try {
+                qw.ge("created_at", java.time.LocalDate.parse(createdAfter.trim())
+                        .atStartOfDay(java.time.ZoneOffset.UTC).toLocalDateTime());
+            } catch (java.time.format.DateTimeParseException invalidSlot) {
+                log.warn("[工单查询] created_after 非法，弃用该槽位: {}", createdAfter);
+            }
+        }
         // 待领取池:尚未派单的「待处理」工单
         if ("true".equals(unassigned) || "1".equals(unassigned)) {
             qw.isNull("assignee_id").eq("status", TicketStatus.NEW.getValue());

@@ -62,7 +62,9 @@ class GuardedRagDeadlineTest {
                 "检查输入设备。", "C_NET", BigDecimal.ONE, "V1");
         var started = new CountDownLatch(1);
         var release = new CountDownLatch(1);
-        var adapter = new ComposedRagAdapter((query, context) -> OfficeDomain.OFFICE_IT,
+        var adapter = new ComposedRagAdapter(
+                (query, context) -> com.itticket.consultation.adapter.policy.RequestVerdict.of(
+                        OfficeDomain.OFFICE_IT, com.itticket.consultation.adapter.policy.RequestVerdict.NO_TOOL),
                 (query, context) -> new RetrievalResult(OfficeDomain.OFFICE_IT, true, null,
                         List.of(material), BigDecimal.ONE), new RetrievalPolicy(knowledge),
                 (query, input, context) -> {
@@ -78,7 +80,7 @@ class GuardedRagDeadlineTest {
                     }
                     return new GenerationResult(AiReplyType.ANSWER, "检查输入设备。", List.of("V1"),
                             BigDecimal.ONE, null, "test");
-                }, new com.itticket.consultation.adapter.policy.ToolIntentDetector(false));
+                }, false);
         var client = new GuardedRagClient(adapter, properties);
         try {
             long began = System.nanoTime();

@@ -60,7 +60,7 @@ public class TicketController {
                                      @RequestParam(defaultValue = "1") int page,
                                      @RequestParam(defaultValue = "20") int page_size) {
         return Result.ok(ticketService.list(UserContext.get(), status, category, assignee_id, creator_id, priority,
-                unassigned, mine_or_pool, page, page_size));
+                unassigned, mine_or_pool, null, page, page_size));
     }
 
     @GetMapping("/{id}")

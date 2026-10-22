@@ -99,10 +99,10 @@ class RagCompositionHttpTest {
         if (client != null) client.shutdown();
         var http = new DependencyHttpClient();
         var model = new OpenAiCompatibleModelClient(config, http);
-        client = new GuardedRagClient(new ComposedRagAdapter(new SemanticOfficeDomainClassifier(model),
+        client = new GuardedRagClient(new ComposedRagAdapter(new SemanticRequestClassifier(model),
                 new RagServiceKnowledgeRetriever(config, http), new RetrievalPolicy(knowledge),
                 new OpenAiCompatibleAnswerGenerator(model, config, null),
-                new com.itticket.consultation.adapter.policy.ToolIntentDetector(false)), config);
+                false), config);
     }
     private RagResult ask() {
         return client.answer(new RagQuery("S1", "开会别人听不到我", "C_NET", "ASSET1", 5,
@@ -326,11 +326,18 @@ class RagCompositionHttpTest {
         assertThat(ask().refusalReason()).isEqualTo(AiRefusalReason.HIGH_RISK_TOPIC);
         assertThat(ragRequests).isEmpty();
     }
-    @Test void remoteUncertainDomainAsksForClarificationWithoutGeneration() {
+    @Test void remoteUncertainDomainDefersToTheSemanticVerdictInsteadOfVetoing() {
+        // 检索侧的 UNCERTAIN 是关键词粗判，不再否决语义判定（否则「我上周报的那个东西」这类
+        // 语义认得的工具意图会被它顶掉——那正是要修的假阴性）。改为带空 material 继续生成，
+        // 走通用作答路径（generalAnswer=true，前端有「无知识库依据」标识兜着）。
         items().removeAll(); data().put("domain", "UNCERTAIN").put("suggestedReplyType", "CLARIFY")
                 .put("reliable", false).put("topScore", 0);
-        assertThat(ask().replyType()).isEqualTo(AiReplyType.CLARIFY);
-        assertThat(generationInputs).isEmpty();
+        modelReply.putArray("usedVersionIds");
+        RagResult result = ask();
+        assertThat(result.replyType()).isEqualTo(AiReplyType.ANSWER);
+        assertThat(result.generalAnswer()).isTrue();
+        assertThat(result.citations()).isEmpty();
+        assertThat(generationInputs).hasSize(1);
     }
     @ParameterizedTest
     @CsvSource({"local,local", "local,openai-compatible", "rag-service,local", "rag-service,openai-compatible"})
@@ -345,7 +352,7 @@ class RagCompositionHttpTest {
             context.registerBean(KnowledgeQueryService.class, () -> knowledge);
             context.register(AiCompositionConfig.class); context.refresh();
             assertThat(context.getBeansOfType(KnowledgeRetriever.class)).hasSize(1);
-            assertThat(context.getBeansOfType(OfficeDomainClassifier.class)).hasSize(1);
+            assertThat(context.getBeansOfType(RequestClassifier.class)).hasSize(1);
             assertThat(context.getBeansOfType(AnswerGenerator.class)).hasSize(1);
             assertThat(context.getBeansOfType(RagAdapter.class)).hasSize(1);
             RagResult result = context.getBean(RagAdapter.class).answer(new RagQuery("S1", "开会别人听不到我", null,

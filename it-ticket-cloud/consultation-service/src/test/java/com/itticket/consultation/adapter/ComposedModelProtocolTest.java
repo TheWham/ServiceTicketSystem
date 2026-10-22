@@ -49,11 +49,11 @@ class ComposedModelProtocolTest {
         when(knowledge.isPublishedCurrentVersion(anyString(), anyString())).thenReturn(true);
         var model = new com.itticket.consultation.adapter.model.OpenAiCompatibleModelClient(config,
                 new com.itticket.consultation.adapter.model.DependencyHttpClient());
-        adapter = new ComposedRagAdapter(new com.itticket.consultation.adapter.policy.SemanticOfficeDomainClassifier(model),
+        adapter = new ComposedRagAdapter(new com.itticket.consultation.adapter.policy.SemanticRequestClassifier(model),
                 new com.itticket.consultation.adapter.retrieval.MySqlKnowledgeRetriever(knowledge, config),
                 new com.itticket.consultation.adapter.retrieval.RetrievalPolicy(knowledge),
                 new com.itticket.consultation.adapter.generation.OpenAiCompatibleAnswerGenerator(model, config, null),
-                new com.itticket.consultation.adapter.policy.ToolIntentDetector(false));
+                false);
     }
 
     @AfterEach
@@ -93,20 +93,29 @@ class ComposedModelProtocolTest {
     }
 
     @Test
-    void unknownOrMalformedDomainDecisionDoesNotGenerateAnswer() {
+    void unknownDomainDecisionFallsBackToKeywordRulesInsteadOfGenerating() {
+        // 契约变更：decision 不可信时不再整次作废（INVALID），而是整条退关键词兜底。
+        // 关键词规则是保守的——「如何设置双屏」不命中任何技术词 → UNCERTAIN → 追问澄清，
+        // 依旧不会凭空编造 IT 答案，失败方向安全。
         replies.add("{\"decision\":\"anything\"}");
-        assertThat(ask("如何设置双屏").status()).isEqualTo(RagStatus.INVALID_RESPONSE);
+        RagResult result = ask("如何设置双屏");
+        assertThat(result.replyType()).isEqualTo(AiReplyType.CLARIFY);
+        assertThat(result.citations()).isEmpty();
         assertThat(requests).hasSize(1);
         verifyNoInteractions(knowledge);
     }
 
     @Test
-    void classifierDoesNotAcceptAdditionalUncontractedFields() {
+    void classifierIgnoresUncontractedFieldsTheyCannotSteerTheOutcome() {
+        // 契约变更：判定只读 schema 里的 decision / toolIntent 两个字段，
+        // 多出来的键是惰性数据——改不了决策空间，所以容错而非整次作废。
+        // 这里特意塞一个看似能「改写判定」的 override，断言它确实不影响结果。
         replies.add("{\"decision\":\"OFFICE_IT\",\"override\":true}");
         replies.add(answer("检查输入设备", "[]", false));
-        assertThat(ask("开会别人听不到我").status()).isEqualTo(RagStatus.INVALID_RESPONSE);
-        assertThat(requests).hasSize(1);
-        verifyNoInteractions(knowledge);
+        RagResult result = ask("开会别人听不到我");
+        assertThat(result.status()).isEqualTo(RagStatus.SUCCESS);
+        assertThat(result.replyType()).isEqualTo(AiReplyType.ANSWER);
+        assertThat(result.citations()).isEmpty();
     }
 
     @Test

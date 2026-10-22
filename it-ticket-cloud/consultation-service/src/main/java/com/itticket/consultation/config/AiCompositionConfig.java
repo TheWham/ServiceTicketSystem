@@ -22,11 +22,11 @@ public class AiCompositionConfig {
     @Bean public OpenAiCompatibleModelClient modelClient(ConsultationProperties properties, DependencyHttpClient http) {
         return new OpenAiCompatibleModelClient(properties, http);
     }
-    @Bean public OfficeDomainClassifier officeDomainClassifier(ConsultationProperties properties,
+    @Bean public RequestClassifier requestClassifier(ConsultationProperties properties,
             OpenAiCompatibleModelClient model) {
         return switch (properties.getAi().getProvider()) {
-            case "local" -> new LocalOfficeDomainClassifier();
-            case "openai-compatible" -> new SemanticOfficeDomainClassifier(model);
+            case "local" -> new KeywordRequestClassifier();
+            case "openai-compatible" -> new SemanticRequestClassifier(model);
             default -> throw new IllegalArgumentException("Unsupported AI provider");
         };
     }
@@ -49,16 +49,10 @@ public class AiCompositionConfig {
             default -> throw new IllegalArgumentException("Unsupported AI provider");
         };
     }
-    /**
-     * 工具意图识别器。仅在 Function Calling 开启时放行 —— 未开 agent 时越过拒答
-     * 只会得到无依据的作答，属放宽拒答策略，不是本意（见 {@link ToolIntentDetector}）。
-     */
-    @Bean public ToolIntentDetector toolIntentDetector(PythonAgentClient pythonAgentClient) {
-        return new ToolIntentDetector(pythonAgentClient.enabled());
-    }
-
-    @Bean public RagAdapter ragAdapter(OfficeDomainClassifier classifier, KnowledgeRetriever retriever,
-            RetrievalPolicy policy, AnswerGenerator generator, ToolIntentDetector toolIntentDetector) {
-        return new ComposedRagAdapter(classifier, retriever, policy, generator, toolIntentDetector);
+    @Bean public RagAdapter ragAdapter(RequestClassifier classifier, KnowledgeRetriever retriever,
+            RetrievalPolicy policy, AnswerGenerator generator, PythonAgentClient pythonAgentClient) {
+        // 工具意图的放行只在 Function Calling 开启时生效：agent 关了就不消费判定结果里的 tool，
+        // 避免越过拒答后得到一段无依据作答（那是放宽拒答策略，不是本意）。
+        return new ComposedRagAdapter(classifier, retriever, policy, generator, pythonAgentClient.enabled());
     }
 }

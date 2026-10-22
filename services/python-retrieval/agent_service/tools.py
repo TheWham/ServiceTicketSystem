@@ -11,12 +11,16 @@
 """
 
 from typing import Any, Dict, List
+import json
+import logging
 import uuid
 
 import httpx
 
 from . import config as acfg
 from .contract import TicketDraft
+
+log = logging.getLogger(__name__)
 
 _PRIORITIES = {"HIGH", "MEDIUM", "LOW"}
 
@@ -70,6 +74,10 @@ def tool_specs() -> List[Dict[str, Any]]:
                         "status": {"type": "string", "description": "可选，按状态过滤：NEW/ASSIGNED/"
                                                                    "IN_PROGRESS/PENDING_ACCEPTANCE/COMPLETED/CLOSED"},
                         "limit": {"type": "integer", "description": "返回条数，默认 10，最大 50"},
+                        "created_after": {"type": "string",
+                                          "description": "可选，只查该日期（含）之后创建的工单，ISO 格式 YYYY-MM-DD，"
+                                                         "如“查上周提交的”应推算出具体日期"},
+                        "category": {"type": "string", "description": "可选，按分类 ID 过滤：C_HW_PC/C_SW/C_NET/C_ACC 等"},
                     },
                 },
             },
@@ -96,14 +104,24 @@ def tool_specs() -> List[Dict[str, Any]]:
 
 
 def dispatch(name: str, arguments: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    """按名派发；未知工具返回结构化错误（不抛）。"""
+    """按名派发；未知工具返回结构化错误（不抛）。
+
+    <p>工具调用此前完全不落日志，导致「模型到底调了哪个工具」只能从回答反推 ——
+    排查 search_knowledge 恒失败时因此绕了远路。这里补一条，按 requestId 可串起一轮 ReAct。
+    """
     handler = _HANDLERS.get(name)
     if handler is None:
+        log.warning("[工具] 未知工具 name=%s requestId=%s", name, ctx.request_id)
         return {"success": False, "error": f"未知工具: {name}"}
+    log.info("[工具] 调用 %s requestId=%s 参数=%s", name, ctx.request_id,
+             json.dumps(arguments or {}, ensure_ascii=False)[:200])
     try:
-        return handler(arguments or {}, ctx)
+        result = handler(arguments or {}, ctx)
     except Exception as e:  # noqa: BLE001 —— 工具异常统一转结构化错误
+        log.warning("[工具] 异常 %s requestId=%s err=%s: %s", name, ctx.request_id, type(e).__name__, e)
         return {"success": False, "error": f"工具执行异常: {type(e).__name__}"}
+    log.info("[工具] 返回 %s requestId=%s success=%s", name, ctx.request_id, result.get("success"))
+    return result
 
 
 # ---------------------------------------------------------------- 具体实现
@@ -160,10 +178,13 @@ def _query_my_tickets(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         limit = int(args.get("limit") or 10)
     except (TypeError, ValueError):
         limit = 10
+    # 槽位白名单：只有这里列出的键会透传，模型给别的键一律丢弃（值槽，永不参与 SQL 结构）。
+    # 非法值由 Java 侧再校验一次（枚举/日期格式/clamp），两层各管各的边界。
     params: Dict[str, Any] = {"creator_id": ctx.user_id, "limit": max(1, min(50, limit))}
-    status = str(args.get("status") or "").strip()
-    if status:
-        params["status"] = status
+    for key in ("status", "created_after", "category"):
+        value = str(args.get(key) or "").strip()
+        if value:
+            params[key] = value
     try:
         body = _http_get(base.rstrip("/") + "/api/internal/tickets", params, ctx)
     except Exception as e:  # noqa: BLE001
