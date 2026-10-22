@@ -142,6 +142,8 @@ html.dark .el-button--primary:not(.is-plain, .is-text, .is-link, .is-disabled) {
 .el-dialog, .el-drawer, .el-message-box { border: 1px solid var(--future-line); box-shadow: 0 22px 80px rgb(0 9 25 / 22%); }
 
 /* AI space */
+#app .consultation-page .page-eyebrow { display: inline-flex; line-height: 1.4; margin-bottom: 0; }
+#app .consultation-page h1 { font-size: 16px; margin: 0; }
 #app .chat-panel { position: relative; }
 #app .chat-panel::before { content: ''; height: 1px; width: 48%; position: absolute; left: 8%; top: 0; background: linear-gradient(90deg, transparent, var(--future-accent), transparent); pointer-events: none; z-index: 1; }
 #app .conversation-identity .small-assistant, #app .assistant-mark { background: var(--el-fill-color-light); color: var(--future-accent); border: 1px solid var(--future-line); box-shadow: inset 0 0 12px var(--future-glow); }

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <router-view v-if="isLoginPage" />
   <div v-else class="desk-app">
     <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -27,7 +27,7 @@
           </el-dropdown>
         </div>
       </header>
-      <main id="main-content" class="desk-main" tabindex="-1"><router-view /></main>
+      <main id="main-content" class="desk-main" :class="{ 'is-chat-page': route.path === '/consultation' }" tabindex="-1"><router-view /></main>
     </div>
     <el-drawer v-model="mobileNav" title="工作空间" direction="ltr" size="280px" class="mobile-navigation" :append-to-body="true">
       <div class="mobile-brand"><span class="brand-monogram">IT</span><strong>智能服务台</strong></div>
@@ -112,11 +112,12 @@ function onUserCommand(command) {
 .user-copy small { font-size: 10px; color: var(--el-text-color-secondary); }
 .user-chevron { margin-left: 8px; font-size: 12px; }
 .desk-main { padding: 30px 32px; flex: 1; min-height: 0; overflow-y: auto; background: var(--el-bg-color-page); scroll-padding-top: 24px; }
+.desk-main.is-chat-page { padding: 12px 20px; overflow: hidden; display: flex; flex-direction: column; }
 .desk-main:focus { outline: none; }
 .mobile-menu { display: none; }
 .mobile-brand { display: flex; align-items: center; gap: 12px; margin: 0 0 28px; }
 .mobile-nav-link { display: flex; align-items: center; gap: 14px; color: var(--el-text-color-regular); text-decoration: none; padding: 14px; margin-bottom: 6px; border-radius: 8px; }
 .mobile-nav-link.active { color: var(--el-color-primary); background: var(--el-color-primary-light-9); font-weight: 600; }
-@media (max-width: 1199px) and (min-width: 768px) { .desk-sidebar:not(.compact) { flex-basis: 196px; width: 196px; } .desk-brand { padding: 24px 18px; gap: 9px; } .brand-copy strong { font-size: 16px; } .desk-main { padding: 24px; } .desk-header { padding: 0 24px; } }
-@media (max-width: 767px) { .desk-sidebar { display: none; } .desk-header { height: 64px; padding: 0 12px; } .mobile-menu { display: inline-flex; margin: 0; } .header-location { gap: 6px; } .workspace-label, .breadcrumb-divider, .user-copy, .user-chevron, .header-divider { display: none; } .header-actions { gap: 4px; } .desk-main { padding: 20px 16px; } }
+@media (max-width: 1199px) and (min-width: 768px) { .desk-sidebar:not(.compact) { flex-basis: 196px; width: 196px; } .desk-brand { padding: 24px 18px; gap: 9px; } .brand-copy strong { font-size: 16px; } .desk-main { padding: 24px; } .desk-header { padding: 0 24px; } .desk-main.is-chat-page { padding: 10px 16px; } }
+@media (max-width: 767px) { .desk-sidebar { display: none; } .desk-header { height: 64px; padding: 0 12px; } .mobile-menu { display: inline-flex; margin: 0; } .header-location { gap: 6px; } .workspace-label, .breadcrumb-divider, .user-copy, .user-chevron, .header-divider { display: none; } .header-actions { gap: 4px; } .desk-main { padding: 20px 16px; } .desk-main.is-chat-page { padding: 8px 10px; } }
 </style>
