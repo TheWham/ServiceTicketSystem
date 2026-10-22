@@ -140,6 +140,14 @@ java -jar gateway/target/it-ticket-gateway-1.0.0.jar
 
 **AI 配置**：`consultation-service/` 与 `rag-service/` 目录下复制 `ai-secrets.example.yml` 为 `ai-secrets.yml`（已 gitignore），填入模型端点与密钥（`AI_SECRETS_FILE`/`RAG_SECRETS_FILE` 可指向同一文件）；也可用 `AI_BASE_URL`/`AI_API_KEY`/`AI_MODEL`/`EMBEDDING_*` 环境变量注入。
 
+> ⚠️ **`./ai-secrets.yml` 相对运行工作目录解析**——IDEA 默认工作目录是 `$MODULE_WORKING_DIR$`（模块根），
+> 但若运行配置的工作目录指到了项目根或仓库根，模块根的文件就读不到，表现为 AI 问答一律
+> 「服务暂时不可用」（日志 `errorClass=NOT_CONFIGURED`，costMs=0）。两种解法：把文件放到
+> 工作目录所在的那层；或在运行配置里把 Working directory 固定为 `$MODULE_WORKING_DIR$`。
+> 排查入口：先看日志里是不是 `NOT_CONFIGURED`——它意味着凭据为空（文件没读到或环境变量没设），
+> 而不是服务连不通。`agent.enabled: true`（或环境变量 `AI_AGENT_ENABLED=true`）也在同一文件里，
+> 缺了它 Function Calling 智能体（查工单/建单）整体不可用。
+
 **验证**：各服务健康检查均为 `GET /api/health`，如 `curl http://127.0.0.1:8080/api/health`。
 
 ### 3. 起前端
