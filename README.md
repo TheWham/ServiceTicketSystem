@@ -314,6 +314,7 @@ cp .env.example .env    # 填 JWT_SECRET、AI_API_KEY、EMBEDDING_API_KEY、MYSQ
 | `JWT_SECRET` | dev 内置默认 | **生产必须注入**，缺失启动失败 |
 | `RAG_BASE_URL` | http://127.0.0.1:8302 | consultation → rag 检索地址 |
 | `AI_BASE_URL / AI_API_KEY / AI_MODEL` | — | OpenAI 兼容对话模型端点 |
+| `AI_AGENT_ENABLED` | false | Function Calling 智能体开关（开启后生成层改调 Python agent_service，IDE 裸启动可写进 `ai-secrets.yml` 的 `agent.enabled`） |
 | `EMBEDDING_BASE_URL / EMBEDDING_API_KEY / EMBEDDING_MODEL` | — | embedding 模型（1024 维） |
 | `AI_SECRETS_FILE / RAG_SECRETS_FILE` | ./ai-secrets.yml | 密钥文件路径（已 gitignore） |
 | `ES_HOST/PORT/ES_KNOWLEDGE_INDEX` | localhost / 9200 / knowledge_chunk | Elasticsearch |
