@@ -42,3 +42,6 @@ __pycache__/
 
 # 工单照片附件本地存储(运行期生成,不入库)
 **/data/attachments/
+
+# 配置交接包(内含明文模型凭据,绝不入库)
+handoff-ai-config/
