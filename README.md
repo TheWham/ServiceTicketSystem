@@ -224,7 +224,8 @@ services/python-retrieval/
 ```bash
 cd services/python-retrieval
 pip install -r rag_service/requirements.txt
-RAG_HOME=$PWD python -m rag_service                 # 127.0.0.1:8310，单进程
+python -m rag_service                            # 127.0.0.1:8310，单进程
+# 配置（EMBED_*/RERANK_*/LLM_*）从 REPO_ROOT/.env 兜底；环境变量仍可覆盖。
 
 # 验证
 python -m pytest rag_service/tests -q              # 68 例

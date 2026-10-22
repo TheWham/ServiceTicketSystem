@@ -20,16 +20,17 @@ Java 侧 `OpenAiCompatibleAnswerGenerator` 调本服务（`POST /api/v1/agent/ch
 cd services/python-retrieval
 pip install -r agent_service/requirements.txt
 
-# 生成模型（OpenAI 兼容）
-export AGENT_LLM_BASE_URL=https://your-endpoint/v1
-export AGENT_LLM_API_KEY=sk-...
-export AGENT_LLM_MODEL=deepseek-v4-flash        # 需支持原生 tools
-
-# 工具依赖（可选；不配则对应工具返回明确错误）
-export TICKET_SERVICE_BASE_URL=http://127.0.0.1:8201     # 查工单 / 建单（ticket-service 事实源）
-export KNOWLEDGE_SEARCH_BASE_URL=http://127.0.0.1:8301   # 查知识库（consultation-service）
-
+# 配置从 REPO_ROOT/.env 兜底（LLM_BASE_URL/LLM_API_KEY/LLM_CLEAN_MODEL，与 rag_pipeline 同一份），
+# 工具依赖默认对齐标准拓扑（ticket:8201 / consultation:8301）——
+# 仓库根有 .env 时，直接裸启动即可：
 python -m agent_service                          # 默认 127.0.0.1:8320
+
+# 环境变量仍可覆盖（优先级：环境变量 > .env > 默认）：
+export AGENT_LLM_BASE_URL=https://your-endpoint/v1   # 生成模型（OpenAI 兼容）
+export AGENT_LLM_API_KEY=sk-...
+export AGENT_LLM_MODEL=deepseek-v4-flash             # 需支持原生 tools
+export TICKET_SERVICE_BASE_URL=http://127.0.0.1:8201 # 查工单 / 建单（ticket-service 事实源）
+export KNOWLEDGE_SEARCH_BASE_URL=http://127.0.0.1:8301 # 查知识库（consultation-service）
 ```
 
 Java 侧开启（`consultation-service/src/main/resources/application.yml`）：

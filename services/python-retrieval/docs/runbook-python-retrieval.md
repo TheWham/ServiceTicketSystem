@@ -23,21 +23,17 @@ consultation-service 不需要任何改动。
 ```bash
 cd /path/to/demos/services/python-retrieval
 pip install -r rag_service/requirements.txt   # fastapi / uvicorn[standard] / pydantic>=2
-RAG_HOME=$PWD python -m rag_service           # 默认 127.0.0.1:8310
+python -m rag_service                         # 默认 127.0.0.1:8310
 ```
 
-> ⚠️ **`RAG_HOME` 同时定位三样东西，而它们在仓库里不在同一个根**：
-> `configs/pipeline.yaml`、`artifacts/` 在 `services/python-retrieval/` 下，
-> 但 `.env` 在本仓库根 `demos/.env`。
+> ✅ **`.env` 已就位（2026-10-22）**：服务目录下放了一份 `.env`（gitignore 忽略，不入库），
+> `RAG_HOME` 缺省即包上级目录 → `configs/`、`artifacts/`、`.env` 三者同根，
+> **裸启动即可**，无需导出环境变量。`.env` 失效时（键为空）嵌入/精排会静默降级为
+> 本地 hash 兜底与启发式打分，检索质量下降且不报错——`/api/health` 的
+> `configFingerprint` 可对照排查。
 >
-> - `RAG_HOME=services/python-retrieval` → 配置与产物路径正确，**但读不到 `.env`**
->   （嵌入/精排会静默降级为本地 hash 兜底与启发式打分，检索质量下降且不报错）；
-> - `RAG_HOME=<仓库根>` → 读得到 `.env`，但 `artifacts/` 会指到 `<仓库根>/artifacts/`（不存在）。
->
-> 本地联调时把 `.env` 里的键**导出为进程环境变量**再设
-> `RAG_HOME=services/python-retrieval`（`load_embedding_config` 优先读进程环境变量）。
-> 这是既有结构的不一致，实质修法是把 `.env` 挪到服务目录或让 `config.py` 分别定位，
-> 未在本次改动范围内。
+> 环境变量优先级：进程环境变量 > `.env` > 默认。部署到别处时设 `RAG_HOME`
+> 指向含 `configs/`、`artifacts/`、`.env` 的目录即可。
 
 环境变量：
 
@@ -110,7 +106,7 @@ RAG_RETRIEVAL_PROVIDER=es mvn -pl rag-service spring-boot:run
 
 ```bash
 python -m pytest rag_service/tests -q            # 纯逻辑单测（68 例，含版本消歧与端点契约）
-RAG_HOME=$PWD python -m rag_service &           # 启动后：
+python -m rag_service &                          # 裸启动后：
 python tools/check_contract.py                  # HTTP 黑盒契约不变量 85 项
                                                 #（对 Java 的检索契约 + 锁超时 5031 + health 不抢锁
                                                 #  + 版本消歧的分水岭与四态）
@@ -161,11 +157,13 @@ EMBEDDING_DIMENSIONS=1024 java -jar rag-service/target/it-ticket-rag-service-1.0
 
 ```bash
 cd services/python-retrieval
+# .env 兜底已接（LLM_BASE_URL/LLM_API_KEY/LLM_CLEAN_MODEL），仓库根有 .env 时裸启动即可：
+python -m agent_service                                 # 默认 127.0.0.1:8320
+# 环境变量仍可覆盖（优先级：环境变量 > .env > 默认）：
 export AGENT_LLM_BASE_URL=... AGENT_LLM_API_KEY=...    # 生成模型凭据
 export AGENT_LLM_MODEL=deepseek-v4-flash               # ← 必须是支持原生 tools 的对话模型
-export TICKET_SERVICE_BASE_URL=http://127.0.0.1:8201   # 查工单 / 建单
-export KNOWLEDGE_SEARCH_BASE_URL=http://127.0.0.1:8301 # 补搜知识
-python -m agent_service                                 # 默认 127.0.0.1:8320
+export TICKET_SERVICE_BASE_URL=http://127.0.0.1:8201   # 查工单 / 建单（默认 8201，可不设）
+export KNOWLEDGE_SEARCH_BASE_URL=http://127.0.0.1:8301 # 补搜知识（默认 8301，可不设）
 ```
 
 > ⚠️ **`AGENT_LLM_MODEL` 别顺手用 `LLM_CHAT_MODEL` 代。**
