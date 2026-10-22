@@ -56,7 +56,11 @@ public final class ComposedRagAdapter implements RagAdapter {
                 throw DependencyFailure.invalid();
             if (generated.refusalReason() != null)
                 return RagResult.refuse(generated.refusalReason(), generated.modelVersion(), retrieved);
-            if (generated.replyType() == AiReplyType.REFUSE || !material.isEmpty() && generated.usedVersionIds().isEmpty())
+            // 「有材料却零引用=伪造嫌疑」守卫：但工具意图放行的作答实据来自工具返回
+            // （工单列表/建单草稿），本就不依赖知识引用——检索给建单类请求带出的低分杂项
+            // （如「员工IT故障自助排查流程」0.44）不构成引用义务，零引用是合法状态。
+            if (generated.replyType() == AiReplyType.REFUSE
+                    || !material.isEmpty() && generated.usedVersionIds().isEmpty() && !toolBypass)
                 return RagResult.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, generated.modelVersion(), retrieved);
             List<KnowledgeCitationDto> citations = generated.usedVersionIds().stream().distinct()
                     .map(byVersion::get).map(item -> new KnowledgeCitationDto(item.articleId(), item.versionId(),

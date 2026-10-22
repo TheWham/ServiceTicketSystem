@@ -3,6 +3,7 @@ package com.itticket.consultation.adapter;
 import com.itticket.consultation.adapter.generation.GenerationResult;
 import com.itticket.consultation.adapter.policy.OfficeDomain;
 import com.itticket.consultation.adapter.policy.RequestVerdict;
+import com.itticket.consultation.adapter.retrieval.RetrievedKnowledge;
 import com.itticket.consultation.adapter.retrieval.RetrievalPolicy;
 import com.itticket.consultation.adapter.retrieval.RetrievalResult;
 import com.itticket.consultation.enums.AiRefusalReason;
@@ -103,5 +104,58 @@ class ToolIntentBypassTest {
         // 领域门禁先于检索生效，工具意图不得把它顶开
         assertThat(result.replyType()).isEqualTo(AiReplyType.REFUSE);
         assertThat(result.refusalReason()).isEqualTo(AiRefusalReason.OFF_TOPIC);
+    }
+
+    /** 检索命中但分数不高：reliable=true、带若干低分项（建单类请求的真实形态）。 */
+    private static RetrievalResult weakHits() {
+        return new RetrievalResult(OfficeDomain.OFFICE_IT, true, null, List.of(
+                new RetrievedKnowledge("c1", "A1", "V1", "员工IT故障自助排查流程", "摘要",
+                        "正文", "C_OTH", new BigDecimal("0.4395"), "V1"),
+                new RetrievedKnowledge("c2", "A2", "V2", "密码重置与过期处理", "摘要",
+                        "正文", "C_ACC", new BigDecimal("0.2580"), "V2")),
+                new BigDecimal("0.4395"));
+    }
+
+    @Test
+    void toolIntentAnswerWithoutCitationsIsLegitimateEvenWhenMaterialPresent() {
+        // 建单/查工单的实据来自工具返回，不来自知识引用；检索给这类请求带出的低分杂项
+        // 不构成引用义务 —— 「有材料却零引用」守卫不得把工具意图的作答当伪造打回。
+        var knowledge = mock(KnowledgeQueryService.class);
+        org.mockito.Mockito.when(knowledge.isPublishedCurrentVersion(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
+        ComposedRagAdapter adapter = new ComposedRagAdapter(
+                (query, ctx) -> RequestVerdict.of(OfficeDomain.OFFICE_IT, "prepare_ticket"),
+                (query, ctx) -> weakHits(),
+                new RetrievalPolicy(knowledge),
+                (query, material, ctx) -> new GenerationResult(AiReplyType.ANSWER,
+                        "已生成工单草稿（test），请确认后建单。", List.of(),
+                        BigDecimal.ONE, null, "agent", null),
+                true);
+
+        RagResult result = adapter.answer(ask("新建一个工单,标题为test"), context());
+
+        assertThat(result.replyType()).isEqualTo(AiReplyType.ANSWER);
+        assertThat(result.refusalReason()).isNull();
+        assertThat(result.answerText()).contains("工单草稿");
+    }
+
+    @Test
+    void nonToolIntentWithMaterialStillRequiresCitations() {
+        // 同样的弱命中，无工具意图时「有材料零引用」守卫照常生效（防伪造语义不放宽）
+        var knowledge = mock(KnowledgeQueryService.class);
+        org.mockito.Mockito.when(knowledge.isPublishedCurrentVersion(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
+        ComposedRagAdapter adapter = new ComposedRagAdapter(
+                (query, ctx) -> RequestVerdict.of(OfficeDomain.OFFICE_IT, RequestVerdict.NO_TOOL),
+                (query, ctx) -> weakHits(),
+                new RetrievalPolicy(knowledge),
+                (query, material, ctx) -> new GenerationResult(AiReplyType.ANSWER,
+                        "凭通用经验给点建议。", List.of(), BigDecimal.ONE, null, "agent", null),
+                true);
+
+        RagResult result = adapter.answer(ask("会议室投影仪怎么连"), context());
+
+        assertThat(result.replyType()).isEqualTo(AiReplyType.REFUSE);
+        assertThat(result.refusalReason()).isEqualTo(AiRefusalReason.NO_RELIABLE_KNOWLEDGE);
     }
 }
