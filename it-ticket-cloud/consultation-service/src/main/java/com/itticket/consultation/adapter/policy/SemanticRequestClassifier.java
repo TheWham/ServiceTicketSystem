@@ -4,7 +4,28 @@ import com.itticket.consultation.adapter.*;
 import com.itticket.consultation.adapter.model.OpenAiCompatibleModelClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-/** 语义判定：一次调用同时给出「走哪条路」与「要不要调工具」（schema 见 classificationPrompt）。 */
+/**
+ * 语义判定（默认实现）—— 链路第 ① 环的主路径（全景图见 package-info）。
+ *
+ * <p><b>一次模型调用，两个字段</b>：提示词（见 classificationPrompt）要求只返回
+ * {@code {"decision": ..., "toolIntent": ...}}——decision 是拒答空间（四态），
+ * toolIntent 是工具意图（工具名与 Python tool_specs() 同名）。复用同一次调用意味着
+ * 「拒答/澄清/作答」与「调工具」永远基于同一份语义理解，不再各判各的。
+ *
+ * <p><b>失败语义（三种失败三种对待）</b>：
+ * <table border="1"><tr><th>情况</th><th>处理</th><th>为什么</th></tr>
+ * <tr><td>输出不合法（非 JSON/结构错）</td><td>整条退 {@link KeywordRequestClassifier}</td>
+ *     <td>毫秒级快速失败，保守规则顶上无害</td></tr>
+ * <tr><td>decision 缺失/不认识</td><td>同上（整条退，不拿半个结果往下走）</td>
+ *     <td>判定整体不可信</td></tr>
+ * <tr><td>toolIntent 缺失/不认识</td><td>按 NONE 处理，decision 照用</td>
+ *     <td>字段级容错：只影响放行，不影响门禁</td></tr>
+ * <tr><td>传输层失败（超时/5xx/429）</td><td><b>不兜底，原样上抛</b></td>
+ *     <td>必须让断路器看到失败，否则模型挂掉后每个请求都吃满超时才落兜底</td></tr>
+ * </table>
+ *
+ * <p>非 OFFICE_IT 时 tool 一律归 NONE：门禁优先，越界内容不因提到「工单」被放行。
+ */
 public final class SemanticRequestClassifier implements RequestClassifier {
     private static final Logger log = LoggerFactory.getLogger(SemanticRequestClassifier.class);
     private final OpenAiCompatibleModelClient model;

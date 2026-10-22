@@ -8,7 +8,31 @@ import java.math.BigDecimal;
 import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-/** The only answer orchestrator. Providers are selected in Spring assembly, never here. */
+/**
+ * AI 回答的唯一编排器 —— 一次员工消息在这里走完全部七步
+ * （全景图见 adapter.policy 包的 package-info，第 ① 环的判定器也在那个包）：
+ *
+ * <ol>
+ *   <li><b>① 意图判定</b>：classifier.classify 一次给出 domain（拒答空间）+ tool（工具意图）；</li>
+ *   <li><b>② 领域门禁</b>：OFF_TOPIC/HIGH_RISK 短路拒答、UNCERTAIN 追问——位置最靠前，
+ *       工具意图永远顶不开它；检索侧的域粗判只保留 HIGH_RISK 否决权（见下方注释）；</li>
+ *   <li><b>③ 知识检索</b>：retriever → rag-service(:8302) → Python 检索服务(:8310)，
+ *       返回材料 + reliable/reason；</li>
+ *   <li><b>④ 工具意图放行</b>：检索无果/低置信本应拒答；若判定给了具体工具且 agent 已开启
+ *       （构造参数 toolBypassEnabled = pythonAgentClient.enabled()），放行给第 ⑤ 步——
+ *       这是 Function Calling 智能体（查工单/建单）唯一的入口；</li>
+ *   <li><b>⑤ 生成</b>：generator 在装配期二选一——tool 路径走 PythonAgentClient(:8320，
+ *       ReAct 循环 + 白名单工具)，知识路径走 OpenAiCompatibleModelClient（单轮、引用 material）；</li>
+ *   <li><b>⑥ 引用守卫（本类内）+ 输出守卫（AiAnswerGuard，service 层）</b>：
+ *       usedVersionIds ⊆ 预检索材料、PUBLISHED 复核、置信度门槛；
+ *       工具意图作答实据来自工具返回，标记 generalAnswer=true 走「无知识依据」通道；</li>
+ *   <li><b>⑦ 返回</b>：正常回答带引用；建单请求额外携带带外 ticketDraft（人机回环——
+ *       员工确认后才真正建单，落库在 ConsultationService.confirmTicketDraft）。</li>
+ * </ol>
+ *
+ * <p>失败语义：检索/生成的一切依赖故障都收敛为 RagResult.failure（AiAnswerGuard 统一转
+ * 结构化拒答），不让异常裸抛出本类——「主链路不可阻断」（RD-013）。
+ */
 public final class ComposedRagAdapter implements RagAdapter {
     private static final Logger log = LoggerFactory.getLogger(ComposedRagAdapter.class);
     private final RequestClassifier classifier;

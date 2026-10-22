@@ -2,7 +2,15 @@ package com.itticket.consultation.adapter.policy;
 import com.itticket.consultation.adapter.*;
 import java.util.List;
 import java.util.Locale;
-/** Conservative explicit rules; this is not semantic model classification. */
+/**
+ * 关键词兜底判定 —— 判定的降级路径（链路第 ① 环，全景图见 package-info）。
+ *
+ * <p>何时轮到它：① 装配 provider=local（不接模型）；② {@link SemanticRequestClassifier}
+ * 遇到「模型输出不合法」（INVALID_RESPONSE）整条退回这里。传输层失败不走这里（上抛给断路器）。
+ *
+ * <p>语义方向：保守规则，不匹配即 UNCERTAIN（宁可澄清不可乱答）——降级期间
+ * 可用性下降但安全方向不变。规则与词表的取舍见各字段注释。
+ */
 public final class KeywordRequestClassifier implements RequestClassifier {
     private static final List<String> HIGH_RISK = List.of("绕过认证", "绕过权限", "提升权限", "修改权限", "提权",
             "破解", "删库", "数据恢复", "恢复丢失", "生产变更", "拆机", "勒索", "安全事件", "rm -rf");
