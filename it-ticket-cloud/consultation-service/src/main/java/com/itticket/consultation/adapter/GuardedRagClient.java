@@ -113,10 +113,14 @@ public class GuardedRagClient {
     public RagResult answer(RagQuery query, String requestId) {
         long startNanos = System.nanoTime();
         RagExecutionAudit audit = new RagExecutionAudit();
+        // 整次调用的总预算 = 起点 + timeoutMillis()（默认 request-timeout-ms）。
+        // context 会随调用一路传下去，检索器/生成器各自从 remainingMillis() 里扣自己的耗时——
+        // 超时预算是"一次请求共享一份"，而不是每个环节各自重新计时。
         RagCallContext context = new RagCallContext(requestId,
                 startNanos + TimeUnit.MILLISECONDS.toNanos(timeoutMillis()), audit);
         String sessionId = query == null ? null : query.sessionId();
         try {
+            // ---- 快速失败①：连问题都没有，不值得消耗断路器/并发额度 ----
             if (query == null) {
                 RagResult invalid = RagResult.degraded(
                         RagStatus.INVALID_RESPONSE, ERROR_NULL_QUERY, elapsedMs(startNanos));
@@ -124,11 +128,13 @@ public class GuardedRagClient {
                 return invalid;
             }
 
+            // ---- 主循环：原始尝试 + 至多 1 次重试（maxAttempts 默认 2）----
             int maxAttempts = Math.max(1, properties.getAi().getMaxAttempts());
             RagResult last = null;
             for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                // 【检查点 1】断路器打开 = 依赖已连续失败 N 次，此刻调用注定失败。
+                // 不发请求直接降级（省下超时等待），且不再重试——重试只会继续被拒。
                 if (!circuitBreaker.allowRequest()) {
-                    // 断路器打开:不调用依赖,也不再重试(重试只会继续被拒)
                     last = RagResult.degraded(
                             RagStatus.UNAVAILABLE, ERROR_CIRCUIT_OPEN, elapsedMs(startNanos))
                             .withRetrievedVersionIds(audit.retrievedVersionIds());
@@ -136,12 +142,19 @@ public class GuardedRagClient {
                     break;
                 }
 
+                // 【真正干活的一行】attemptOnce = 并发许可 → 独立线程池跑 adapter.answer
+                //   → 限时等待 → validate 输出校验。检索、生成、拼 citation 全在这条委托链里。
                 last = attemptOnce(query, context);
+                // 审计登记：本次实际检索到过哪些知识版本（跨重试累计）。
+                // 用途：上游 AiAnswerGuard 引用复核时，模型声明的 usedVersionIds 必须落在这个集合里，
+                // 写了"检索中从未出现过的版本"即伪造，整次回答作废。
                 if (last.retrievedVersionIds() != null) {
                     audit.recordRetrievedVersions(last.retrievedVersionIds());
                 }
                 // 汇总各次尝试的审计版本；引用仍仅来自本次实际生成资料。
                 last = last.withRetrievedVersionIds(audit.retrievedVersionIds());
+
+                // 【出口 A】成功：断路器记一次成功（连续成功 3 次会关掉已打开的断路器），直接返回。
                 if (last.status() == RagStatus.SUCCESS) {
                     circuitBreaker.recordSuccess();
                     log.debug("[rag] 调用成功 dependency={} circuit={} replyType={} citations={} "
@@ -152,18 +165,30 @@ public class GuardedRagClient {
                     return last.withLatency(elapsedMs(startNanos));
                 }
 
+                // 【失败处理】断路器记一次失败（连续 5 次失败会打开断路器，30 秒后半开试探），
+                // 然后决定这一轮失败要不要重试。
                 circuitBreaker.recordFailure();
                 logDegraded(last, requestId, sessionId, attempt);
+                // 【检查点 2】两类失败不重试：
+                //   ① retryableFailure()=false —— INVALID_RESPONSE 属业务性拒绝（输出不合法），
+                //      再跑一遍结果不会变，重试只是浪费；
+                //   ② 总预算耗尽 —— 重试了也必然超时，不如把已有结果（哪怕是降级结果）返回。
                 if (!last.retryableFailure() || context.remainingMillis() == 0) {
-                    // RD-003:不得对业务拒绝重试
                     break;
                 }
+                // 只有 TIMEOUT / UNAVAILABLE（且预算还有剩）才会进入下一轮 attempt 重试
             }
+
+            // 【出口 B】循环走完仍未成功：把最后一次的结果（通常是降级结果）带耗时返回。
+            // last==null 理论上不可达（循环至少跑一轮），仍兜底防止返回 null。
             return last == null
                     ? RagResult.degraded(RagStatus.UNAVAILABLE, ERROR_UNKNOWN, elapsedMs(startNanos))
                     : last.withLatency(elapsedMs(startNanos));
         } catch (Throwable t) {
-            // RD-013:主链路不可阻断,任何未预期故障都收敛为降级结果。异常详情只进服务端日志(AI-006)
+            // 【出口 C】连本类自己的代码都出了意外：也必须收敛成降级结果——
+            // 本类"永不抛异常"是对上游的承诺（RD-013 主链路不可阻断），
+            // 上游 AiAnswerGuard 只认 RagResult 的有限状态集，不接异常。
+            // 异常细节只进服务端日志、不进响应（AI-006：错误不得包含堆栈）。
             log.error("[rag] 隔离壳内部故障 dependency={} requestId={} sessionId={}",
                     DEPENDENCY, requestId, sessionId);
             return RagResult.degraded(RagStatus.UNAVAILABLE, ERROR_GUARD_FAILURE, elapsedMs(startNanos))
