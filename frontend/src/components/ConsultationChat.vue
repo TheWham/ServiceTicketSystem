@@ -212,14 +212,9 @@
              @drop.capture="attachmentDragDepth = 0"
              @dragleave="attachmentDragDepth = Math.max(0, attachmentDragDepth - 1)" @drop="onAttachmentDrop">
           <div v-if="attachmentDragDepth > 0" class="attachment-drop-hint" role="status">松开即可上传图片或文件</div>
-          <div class="input-toolbar">
-            <label for="support-message">描述你的问题</label>
-            <el-button text type="danger" :icon="Close" :loading="closing"
-                       :disabled="cancelingQueue || transferring" @click="closeSession">
-              结束对话
-            </el-button>
-          </div>
-          <el-input id="support-message" ref="inputRef" v-model="draft" type="textarea" :rows="3" resize="none"
+          <label for="support-message" class="sr-only">描述你的问题</label>
+          <el-input id="support-message" ref="inputRef" v-model="draft" type="textarea"
+                    :autosize="{ minRows: 1, maxRows: 3 }" resize="none"
                     :maxlength="inputMaxLength" show-word-limit
                     :placeholder="inputPlaceholder" :disabled="sending || aiThinking || inputDisabled || closing || cancelingQueue"
                     @keydown.enter.exact="send" />
@@ -228,15 +223,21 @@
           <div class="chat-actions">
             <div class="chat-actions-left">
               <!-- PRD 8.1:AI 对话中必须始终提供转人工和提交工单入口 -->
-              <el-button v-if="canTransfer" :icon="Service" :disabled="closing || cancelingQueue" @click="openTransfer()">转人工</el-button>
-              <el-button :icon="Tickets" @click="goCreateTicket">提交工单</el-button>
+              <el-button v-if="canTransfer" size="small" :icon="Service" :disabled="closing || cancelingQueue" @click="openTransfer()">转人工</el-button>
+              <el-button size="small" :icon="Tickets" @click="goCreateTicket">提交工单</el-button>
+              <span class="input-inline-tip">Enter 发送 · Shift+Enter 换行 · {{ isAiHandling ? 'AI 建议仅供参考' : '支持拖拽附件' }}</span>
             </div>
-            <el-button type="primary" :icon="Promotion" :loading="sending || aiThinking"
-                       :disabled="(!draft.trim() && !attachmentDrafts.length) || attachmentBlocked || inputDisabled || closing || cancelingQueue" @click="send">
-              发送
-            </el-button>
+            <div class="chat-actions-right">
+              <el-button text type="danger" size="small" :icon="Close" :loading="closing"
+                         :disabled="cancelingQueue || transferring" @click="closeSession">
+                结束对话
+              </el-button>
+              <el-button type="primary" size="small" :icon="Promotion" :loading="sending || aiThinking"
+                         :disabled="(!draft.trim() && !attachmentDrafts.length) || attachmentBlocked || inputDisabled || closing || cancelingQueue" @click="send">
+                发送
+              </el-button>
+            </div>
           </div>
-          <div class="input-hint">Enter 发送 · Shift + Enter 换行<span>{{ isAiHandling ? 'AI 建议仅供排查参考' : '支持拖拽图片、文件 · 单个不超过 20MB' }}</span></div>
         </div>
 
         <!-- 终态:开新会话 -->
@@ -1075,11 +1076,17 @@ onUnmounted(stopPolling)
 .dot:nth-child(3) { animation-delay: .4s; }
 @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
 
-/* 输入区 */
-.chat-input { margin-top: 12px; }
-.input-toolbar { display: flex; justify-content: flex-end; margin-bottom: 4px; }
-.chat-actions { margin-top: 8px; display: flex; justify-content: space-between; align-items: center; }
-.chat-actions-left { display: flex; gap: 8px; }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* 独立客服页面：对话流滚动，操作区保持可见。 */
 .chat-panel { border-radius: 14px; display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; }
@@ -1116,14 +1123,50 @@ onUnmounted(stopPolling)
 .msg-bubble { padding: 10px 16px; font-size: 15px; line-height: 1.68; border-radius: 12px; }
 .bubble-ai { background: var(--el-fill-color-light); border-color: transparent; }
 .msg-time { font-size: 11px; color: var(--el-text-color-placeholder); }
-.chat-input { flex-shrink: 0; margin: 0; padding: 8px 20px 12px; border-top: 1px solid var(--el-border-color-lighter); }
-.input-toolbar { justify-content: space-between; align-items: center; margin-bottom: 4px; }
-.input-toolbar label { font-size: 12px; color: var(--el-text-color-regular); }
-.chat-input :deep(.el-textarea__inner) { border-radius: 10px; padding: 10px 14px 20px; font-family: inherit; font-size: 15px; min-height: 60px; }
-.chat-actions { margin-top: 8px; gap: 8px; }
-.chat-actions .el-button { min-height: 34px; }
-.chat-actions-left { gap: 0; flex-wrap: wrap; }
-.input-hint { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 11px; color: var(--el-text-color-placeholder); }
+.chat-input { flex-shrink: 0; margin: 0; padding: 6px 16px 8px; border-top: 1px solid var(--el-border-color-lighter); background: var(--el-bg-color); }
+.chat-input :deep(.el-textarea__inner) {
+  border-radius: 8px;
+  padding: 7px 12px 18px;
+  font-family: inherit;
+  font-size: 14px;
+  min-height: 38px;
+  line-height: 1.5;
+}
+.chat-input :deep(.el-input__count) {
+  bottom: 2px;
+  right: 10px;
+  font-size: 11px;
+  background: transparent;
+  color: var(--el-text-color-placeholder);
+}
+.chat-actions {
+  margin-top: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.chat-actions-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.chat-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.input-inline-tip {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--el-text-color-placeholder);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .new-topic { flex-shrink: 0; border-top: 1px solid var(--el-border-color-lighter); padding: 12px; margin: 0; }
 .startup-error, .booting { flex: 1; min-height: 360px; height: 100%; border: 1px solid var(--el-border-color-lighter); border-radius: 14px; background: var(--el-bg-color); }
 .startup-error { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; box-sizing: border-box; }
@@ -1152,10 +1195,12 @@ onUnmounted(stopPolling)
   .msg-row { padding: 0; gap: 6px; }
   .msg-avatar { width: 28px; height: 28px; font-size: 11px; }
   .msg-main { max-width: calc(100% - 34px); }
-  .chat-input { padding: 8px 12px 10px; }
-  .chat-actions { flex-wrap: wrap; }
-  .chat-actions .el-button { padding: 8px 10px; min-height: 40px; }
-  .input-hint { flex-direction: column; font-size: 11px; }
+  .chat-input { padding: 6px 10px 8px; }
+  .chat-actions { flex-wrap: wrap; gap: 6px; }
+  .chat-actions-left { flex-wrap: wrap; gap: 4px; }
+  .chat-actions-right { flex-wrap: wrap; gap: 6px; }
+  .chat-actions .el-button { padding: 6px 8px; min-height: 28px; font-size: 12px; }
+  .input-inline-tip { display: none; }
   .refusal-actions { flex-wrap: wrap; }
   .citation-tag { max-width: 100%; height: auto; min-height: 28px; white-space: normal; }
 }
