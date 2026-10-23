@@ -81,7 +81,7 @@ docker compose up -d         # 只重建镜像变化了的容器
 docker image prune -f        # 清理旧镜像层
 ```
 
-CI 侧无需操作：push 到 main 且改动了 `it-ticket-cloud/` 会自动构建 5 个镜像并打 `latest` + 短 sha 两个 tag。
+CI 侧无需操作：push 到 main 且改动了 `it-ticket-cloud/`、`frontend/` 或 `services/python-retrieval/` 时，流水线会自动构建 7 个镜像（5 个 Java 服务 + frontend + python-ai 智能体）并打 `latest` + 短 sha 两个 tag。
 
 回滚到某次提交（sha tag 保留在 GHCR）：
 
