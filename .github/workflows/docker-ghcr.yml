@@ -1,9 +1,16 @@
 # ==============================================================================
 # 构建全部微服务镜像并推送 GHCR (ghcr.io)
 #
-# 触发：push 到 main（改了 it-ticket-cloud/ 或本 workflow 时才跑，省 CI 时间）
-# 产物：ghcr.io/<owner>/it-ticket-{gateway,user-service,ticket-service,rag-service,consultation-service}
+# 触发：push 到 main（改了 it-ticket-cloud/、frontend/、services/python-retrieval/
+#       或本 workflow 时才跑，省 CI 时间）
+# 产物：ghcr.io/<owner>/it-ticket-{gateway,user-service,ticket-service,rag-service,
+#       consultation-service,frontend,python-ai}
 #       tag = latest + 短 sha。镜像继承仓库可见性（私有仓库 → 私有镜像）。
+#
+# 每个模块的构建上下文 / Dockerfile 在 matrix 里显式给出：
+#   - 5 个 Java 服务与 frontend 共用各自的 Dockerfile，Java 模块用 build-arg 选择；
+#   - python-ai 是 services/python-retrieval 的 agent_service 镜像，对应 deploy
+#     compose 的 agent-service，context 与 Java 模块不同，故单独一行。
 #
 # 服务器侧配合：deploy/docker-compose.yml 用 PAT (read:packages) 拉取。
 # 注意：ghcr.io 镜像名必须全小写，owner 名含大写时需转小写（IMAGE_PREFIX 处理）。
@@ -17,12 +24,12 @@ on:
     paths:
       - "it-ticket-cloud/**"
       - "frontend/**"
+      - "services/python-retrieval/**"
       - ".github/workflows/docker-ghcr.yml"
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  # it-ticket-cloud 是 Maven 多模块仓库子目录，镜像内以模块名构建
   IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
 
 jobs:
@@ -37,17 +44,43 @@ jobs:
       matrix:
         include:
           - module: gateway
-            port: 8080
+            context: it-ticket-cloud
+            file: it-ticket-cloud/Dockerfile
+            build_args: |
+              MODULE=gateway
+              SERVICE_PORT=8080
           - module: user-service
-            port: 8101
+            context: it-ticket-cloud
+            file: it-ticket-cloud/Dockerfile
+            build_args: |
+              MODULE=user-service
+              SERVICE_PORT=8101
           - module: ticket-service
-            port: 8201
+            context: it-ticket-cloud
+            file: it-ticket-cloud/Dockerfile
+            build_args: |
+              MODULE=ticket-service
+              SERVICE_PORT=8201
           - module: rag-service
-            port: 8302
+            context: it-ticket-cloud
+            file: it-ticket-cloud/Dockerfile
+            build_args: |
+              MODULE=rag-service
+              SERVICE_PORT=8302
           - module: consultation-service
-            port: 8301
+            context: it-ticket-cloud
+            file: it-ticket-cloud/Dockerfile
+            build_args: |
+              MODULE=consultation-service
+              SERVICE_PORT=8301
           - module: frontend
-            port: 80
+            context: frontend
+            file: frontend/Dockerfile
+            build_args: ""
+          - module: python-ai
+            context: services/python-retrieval
+            file: services/python-retrieval/Dockerfile
+            build_args: ""
 
     steps:
       - name: Checkout
@@ -79,11 +112,9 @@ jobs:
       - name: Build & push
         uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.module == 'frontend' && 'frontend' || 'it-ticket-cloud' }}
-          file: ${{ matrix.module == 'frontend' && 'frontend/Dockerfile' || 'it-ticket-cloud/Dockerfile' }}
-          build-args: |
-            MODULE=${{ matrix.module }}
-            SERVICE_PORT=${{ matrix.port }}
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          build-args: ${{ matrix.build_args }}
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

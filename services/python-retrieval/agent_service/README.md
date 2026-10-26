@@ -54,6 +54,9 @@ docker build -t <IMAGE_PREFIX>/it-ticket-python-ai services/python-retrieval
 docker push <IMAGE_PREFIX>/it-ticket-python-ai
 ```
 
+生产镜像由 GHCR 流水线（`.github/workflows/docker-ghcr.yml` 的 `python-ai` 矩阵项）构建，
+tag 与其余服务一致（`latest` + 短 sha）；上面的命令只用于本地验证或私有环境手工推送。
+
 已并入 `it-ticket-cloud/deploy/docker-compose.yml`（服务名 `agent-service`，容器内 8320）：
 
 - `consultation-service` 侧注入 `AI_AGENT_ENABLED` / `AGENT_SERVICE_BASE_URL` / `TICKET_SERVICE_BASE_URL`；
