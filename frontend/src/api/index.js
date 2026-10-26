@@ -160,6 +160,17 @@ export const refusalApi = {
   review: (messageId, data) => api.post(`/consultations/refusal-cases/${messageId}/review`, data, withRequestId())
 }
 
+// ---- 跨工单分析 API（consultation-service,ApiEnvelope 包络,仅工程师/平台管理员） ----
+// 与拒答处置同款：consultation-service 强制要求 X-Request-Id（AI-002）。
+//
+// 超时单列：分析要扫时间窗内的全部工单再让归因模型写叙事，比普通查询重得多。
+// 本端点配的模型是推理型，一次分析实测 43~95 秒；沿用 15s 默认值会把正常的一次
+// 分析误杀成网络错误。给到 240s，比后端 180s 的客户端超时更宽。
+export const analyticsApi = {
+  query: (question) => api.post('/analytics/query', { question },
+    withRequestId({ timeout: 240000 }))
+}
+
 // ---- 黄金数据集 API（rag-service,Result 包络,管理端） ----
 export const goldenCaseApi = {
   list: (params) => api.get('/rag/golden-cases', { params }),

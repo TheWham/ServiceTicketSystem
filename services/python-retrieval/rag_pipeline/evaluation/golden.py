@@ -45,7 +45,15 @@ class GoldenSetEvaluator:
         self.rc = rc  # RetrievalConfig：top_k/rrf_k/权重/reject_threshold/granularity 与主链路同源
         self.rewriter = rewriter
         with open(golden_dataset_path, "r", encoding="utf-8") as f:
-            self.golden_dataset: List[Dict[str, Any]] = json.load(f)
+            raw: List[Dict[str, Any]] = json.load(f)
+        # 题型分流：跨工单聚合题（is_aggregate_check）不属于本评测口径 —— 它没有
+        # "该命中哪张卡"这回事（reference_chunk_ids 为空），这里的命中判定会让它
+        # 恒为未命中，把召回率整体拉下去。由 aggregate_evaluation 单独评。
+        # 这不是"混指标"，恰恰是为了不混：两类题各进各自的评测器。
+        self.golden_dataset = [e for e in raw if not e.get("is_aggregate_check")]
+        skipped = len(raw) - len(self.golden_dataset)
+        if skipped:
+            print(f"  ⓘ 跳过 {skipped} 道跨工单聚合题（走 aggregate_evaluation，不按单卡命中口径评分）")
 
     def run_evaluation(self, top_k: int = 3, adversarial_threshold: Optional[float] = None) -> Dict[str, Any]:
         """执行全量评测并输出指标统计。

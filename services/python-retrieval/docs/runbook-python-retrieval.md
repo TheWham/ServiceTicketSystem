@@ -184,6 +184,74 @@ export KNOWLEDGE_SEARCH_BASE_URL=http://127.0.0.1:8301 # 补搜知识（默认 8
 差别只在延迟。**`config.py`、`docker-compose.yml`、`agent_service/README.md` 里的默认值
 本来就是 `deepseek-v4-flash`**，只有手工启动时才容易被 `LLM_CHAT_MODEL` 覆盖掉。
 
+## analytics_service（跨工单聚合归纳）
+
+回答「请根据全部网络与打印设备工单，总结本季度共性根因并给出备件建议」这类
+**跨多记录宏观归纳**问题。与既有 RAG 链路是两条独立链路——`retrieval.top_k=3` 的
+单卡口径物理上凑不齐跨数十条记录的材料，且**工单从不进入知识库**。
+职责边界、五段链路与设计取舍见 `analytics_service/README.md`。
+
+```bash
+cd services/python-retrieval
+# 启动 HTTP 服务（默认 127.0.0.1:8340）：
+python -m analytics_service
+# 环境变量（优先级：环境变量 > .env > 默认）：
+export ANALYTICS_LLM_MODEL=deepseek-v4-flash            # 归因叙事模型，缺省回退 LLM_*
+export ANALYTICS_TICKET_BASE_URL=http://127.0.0.1:8201  # 工单投影扫描来源
+export ANALYTICS_MIN_UNIVERSE=20                        # 全库样本下限（低于则整体拒答）
+export ANALYTICS_MIN_DENOM=10                           # 条目分母下限（低于则只给计数不给占比）
+export ANALYTICS_MIN_LABEL_HITS=5                       # 条目命中下限
+```
+
+**模型未配置时链路照走**：聚合、闸门、覆盖率全部不受影响，只有归因叙事退回确定性模板，
+token 标 `estimated`。所以这个服务可以在没有模型凭据的环境里完整演示。
+
+### 评测：与检索评测**分成两套**
+
+```bash
+# 聚合题（跨工单宏观归纳，6 项指标）
+python -m rag_pipeline.pipelines.aggregate_evaluation --fixture analytics_service/tests/fixtures/tickets_q4.json
+# 检索题（原有 5 项指标，不受影响）
+python -m rag_pipeline.pipelines.golden_evaluation
+```
+
+两者由黄金集的 `is_aggregate_check` 字段分流，共用一个 JSON 文件：`golden_evaluation`
+会**跳过**聚合题并在控制台打印跳过条数——聚合题没有"该命中哪张卡"这回事
+（`reference_chunk_ids` 为空），若按单卡口径评分会恒判未命中，把召回率整体拉下去。
+
+`--fixture` 用真实库 Q4 窗口快照离线跑（55 张原始单，已脱敏，无姓名与联系方式）；
+不传 `--fixture` 则走 ticket-service 的真实投影扫描接口。
+
+### 词表维护（这是本服务唯一需要人工照看的东西）
+
+受控词表在 `configs/taxonomy.yaml`，**外置且版本化**——词表一改，历史统计口径就不可复现，
+所以版本号参与配置指纹，与索引配置同等对待。
+
+```bash
+# 未命中回捞：把没命中任何标签的工单落盘 + 给出词频候选
+python -m analytics_service.pipelines.unmatched_report --fixture analytics_service/tests/fixtures/tickets_q4.json
+```
+
+输出 `artifacts/analytics/unmatched_<窗口>.jsonl` 与候选词。**打标本身只由词典完成**——
+LLM 可以提候选，不参与判定，否则口径不可复现。`taxonomy_coverage_rate` 是这项工作的
+验收指标（门槛 ≥ 80%）。
+
+> ⚠️ **别把泛化词写成独立关键词。** `无反应` / `无法调节` 这类词单独出现时不构成症状判据：
+> 实测「打印机再次脱机」的描述里同时有"打印机"和"无反应"，「电脑音量无法调节」的描述里
+> 也有"无反应"——任何一条裸泛化词都会把它们从各自的正确标签下抢走（截胡，已实测复现）。
+> 加载时校验，违规直接抛错而不是静默降级。
+
+### 已知限制（如实登记，不是待办）
+
+- **根因维度当前无信号源**：远程库 `ticket_resolution` 为 **0 行**，工单从不记录解决方案。
+  所以「共性根因」在真实数据上表现为如实声明「无解决方案记录，不可归纳」，而不是编造。
+  词表（`ROOT_CAUSE`）与读取路径（`TicketResolutionMapper` + 投影里的 `resolution` 字段）
+  已提前就位，等工单开始沉淀方案记录即零代码改动生效。
+- **样本量小**：Q4 窗口内有效工单 24 单（原始 55 张中 31 张被判定为联调噪声/测试串/标注忽略）。
+  子域限定后往往只剩个位数，会按设计走「只给计数不给占比」。
+- **不改 `00-schema.sql`**：`validate_schema.py` 会断言列集合全等，所有 DDL 走
+  `db/migration/V2_7__*.sql` / `V2_8__*.sql`（纯增量、幂等）。
+
 ## 已知行为与运维要点
 
 1. **网关限流降级**：KSP 网关 429 密集时，收紧后的在线预算（1.5s/8 次）可能拿不到

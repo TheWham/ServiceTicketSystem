@@ -30,7 +30,23 @@
                                                      → consultation:8301（补搜知识）
 ```
 
+【分析·读路径】（Day21 跨工单聚合归纳，走同一问答入口）
+  前端:5175 → gateway → consultation-service:8301
+                            │
+                            ├─ 意图判定：SemanticRequestClassifier（LLM）/ KeywordRequestClassifier（兜底）
+                            │    判为 ANALYTICS → AnalyticsClient
+                            │    其余 → 原 ragPipeline（上面那条读路径）
+                            │
+                            └─ analytics_service:8340（确定性节点链）
+                                 ├ 意图路由（模型主判 + 规则兜底 + 安全闸）
+                                 ├ 取数：ticket-service:8201 只读投影扫描（★不 GROUP BY、不跨库）
+                                 ├ 聚合：纯 Python 词表抽取 + 占比/覆盖率/小样本闸门/备件决策表
+                                 ├ 模型：只做归因叙事（拿不到原始工单，只有已算好的事实）
+                                 └ 门禁：verify_numbers / verify_ticket_ids（数字与单号必须可溯源）
+```
+
 **要点**：三个模型角色（对话生成 / Embedding / Rerank）可以各自独立配 base_url 与 key，互不影响。
+分析链路的模型调用点只有一处（归因叙事），**聚合出的数字全部由 Python 算出、模型无权改**。
 
 ---
 
@@ -46,6 +62,7 @@
 | ⑥ | rag-service 检索路由 | 8302 | `RAG_RETRIEVAL_PROVIDER` `RAG_PYTHON_BASE_URL` | `python` / `http://127.0.0.1:8310` | 默认值在库 |
 | ⑦ | 离线入库流水线 | — | `EMBED_*` + `configs/pipeline.yaml` | — | 产物在库 |
 | ⑧ | workflow_demo（Day17 demo） | 8330 | `AGENT_LLM_*` → 回退 `LLM_*` | 同 ③ | 默认值在库 |
+| ⑨ | analytics_service（Day21 分析链路） | 8340 | `ANALYTICS_TICKET_BASE_URL` `ANALYTICS_LLM_*` → 回退 `LLM_*` | 同 ②③ | 默认值在库 |
 
 **唯一凭据**：一把 key + 一个 base_url，其余都是模型名与开关。
 
@@ -220,6 +237,24 @@ python -m rag_pipeline.pipelines.indexing     # 用 EMBED_* + configs/pipeline.y
 `AGENT_LLM_BASE_URL/API_KEY/MODEL` 优先，回退到 `LLM_BASE_URL/API_KEY/LLM_CHAT_MODEL`。
 只有普通对话补全，不需要原生 tools，所以这里用 `kimi-k3` 也行。
 **只有跑 `uvicorn workflow_demo.app:app`（:8330）时才需要。**
+
+---
+
+### ⑨ analytics_service（Day21 跨工单聚合归纳，不在主链路）
+
+[analytics_service/config.py](services/python-retrieval/analytics_service/config.py) —
+`ANALYTICS_LLM_BASE_URL/API_KEY/MODEL` 优先，回退到 `LLM_BASE_URL/API_KEY/LLM_CHAT_MODEL`。
+`ANALYTICS_TICKET_BASE_URL` 指向 ticket-service 内部接口（默认 `http://127.0.0.1:8201`），
+**只走只读投影扫描 `GET /api/internal/tickets/analytics/scan`，不跨库读 ticket 表**（架构 8.1）。
+
+该服务是**确定性节点链**，不是 ReAct：`route_analytics` 意图路由 → 投影扫描取数 →
+**纯 Python 词表抽取 + 聚合**（占比/覆盖率/小样本闸门/备件决策表，全部不调模型）→
+模型只做归因叙事 → 数字与单号门禁。模型不可用时走确定性模板，链路照走。
+
+词表外置在 [configs/taxonomy.yaml](services/python-retrieval/configs/taxonomy.yaml)——**改词表不需要改代码**，
+但词表版本参与配置指纹，改动会影响历史统计口径的可复现性。
+
+**只有跑 `uvicorn analytics_service.app:app`（:8340）时才需要。**
 
 ---
 

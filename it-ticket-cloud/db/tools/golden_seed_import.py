@@ -25,14 +25,16 @@ UPSERT_SQL = """
 INSERT INTO golden_case
   (natural_key, category, difficulty, query, ground_truth_answer,
    reference_chunk_ids, expected_keywords, is_conflict_check, is_adversarial,
+   is_aggregate_check, aggregate_expect,
    source_type, enabled, created_by, created_at)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'SEED', 1, 'seed-import', %s)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'SEED', 1, 'seed-import', %s)
 ON DUPLICATE KEY UPDATE
   category=VALUES(category), difficulty=VALUES(difficulty), query=VALUES(query),
   ground_truth_answer=VALUES(ground_truth_answer),
   reference_chunk_ids=VALUES(reference_chunk_ids),
   expected_keywords=VALUES(expected_keywords),
   is_conflict_check=VALUES(is_conflict_check), is_adversarial=VALUES(is_adversarial),
+  is_aggregate_check=VALUES(is_aggregate_check), aggregate_expect=VALUES(aggregate_expect),
   source_type='SEED', enabled=1
 """
 
@@ -81,6 +83,11 @@ def main():
                     json.dumps(e.get("expected_keywords") or [], ensure_ascii=False),
                     1 if e.get("is_conflict_check") else 0,
                     1 if e.get("is_adversarial") else 0,
+                    1 if e.get("is_aggregate_check") else 0,
+                    # 聚合题没有 aggregate_expect 就存 NULL（= 该题不参与聚合校验），
+                    # 而不是存一个空对象 —— 后者会让评测侧读出"有期望但什么都没要求"
+                    json.dumps(e["aggregate_expect"], ensure_ascii=False)
+                    if e.get("aggregate_expect") else None,
                     now,
                 ))
                 inserted += cur.rowcount

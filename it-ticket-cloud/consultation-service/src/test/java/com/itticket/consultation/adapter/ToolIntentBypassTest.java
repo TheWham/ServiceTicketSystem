@@ -55,7 +55,7 @@ class ToolIntentBypassTest {
                     return new GenerationResult(AiReplyType.ANSWER, answerText.get(), List.of(),
                             BigDecimal.ONE, null, "agent", null);
                 },
-                agentEnabled);
+                agentEnabled, null);
     }
 
     @ParameterizedTest
@@ -130,7 +130,7 @@ class ToolIntentBypassTest {
                 (query, material, ctx) -> new GenerationResult(AiReplyType.ANSWER,
                         "已生成工单草稿（test），请确认后建单。", List.of(),
                         BigDecimal.ONE, null, "agent", null),
-                true);
+                true, null);
 
         RagResult result = adapter.answer(ask("新建一个工单,标题为test"), context());
 
@@ -154,7 +154,7 @@ class ToolIntentBypassTest {
                 new RetrievalPolicy(knowledge),
                 (query, material, ctx) -> new GenerationResult(AiReplyType.ANSWER,
                         "凭通用经验给点建议。", List.of(), BigDecimal.ONE, null, "agent", null),
-                true);
+                true, null);
 
         RagResult result = adapter.answer(ask("会议室投影仪怎么连"), context());
 

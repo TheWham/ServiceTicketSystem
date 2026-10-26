@@ -1,4 +1,5 @@
 package com.itticket.consultation.adapter;
+import com.itticket.consultation.adapter.analytics.AnalyticsClient;
 import com.itticket.consultation.adapter.generation.*;
 import com.itticket.consultation.adapter.policy.*;
 import com.itticket.consultation.adapter.retrieval.*;
@@ -41,10 +42,20 @@ public final class ComposedRagAdapter implements RagAdapter {
     private final AnswerGenerator generator;
     /** 仅当 Function Calling 开启时为 true —— agent 关了就不消费判定结果里的 tool。 */
     private final boolean toolBypassEnabled;
+    /**
+     * 跨工单分析链路客户端（可为 null = 未装配）。
+     *
+     * <p>为什么允许为 null 而不是要求必填：分析链路对大多数部署是可选项，
+     * 未装配时判定为 ANALYTICS 的请求应如实拒答（"分析能力未启用"），
+     * 而不是启动即失败 —— 那会让一个可选能力拖垮整个咨询服务的可用性。
+     */
+    private final AnalyticsClient analyticsClient;
     public ComposedRagAdapter(RequestClassifier classifier, KnowledgeRetriever retriever,
-                              RetrievalPolicy policy, AnswerGenerator generator, boolean toolBypassEnabled) {
+                              RetrievalPolicy policy, AnswerGenerator generator,
+                              boolean toolBypassEnabled, AnalyticsClient analyticsClient) {
         this.classifier = classifier; this.retriever = retriever; this.policy = policy; this.generator = generator;
         this.toolBypassEnabled = toolBypassEnabled;
+        this.analyticsClient = analyticsClient;
     }
     @Override public RagResult answer(RagQuery query, RagCallContext context) {
         List<String> retrieved = List.of();
@@ -54,6 +65,12 @@ public final class ComposedRagAdapter implements RagAdapter {
             log.info("[判定] domain={} tool={} requestId={}", verdict.domain(), verdict.tool(), context.requestId());
             RagResult domainVerdict = restrict(verdict.domain());
             if (domainVerdict != null) return domainVerdict;
+            // ②' 跨工单分析：走确定性聚合链路，不检索知识库。
+            //     放在领域门禁之后、检索之前 —— 门禁必须先过（越界/高风险请求没有"做统计"的
+            //     余地），而检索对分析毫无用处：分析要的是工单集的分布，不是几张知识卡片。
+            //     也刻意**不落进工具意图旁路**：那条通道把作答标记为 generalAnswer=true
+            //     （"无知识依据的通用建议"），而分析型回答有硬数据依据，语义完全不同。
+            if (verdict.analytics()) return analyze(query, context);
             RetrievalResult result = retriever.retrieve(query, context);
             retrieved = result.items().stream().map(RetrievedKnowledge::versionId).distinct().toList();
             context.audit().recordRetrievedVersions(retrieved);
@@ -109,6 +126,25 @@ public final class ComposedRagAdapter implements RagAdapter {
             return failure.result(retrieved);
         }
     }
+    /**
+     * 分析链路的出口。
+     *
+     * <p>未装配 / 依赖失败一律**结构化拒答**，刻意不回退到知识问答：回退会让一个
+     * "统计请求"收到单卡答案，那正是这条链路要消灭的答非所问。失败原因如实透出，
+     * 不做静默降级（AGENTS.md：不为外部依赖故障添加静默回退）。
+     */
+    private RagResult analyze(RagQuery query, RagCallContext context) {
+        if (analyticsClient == null || !analyticsClient.enabled()) {
+            log.warn("[分析] 判定为跨工单分析但分析链路未启用 requestId={}", context.requestId());
+            return RagResult.refuse(AiRefusalReason.MODEL_UNAVAILABLE, null, List.of());
+        }
+        try {
+            return analyticsClient.analyze(query, context);
+        } catch (DependencyFailure failure) {
+            return failure.result(List.of());
+        }
+    }
+
     private static RagResult restrict(OfficeDomain domain) {
         return switch (domain) {
             case OFFICE_IT -> null;

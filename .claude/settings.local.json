@@ -133,7 +133,10 @@
       "Bash(taskkill //F //PID 23728 //PID 4420 //PID 6368 //PID 31816 //PID 17320 //PID 22968 //PID 10960 //PID 10648)",
       "Bash(taskkill //F //IM \"Docker Desktop.exe\")",
       "Bash(taskkill //F //IM \"com.docker.backend.exe\")",
-      "Bash(tasklist //FI \"IMAGENAME eq com.docker.backend.exe\" //FO CSV //NH)"
+      "Bash(tasklist //FI \"IMAGENAME eq com.docker.backend.exe\" //FO CSV //NH)",
+      "Bash(PYTHONIOENCODING=utf-8 python -c ' *)",
+      "Bash(PYTHONIOENCODING=utf-8 python -m pytest analytics_service/tests -q)",
+      "Bash(PYTHONIOENCODING=utf-8 python -)"
     ]
   }
 }

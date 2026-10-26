@@ -267,3 +267,21 @@ AI-007 事件 envelope Schema：
 Secret ref、allowlist、egress proxy、TLS verify 和 IP pin 在启动与配置热更新时校验。若不使用 egress proxy，每次连接前重新解析 DNS、校验全部地址、选取已校验 IP 建立连接并绑定 Host/SNI；连接期间 DNS 变化不允许切换到未校验地址。每一跳重定向重新执行 allowlist、DNS、IP pin 和端口校验；失败立即拒绝。
 
 MODEL_SECRET_REF 仅是单 provider 部署的兼容默认键；当 ai_provider_config 存在 api_key_secret_ref 时，provider 版本引用优先，MODEL_SECRET_REF 不得覆盖它。多 provider 环境必须为每个 provider 版本显式配置 api_key_secret_ref，禁止回退到全局键。
+
+## MR-016 分析型确定性链路
+
+跨工单宏观聚合类请求**不走检索链路**——`retrieval.top_k` 的单卡口径物理上凑不齐跨数十条记录的归纳材料，且工单从不进入知识库。该能力由独立的分析链路承担。
+
+**意图判定**沿用既有分类器：`SemanticRequestClassifier` 主判、`KeywordRequestClassifier` 兜底，新增 `ANALYTICS` 取值并纳入 `RequestVerdict` 白名单，白名单外一律归一为 `NONE`。分析链路侧同构实现"规则先跑 -> 安全闸 -> 模型判定 -> 仲裁"，分歧且规则未命中时返回澄清而非直接进入链路（误判将跨服务边界）。上游已指定意图或规则明确命中时，分析链路不得重复调用模型做二次分类。
+
+**取数**走 ticket-service 只读投影扫描（`GET /api/internal/tickets/analytics/scan`），仅按时间窗过滤，**不做 `GROUP BY`、不跨库读 ticket 表、不返回姓名与联系方式**。去噪、词表抽取与聚合全部在分析链路侧完成，以保证剔除口径与分母一致。
+
+**数字纪律**：占比由代码以 `Decimal` 计算并输出**双分母**（以命中工单为分母 / 以全部工单为分母）；备件与巡检建议由决策表产出，模型无权增删条目；模型只接收已算好的事实包，**不接收任何原始工单文本**。生成后执行门禁：回答中的每个百分比/数量必须能在事实包内找到、每个单号必须在本次样本白名单内，否则剔除该句；剔除后不足则退回确定性模板。
+
+**小样本与拒答**：全库样本低于 `MIN_UNIVERSE` 时整体拒答并说明原因；条目分母低于 `MIN_DENOM` 或命中数低于 `MIN_LABEL_HITS` 时**只输出计数、不输出占比**并挂 `SMALL_SAMPLE` 闸门。子域过滤依据词表抽取结果，**不依据 `category_id`**。
+
+**降级**：模型未配置、调用失败、输出不可解析或被 `max_tokens` 截断，均退回确定性模板文案并保留真实原因与原始输出；**不得把半截 JSON 当作答复回传**。token 来源区分 `estimated` 与 `reported`，不得合并统计。
+
+**权限**：仅 `ENGINEER` 与 `PLATFORM_ADMIN` 可调用，`EMPLOYEE` 返回 `POLICY_BLOCKED`；慢查询超时熔断沿用统一超时预算。
+
+**词表**：受控词表外置于 `configs/taxonomy.yaml`，版本参与配置指纹——词表变更会影响历史统计口径的可复现性，须与索引配置同等对待。未命中任何标签的工单落入 `unmatched` 桶，作为词表演化的输入。

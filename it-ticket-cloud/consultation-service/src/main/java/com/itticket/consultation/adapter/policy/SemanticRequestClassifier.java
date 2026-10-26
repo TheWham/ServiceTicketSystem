@@ -66,7 +66,14 @@ public final class SemanticRequestClassifier implements RequestClassifier {
             tool = RequestVerdict.NO_TOOL;
         }
         log.info("[判定] " + domain + " tool=" + tool + " requestId=" + context.requestId());
-        return RequestVerdict.of(domain, tool);
+        // analyticsIntent 同样字段级容错：缺失/不认识一律 false，不影响门禁。
+        // 只有 OFFICE_IT 才可能成立（RequestVerdict 的紧凑构造器再兜一道）。
+        boolean analytics = domain == OfficeDomain.OFFICE_IT
+                && "ANALYTICS".equalsIgnoreCase(result.path("analyticsIntent").asText(""));
+        if (analytics) {
+            log.info("[判定] 判定为跨工单分析请求 requestId=" + context.requestId());
+        }
+        return new RequestVerdict(domain, tool, analytics);
     }
     private static String classificationPrompt() {
         return """
@@ -94,9 +101,24 @@ public final class SemanticRequestClassifier implements RequestClassifier {
 
                 toolIntent 只在 decision 为 OFFICE_IT 时有意义：判成 OFF_TOPIC / HIGH_RISK / UNCERTAIN 时本就要
                 拒答或澄清，不得因为句子提到「工单」就把越界内容放行。
-                只返回一个 JSON 对象，字段 decision 与 toolIntent；
+
+                analyticsIntent —— 该请求是否要**把很多条工单合起来看**；否则 NONE。
+                  ANALYTICS —— 需要跨多条工单做宏观归纳、统计、趋势或据此给建议。特征是要的是
+                               「一批记录合起来看」的结论，而不是「我这一件事怎么办」的答案。例如：
+                               “总结本季度网络与打印设备的共性根因”“统计各类故障的占比”
+                               “本季度工单的故障分布”“近三个月的趋势”“给出下季度的备件采购建议”。
+                  NONE      —— 其余一律 NONE。典型：
+                               · 单个故障怎么排查（“我的电脑蓝屏了怎么办”“打印机脱机怎么处理”）；
+                               · 查自己的工单进度（那是 toolIntent=query_my_tickets）；
+                               · 要新建工单。
+                               注意：句子里出现「总结/分析」但对象是**单个**报错（“帮我总结一下这个报错”）
+                               仍属 NONE；反之没有「统计」二字但要求跨记录汇总（“这季度设备都怎么了”）
+                               仍属 ANALYTICS。判断依据只有一条：要的是一批记录的结论，还是这一件事的答案。
+
+                只返回一个 JSON 对象，字段 decision、toolIntent 与 analyticsIntent；
                 decision 取值只能是 OFFICE_IT、OFF_TOPIC、HIGH_RISK、UNCERTAIN；
-                toolIntent 取值只能是 query_my_tickets、prepare_ticket、NONE。
+                toolIntent 取值只能是 query_my_tickets、prepare_ticket、NONE；
+                analyticsIntent 取值只能是 ANALYTICS、NONE。
                 """;
     }
 }

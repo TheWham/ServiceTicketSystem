@@ -53,7 +53,7 @@ class ComposedModelProtocolTest {
                 new com.itticket.consultation.adapter.retrieval.MySqlKnowledgeRetriever(knowledge, config),
                 new com.itticket.consultation.adapter.retrieval.RetrievalPolicy(knowledge),
                 new com.itticket.consultation.adapter.generation.OpenAiCompatibleAnswerGenerator(model, config, null),
-                false);
+                false, null);
     }
 
     @AfterEach

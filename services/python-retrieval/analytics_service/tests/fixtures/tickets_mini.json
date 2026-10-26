@@ -1,0 +1,97 @@
+{
+  "_comment": "单测用迷你语料。结构照 ticket-service 投影扫描的脱敏投影；刻意混入噪声单、模板话术、以及一条带 resolution 的工单（用于验证根因链路不是死代码）。",
+  "tickets": [
+    {
+      "ticketId": "TK202610010001",
+      "categoryId": "C_HW_PC",
+      "title": "电脑蓝屏",
+      "description": "员工报障：电脑出现蓝屏。待补充信息：蓝屏发生的频率与时机（开机时/使用中/运行特定软件时）、蓝屏错误代码或提示（如 CRITICAL_PROCESS_DIED、MEMORY_MANAGEMENT 等）、近期是否新装软件。",
+      "createdAt": "2026-10-01T09:10:00"
+    },
+    {
+      "ticketId": "TK202610010002",
+      "categoryId": "C_HW_PC",
+      "title": "电脑蓝屏",
+      "description": "使用中突然蓝屏，重启后恢复正常。",
+      "createdAt": "2026-10-02T10:00:00"
+    },
+    {
+      "ticketId": "TK202610010003",
+      "categoryId": "C_HW_PC",
+      "title": "笔记本无法开机，按电源键无反应",
+      "description": "员工笔记本无法开机，按电源键无任何反应。影响：无法使用笔记本办公。",
+      "createdAt": "2026-10-03T08:30:00"
+    },
+    {
+      "ticketId": "TK202610010004",
+      "categoryId": "C_HW_PC",
+      "title": "无法开机",
+      "description": "无法开机笔记本电脑，",
+      "createdAt": "2026-10-04T14:20:00"
+    },
+    {
+      "ticketId": "TK202610010005",
+      "categoryId": "C_HW_PC",
+      "title": "打印机再次脱机，重启无效，申请报修",
+      "description": "打印机再次出现脱机故障：发送打印任务无反应，状态显示脱机。已重启打印机和电脑未解决。请 IT 协助排查。",
+      "createdAt": "2026-10-05T11:00:00"
+    },
+    {
+      "ticketId": "TK202610010006",
+      "categoryId": "C_NET",
+      "title": "VPN连接失败",
+      "description": "VPN总是断开，连接不稳定，影响远程办公。",
+      "createdAt": "2026-10-06T09:00:00"
+    },
+    {
+      "ticketId": "TK202610010007",
+      "categoryId": "C_HW_PC",
+      "title": "电脑音量无法调节",
+      "description": "员工反馈电脑音量无法调节。具体现象（音量键/快捷键是否无反应、音量滑块是否可拖动但无声音）待工程师受理时进一步确认。",
+      "createdAt": "2026-10-07T15:00:00"
+    },
+    {
+      "ticketId": "TK202610010008",
+      "categoryId": "C_HW_PC",
+      "title": "激光打印机卡纸，进纸组件异响",
+      "description": "打印机频繁卡纸并伴随异响，已清理纸道仍复发。",
+      "createdAt": "2026-10-08T10:30:00",
+      "resolution": "拆检发现搓纸轮橡胶老化、表面硬化打滑，更换搓纸轮后恢复正常。"
+    },
+    {
+      "ticketId": "TK202610010009",
+      "categoryId": "C_NET",
+      "title": "test123",
+      "description": "test123",
+      "createdAt": "2026-10-09T10:00:00"
+    },
+    {
+      "ticketId": "TK202610010010",
+      "categoryId": "C_NET",
+      "title": "【HITL联调测试】办公楼网络中断，请忽略",
+      "description": "Day18 HITL 联调测试单据，验证派单草案挂起链路。可随时撤销。",
+      "createdAt": "2026-10-10T10:00:00"
+    },
+    {
+      "ticketId": "TK202610010011",
+      "categoryId": "C_SW",
+      "title": "办公软件闪退",
+      "description": "打开办公软件后约10秒自动闪退，重启电脑后问题依旧。",
+      "createdAt": "2026-10-11T10:00:00"
+    },
+    {
+      "ticketId": "TK202610010012",
+      "categoryId": "C_HW_PC",
+      "title": "电脑蓝屏",
+      "description": "开机后不久即蓝屏。",
+      "createdAt": "2026-10-12T10:00:00"
+    },
+    {
+      "ticketId": "TK202610010013",
+      "categoryId": "C_OTH",
+      "title": "会议室投影仪无法投屏",
+      "description": "三楼会议室投影仪接笔记本后无信号，换线仍未恢复。",
+      "createdAt": "2026-10-13T10:00:00"
+    }
+  ]
+}

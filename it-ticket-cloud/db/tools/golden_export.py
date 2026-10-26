@@ -23,7 +23,8 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 
 EXPORT_SQL = """
 SELECT natural_key, category, difficulty, query, ground_truth_answer,
-       reference_chunk_ids, expected_keywords, is_conflict_check, is_adversarial
+       reference_chunk_ids, expected_keywords, is_conflict_check, is_adversarial,
+       is_aggregate_check, aggregate_expect
 FROM golden_case
 WHERE enabled = 1
 ORDER BY created_at ASC, id ASC
@@ -44,6 +45,16 @@ def connect():
         charset="utf8mb4",
         cursorclass=pymysql.cursors.DictCursor,
     )
+
+
+def parse_json(raw):
+    """解析 JSON 列；空值 / 坏值返回 None（而不是 {} —— 见导入侧的同一取舍）。"""
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return None
 
 
 def parse_list(raw):
@@ -84,14 +95,20 @@ def main():
             "expected_keywords": parse_list(r["expected_keywords"]),
             "is_conflict_check": bool(r["is_conflict_check"]),
             "is_adversarial": bool(r["is_adversarial"]),
+            "is_aggregate_check": bool(r["is_aggregate_check"]),
+            "aggregate_expect": parse_json((r.get("aggregate_expect") or "").strip())
+                                if isinstance(r.get("aggregate_expect"), (str, bytes))
+                                else r.get("aggregate_expect"),
         })
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
 
     adversarial = sum(1 for e in entries if e["is_adversarial"])
+    aggregate = sum(1 for e in entries if e.get("is_aggregate_check"))
     print(f"✅ 已导出 {len(entries)} 条 → {out_path}")
-    print(f"   对抗样本 {adversarial} 条 / 正常样本 {len(entries) - adversarial} 条")
+    print(f"   对抗样本 {adversarial} 条 / 正常样本 {len(entries) - adversarial - aggregate} 条"
+          f" / 跨工单聚合 {aggregate} 条")
     print("   评测: python -m rag_pipeline.pipelines.golden_evaluation --golden-dataset <该文件>")
 
 

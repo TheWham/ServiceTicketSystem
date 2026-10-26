@@ -6,6 +6,7 @@ import com.itticket.ticket.dto.CreateTicketRequest;
 import com.itticket.ticket.enums.TicketStatus;
 import com.itticket.ticket.service.TicketService;
 import com.itticket.ticket.vo.TicketListVO;
+import com.itticket.ticket.vo.TicketScanVO;
 import com.itticket.ticket.vo.TicketVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -56,6 +57,30 @@ public class InternalTicketController {
         TicketListVO page = ticketService.list(UserContext.get(), validStatus, category, null, creatorId,
                 null, null, null, created_after, 1, size);
         return Result.ok(page == null || page.getList() == null ? new ArrayList<>() : page.getList());
+    }
+
+    /**
+     * 分析投影扫描（只读）：按时间窗拉出脱敏工单明细，供 analytics_service 去噪与聚合。
+     *
+     * <p>与 {@link #list} 的关键区别：list 是「查我的工单」，归属由 {@code creator_id} 绑定；
+     * 本接口是**跨人聚合**，允许 ENGINEER / PLATFORM_ADMIN 读全部工单的脱敏投影
+     * （不含姓名、联系方式、location）。角色判定是权威的一道，在
+     * {@code TicketService.analyticsScan} 里，缺角色直接 403。
+     *
+     * <p>刻意**不做聚合、不接受 category 子域粗筛** —— 理由见
+     * {@code TicketService#analyticsScan}：库里是未清洗的原始工单，SQL 聚合会把联调测试单
+     * 算进分母；而按分类粗筛会让分类填错的那张单在数据库层就被滤掉。
+     *
+     * <p>槽位 {@code created_after}/{@code created_before} 为 ISO 日期（YYYY-MM-DD），
+     * 按 UTC 解释（与库内 UTC 约定一致）；格式非法一律弃用该槽位而非报错。
+     */
+    @GetMapping("/analytics/scan")
+    public Result<List<TicketScanVO>> analyticsScan(
+            @RequestParam(value = "created_after", required = false) String createdAfter,
+            @RequestParam(value = "created_before", required = false) String createdBefore,
+            @RequestParam(defaultValue = "0") int limit) {
+        return Result.ok(ticketService.analyticsScan(
+                UserContext.get(), createdAfter, createdBefore, limit));
     }
 
     /** 建单(员工确认 AI 草稿后由 consultation-service 触发;ai-service 人力客服转单亦复用)。 */

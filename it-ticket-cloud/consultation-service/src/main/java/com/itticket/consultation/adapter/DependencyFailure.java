@@ -17,6 +17,8 @@ public final class DependencyFailure extends RuntimeException {
         this.status = status; this.errorClass = errorClass; this.retryable = retryable; this.detail = detail;
     }
     public String detail() { return detail; }
+    /** 失败分类（超时/不可用/响应非法），供调用方据此给出不同的对外文案。 */
+    public RagStatus status() { return status; }
     public RagResult result(List<String> retrievedVersionIds) {
         return RagResult.failure(status, errorClass, retryable, retrievedVersionIds);
     }

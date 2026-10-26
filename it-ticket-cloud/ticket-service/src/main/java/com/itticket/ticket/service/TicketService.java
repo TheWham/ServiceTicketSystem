@@ -33,6 +33,7 @@ import com.itticket.ticket.mapper.TicketMapper;
 import com.itticket.ticket.statemachine.TicketStateMachine;
 import com.itticket.ticket.vo.FlowLogVO;
 import com.itticket.ticket.vo.TicketListVO;
+import com.itticket.ticket.vo.TicketScanVO;
 import com.itticket.ticket.vo.TicketVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -65,6 +66,7 @@ public class TicketService {
     private final AttachmentMapper attachmentMapper;
     private final TicketFlowLogMapper flowLogMapper;
     private final com.itticket.ticket.mapper.TicketPurgeMapper ticketPurgeMapper;
+    private final com.itticket.ticket.mapper.TicketResolutionMapper ticketResolutionMapper;
     private final TicketNoGenerator noGenerator;
     private final NotificationService notificationService;
     private final UserClient userClient;
@@ -418,6 +420,92 @@ public class TicketService {
             return vo;
         }).toList();
         return new TicketListVO(list, result.getTotal(), page, pageSize);
+    }
+
+    // ---------------- 工单分析投影（只读，跨人聚合） ----------------
+
+    /** 分析链路可调用的角色。跨人聚合是本系统唯一需要「看别人工单」的读场景，
+     *  因此单独收口，不复用列表接口的角色语义。 */
+    private static final java.util.Set<String> ANALYTICS_ROLES =
+            java.util.Set.of("ENGINEER", "PLATFORM_ADMIN");
+
+    /** 单次投影扫描的取数上限。分析要在 Python 内存里跑词表匹配，几百到几千行都只需
+     *  几毫秒；但这个上限必须有 —— 没有上限的「全量拉取」迟早撞上内存与超时。 */
+    private static final int ANALYTICS_MAX_ROWS = 5000;
+
+    /**
+     * 只读投影扫描：按时间窗拉出脱敏后的工单明细，供 analytics_service 去噪与聚合。
+     *
+     * <p><b>不做任何 GROUP BY</b>：库里是未清洗的原始工单，SQL 聚合会把联调测试单算进
+     * 分母；而且按「故障症状」聚合依赖 Python 侧的词表，SQL 表达不了。聚合与排除口径
+     * 全部收口在 Python 侧，才能保证「排除明细」与两个分母绝对一致。
+     *
+     * <p><b>不接受 category 槽位做子域粗筛</b>：实测唯一那张打印机工单的 {@code category_id}
+     * 是 {@code C_HW_PC} 而非 {@code C_HW_PR}（分类由提交人手选），按分类过滤会让它
+     * 在数据库层就被滤掉、根本活不到 Python 侧。子域限定改用词表在 Python 内存里完成。
+     */
+    public List<TicketScanVO> analyticsScan(UserContext.CurrentUser viewer, String createdAfter,
+                                            String createdBefore, int limit) {
+        if (viewer == null || !ANALYTICS_ROLES.contains(viewer.getRole())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "跨工单统计分析仅限工程师与平台管理员");
+        }
+        QueryWrapper<Ticket> qw = new QueryWrapper<>();
+        LocalDateTime after = parseSlotDate(createdAfter, true);
+        LocalDateTime before = parseSlotDate(createdBefore, false);
+        if (after != null) qw.ge("created_at", after);
+        if (before != null) qw.le("created_at", before);
+        qw.orderByAsc("created_at").orderByAsc("ticket_id");
+
+        int size = Math.max(1, Math.min(ANALYTICS_MAX_ROWS,
+                limit <= 0 ? ANALYTICS_MAX_ROWS : limit));
+        // searchCount=false：分析链路只要明细，不需要总数 —— 省掉的是一次全表 COUNT。
+        List<Ticket> rows = ticketMapper.selectPage(new Page<>(1, size, false), qw).getRecords();
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        Map<String, String> solutions = loadSolutions(
+                rows.stream().map(Ticket::getTicketId).toList());
+        return rows.stream().map(t -> new TicketScanVO(
+                t.getTicketId(), t.getCategoryId(), t.getTitle(), t.getDescription(),
+                t.getCreatedAt(), t.getFirstResponseAt(), t.getSolvedAt(), t.getCompletedAt(),
+                solutions.getOrDefault(t.getTicketId(), ""))).toList();
+    }
+
+    /** 批量取处理方案。整批一次查询而不是逐单查 —— 一次要扫几百上千行，N+1 会把
+     *  取数耗时从毫秒级推到秒级。 */
+    private Map<String, String> loadSolutions(List<String> ticketIds) {
+        try {
+            Map<String, String> out = new java.util.HashMap<>();
+            for (Map<String, Object> row : ticketResolutionMapper.selectSolutions(ticketIds)) {
+                Object id = row.get("ticketId");
+                Object solution = row.get("solution");
+                if (id != null && solution != null) {
+                    out.put(String.valueOf(id), String.valueOf(solution));
+                }
+            }
+            return out;
+        } catch (RuntimeException e) {
+            // 处理方案是根因维度的**可选**来源：读不到只影响根因能否归纳，不该让整次
+            // 分析失败。如实记日志 —— Python 侧会据「根因维度无条目」声明降级，而不是
+            // 静默当成"没有根因"。
+            log.warn("[分析投影] 处理方案读取失败，根因维度将不可归纳: {}", e.toString());
+            return Map.of();
+        }
+    }
+
+    /** 时间槽位解析：格式不合法一律**弃用该槽位**（而非报错），与 list() 的口径一致。 */
+    private LocalDateTime parseSlotDate(String raw, boolean startOfDay) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            java.time.LocalDate day = java.time.LocalDate.parse(raw.trim());
+            return startOfDay ? day.atStartOfDay(java.time.ZoneOffset.UTC).toLocalDateTime()
+                              : day.atTime(23, 59, 59);
+        } catch (java.time.format.DateTimeParseException invalidSlot) {
+            log.warn("[分析投影] 时间槽位非法，弃用: {}", raw);
+            return null;
+        }
     }
 
     // ---------------- 工单详情 ----------------

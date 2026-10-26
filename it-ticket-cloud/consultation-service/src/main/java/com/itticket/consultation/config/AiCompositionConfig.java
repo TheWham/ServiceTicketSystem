@@ -1,6 +1,7 @@
 package com.itticket.consultation.config;
 import com.itticket.consultation.adapter.*;
 import com.itticket.consultation.adapter.agent.PythonAgentClient;
+import com.itticket.consultation.adapter.analytics.AnalyticsClient;
 import com.itticket.consultation.adapter.generation.*;
 import com.itticket.consultation.adapter.model.*;
 import com.itticket.consultation.adapter.policy.*;
@@ -41,6 +42,11 @@ public class AiCompositionConfig {
         return new TicketServiceClient(properties, http);
     }
 
+    // ---- 跨工单分析链路:判定为 ANALYTICS 的请求走 Python analytics_service(确定性聚合)----
+    @Bean public AnalyticsClient analyticsClient(ConsultationProperties properties, DependencyHttpClient http) {
+        return new AnalyticsClient(properties, http);
+    }
+
     @Bean public AnswerGenerator answerGenerator(ConsultationProperties properties, OpenAiCompatibleModelClient model,
             PythonAgentClient pythonAgentClient) {
         return switch (properties.getAi().getProvider()) {
@@ -50,9 +56,12 @@ public class AiCompositionConfig {
         };
     }
     @Bean public RagAdapter ragAdapter(RequestClassifier classifier, KnowledgeRetriever retriever,
-            RetrievalPolicy policy, AnswerGenerator generator, PythonAgentClient pythonAgentClient) {
+            RetrievalPolicy policy, AnswerGenerator generator, PythonAgentClient pythonAgentClient,
+            AnalyticsClient analyticsClient) {
         // 工具意图的放行只在 Function Calling 开启时生效：agent 关了就不消费判定结果里的 tool，
         // 避免越过拒答后得到一段无依据作答（那是放宽拒答策略，不是本意）。
-        return new ComposedRagAdapter(classifier, retriever, policy, generator, pythonAgentClient.enabled());
+        // 分析链路另行判断自身的 enabled()，两个开关互不影响。
+        return new ComposedRagAdapter(classifier, retriever, policy, generator,
+                pythonAgentClient.enabled(), analyticsClient);
     }
 }
