@@ -49,9 +49,13 @@ E 输出门禁     数字与单号必须可溯源；剔除后不足则整体退�
 `MIN_DENOM` 或命中低于 `MIN_LABEL_HITS` 时**只给计数、不给占比**。子域样本少是用户
 自己限定范围造成的，直接拒答没有信息量，所以不设子域专用阈值，复用 `MIN_DENOM`。
 
-**根因只从 `ticket_resolution` 抽取。** 从工单描述推断根因正是幻觉的主要来源。当前远程库
-该表为 0 行，本维度如实声明"无解决方案记录，不可归纳"；词表与读取路径已提前就位，
-数据到位即零代码改动生效。
+**根因只从 `ticket_resolution` 抽取。** 从工单描述推断根因正是幻觉的主要来源，所以这条
+红线不放松：**没有处置记录就不给根因**，如实声明"无解决方案记录，不可归纳"。
+
+当前库里这条链路是通的——`tools/seed_ticket_resolutions.py` 已写入 28 条处置记录。
+> ⚠️ **那 28 条是按工单实际症状写的演示数据，不是真实业务沉淀**（主键 `DEMO-RES-<ticket_id>`
+> 前缀，可一键 `--rollback`）。仓库里没有真实处置记录的来源，别把它当历史数据引用。
+> 数据一旦换成真实的，链路零代码改动即可生效。
 
 ## 词表演化
 
@@ -86,10 +90,31 @@ python -m pytest analytics_service/tests -q
 
 ## 配置
 
-见 `config.py`。生成模型走 `ANALYTICS_LLM_*`，缺省回退 `.env` 的 `LLM_*`；
-取数走 `ANALYTICS_TICKET_BASE_URL`（默认 `http://127.0.0.1:8201`）。
-统计闸门阈值均可用环境变量覆盖：`ANALYTICS_MIN_UNIVERSE` / `MIN_DENOM` /
-`MIN_LABEL_HITS` / `MIN_COVERAGE_WARN`。
+**两侧都要配**——Python 侧是服务本身，Java 侧是「要不要把请求分流过来」。
+
+Java 侧（[consultation-service/application.yml](../../../it-ticket-cloud/consultation-service/src/main/resources/application.yml)）：
+
+| 键 | 默认 | 说明 |
+|---|---|---|
+| `AI_ANALYTICS_ENABLED` | **`true`** | 判定为 ANALYTICS 的请求分流到本服务 |
+| `ANALYTICS_SERVICE_BASE_URL` | `http://127.0.0.1:8340` | 本服务基址 |
+
+> ⚠️ **默认开着 = 本服务是硬依赖**。它没启动时，分析型提问会返回 `503 AI_UNAVAILABLE`
+> —— 如实拒绝，**不回退成知识问答**。只跑其余链路时设 `AI_ANALYTICS_ENABLED=false`。
+> 这与仓库既有约定一致（`retrieval-provider=rag-service` 同样是默认值，同样要求依赖在线）。
+
+Python 侧见 `config.py`。生成模型走 `ANALYTICS_LLM_*`，缺省回退 `.env` 的 `LLM_*`；
+取数走 `ANALYTICS_TICKET_BASE_URL`（默认 `http://127.0.0.1:8201`，**必须 ticket-service 在线**）。
+统计闸门阈值可用环境变量覆盖：`ANALYTICS_MIN_UNIVERSE` / `MIN_DENOM` / `MIN_LABEL_HITS` / `MIN_COVERAGE_WARN`。
+
+**两份外置配置，都参与配置指纹**（改了口径就不可复现，与索引配置同等对待）：
+
+| 文件 | 管什么 | 注意 |
+|---|---|---|
+| `configs/taxonomy.yaml` | 受控词表（症状/设备/根因 + 子域） | 词表改了，历史统计口径不可追溯 |
+| `configs/analytics.yaml` | 备件系数 | ⚠️ **系数是演示值**，按工程直觉选的，真实场景应改用历史备件消耗数据反推 |
+
+`GET /api/health` 会同时报出两份配置的版本与指纹，运维一眼能看到当前生效的是哪个版本。
 
 **权限**：仅 `ENGINEER` / `PLATFORM_ADMIN` 可调用（`ANALYTICS_ALLOWED_ROLES`）。
 跨人聚合是本服务唯一新增权限面，权威判定在 Java 侧，Python 侧这道只用于早退省钱。

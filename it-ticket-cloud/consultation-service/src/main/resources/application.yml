@@ -112,7 +112,7 @@ itticket:
       # 与 agent 分开开关 —— 分析走确定性聚合链路、不做 function call,
       # 聚合维度与占比算法固化在 Python 侧的词表与代码里,模型只负责措辞。
       analytics:
-        enabled: ${AI_ANALYTICS_ENABLED:false}
+        enabled: ${AI_ANALYTICS_ENABLED:true}
         # Python analytics_service 基址
         service-base-url: ${ANALYTICS_SERVICE_BASE_URL:http://127.0.0.1:8340}
 

@@ -63,6 +63,7 @@
 | ⑦ | 离线入库流水线 | — | `EMBED_*` + `configs/pipeline.yaml` | — | 产物在库 |
 | ⑧ | workflow_demo（Day17 demo） | 8330 | `AGENT_LLM_*` → 回退 `LLM_*` | 同 ③ | 默认值在库 |
 | ⑨ | analytics_service（Day21 分析链路） | 8340 | `ANALYTICS_TICKET_BASE_URL` `ANALYTICS_LLM_*` → 回退 `LLM_*` | 同 ②③ | 默认值在库 |
+| ⑨' | consultation → 分析链路分流（Java 侧） | 8301 | `AI_ANALYTICS_ENABLED` `ANALYTICS_SERVICE_BASE_URL` | `true` / `:8340` | 默认值在库 |
 
 **唯一凭据**：一把 key + 一个 base_url，其余都是模型名与开关。
 
@@ -240,7 +241,20 @@ python -m rag_pipeline.pipelines.indexing     # 用 EMBED_* + configs/pipeline.y
 
 ---
 
-### ⑨ analytics_service（Day21 跨工单聚合归纳，不在主链路）
+### ⑨ analytics_service（Day21 跨工单聚合归纳）
+
+**两侧都要配**：Python 侧是服务本身，Java 侧是「要不要把请求分流过去」。
+
+[consultation-service/application.yml](it-ticket-cloud/consultation-service/src/main/resources/application.yml) —
+`AI_ANALYTICS_ENABLED`（**默认 `true`**）+ `ANALYTICS_SERVICE_BASE_URL`（默认 `http://127.0.0.1:8340`）。
+判定为 ANALYTICS 的请求由 `ComposedRagAdapter` 在**领域门禁之后、知识检索之前**分流过去；
+前端另有专用看板 `/analytics`（工程师 / 平台管理员）。
+
+> ⚠️ **默认开着 = analytics_service 成了硬依赖**。它没启动时，判定为分析型的提问会
+> 返回 `503 AI_UNAVAILABLE`（如实拒绝，**不静默回退成知识问答**——回退会让统计请求
+> 收到一份单卡答案，那正是这条链路要消灭的答非所问）。
+> 只跑其余链路时设 `AI_ANALYTICS_ENABLED=false` 即可关掉分流。
+> 这与仓库既有约定一致：`retrieval-provider=rag-service` 同样是默认值，同样要求依赖在线。
 
 [analytics_service/config.py](services/python-retrieval/analytics_service/config.py) —
 `ANALYTICS_LLM_BASE_URL/API_KEY/MODEL` 优先，回退到 `LLM_BASE_URL/API_KEY/LLM_CHAT_MODEL`。
@@ -248,13 +262,15 @@ python -m rag_pipeline.pipelines.indexing     # 用 EMBED_* + configs/pipeline.y
 **只走只读投影扫描 `GET /api/internal/tickets/analytics/scan`，不跨库读 ticket 表**（架构 8.1）。
 
 该服务是**确定性节点链**，不是 ReAct：`route_analytics` 意图路由 → 投影扫描取数 →
-**纯 Python 词表抽取 + 聚合**（占比/覆盖率/小样本闸门/备件决策表，全部不调模型）→
-模型只做归因叙事 → 数字与单号门禁。模型不可用时走确定性模板，链路照走。
+**纯 Python 词表抽取 + 聚合**（占比/覆盖率/小样本闸门/备件数量，全部不调模型）→
+模型只做归因叙事与建议方向 → 数字/单号/标签门禁。模型不可用时走确定性模板，链路照走。
 
-词表外置在 [configs/taxonomy.yaml](services/python-retrieval/configs/taxonomy.yaml)——**改词表不需要改代码**，
-但词表版本参与配置指纹，改动会影响历史统计口径的可复现性。
+**两份外置配置**，都参与配置指纹（改了口径就不可复现）：
+[configs/taxonomy.yaml](services/python-retrieval/configs/taxonomy.yaml) 是受控词表，
+[configs/analytics.yaml](services/python-retrieval/configs/analytics.yaml) 是备件系数
+（⚠️ 系数是**演示值**，真实场景应改用历史备件消耗数据反推）。
 
-**只有跑 `uvicorn analytics_service.app:app`（:8340）时才需要。**
+**只有跑 `python -m analytics_service`（:8340）时才需要。**
 
 ---
 
@@ -327,6 +343,10 @@ RAG_HOME=<仓库>/services/python-retrieval
 ```
 py-rag(8310) → agent(8320) → rag-service(8302) → consultation(8301)
 前置：Redis(6379) + Nacos(8848)；MySQL 用 yml 内置的远程库，不用起
+
+分析链路另有两条依赖（默认开关 AI_ANALYTICS_ENABLED=true，所以要一起起）：
+  ticket-service(8201)  ← 投影扫描取数来源
+  analytics_service(8340) ← 建议最后起，它反过来依赖 8201
 ```
 
 **自检**（第一步不过就别往下走）：
@@ -335,10 +355,18 @@ py-rag(8310) → agent(8320) → rag-service(8302) → consultation(8301)
 curl http://127.0.0.1:8320/api/health   # model_configured:true, ticket/knowledge_configured:true
 curl http://127.0.0.1:8310/api/health   # status:UP, chunkCount:144
 curl http://127.0.0.1:8302/api/health   # status:UP
+curl http://127.0.0.1:8340/api/health   # status:UP, taxonomy v1.2, policy v1.0
 IT_GATEWAY_URL=http://127.0.0.1:28080 node acceptance/ai-rag-smoke.mjs
 ```
 
 最后一条期望四行全 PASS：`OFF_TOPIC` 拒答 / `HIGH_RISK` 拒答 / `UNCERTAIN` 澄清 / 真答案 `ANSWER` + 引用。
+
+分析链路单独验一条（需 ticket-service 在线）：
+
+```bash
+curl -s "http://127.0.0.1:8201/api/internal/tickets/analytics/scan?created_after=2026-10-01&created_before=2026-10-26" \
+  -H "X-User-Id: U_ENG01" -H "X-User-Role: ENGINEER" -o /dev/null -w "HTTP %{http_code}\n"   # 期望 200
+```
 
 ---
 

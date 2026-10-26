@@ -272,6 +272,8 @@ MODEL_SECRET_REF 仅是单 provider 部署的兼容默认键；当 ai_provider_c
 
 跨工单宏观聚合类请求**不走检索链路**——`retrieval.top_k` 的单卡口径物理上凑不齐跨数十条记录的归纳材料，且工单从不进入知识库。该能力由独立的分析链路承担。
 
+**入口与默认行为**：`itticket.consultation.ai.analytics.enabled` 默认 `true`，即分析链路**默认接通**（与 `retrieval-provider=rag-service` 同样要求依赖在线）。链路不可用时返回 `503 AI_UNAVAILABLE`，**不得回退到知识问答** —— 回退会让一个统计请求收到单卡答案，那是本链路要消灭的答非所问。只跑其余链路时显式置 `false`。
+
 **意图判定**沿用既有分类器：`SemanticRequestClassifier` 主判、`KeywordRequestClassifier` 兜底，新增 `ANALYTICS` 取值并纳入 `RequestVerdict` 白名单，白名单外一律归一为 `NONE`。分析链路侧同构实现"规则先跑 -> 安全闸 -> 模型判定 -> 仲裁"，分歧且规则未命中时返回澄清而非直接进入链路（误判将跨服务边界）。上游已指定意图或规则明确命中时，分析链路不得重复调用模型做二次分类。
 
 **取数**走 ticket-service 只读投影扫描（`GET /api/internal/tickets/analytics/scan`），仅按时间窗过滤，**不做 `GROUP BY`、不跨库读 ticket 表、不返回姓名与联系方式**。去噪、词表抽取与聚合全部在分析链路侧完成，以保证剔除口径与分母一致。
