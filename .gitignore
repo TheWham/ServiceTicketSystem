@@ -53,3 +53,9 @@ handoff-ai-config/
 /artifacts/
 fc.json
 rag_test.json
+
+# 课程讲义资料(本地留档,不入库)
+day17/
+day18/
+day19/
+day20/
