@@ -481,3 +481,26 @@ CREATE TABLE rag_index_pointer (
  UNIQUE KEY uk_rag_pointer_active_index(index_version,status),
  KEY idx_rag_pointer_status(status,updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- V2_6: 黄金数据集与 AI 拒答处置（见 db/migration/V2_6__golden_case_refusal_review.sql）
+CREATE TABLE bad_case_review (
+ id BIGINT AUTO_INCREMENT PRIMARY KEY, ai_message_id VARCHAR(64) NOT NULL, session_id VARCHAR(32) NOT NULL,
+ interaction_id VARCHAR(64), question_text TEXT NOT NULL, refusal_reason VARCHAR(64),
+ confidence DECIMAL(8,4),
+ decision ENUM('GOLDEN_QA','GOLDEN_REFUSAL','DISCARD') NOT NULL,
+ golden_case_id BIGINT, review_note VARCHAR(500), reviewed_by VARCHAR(64) NOT NULL,
+ reviewed_at DATETIME(6) NOT NULL,
+ UNIQUE KEY uk_bad_case_ai_message(ai_message_id), KEY idx_bad_case_decision(decision)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE golden_case (
+ id BIGINT AUTO_INCREMENT PRIMARY KEY, natural_key VARCHAR(128) NOT NULL,
+ category VARCHAR(64) NOT NULL, difficulty VARCHAR(16) NOT NULL DEFAULT 'MEDIUM',
+ query TEXT NOT NULL, ground_truth_answer MEDIUMTEXT NOT NULL,
+ reference_chunk_ids JSON, expected_keywords JSON,
+ is_conflict_check TINYINT(1) NOT NULL DEFAULT 0, is_adversarial TINYINT(1) NOT NULL DEFAULT 0,
+ source_type ENUM('SEED','BAD_CASE','MANUAL') NOT NULL DEFAULT 'SEED',
+ source_ai_message_id VARCHAR(64), enabled TINYINT(1) NOT NULL DEFAULT 1,
+ created_by VARCHAR(64) NOT NULL, created_at DATETIME(6) NOT NULL,
+ UNIQUE KEY uk_golden_natural_key(natural_key), KEY idx_golden_adversarial(is_adversarial), KEY idx_golden_source(source_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

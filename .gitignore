@@ -45,3 +45,11 @@ __pycache__/
 
 # 配置交接包(内含明文模型凭据,绝不入库)
 handoff-ai-config/
+
+# 会话产物与大文件(不入库)
+.tmp_cls/
+.jars/
+.DS_Store
+/artifacts/
+fc.json
+rag_test.json

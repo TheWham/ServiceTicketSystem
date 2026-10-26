@@ -1,0 +1,317 @@
+{
+  "ITKB-ACC-001": {
+    "articleId": "art-1792085738791-483",
+    "versionId": "ver-1792085738791-201",
+    "categoryId": "C_ACC",
+    "wiki_version": "v1.0",
+    "wiki_category": "账号与权限问题",
+    "title": "域账号锁定排查与解锁处理",
+    "synced_at": "2026-10-15T17:35:39"
+  },
+  "ITKB-ACC-002": {
+    "articleId": "art-1792085739661-994",
+    "versionId": "ver-1792085739661-230",
+    "categoryId": "C_ACC",
+    "wiki_version": "v1.0",
+    "wiki_category": "账号与权限问题",
+    "title": "密码重置与过期处理",
+    "synced_at": "2026-10-15T17:35:40"
+  },
+  "ITKB-ACC-003": {
+    "articleId": "art-1792085740253-936",
+    "versionId": "ver-1792085740253-484",
+    "categoryId": "C_ACC",
+    "wiki_version": "v1.0",
+    "wiki_category": "账号与权限问题",
+    "title": "文件夹访问被拒绝处置",
+    "synced_at": "2026-10-15T17:35:40"
+  },
+  "ITKB-ACC-004": {
+    "articleId": "art-1792085740966-361",
+    "versionId": "ver-1792085740966-131",
+    "categoryId": "C_ACC",
+    "wiki_version": "v1.0",
+    "wiki_category": "账号与权限问题",
+    "title": "多因素认证（MFA）验证失败",
+    "synced_at": "2026-10-15T17:35:42"
+  },
+  "ITKB-APPENDIX-1": {
+    "articleId": "art-1792085742449-683",
+    "versionId": "ver-1792085742449-133",
+    "categoryId": "C_OTH",
+    "wiki_version": "v1.0",
+    "wiki_category": "附录：IT故障排查通用流程",
+    "title": "员工IT故障自助排查流程",
+    "synced_at": "2026-10-15T17:35:43"
+  },
+  "ITKB-APPENDIX-2": {
+    "articleId": "art-1792085743396-148",
+    "versionId": "ver-1792085743396-34",
+    "categoryId": "C_OTH",
+    "wiki_version": "v1.0",
+    "wiki_category": "附录：IT故障排查通用流程",
+    "title": "IT故障排查通用流程",
+    "synced_at": "2026-10-15T17:35:44"
+  },
+  "ITKB-APPENDIX-3": {
+    "articleId": "art-1792085744286-9",
+    "versionId": "ver-1792085744286-162",
+    "categoryId": "C_OTH",
+    "wiki_version": "v1.0",
+    "wiki_category": "附录：IT故障排查通用流程",
+    "title": "常用排查命令速查表",
+    "synced_at": "2026-10-15T17:35:45"
+  },
+  "ITKB-HW-001": {
+    "articleId": "art-1792085745026-557",
+    "versionId": "ver-1792085745026-883",
+    "categoryId": "C_HW",
+    "wiki_version": "v1.0",
+    "wiki_category": "硬件与外设故障",
+    "title": "电脑无法开机黑屏故障",
+    "synced_at": "2026-10-15T17:35:45"
+  },
+  "ITKB-HW-002": {
+    "articleId": "art-1792085745707-825",
+    "versionId": "ver-1792085745707-601",
+    "categoryId": "C_HW",
+    "wiki_version": "v1.0",
+    "wiki_category": "硬件与外设故障",
+    "title": "打印机无法打印故障处置",
+    "synced_at": "2026-10-15T17:35:46"
+  },
+  "ITKB-HW-003": {
+    "articleId": "art-1792085746344-100",
+    "versionId": "ver-1792085746344-999",
+    "categoryId": "C_HW",
+    "wiki_version": "v1.0",
+    "wiki_category": "硬件与外设故障",
+    "title": "外接显示器显示异常排查",
+    "synced_at": "2026-10-15T17:35:46"
+  },
+  "ITKB-HW-004": {
+    "articleId": "art-1792085746939-257",
+    "versionId": "ver-1792085746939-687",
+    "categoryId": "C_HW",
+    "wiki_version": "v1.0",
+    "wiki_category": "硬件与外设故障",
+    "title": "U盘与移动硬盘不识别处置",
+    "synced_at": "2026-10-15T17:35:47"
+  },
+  "ITKB-HW-005": {
+    "articleId": "art-1792085747503-337",
+    "versionId": "ver-1792085747503-647",
+    "categoryId": "C_HW",
+    "wiki_version": "v1.0",
+    "wiki_category": "硬件与外设故障",
+    "title": "键盘鼠标失灵及反应异常处理",
+    "synced_at": "2026-10-15T17:35:48"
+  },
+  "ITKB-MAIL-001": {
+    "articleId": "art-1792085748067-790",
+    "versionId": "ver-1792085748067-443",
+    "categoryId": "C_SW",
+    "wiki_version": "v1.0",
+    "wiki_category": "邮件与通讯问题",
+    "title": "邮件无法发送处置指南",
+    "synced_at": "2026-10-15T17:35:48"
+  },
+  "ITKB-MAIL-002": {
+    "articleId": "art-1792085748834-202",
+    "versionId": "ver-1792085748834-699",
+    "categoryId": "C_SW",
+    "wiki_version": "v1.0",
+    "wiki_category": "邮件与通讯问题",
+    "title": "邮件接收失败处理",
+    "synced_at": "2026-10-15T17:35:49"
+  },
+  "ITKB-MAIL-003": {
+    "articleId": "art-1792085749443-470",
+    "versionId": "ver-1792085749443-180",
+    "categoryId": "C_SW",
+    "wiki_version": "v1.0",
+    "wiki_category": "邮件与通讯问题",
+    "title": "IM客户端无法登录及消息不同步",
+    "synced_at": "2026-10-15T17:35:50"
+  },
+  "ITKB-NET-001": {
+    "articleId": "art-1792085750084-842",
+    "versionId": "ver-1792085750084-667",
+    "categoryId": "C_NET",
+    "wiki_version": "v1.0",
+    "wiki_category": "网络连接问题",
+    "title": "公司WiFi连接故障排查",
+    "synced_at": "2026-10-15T17:35:50"
+  },
+  "ITKB-NET-002": {
+    "articleId": "art-1792085750676-661",
+    "versionId": "ver-1792085750677-445",
+    "categoryId": "C_NET",
+    "wiki_version": "v1.0",
+    "wiki_category": "网络连接问题",
+    "title": "有线网络无法连接（网口无反应）",
+    "synced_at": "2026-10-15T17:35:51"
+  },
+  "ITKB-NET-003": {
+    "articleId": "art-1792085751561-350",
+    "versionId": "ver-1792085751561-470",
+    "categoryId": "C_NET",
+    "wiki_version": "v1.0",
+    "wiki_category": "网络连接问题",
+    "title": "网络断连与网速慢故障排查",
+    "synced_at": "2026-10-15T17:35:52"
+  },
+  "ITKB-NET-004": {
+    "articleId": "art-1792085752164-110",
+    "versionId": "ver-1792085752164-395",
+    "categoryId": "C_NET",
+    "wiki_version": "v1.0",
+    "wiki_category": "网络连接问题",
+    "title": "DNS解析失败故障排查与处置",
+    "synced_at": "2026-10-15T17:35:52"
+  },
+  "ITKB-NET-005": {
+    "articleId": "art-1792085752752-92",
+    "versionId": "ver-1792085752752-456",
+    "categoryId": "C_NET",
+    "wiki_version": "v1.0",
+    "wiki_category": "网络连接问题",
+    "title": "IP地址冲突处置",
+    "synced_at": "2026-10-15T17:35:53"
+  },
+  "ITKB-OFF-001": {
+    "articleId": "art-1792085753281-624",
+    "versionId": "ver-1792085753281-647",
+    "categoryId": "C_SW",
+    "wiki_version": "v1.0",
+    "wiki_category": "办公软件问题（WPS/Office）",
+    "title": "文档打不开或提示文件损坏处理",
+    "synced_at": "2026-10-15T17:35:53"
+  },
+  "ITKB-OFF-002": {
+    "articleId": "art-1792085753785-364",
+    "versionId": "ver-1792085753785-347",
+    "categoryId": "C_SW",
+    "wiki_version": "v1.0",
+    "wiki_category": "办公软件问题（WPS/Office）",
+    "title": "WPS/Office频繁崩溃或卡死",
+    "synced_at": "2026-10-15T17:35:54"
+  },
+  "ITKB-OFF-003": {
+    "articleId": "art-1792085754245-503",
+    "versionId": "ver-1792085754246-168",
+    "categoryId": "C_SW",
+    "wiki_version": "v1.0",
+    "wiki_category": "办公软件问题（WPS/Office）",
+    "title": "WPS云文档同步冲突与版本丢失处理",
+    "synced_at": "2026-10-15T17:35:54"
+  },
+  "ITKB-OFF-004": {
+    "articleId": "art-1792085754699-977",
+    "versionId": "ver-1792085754699-982",
+    "categoryId": "C_SW",
+    "wiki_version": "v1.0",
+    "wiki_category": "办公软件问题（WPS/Office）",
+    "title": "Excel公式不计算及显示异常处理",
+    "synced_at": "2026-10-15T17:35:55"
+  },
+  "ITKB-STO-001": {
+    "articleId": "art-1792085755253-958",
+    "versionId": "ver-1792085755253-869",
+    "categoryId": "C_SW",
+    "wiki_version": "v1.0",
+    "wiki_category": "数据存储与备份",
+    "title": "文件误删除恢复处置",
+    "synced_at": "2026-10-15T17:35:55"
+  },
+  "ITKB-STO-002": {
+    "articleId": "art-1792085755774-983",
+    "versionId": "ver-1792085755774-948",
+    "categoryId": "C_SW",
+    "wiki_version": "v1.0",
+    "wiki_category": "数据存储与备份",
+    "title": "共享盘无法访问排查",
+    "synced_at": "2026-10-15T17:35:56"
+  },
+  "ITKB-STO-003": {
+    "articleId": "art-1792085756299-171",
+    "versionId": "ver-1792085756299-214",
+    "categoryId": "C_SW",
+    "wiki_version": "v1.0",
+    "wiki_category": "数据存储与备份",
+    "title": "OneDrive/WPS云盘同步异常排查",
+    "synced_at": "2026-10-15T17:35:56"
+  },
+  "ITKB-SYS-001": {
+    "articleId": "art-1792085756814-181",
+    "versionId": "ver-1792085756814-470",
+    "categoryId": "C_SW",
+    "wiki_version": "v1.0",
+    "wiki_category": "系统与软件故障",
+    "title": "Windows蓝屏死机故障处置",
+    "synced_at": "2026-10-15T17:35:57"
+  },
+  "ITKB-SYS-002": {
+    "articleId": "art-1792085757282-285",
+    "versionId": "ver-1792085757282-250",
+    "categoryId": "C_SW",
+    "wiki_version": "v1.0",
+    "wiki_category": "系统与软件故障",
+    "title": "软件闪退与程序无响应故障处置",
+    "synced_at": "2026-10-15T17:35:57"
+  },
+  "ITKB-SYS-003": {
+    "articleId": "art-1792085757740-190",
+    "versionId": "ver-1792085757740-193",
+    "categoryId": "C_SW",
+    "wiki_version": "v1.0",
+    "wiki_category": "系统与软件故障",
+    "title": "Windows更新失败处理",
+    "synced_at": "2026-10-15T17:35:58"
+  },
+  "ITKB-SYS-004": {
+    "articleId": "art-1792085758182-602",
+    "versionId": "ver-1792085758182-196",
+    "categoryId": "C_SW",
+    "wiki_version": "v1.0",
+    "wiki_category": "系统与软件故障",
+    "title": "电脑运行缓慢/开机极慢故障排查",
+    "synced_at": "2026-10-15T17:35:58"
+  },
+  "ITKB-SYS-005": {
+    "articleId": "art-1792085758654-906",
+    "versionId": "ver-1792085758655-826",
+    "categoryId": "C_SW",
+    "wiki_version": "v1.0",
+    "wiki_category": "系统与软件故障",
+    "title": "浏览器页面异常处置",
+    "synced_at": "2026-10-15T17:35:59"
+  },
+  "ITKB-VPN-001": {
+    "articleId": "art-1792085759135-484",
+    "versionId": "ver-1792085759135-901",
+    "categoryId": "C_NET",
+    "wiki_version": "v1.0",
+    "wiki_category": "VPN与远程办公",
+    "title": "VPN连接失败（拨号/认证失败）",
+    "synced_at": "2026-10-15T17:35:59"
+  },
+  "ITKB-VPN-002": {
+    "articleId": "art-1792085759586-848",
+    "versionId": "ver-1792085759586-988",
+    "categoryId": "C_NET",
+    "wiki_version": "v1.0",
+    "wiki_category": "VPN与远程办公",
+    "title": "VPN连接后无法访问内网资源",
+    "synced_at": "2026-10-15T17:36:00"
+  },
+  "ITKB-VPN-003": {
+    "articleId": "art-1792085760089-973",
+    "versionId": "ver-1792085760089-267",
+    "categoryId": "C_NET",
+    "wiki_version": "v1.0",
+    "wiki_category": "VPN与远程办公",
+    "title": "远程桌面(RDP)连接失败排查",
+    "synced_at": "2026-10-15T17:36:00"
+  }
+}

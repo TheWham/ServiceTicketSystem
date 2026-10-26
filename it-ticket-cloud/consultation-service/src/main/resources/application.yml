@@ -134,22 +134,6 @@ itticket:
       circuit-failure-threshold: 5
       circuit-open-millis: 30000
       circuit-half-open-success-threshold: 3
-      # AI-001 高风险主题必须拒答并给出转人工/提单入口
-      high-risk-keywords:
-        - 密码
-        - 账号权限
-        - 提权
-        - 越权
-        - 数据泄露
-        - 数据丢失
-        - 删库
-        - 格式化
-        - rm -rf
-        - 病毒
-        - 勒索
-        - 拆机
-        - 更换主板
-        - 硬盘拆
 
 logging:
   level:

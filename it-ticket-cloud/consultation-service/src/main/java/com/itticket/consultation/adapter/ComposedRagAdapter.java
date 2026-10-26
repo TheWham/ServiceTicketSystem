@@ -67,10 +67,10 @@ public final class ComposedRagAdapter implements RagAdapter {
             // 工具意图（查工单/建单）：预检索无果时不直接拒答，放行给 agent 用工具去查。
             boolean toolBypass = toolBypassEnabled && !RequestVerdict.NO_TOOL.equals(verdict.tool());
             if (result.refusalReason() != null && !toolBypass)
-                return RagResult.refuse(result.refusalReason(), null, retrieved);
+                return RagResult.refuse(result.refusalReason(), null, retrieved, result.topScore());
             List<RetrievedKnowledge> material = policy.material(result, context);
             if (result.reliable() && material.isEmpty() && !toolBypass)
-                return RagResult.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, null, retrieved);
+                return RagResult.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, null, retrieved, result.topScore());
             context.timeoutMillis(Long.MAX_VALUE);
             GenerationResult generated = generator.generate(query, material, context);
             context.timeoutMillis(Long.MAX_VALUE);
@@ -79,13 +79,13 @@ public final class ComposedRagAdapter implements RagAdapter {
             if (generated.usedVersionIds().stream().anyMatch(id -> !byVersion.containsKey(id)))
                 throw DependencyFailure.invalid();
             if (generated.refusalReason() != null)
-                return RagResult.refuse(generated.refusalReason(), generated.modelVersion(), retrieved);
+                return RagResult.refuse(generated.refusalReason(), generated.modelVersion(), retrieved, result.topScore());
             // 「有材料却零引用=伪造嫌疑」守卫：但工具意图放行的作答实据来自工具返回
             // （工单列表/建单草稿），本就不依赖知识引用——检索给建单类请求带出的低分杂项
             // （如「员工IT故障自助排查流程」0.44）不构成引用义务，零引用是合法状态。
             if (generated.replyType() == AiReplyType.REFUSE
                     || !material.isEmpty() && generated.usedVersionIds().isEmpty() && !toolBypass)
-                return RagResult.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, generated.modelVersion(), retrieved);
+                return RagResult.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, generated.modelVersion(), retrieved, result.topScore());
             List<KnowledgeCitationDto> citations = generated.usedVersionIds().stream().distinct()
                     .map(byVersion::get).map(item -> new KnowledgeCitationDto(item.articleId(), item.versionId(),
                             item.title(), item.score(), item.snippet())).toList();
@@ -104,7 +104,7 @@ public final class ComposedRagAdapter implements RagAdapter {
             // 人机回环:AI 只产建单草稿(不落库),随结果返回员工确认后才建单
             return generated.ticketDraft() == null ? answered : answered.withTicketDraft(generated.ticketDraft());
         } catch (RetrievalPolicy.StaleKnowledge stale) {
-            return RagResult.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, null, retrieved);
+            return RagResult.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, null, retrieved, null);
         } catch (DependencyFailure failure) {
             return failure.result(retrieved);
         }

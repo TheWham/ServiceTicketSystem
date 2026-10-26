@@ -145,4 +145,26 @@ export const ragApi = {
   reindexArticle: (id) => api.post(`/rag/articles/${id}/reindex`)
 }
 
+// ---- 拒答案例处置 API（consultation-service,ApiEnvelope 包络,管理端） ----
+// consultation-service 强制要求 X-Request-Id（AI-002）,此处按请求注入
+const requestId = () => (typeof crypto !== 'undefined' && crypto.randomUUID
+  ? crypto.randomUUID().replace(/-/g, '')
+  : Math.random().toString(36).slice(2) + Date.now().toString(36))
+const withRequestId = (config = {}) => ({
+  ...config,
+  headers: { ...(config.headers || {}), 'X-Request-Id': requestId() }
+})
+export const refusalApi = {
+  list: (params) => api.get('/consultations/refusal-cases', withRequestId({ params })),
+  detail: (messageId) => api.get(`/consultations/refusal-cases/${messageId}`, withRequestId()),
+  review: (messageId, data) => api.post(`/consultations/refusal-cases/${messageId}/review`, data, withRequestId())
+}
+
+// ---- 黄金数据集 API（rag-service,Result 包络,管理端） ----
+export const goldenCaseApi = {
+  list: (params) => api.get('/rag/golden-cases', { params }),
+  upsert: (data) => api.post('/rag/golden-cases', data),
+  remove: (id) => api.delete(`/rag/golden-cases/${id}`)
+}
+
 export default api
