@@ -567,6 +567,10 @@ let editPhotoRequest = 0
 let editPhotoUrls = []
 // Consultation content is fetched separately and only applied on explicit user action.
 const consultationSession = computed(() => route.query.from === 'consultation' && typeof route.query.session === 'string' ? route.query.session : '')
+// 从聊天里「编辑 AI 草稿」进来时置 1：到达即自动填入，不必再点「填入并关联咨询」——
+// 点编辑按钮本身就是那个显式动作。其余「提交工单」入口不带该标志，仍靠显式按钮，
+// 因为那些场景下表单里可能已有员工正在写的内容，不该被自动覆盖。
+const autofillRequested = computed(() => route.query.autofill === '1' && !!consultationSession.value)
 const prefillLoading = ref(false)
 const prefillError = ref('')
 const prefillDraft = ref(null)
@@ -1274,6 +1278,15 @@ onMounted(async () => {
 })
 
 watch(consultationSession, loadConsultationPrefill, { immediate: true })
+
+// 自动填入（仅 autofill=1 那条路径）。必须**等预填与分类都就绪**再填：分类没加载完时
+// mapConsultationDraft 找不到对应分类，会静默少填 category_id —— 表单看着填好了，
+// 提交时才报"请选择问题分类"。appliedSession 已置过就不重复填（切 tab 回来也不覆盖）。
+watch([prefillLoading, categoryLoading], () => {
+  if (!autofillRequested.value || appliedSession.value === consultationSession.value) return
+  if (prefillLoading.value || categoryLoading.value || !prefillDraft.value) return
+  applyConsultationPrefill()
+}, { immediate: true })
 
 // 关键：同页内点击通知只改 query，组件不重挂载、onMounted 不触发——需 watch query 变化
 watch(() => route.query.ticket, (tid) => {

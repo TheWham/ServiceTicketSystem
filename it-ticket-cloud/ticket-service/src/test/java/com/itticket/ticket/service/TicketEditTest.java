@@ -33,7 +33,7 @@ class TicketEditTest {
     private final RoutingService routing = mock(RoutingService.class);
     private final TicketNoGenerator numbers = mock(TicketNoGenerator.class);
     private final TicketService service = new TicketService(tickets, mock(CategoryMapper.class), attachments,
-            flows, mock(TicketPurgeMapper.class), numbers, mock(NotificationService.class),
+            flows, mock(TicketPurgeMapper.class), mock(com.itticket.ticket.mapper.TicketResolutionMapper.class), numbers, mock(NotificationService.class),
             mock(UserClient.class), sla, routing, mock(ExceptionQueueService.class),
             mock(DispatchDraftService.class), mock(ConsultationConvertNotifier.class), new ObjectMapper());
     private final UserContext.CurrentUser owner = new UserContext.CurrentUser("EMP01", "Employee", "EMPLOYEE", "IT");

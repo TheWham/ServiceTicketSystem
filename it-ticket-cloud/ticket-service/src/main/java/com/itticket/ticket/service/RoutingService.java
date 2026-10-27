@@ -50,50 +50,72 @@ public class RoutingService {
     private final ExceptionQueueService exceptionQueueService;
     private final NotificationService notificationService;
     private final TicketFlowLogMapper flowLogMapper;
+    /**
+     * 派单草案服务（HITL 写操作门禁）。
+     *
+     * <p><b>2026-10-27 起 {@link #route(Ticket)} 不再调用它</b>——建单即直派，不再挂草案。
+     * 依赖保留不删：整套机制（表、控制器、管理员审批页、15 个 HITL 用例）仍在，删它要
+     * 连带动 DB 迁移，代价大于收益。真要清掉请另开一次改动。
+     */
     private final DispatchDraftService dispatchDraftService;
 
     /** 响应 SLA：10 工作分钟（§12.2） */
     private static final long RESPONSE_DEADLINE_SECONDS = 10 * 60L;
 
     /**
-     * 自动路由：为工单选择工程师，<b>产出派单草案挂起待人工确认，不直接落分派</b>。
+     * 自动路由：为工单选择工程师并**直接落分派**，工单进入 ASSIGNED（等待工程师接单）。
      *
-     * <p>需求依据 docs/IT服务工单系统-需求归因文档.md:50「强制 Human-in-the-Loop 人机确认
-     * （派单草案主管点击才生效）」。F-06 的自动派单在此只到「草案」为止，
-     * 真正的 assignment / 状态流转由 {@code TicketService.confirmDispatch} 在
-     * 审批人确认后执行 —— 这是系统内唯一的 AI/自动分派写入口，必须留刹车片。
+     * <p><b>2026-10-27 起不再走派单草案审批。</b>此前路由只产出 PENDING 草案、由平台
+     * 管理员点「放行」才真正分派，依据是需求归因文档:50 的强制 Human-in-the-Loop。
+     * 实测下来那一步不做任何决策——人选由本方法算好，管理员只是盖章——却成了建单到
+     * 工程师可见之间的必经环节，故去掉。{@code DispatchDraftService} 与其控制器、
+     * {@code TicketService.confirmDispatch} 全部保留但**不再被本方法调用**。
      *
-     * @return 路由结局；{@link RouteOutcome.Kind#DRAFT_PENDING} 表示已挂起草待确认
-          */
-         @Transactional
-         public RouteOutcome route(Ticket ticket) {
-             ticket = ticketMapper.selectOne(new QueryWrapper<Ticket>()
-                     .eq("ticket_id", ticket.getTicketId()).last("FOR UPDATE"));
-             if (ticket == null || ticket.getStatus() == null || ticket.getStatus().isTerminal()) {
-                 return RouteOutcome.skipped();
-             }
-             String engineerId = selectEngineer(ticket.getCategoryId(), Collections.emptySet());
-             if (engineerId == null) {
-                 log.warn("[路由] 路由失败（无候选工程师）: {} 分类={}", ticket.getTicketId(), ticket.getCategoryId());
-                 exceptionQueueService.raise("TICKET", ticket.getTicketId(),
-                         ExceptionQueueService.TYPE_ROUTE_FAILED,
-                         "自动路由失败", "分类【" + ticket.getCategoryId() + "】无可分配工程师", ticket.getPriority());
-                 // PRD §9.3：路由失败保持 NEW，通知平台管理员
-                 notifyAdminsRouteFailed(ticket);
-                 return RouteOutcome.routeFailed();
-             }
-             // 幂等键：同一工单 + 同一候选工程师 = 同一轮路由，重复触发不产生第二份草案
-             String idemKey = "ROUTE:" + ticket.getTicketId() + ":" + engineerId;
-             DispatchDraft draft = dispatchDraftService.createDraft(ticket, engineerId, idemKey,
-                     "分类路由优先 + 在线可用 + 当前负载最少");
-             if (draft == null) {
-                 // 草案未生成只可能是工单在加锁期间转终态，属正常空结果
-                 return RouteOutcome.skipped();
-             }
-             log.info("[路由] 已生成待确认派单草案: {} -> {} 草案={}",
-                     ticket.getTicketId(), engineerId, draft.getDraftId());
-             return RouteOutcome.draftPending(engineerId, draft.getDraftId());
-         }
+     * <p>去掉刹车片之后，未接单的兜底从"草案超时会话 → 管理员处理"改为
+     * {@link #scanResponseTimeout()}：响应 SLA（10 工作分钟）超时即转派或入异常队列。
+     *
+     * @return 路由结局；{@link RouteOutcome.Kind#ASSIGNED} 表示已直接分派
+     */
+    @Transactional
+    public RouteOutcome route(Ticket ticket) {
+        ticket = ticketMapper.selectOne(new QueryWrapper<Ticket>()
+                .eq("ticket_id", ticket.getTicketId()).last("FOR UPDATE"));
+        if (ticket == null || ticket.getStatus() == null || ticket.getStatus().isTerminal()) {
+            return RouteOutcome.skipped();
+        }
+        // 只路由尚未分派的新单。原实现靠草案的唯一键做幂等，直派之后那层保护没了，
+        // 改由这里挡重复触发（否则第二次调用会把已分派的单再分一次）。
+        if (ticket.getStatus() != TicketStatus.NEW) {
+            return RouteOutcome.skipped();
+        }
+        String engineerId = selectEngineer(ticket.getCategoryId(), Collections.emptySet());
+        if (engineerId == null) {
+            log.warn("[路由] 路由失败（无候选工程师）: {} 分类={}", ticket.getTicketId(), ticket.getCategoryId());
+            exceptionQueueService.raise("TICKET", ticket.getTicketId(),
+                    ExceptionQueueService.TYPE_ROUTE_FAILED,
+                    "自动路由失败", "分类【" + ticket.getCategoryId() + "】无可分配工程师", ticket.getPriority());
+            // PRD §9.3：路由失败保持 NEW，通知平台管理员
+            notifyAdminsRouteFailed(ticket);
+            return RouteOutcome.routeFailed();
+        }
+        // 状态、assignee、assignment 记录、响应截止全部收敛在 assign() 里 —— 不要再造
+        // 第二条只写 assignee 的路径（HITL放行后工单状态未流转-问题报告.md 记的就是这个坑）
+        assign(ticket, engineerId, "首次分派");
+        TicketFlowLog flow = new TicketFlowLog();
+        flow.setTicketId(ticket.getTicketId());
+        flow.setFromStatus(TicketStatus.NEW.getValue());
+        flow.setToStatus(TicketStatus.ASSIGNED.getValue());
+        flow.setEvent("TICKET_ASSIGN");
+        flow.setOperatorId("SYSTEM");
+        flow.setReason("自动路由直接分派，工程师: " + engineerId
+                + "（分类路由优先 + 在线可用 + 当前负载最少）");
+        flow.setOccurredAt(LocalDateTime.now(java.time.ZoneOffset.UTC));
+        flowLogMapper.insert(flow);
+        notificationService.sendNotification(ticket.getTicketId(), "ASSIGNED", engineerId);
+        log.info("[路由] 已直接分派: {} -> {}（工单进入 ASSIGNED，等待工程师接单）",
+                ticket.getTicketId(), engineerId);
+        return RouteOutcome.assigned(engineerId);
+    }
 
     /** 路由失败时通知所有平台管理员（PRD §9.3）。失败不阻断主流程。 */
     private void notifyAdminsRouteFailed(Ticket ticket) {

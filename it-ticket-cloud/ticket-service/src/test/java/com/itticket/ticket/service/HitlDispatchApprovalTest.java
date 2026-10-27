@@ -38,7 +38,6 @@ import static org.mockito.Mockito.*;
  * HITL 派单草案门禁的核心场景测试（对齐讲义「写操作前刹车片」验收三条中第 3 条）：
  *
  * <ol>
- *   <li>路由产出草案而非直接派单 —— route() 返回 DRAFT_PENDING，工单保持 NEW</li>
  *   <li>审批人批准（approve）→ confirmDispatch 落 assignment，工单 NEW → ASSIGNED</li>
  *   <li>审批人驳回（reject，原因必填）→ 工单保持 NEW，可重新路由</li>
  *   <li>草案超时 → scanExpired 置 EXPIRED，不可再裁决</li>
@@ -47,6 +46,14 @@ import static org.mockito.Mockito.*;
  *   <li>并发裁决 → optimistic-lock 保证只有一人生效</li>
  *   <li>approve 回调失败 → 整笔事务回滚，草案回到 PENDING（不留半截）</li>
  * </ol>
+ *
+ * <p><b>接线状态（2026-10-27 起）：本门禁在生产路径上已不接线。</b>
+ * {@code RoutingService.route()} 改为直接落分派、不再产出草案，所以下面的用例覆盖的是
+ * <b>保留但不再被自动流程调用的机制</b> —— 它们会继续全绿，但**不代表线上会发生这些流程**。
+ * 绿着的、与现实不符的测试比红的更危险，故在此显式写明。
+ * 保留而非删除的理由：整套机制（表 / 控制器 / 管理员审批页）都还在，删它要连带改动
+ * DB 迁移与管理员界面，代价大于收益。
+ * 路由侧的新行为见 {@link RoutingDirectAssignTest}。
  */
 class HitlDispatchApprovalTest {
 
@@ -84,11 +91,14 @@ class HitlDispatchApprovalTest {
     // ========== 场景 1：路由产出草案，工单保持 NEW ==========
 
     /**
-     * 自动路由找到工程师后不再直接落 assignment，而是生成 PENDING 草案。
-     * 对应讲义「第一步：状态持久化挂起」。
+     * 草案机制自身的挂起语义：{@code createDraft} 只落一份 PENDING 草案，不碰工单行。
+     *
+     * <p>这里测的是 {@code DispatchDraftService} **本身**，不是路由行为 —— 2026-10-27 起
+     * {@code route()} 已不再调用它（见类注释的接线状态）。原先这个用例的名字与前缀注释
+     * 声称"自动路由不再直接落 assignment"，那句已与现实相反，故改写为只断言机制语义。
      */
     @Test
-    void routeReturnsDraftPendingAndPreservesNewStatus() {
+    void createDraftPersistsPendingWithoutTouchingTicket() {
         Ticket ticket = ticket("TK01", TicketStatus.NEW);
         // 路由配置 → 候选人 → 负载 → ENG01
         // （完整路由链路在 RoutingDirtyDataTest 中已有覆盖，此处只验证 route() 产出）
@@ -339,7 +349,7 @@ class HitlDispatchApprovalTest {
                 mock(com.itticket.ticket.mapper.CategoryMapper.class),
                 mock(com.itticket.ticket.mapper.AttachmentMapper.class),
                 flowLogMapper,
-                mock(com.itticket.ticket.mapper.TicketPurgeMapper.class),
+                mock(com.itticket.ticket.mapper.TicketPurgeMapper.class), mock(com.itticket.ticket.mapper.TicketResolutionMapper.class),
                 mock(TicketNoGenerator.class), notifications,
                 mock(UserClient.class), mock(SlaService.class),
                 routing, exceptionQueue, dispatch, mock(ConsultationConvertNotifier.class), json);

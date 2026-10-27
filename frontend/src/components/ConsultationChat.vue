@@ -162,10 +162,18 @@
                     <template v-if="msg.draftTicketId">
                       <el-tag type="success" size="small">已创建工单 {{ msg.draftTicketId }}</el-tag>
                     </template>
-                    <el-button v-else type="primary" size="small" :icon="Tickets"
-                               :loading="msg.draftSubmitting" @click="submitTicketDraft(msg)">
-                      确认建单
-                    </el-button>
+                    <template v-else>
+                      <el-button type="primary" size="small" :icon="Tickets"
+                                 :loading="msg.draftSubmitting" @click="submitTicketDraft(msg)">
+                        确认建单
+                      </el-button>
+                      <!-- 不满意 AI 拟的字段就先去提单表单改：那里有完整校验与草稿保存，
+                           聊天里内联编辑等于把整套表单逻辑再复制一份 -->
+                      <el-button size="small" :icon="Edit"
+                                 :disabled="msg.draftSubmitting" @click="editTicketDraft">
+                        编辑
+                      </el-button>
+                    </template>
                   </div>
                 </div>
 
@@ -287,7 +295,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ChatDotRound, Service, Close, Promotion, Tickets,
   Document, WarningFilled, CircleCheck, RefreshLeft, MagicStick,
-  Monitor, Connection, Message, Printer, ArrowRight
+  Monitor, Connection, Message, Printer, ArrowRight, Edit
 } from '@element-plus/icons-vue'
 import {
   consultationApi, REFUSAL_REASON, TERMINAL_STATUS, TICKET_ENTRY_MESSAGE, CONSULTATION_STATUS
@@ -796,10 +804,28 @@ function finishSession(status) {
 }
 
 function goCreateTicket() {
-  // 跳到提单页(默认落在“提交工单” tab);带 session 让提单页拉取咨询预填(PRD 9.1)
+  pushToCreateForm({})
+}
+
+/**
+ * 「编辑」AI 拟好的建单草稿 —— 人机回环的第三条路：不在聊天里落库，而是带着会话跳到
+ * 提单表单，字段预填好、员工改完再手动提交（提交时经 source_session_id 回写会话归属）。
+ *
+ * 多带 autofill=1，让提单页到达时直接填入；其余「提交工单」入口不带这个标志，
+ * 仍靠那里的「填入并关联咨询」按钮显式触发 —— 那条路径下表单里可能已有员工正在写的内容。
+ */
+function editTicketDraft() {
+  pushToCreateForm({ autofill: '1' })
+}
+
+/** 跳到提单页并带上会话让提单页拉取咨询预填(PRD 9.1)。 */
+function pushToCreateForm(extraQuery) {
   emit('navigate')
   if (session.value?.sessionId && !isTerminal.value) {
-    router.push({ path: '/employee', query: { from: 'consultation', session: session.value.sessionId } })
+    router.push({
+      path: '/employee',
+      query: { from: 'consultation', session: session.value.sessionId, ...extraQuery }
+    })
   } else {
     router.push('/employee')
   }

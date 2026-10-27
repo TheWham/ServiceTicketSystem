@@ -998,8 +998,8 @@ public class TicketService {
 
     /**
      * 创建后后处理（事务提交后异步）：SLA 起算（§11.2）+ 自动路由发起（F-06）。
-     * 自动路由只产出<b>待确认派单草案</b>，工单保持 NEW，由 confirmDispatch 在
-     * 审批人确认后置 ASSIGNED 并通知工程师 —— 见 DispatchDraftService（HITL 写操作门禁）。
+     * 自动路由<b>直接落分派</b>，工单进入 ASSIGNED 等待工程师接单（2026-10-27 起不再
+     * 走派单草案审批，理由见 {@link RoutingService#route}）。
      * 路由失败：RoutingService 已落异常队列，工单保持 NEW 待管理员处理。
      */
     private void afterCreate(String ticketId) {
@@ -1011,7 +1011,7 @@ public class TicketService {
             // 1. SLA 起算（完成 SLA 创建起算，新单默认 MEDIUM）
 
 
-            // 2. 自动路由 —— 只挂草案，不落分派（需求归因文档:50 强制 HITL）
+            // 2. 自动路由 —— 直接落分派，工单进入 ASSIGNED 等待工程师接单
             routingService.route(ticket);
         } catch (Exception e) {
             log.error("[TICKET] 创建后处理失败: " + ticketId, e);
@@ -1020,6 +1020,11 @@ public class TicketService {
 
     /**
      * 确认派单草案 —— 门禁的<b>唯一放行执行点</b>。
+     *
+     * <p><b>当前正常流程不再触达本方法</b>：2026-10-27 起 {@link RoutingService#route}
+     * 直接落分派，不再产出草案（见该方法 javadoc）。本方法与配套的
+     * {@code DispatchDraftController} 保留，供"机制尚在但未接线"的状态说明；
+     * 除非有人手工往 {@code dispatch_draft} 插行，否则不会被执行。
      *
      * <p>审批人对草案 approve 后（DispatchDraftService.decide 判定通过）由
      * DispatchDraftController 调用本方法，真正落分派：

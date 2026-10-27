@@ -37,7 +37,7 @@ class TicketWithdrawalTest {
     private final SlaService sla = mock(SlaService.class);
     private final RoutingService routing = mock(RoutingService.class);
     private final TicketService service = new TicketService(tickets, mock(CategoryMapper.class), attachments, flows,
-            purge, mock(TicketNoGenerator.class), mock(NotificationService.class), mock(UserClient.class), sla,
+            purge, mock(com.itticket.ticket.mapper.TicketResolutionMapper.class), mock(TicketNoGenerator.class), mock(NotificationService.class), mock(UserClient.class), sla,
             routing, mock(ExceptionQueueService.class), mock(DispatchDraftService.class), mock(ConsultationConvertNotifier.class), new ObjectMapper());
     private final UserContext.CurrentUser owner = new UserContext.CurrentUser("EMP01", "Employee", "EMPLOYEE", "IT");
     private final UserContext.CurrentUser engineer = new UserContext.CurrentUser("ENG01", "Engineer", "ENGINEER", "IT");
