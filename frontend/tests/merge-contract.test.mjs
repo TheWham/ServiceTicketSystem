@@ -23,6 +23,7 @@ function employee(overrides = {}) {
     '@element-plus/icons-vue': {},
     '../api/index.js': { ticketApi, categoryApi: {}, draftApi: { ensureDraftId: () => 'D1', delete: async () => {}, ...overrides.draftApi } },
     '../api/consultation.js': { consultationApi: overrides.consultationApi || {} },
+    '../utils/aiTicketDraft.js': { saveAiTicketDraft() {}, takeAiTicketDraft: () => null },
     '../stores/user.js': { useUserStore: () => ({ userId: 'U1', currentUser: { role: 'EMPLOYEE' } }) },
     '../components/SlaBadge.vue': {},
     '../components/SlaTimer.vue': {}

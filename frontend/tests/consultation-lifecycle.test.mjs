@@ -375,6 +375,7 @@ function component(name, api = {}, users = [], ui = {}) {
     './ChatAttachmentUploader.vue': {},
     './ChatMessageAttachments.vue': {},
     '../api/consultation.js': { consultationApi: api, TERMINAL_STATUS: terminal, CONSULTATION_STATUS: {}, REFUSAL_REASON: {}, TICKET_ENTRY_MESSAGE: '[提交工单入口]' },
+    '../utils/aiTicketDraft.js': { saveAiTicketDraft() {}, takeAiTicketDraft: () => null },
     '../api/index.js': { userApi: { listUsers: async () => ({ data: users }) }, categoryApi: { leaf: async () => ({ data: [{ category_id: 'C_NET', name: '网络', status: 'ACTIVE' }] }) } }
   }
   const code = compiled.content.replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g,

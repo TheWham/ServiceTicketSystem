@@ -533,6 +533,7 @@ import {
 import { ticketApi, draftApi, categoryApi, attachmentApi } from '../api/index.js'
 import { consultationApi } from '../api/consultation.js'
 import { loadPhotoUrls, revokePhotoUrls } from '../utils/attachmentPhotos.js'
+import { takeAiTicketDraft } from '../utils/aiTicketDraft.js'
 import { ticketToForm, ticketTypeLabel, ticketNatureLabel, editableTicketPayload, canWithdrawTicket } from '../utils/ticketEditing.js'
 import { useUserStore } from '../stores/user.js'
 import SlaBadge from '../components/SlaBadge.vue'
@@ -588,6 +589,26 @@ function mapConsultationDraft(draft, leaves) {
   }
 }
 
+/**
+ * 把聊天页「编辑」带过来的 AI 草稿映射成表单字段（见 utils/aiTicketDraft.js）。
+ *
+ * 分类按 id 对词表取 nature；**对不上就不动分类字段**，留给员工自己选 ——
+ * 写成空串会反过来清掉服务端预填已经填好的分类。
+ */
+function mapAiTicketDraft(aiDraft, leaves) {
+  if (!aiDraft) return null
+  const title = String(aiDraft.title || '').slice(0, 100)
+  const description = String(aiDraft.description || '').slice(0, 5000)
+  if (!title && !description) return null      // 空壳草稿：退回服务端预填
+  const mapped = { title, description }
+  const category = leaves.find(item => item.categoryId === aiDraft.category)
+  if (category) {
+    mapped.category_id = category.categoryId
+    mapped.nature = category.nature || category.ticketNature || form.value.nature
+  }
+  return mapped
+}
+
 function fillEmptyDraftFields(current, prefill) {
   const result = { ...current }
   let changed = false
@@ -625,11 +646,22 @@ function applyConsultationPrefill() {
   const draft = prefillDraft.value
   const session = consultationSession.value
   if (!session || draft?.session_id !== session) return
-  const mapped = mapConsultationDraft(draft, categories.value)
+  // 会话**能否**转单以服务端为准；**内容**优先取聊天页带过来的那份 AI 草稿 ——
+  // 服务端那个接口是「按整条会话时间线起草」，与草稿卡上的内容不是一回事。
+  const carried = autofillRequested.value
+    ? mapAiTicketDraft(takeAiTicketDraft(session), categories.value)
+    : null
+  const mapped = carried || mapConsultationDraft(draft, categories.value)
   if (!mapped) return
-  const result = fillEmptyDraftFields(form.value, mapped)
-  if (result.changed) form.value = result.form
-  else ElMessage.info('已关联咨询，保留现有内容')
+  if (carried) {
+    // 「编辑」是明确冲着这份 AI 草稿来的，字段直接覆盖。若沿用"只填空白"，
+    // 表单里但凡有值就一个字段都不填，员工看到的会是与卡片无关的旧内容。
+    form.value = { ...form.value, ...carried }
+  } else {
+    const result = fillEmptyDraftFields(form.value, mapped)
+    if (result.changed) form.value = result.form
+    else ElMessage.info('已关联咨询，保留现有内容')
+  }
   appliedSession.value = session
   formToken.value = genClientToken()
 }

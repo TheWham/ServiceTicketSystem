@@ -15,7 +15,8 @@ function consultation(api) {
     './ChatAttachmentUploader.vue': {},
     './ChatMessageAttachments.vue': {},
     '../api/index.js': { userApi: {} },
-    '../api/consultation.js': { consultationApi: api, TERMINAL_STATUS: ['CLOSED', 'RESOLVED', 'CONVERTED_TO_TICKET'], TICKET_ENTRY_MESSAGE: 'entry' }
+    '../api/consultation.js': { consultationApi: api, TERMINAL_STATUS: ['CLOSED', 'RESOLVED', 'CONVERTED_TO_TICKET'], TICKET_ENTRY_MESSAGE: 'entry' },
+    '../utils/aiTicketDraft.js': { saveAiTicketDraft() {}, takeAiTicketDraft: () => null },
   }
   const code = script.content.replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g, (_, names, path) => `const {${names}} = modules[${JSON.stringify(path)}]`)
     .replace(/import\s+(\w+)\s+from\s*['"]([^'"]+\.vue)['"]/g, (_, name, path) => `const ${name} = modules[${JSON.stringify(path)}]`)

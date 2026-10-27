@@ -16,7 +16,8 @@ function component(path, api = {}) {
     '@element-plus/icons-vue': {},
     '../api/index.js': { userApi: api, notificationApi: api, categoryApi: api },
     '../stores/user.js': { useUserStore: () => ({ setLogin() {} }) },
-    '../api/consultation.js': { consultationApi: api, CONSULTATION_STATUS: {}, REFUSAL_REASON: {}, TERMINAL_STATUS: ['RESOLVED', 'CLOSED', 'CONVERTED_TO_TICKET'] }
+    '../api/consultation.js': { consultationApi: api, CONSULTATION_STATUS: {}, REFUSAL_REASON: {}, TERMINAL_STATUS: ['RESOLVED', 'CLOSED', 'CONVERTED_TO_TICKET'] },
+    '../utils/aiTicketDraft.js': { saveAiTicketDraft() {}, takeAiTicketDraft: () => null },
   }
   const code = compiled.content.replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g,
     (_, names, name) => `const {${names}} = modules[${JSON.stringify(name)}]`).replace('export default', 'return')

@@ -82,11 +82,16 @@ test('reading consultation draft never overwrites edits made while request is pe
 test('fully populated form can explicitly associate a validated consultation without overwriting fields', () => {
   const initial = { title: 'Edited title', description: 'Edited description', category_id: 'C_NET', nature: 'INCIDENT', contact: 'Desk 12' }
   const messages = []
+  const form = ref({ ...initial })
   const state = {
-    form: ref({ ...initial }), consultationSession: ref('S1'), appliedSession: ref(''), formToken: ref('old-token'),
+    form, consultationSession: ref('S1'), appliedSession: ref(''), formToken: ref('old-token'),
     prefillLoading: ref(false), categoryLoading: ref(false), submitting: ref(false),
     prefillDraft: ref({ session_id: 'S1', convert_allowed: true, title: 'Remote title', description: 'Remote description', category_id: 'C_SW' }),
     categories: ref([{ categoryId: 'C_SW', nature: 'SERVICE_REQUEST' }]),
+    // 非「编辑」入口：不消费 AI 草稿，也不覆盖已有内容
+    autofillRequested: ref(false),
+    takeAiTicketDraft: () => null,
+    mapAiTicketDraft: productionFunction('mapAiTicketDraft', { form }),
     mapConsultationDraft: productionFunction('mapConsultationDraft'),
     fillEmptyDraftFields: productionFunction('fillEmptyDraftFields'),
     genClientToken: () => 'associated-token', ElMessage: { info: message => messages.push(message) }
@@ -107,6 +112,50 @@ test('fully populated form can explicitly associate a validated consultation wit
   assert.equal(state.appliedSession.value, 'S1')
   assert.equal(state.formToken.value, 'associated-token')
   assert.deepEqual(messages, ['已关联咨询，保留现有内容'])
+})
+
+test('editing an AI draft overwrites the form with the carried draft, not the session-timeline draft', () => {
+  // 回归覆盖：曾经这里复用了服务端 GET /consultations/{id}/ticket-draft，
+  // 而那个接口是「按整条会话时间线起草」（标题取员工第一句话、描述取全文摘要），
+  // 于是员工点「编辑」看到的是与草稿卡无关的旧对话内容。
+  const form = ref({ title: '上一次留下的标题', description: '上一次留下的描述', category_id: '', nature: 'INCIDENT' })
+  const carried = { sessionId: 'S1', title: 'vpn连不上', description: '现象：连接公司VPN提示认证失败', category: 'C_NET' }
+  const state = {
+    form, consultationSession: ref('S1'), appliedSession: ref(''), formToken: ref('old-token'),
+    prefillLoading: ref(false), categoryLoading: ref(false), submitting: ref(false),
+    prefillDraft: ref({ session_id: 'S1', convert_allowed: true, title: '员工说的第一句话', description: '整段会话的摘要', category_id: 'C_SW' }),
+    categories: ref([{ categoryId: 'C_NET', nature: 'INCIDENT' }, { categoryId: 'C_SW', nature: 'SERVICE_REQUEST' }]),
+    autofillRequested: ref(true),
+    takeAiTicketDraft: session => (session === 'S1' ? carried : null),
+    mapAiTicketDraft: productionFunction('mapAiTicketDraft', { form }),
+    mapConsultationDraft: productionFunction('mapConsultationDraft'),
+    fillEmptyDraftFields: productionFunction('fillEmptyDraftFields'),
+    genClientToken: () => 'assoc', ElMessage: { info: () => assert.fail('走覆盖分支时不该提示"保留现有内容"') }
+  }
+  productionFunction('applyConsultationPrefill', state)()
+
+  assert.equal(state.form.value.title, 'vpn连不上', '必须是 AI 草稿的标题，而不是会话第一句')
+  assert.equal(state.form.value.description, '现象：连接公司VPN提示认证失败', '必须是 AI 草稿的描述，而不是整段会话摘要')
+  assert.equal(state.form.value.category_id, 'C_NET')
+  assert.equal(state.appliedSession.value, 'S1')
+})
+
+test('AI draft wins only when the session matches; otherwise falls back to the server draft', () => {
+  const form = ref({ title: '', description: '', category_id: '', nature: 'INCIDENT' })
+  const state = {
+    form, consultationSession: ref('S1'), appliedSession: ref(''), formToken: ref('t'),
+    prefillLoading: ref(false), categoryLoading: ref(false), submitting: ref(false),
+    prefillDraft: ref({ session_id: 'S1', convert_allowed: true, title: 'Remote title', description: 'Remote description', category_id: 'C_SW' }),
+    categories: ref([{ categoryId: 'C_SW', nature: 'SERVICE_REQUEST' }]),
+    autofillRequested: ref(true),
+    takeAiTicketDraft: () => null,          // 存储里没有 / 会话不匹配
+    mapAiTicketDraft: productionFunction('mapAiTicketDraft', { form }),
+    mapConsultationDraft: productionFunction('mapConsultationDraft'),
+    fillEmptyDraftFields: productionFunction('fillEmptyDraftFields'),
+    genClientToken: () => 't', ElMessage: { info: () => {} }
+  }
+  productionFunction('applyConsultationPrefill', state)()
+  assert.equal(state.form.value.title, 'Remote title', '带过来的草稿不可用时退回服务端预填')
 })
 
 test('closing employee details invalidates a pending response and keeps the modal closed', async () => {

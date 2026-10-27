@@ -84,4 +84,72 @@ class MessageProjectionTest {
         assertFalse(result.hasNonNull("reply_type"));
         assertFalse(result.path("general_answer").asBoolean());
     }
+
+    /**
+     * 建单草稿随消息落库：刷新页面后草稿卡必须还在。
+     *
+     * <p>原先草稿只活在本次对话的消息对象里，历史回显读不到它 —— 员工刷新一下就看到
+     * "AI 已拟好草稿"的正文却没有任何卡片可点。
+     */
+    @Test
+    void history_retains_ticket_draft_so_the_card_survives_a_reload() {
+        JsonNode result = json(message("""
+                {"schemaVersion":1,"citations":[],"interactionId":"AI1","replyType":"ANSWER",
+                 "refusalReason":null,"generalAnswer":true,
+                 "ticketDraft":{"title":"vpn连不上","category":"C_NET",
+                                "description":"连接公司VPN提示认证失败","priority":"MEDIUM"}}
+                """));
+        JsonNode draft = result.path("ticket_draft");
+        assertTrue(draft.isObject(), "历史消息必须带出草稿，否则刷新后卡片消失");
+        assertEquals("vpn连不上", draft.path("title").asText());
+        assertEquals("C_NET", draft.path("category").asText());
+        assertEquals("连接公司VPN提示认证失败", draft.path("description").asText());
+        assertEquals("MEDIUM", draft.path("priority").asText());
+    }
+
+    /** 无草稿的消息不输出该字段 —— 不给前端塞一个恒为 null 的键（老数据也没有这个键） */
+    @Test
+    void history_omits_ticket_draft_when_absent() {
+        JsonNode noKey = json(message("""
+                {"schemaVersion":1,"citations":[],"interactionId":"AI1","replyType":"ANSWER","generalAnswer":false}
+                """));
+        assertFalse(noKey.hasNonNull("ticket_draft"), "没有草稿就不该出现该字段");
+
+        JsonNode nullDraft = json(message("""
+                {"schemaVersion":1,"citations":[],"ticketDraft":null,"replyType":"ANSWER"}
+                """));
+        assertFalse(nullDraft.hasNonNull("ticket_draft"));
+    }
+
+    /** 空壳草稿（标题与描述都空）视为没有草稿：别让前端渲染出一张没有内容、点不开的卡 */
+    @Test
+    void blank_ticket_draft_is_treated_as_absent() {
+        JsonNode result = json(message("""
+                {"schemaVersion":1,"citations":[],"replyType":"ANSWER",
+                 "ticketDraft":{"title":"","category":"C_NET","description":"","priority":null}}
+                """));
+        assertFalse(result.hasNonNull("ticket_draft"));
+    }
+
+    /** 撤回消息的草稿一并抹除（与 AC-30 同一口径：撤回后不留下任何可操作内容） */
+    @Test
+    void withdrawal_also_removes_the_ticket_draft() {
+        ConsultationMessage message = message("""
+                {"schemaVersion":1,"citations":[],"replyType":"ANSWER",
+                 "ticketDraft":{"title":"vpn连不上","category":"C_NET","description":"提示认证失败","priority":"MEDIUM"}}
+                """);
+        message.setWithdrawnAt(LocalDateTime.now());
+        assertFalse(json(message).hasNonNull("ticket_draft"));
+    }
+
+    /** 草稿结构损坏时只丢草稿，正文与答复类型照常 —— 草稿不该把整条消息一起拖没 */
+    @Test
+    void malformed_ticket_draft_does_not_break_the_message() {
+        JsonNode result = json(message("""
+                {"schemaVersion":1,"citations":[],"replyType":"ANSWER","ticketDraft":"这不是对象"}
+                """));
+        assertEquals("办公 IT 回答", result.path("content").asText());
+        assertEquals("ANSWER", result.path("reply_type").asText());
+        assertFalse(result.hasNonNull("ticket_draft"));
+    }
 }

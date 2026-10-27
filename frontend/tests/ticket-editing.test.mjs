@@ -57,6 +57,7 @@ function employee() {
     'vue-router': { useRoute: () => route, useRouter: () => ({ push: async to => { route.query = to.query } }) },
     'element-plus': { ElMessage: { success() {}, error() {}, info() {} }, ElMessageBox: {} },
     '@element-plus/icons-vue': {}, '../api/index.js': api, '../api/consultation.js': { consultationApi: {} },
+    '../utils/aiTicketDraft.js': { saveAiTicketDraft() {}, takeAiTicketDraft: () => null },
     '../utils/attachmentPhotos.js': { loadPhotoUrls: async () => [], revokePhotoUrls() {} },
     '../utils/ticketEditing.js': editing, '../stores/user.js': { useUserStore: () => ({ userId: 'U1' }) },
     '../components/SlaBadge.vue': {}, '../components/SlaTimer.vue': {}

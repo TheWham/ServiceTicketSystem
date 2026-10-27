@@ -159,8 +159,8 @@
                     <div class="ticket-draft-row"><span class="k">描述</span><span class="v">{{ msg.ticketDraft.description }}</span></div>
                   </div>
                   <div class="ticket-draft-actions">
-                    <template v-if="msg.draftTicketId">
-                      <el-tag type="success" size="small">已创建工单 {{ msg.draftTicketId }}</el-tag>
+                    <template v-if="draftTicketIdOf(msg)">
+                      <el-tag type="success" size="small">已创建工单 {{ draftTicketIdOf(msg) }}</el-tag>
                     </template>
                     <template v-else>
                       <el-button type="primary" size="small" :icon="Tickets"
@@ -170,7 +170,7 @@
                       <!-- 不满意 AI 拟的字段就先去提单表单改：那里有完整校验与草稿保存，
                            聊天里内联编辑等于把整套表单逻辑再复制一份 -->
                       <el-button size="small" :icon="Edit"
-                                 :disabled="msg.draftSubmitting" @click="editTicketDraft">
+                                 :disabled="msg.draftSubmitting" @click="editTicketDraft(msg)">
                         编辑
                       </el-button>
                     </template>
@@ -300,6 +300,7 @@ import {
 import {
   consultationApi, REFUSAL_REASON, TERMINAL_STATUS, TICKET_ENTRY_MESSAGE, CONSULTATION_STATUS
 } from '../api/consultation.js'
+import { saveAiTicketDraft } from '../utils/aiTicketDraft.js'
 
 /**
  * 员工侧智能客服聊天面板(无外部布局假设):
@@ -511,6 +512,8 @@ function toLocalMessage(item) {
     replyType: item.reply_type || null,
     refusalReason: item.refusal_reason || null,
     generalAnswer: item.general_answer === true,
+    // AI 建单草稿随消息落库，所以**刷新后草稿卡还在**（服务端元数据里的 ticketDraft）
+    ticketDraft: item.ticket_draft || null,
     feedback: null,
     local: false,
     sentAt: item.sent_at,
@@ -808,14 +811,31 @@ function goCreateTicket() {
 }
 
 /**
- * 「编辑」AI 拟好的建单草稿 —— 人机回环的第三条路：不在聊天里落库，而是带着会话跳到
- * 提单表单，字段预填好、员工改完再手动提交（提交时经 source_session_id 回写会话归属）。
+ * 「编辑」AI 拟好的建单草稿 —— 人机回环的第三条路：不在聊天里落库，而是带着**这份草稿**
+ * 跳到提单表单，预填好、员工改完再手动提交（提交时经 source_session_id 回写会话归属）。
+ *
+ * **必须把卡片上这份草稿本身带过去**，不能让提单页自己从会话推导：那边的
+ * `GET /consultations/{id}/ticket-draft` 是「按整条会话时间线起草」（标题取员工说过的第一句、
+ * 描述取整段对话摘要），与 agent 按当前这句话拟的草稿不是一回事 —— 复用会让员工点完
+ * 「编辑」看到一串与卡片无关的旧对话内容（实测踩到过）。详见 utils/aiTicketDraft.js。
  *
  * 多带 autofill=1，让提单页到达时直接填入；其余「提交工单」入口不带这个标志，
  * 仍靠那里的「填入并关联咨询」按钮显式触发 —— 那条路径下表单里可能已有员工正在写的内容。
  */
-function editTicketDraft() {
+function editTicketDraft(msg) {
+  saveAiTicketDraft(session.value?.sessionId, msg?.ticketDraft)
   pushToCreateForm({ autofill: '1' })
+}
+
+/**
+ * 这张草稿卡对应的工单号，用来决定显示「已创建工单」还是两个按钮。
+ *
+ * 先看消息本地态（本次会话里刚点的确认），刷新之后本地态没了，就取会话上的
+ * `converted_ticket_id` —— 否则刷新后卡片会退回「确认建单」，员工以为没建成会再点一次。
+ * （服务端 confirmTicketDraft 有幂等守卫兜底，但界面上不该制造这种困惑。）
+ */
+function draftTicketIdOf(msg) {
+  return msg?.draftTicketId || session.value?.converted_ticket_id || ''
 }
 
 /** 跳到提单页并带上会话让提单页拉取咨询预填(PRD 9.1)。 */
