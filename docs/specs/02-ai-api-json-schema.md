@@ -50,7 +50,9 @@ public enum AiRefusalReason {
     NO_RELIABLE_KNOWLEDGE, LOW_CONFIDENCE, CONFLICTING_KNOWLEDGE,
     HIGH_RISK_TOPIC, MODEL_UNAVAILABLE, POLICY_BLOCKED,
     /** 2026-09-29 冷启动修订新增:超出 IT 办公范围,明确告知不能答复 */
-    OFF_TOPIC
+    OFF_TOPIC,
+    /** 2026-10-27 新增:问题本身不归当前链路管(跨工单分析收到单条故障提问),引导换入口 */
+    OUT_OF_SCOPE
 }
 
 public record KnowledgeCitation(
@@ -148,7 +150,7 @@ DTO 不直接暴露 `DM-*` 实体；`AiInteraction` 只保存回答审计、引�
     "citations": {"type": "array", "items": {"$ref": "#/$defs/citation"}},
     "confidence": {"type": "number", "minimum": 0, "maximum": 1},
     "suggestTransfer": {"type": "boolean"},
-    "refusalReason": {"enum": ["NO_RELIABLE_KNOWLEDGE", "LOW_CONFIDENCE", "CONFLICTING_KNOWLEDGE", "HIGH_RISK_TOPIC", "MODEL_UNAVAILABLE", "POLICY_BLOCKED", "OFF_TOPIC"]},
+    "refusalReason": {"enum": ["NO_RELIABLE_KNOWLEDGE", "LOW_CONFIDENCE", "CONFLICTING_KNOWLEDGE", "HIGH_RISK_TOPIC", "MODEL_UNAVAILABLE", "POLICY_BLOCKED", "OFF_TOPIC", "OUT_OF_SCOPE"]},
     "modelVersion": {"type": "string", "minLength": 1, "maxLength": 128},
     "interactionId": {"type": "string", "minLength": 1, "maxLength": 64}
   },

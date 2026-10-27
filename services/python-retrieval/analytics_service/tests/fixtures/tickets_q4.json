@@ -1,0 +1,445 @@
+{
+  "_comment": "真实库 it_ticket_system 的 2026 Q4 窗口快照(2026-10-01 ~ 2026-10-26),已脱敏:仅含工单号/标题/描述/分类/时间/处置记录,无姓名与联系方式。处置记录由 tools/seed_ticket_resolutions.py 写入(演示数据,主键 DEMO-RES- 前缀)。供 aggregate_evaluation 离线复现评测,勿手工编辑。",
+  "tickets": [
+    {
+      "ticketId": "TK202610210001",
+      "title": "【HITL联调测试】办公楼网络中断，请忽略",
+      "description": "Day18 HITL 联调测试单据，验证派单草案挂起链路。可随时撤销。",
+      "categoryId": "C_NET",
+      "createdAt": "2026-10-21 04:04:06.359457",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210002",
+      "title": "【P0修复验证】请忽略-网络断连",
+      "description": "验证 HITL 放行后工单状态是否流转到 ASSIGNED 的联调测试单，请勿处理。",
+      "categoryId": "C_NET",
+      "createdAt": "2026-10-21 05:20:33.350263",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210003",
+      "title": "[P0-verify] manual assign path",
+      "description": "Manual dispatch regression check after RoutingService.assign change. Please ignore.",
+      "categoryId": "C_NET",
+      "createdAt": "2026-10-21 05:21:19.515729",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210004",
+      "title": "[P0-verify] reject branch",
+      "description": "Integration test for HITL reject branch. Please ignore.",
+      "categoryId": "C_NET",
+      "createdAt": "2026-10-21 05:25:11.043268",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210005",
+      "title": "[P0-verify] route failed",
+      "description": "Integration test to force a routing failure and produce a fresh exception. Please ignore.",
+      "categoryId": "C_NET",
+      "createdAt": "2026-10-21 05:26:11.328697",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210006",
+      "title": "[P0-verify] concurrent decide",
+      "description": "Integration test for concurrent adjudication of the same dispatch draft. Please ignore.",
+      "categoryId": "C_NET",
+      "createdAt": "2026-10-21 05:26:58.692500",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210007",
+      "title": "[P0-verify] expire via scanner",
+      "description": "Integration test of scheduled expiry scan. Please ignore.",
+      "categoryId": "C_NET",
+      "createdAt": "2026-10-21 05:27:58.678674",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210008",
+      "title": "[P0-verify] claim on expired",
+      "description": "Integration test of claim-time expiry recheck. Please ignore.",
+      "categoryId": "C_SW",
+      "createdAt": "2026-10-21 05:27:59.804484",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210009",
+      "title": "[P0-verify] rollback check",
+      "description": "Integration test: does claim-on-expired actually persist EXPIRED? Please ignore.",
+      "categoryId": "C_ACC",
+      "createdAt": "2026-10-21 05:30:24.113544",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210010",
+      "title": "test",
+      "description": "test desc",
+      "categoryId": "C_NET",
+      "createdAt": "2026-10-21 05:54:14.202168",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210011",
+      "title": "打印机再次脱机，重启无效，申请报修",
+      "description": "打印机再次出现脱机故障：发送打印任务无反应，状态显示脱机。已重启打印机和电脑未解决。请 IT 协助排查。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-21 06:28:55.339050",
+      "resolution": "进纸组件异响并频繁卡纸，拆检发现搓纸轮橡胶老化打滑，更换搓纸轮后恢复正常。"
+    },
+    {
+      "ticketId": "TK202610210012",
+      "title": "zq",
+      "description": "zq",
+      "categoryId": "C_OTH",
+      "createdAt": "2026-10-21 06:54:50.021892",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210013",
+      "title": "[分派探测] C_HW_PC",
+      "description": "probe routing target for each category, ignore",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-21 07:10:11.020390",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210014",
+      "title": "[分派探测] C_SW",
+      "description": "probe routing target for each category, ignore",
+      "categoryId": "C_SW",
+      "createdAt": "2026-10-21 07:10:15.237902",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210015",
+      "title": "[分派探测] C_NET",
+      "description": "probe routing target for each category, ignore",
+      "categoryId": "C_NET",
+      "createdAt": "2026-10-21 07:10:19.567723",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210016",
+      "title": "[分派探测] C_ACC",
+      "description": "probe routing target for each category, ignore",
+      "categoryId": "C_ACC",
+      "createdAt": "2026-10-21 07:10:24.150750",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210017",
+      "title": "【HITL演示】笔记本无法开机",
+      "description": "人机回环演示用单，请忽略。用于观察门禁挂起与放行的差别。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-21 07:11:41.011717",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210018",
+      "title": "【HITL演示】笔记本无法开机",
+      "description": "人机回环演示用单，请忽略。用于观察门禁挂起与放行的差别。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-21 07:11:52.244101",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210019",
+      "title": "笔记本电脑无法开机（按电源键无反应）报修",
+      "description": "现象：笔记本按下电源键完全无反应，无法开机（无指示灯、无风扇、无任何显示）。\n影响范围：该电脑无法使用，影响日常办公。\n待员工补充信息（便于工程师快速定位）：\n1. 电脑品牌型号及公司资产编号；\n2. 电源适配器指示灯是否亮起、是否已尝试更换电源插座；\n3. 长按电源键 10-15 秒后再开机是否有效；\n4. 故障发生前是否有进水、跌落、异响或升级断电等异常；\n5. 是否有备用电脑可临时使用。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-21 07:12:30.583844",
+      "resolution": "拆机排查发现主板供电模块损坏，电源指示灯始终不亮；更换主板后恢复。"
+    },
+    {
+      "ticketId": "TK202610210020",
+      "title": "笔记本无法开机，按电源键无反应",
+      "description": "员工笔记本无法开机，按电源键无任何反应。具体品牌型号、资产编号、电源适配器及指示灯状态待员工补充确认。影响：无法使用笔记本办公。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-21 07:25:42.012627",
+      "resolution": "交叉验证确认电源适配器损坏（输出端无 19V），换新适配器后开机正常。"
+    },
+    {
+      "ticketId": "TK202610210021",
+      "title": "笔记本电脑无法开机，申请报修",
+      "description": "【现象】笔记本电脑无法开机，员工申请报修。\n【已做排查】暂无（建议补充：电源适配器连接与指示灯状态、开机键长按后有无风扇/灯光反应、外接显示器是否有显示等）。\n【影响范围】无法使用该笔记本办公，影响日常工作。\n【待补充信息】资产编号、设备型号、故障发生时间与经过、是否有进水/摔落等意外情况。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-21 07:33:30.053033",
+      "resolution": "排查为电源键接触不良导致无法触发上电，清理触点并加固后恢复。"
+    },
+    {
+      "ticketId": "TK202610210022",
+      "title": "[演示] 软件闪退",
+      "description": "演示用单：办公软件打开即闪退，重启无效，请协助排查。",
+      "categoryId": "C_SW",
+      "createdAt": "2026-10-21 07:35:38.254118",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210023",
+      "title": "笔记本无法开机",
+      "description": "员工反馈笔记本电脑无法开机。\n现象：按下电源键后无法正常启动（无显示/无响应，具体表现待确认）。\n待补充信息：设备品牌型号及资产编号、指示灯是否正常亮起、是否有异响、近期是否有进水/摔落/系统更新、是否已尝试长按电源键强制放电等。\n影响范围：单台设备，影响日常办公。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-21 07:40:28.097234",
+      "resolution": "检测为主板供电故障（南桥供电异常），返修后恢复开机。"
+    },
+    {
+      "ticketId": "TK202610210024",
+      "title": "电脑蓝屏",
+      "description": "员工报障：电脑出现蓝屏。待补充信息：蓝屏发生的频率与时机（开机时/使用中/运行特定软件时）、蓝屏错误代码或提示（如 CRITICAL_PROCESS_DIED、MEMORY_MANAGEMENT 等）、近期是否新装软件/驱动/硬件、是否已尝试重启。建议工程师远程或现场排查系统日志、内存与硬盘健康状况，并检查驱动与系统更新情况。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-21 07:46:22.576666",
+      "resolution": "拆机重新插拔内存条并用橡皮清洁金手指，判定内存条接触不良导致偶发蓝屏。"
+    },
+    {
+      "ticketId": "TK202610210025",
+      "title": "电脑蓝屏",
+      "description": "电脑出现蓝屏故障。员工已自助排查：重启、内存诊断（mdsched）、系统更新、sfc /scannow 等步骤，仍频繁蓝屏。需 IT 工程师介入分析 dump 文件、排查驱动/内存/硬盘等硬件问题，请协助处理。具体蓝屏错误代码及出现频率待员工补充。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-21 08:08:45.812097",
+      "resolution": "蓝屏日志判定为显卡驱动版本缺陷，回退到上一稳定版本后不再蓝屏。"
+    },
+    {
+      "ticketId": "TK202610210026",
+      "title": "电脑蓝屏",
+      "description": "员工反馈电脑出现蓝屏问题。详细报错代码、出现频率、发生场景待补充确认。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-21 08:21:17.513790",
+      "resolution": "排查发现内存条氧化导致读写错误，更换内存条后蓝屏消失。"
+    },
+    {
+      "ticketId": "TK202610210027",
+      "title": "电脑蓝屏",
+      "description": "演示用单：电脑频繁蓝屏，重启后仍会复现，请协助排查。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-21 08:26:15.065240",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610210028",
+      "title": "wifi无法打开",
+      "description": "wifi无法打开，无法联网",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-21 10:04:00.271775",
+      "resolution": "排查为无线网卡驱动版本缺陷导致无法启用，升级驱动后 WiFi 恢复正常。"
+    },
+    {
+      "ticketId": "TK202610220001",
+      "title": "电脑屏幕亮度无法调节",
+      "description": "员工反馈电脑屏幕亮度无法调节。现象：尝试通过键盘亮度快捷键和系统设置调节屏幕亮度均无效果，亮度保持不变。已做排查：暂无。影响范围：仅本机，影响视觉舒适度，不影响基本办公。请 IT 协助检查显卡驱动、电源计划设置及显示驱动程序。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-22 01:56:11.215123",
+      "resolution": "排查为外设驱动版本缺陷，安装厂商最新驱动后设备识别正常。"
+    },
+    {
+      "ticketId": "TK202610220002",
+      "title": "电脑音量无法调节",
+      "description": "员工反馈电脑音量无法调节。具体现象（音量键/快捷键是否无反应、音量滑块是否可拖动但无声音或音量不变）、设备类型（台式机/笔记本及型号）、发生时间及已做排查（重启、检查音频输出设备、驱动更新等）待工程师受理时进一步确认。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-22 02:00:07.390619",
+      "resolution": "检查发现 USB 接口氧化导致接触不良，清洁接口后设备恢复。"
+    },
+    {
+      "ticketId": "TK202610220003",
+      "title": "鼠标插入电脑后，不显示光标",
+      "description": "v鼠标插入电脑后，不显示光标",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-22 02:01:24.281442",
+      "resolution": "确认鼠标接口氧化接触不良，清洁触点后光标恢复正常。"
+    },
+    {
+      "ticketId": "TK202610220004",
+      "title": "电脑蓝屏",
+      "description": "员工反馈电脑出现蓝屏故障，具体蓝屏代码、出现频率、触发场景等信息待补充。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-22 02:07:48.969867",
+      "resolution": "检测到散热风道积尘严重、CPU 过热触发保护性蓝屏，清灰并更换散热硅脂后恢复。"
+    },
+    {
+      "ticketId": "TK202610220005",
+      "title": "电脑蓝屏",
+      "description": "员工反馈电脑出现蓝屏故障，具体蓝屏代码、出现频率、触发场景等信息待补充。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-22 02:08:35.277662",
+      "resolution": "复现后确认为内存条接触不良（搬动后必现），重新插拔并固定插槽后恢复。"
+    },
+    {
+      "ticketId": "TK202610220006",
+      "title": "电脑蓝屏",
+      "description": "员工反馈电脑出现蓝屏故障，具体蓝屏代码与触发场景待补充。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-22 02:09:18.989712",
+      "resolution": "蓝屏代码指向网卡驱动版本缺陷，升级到厂商修复版后问题消失。"
+    },
+    {
+      "ticketId": "TK202610220007",
+      "title": "test123",
+      "description": "员工申请新建工单，标题为 test123。暂未提供具体问题描述、影响范围等信息。",
+      "categoryId": "C_OTH",
+      "createdAt": "2026-10-22 02:35:05.296332",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610220008",
+      "title": "test123",
+      "description": "员工申请新建工单，标题为 test123。暂未提供具体问题描述、影响范围等信息，需补充后再完善工单内容。",
+      "categoryId": "C_OTH",
+      "createdAt": "2026-10-22 02:35:20.302802",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610220009",
+      "title": "test123",
+      "description": "test3131",
+      "categoryId": "C_OTH",
+      "createdAt": "2026-10-22 02:44:40.057480",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610220010",
+      "title": "电脑屏幕亮度无法调节",
+      "description": "电脑屏幕亮度无法调节。具体现象待补充说明，例如：亮度调节快捷键（Fn+亮度键）无响应、系统设置中亮度滑块不可用或调节无效、亮度始终锁定在某一档位等。如有相关错误提示或近期驱动/系统更新情况，可在确认前补充。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-22 02:55:06.387214",
+      "resolution": "摄像头驱动不兼容当前系统版本，更新驱动后画面正常。"
+    },
+    {
+      "ticketId": "TK202610220011",
+      "title": "电脑摄像头无法打开",
+      "description": "v电脑摄像头无法打开",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-22 02:56:17.111367",
+      "resolution": "键盘排线松动导致部分按键无响应，重新压接排线后全部按键恢复。"
+    },
+    {
+      "ticketId": "TK202610220012",
+      "title": "笔记本电脑开机直接闪退",
+      "description": "笔记本电脑开机后直接闪退，无法正常进入系统/启动过程中中断。发生阶段（logo界面/系统加载/登录后）、有无报错提示、近期是否安装新软件或更新等信息待补充。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-22 06:40:40.462232",
+      "resolution": "确认为系统镜像损坏引起的组件缺失，修复系统后问题消失。"
+    },
+    {
+      "ticketId": "TK202610220013",
+      "title": "test",
+      "description": "test13131",
+      "categoryId": "C_OTH",
+      "createdAt": "2026-10-22 07:10:01.004090",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610220014",
+      "title": "电脑蓝屏",
+      "description": "员工电脑频繁蓝屏，错误代码CRITICAL_PROCESS_DIED",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-22 08:47:20.635187",
+      "resolution": "双条内存交叉测试锁定其中一条内存条损坏，更换后不再蓝屏。"
+    },
+    {
+      "ticketId": "TK202610230001",
+      "title": "【HITL演示】笔记本无法开机",
+      "description": "人机回环演示用单，请忽略。用于观察门禁挂起与放行的差别。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-23 02:51:37.840099",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610230002",
+      "title": "【HITL演示】笔记本无法开机",
+      "description": "人机回环演示用单，请忽略。用于观察门禁挂起与放行的差别。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-23 02:52:58.905060",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610230003",
+      "title": "【HITL演示】笔记本无法开机",
+      "description": "人机回环演示用单，请忽略。用于观察门禁挂起与放行的差别。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-23 02:56:14.512024",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610230004",
+      "title": "【HITL演示】笔记本无法开机",
+      "description": "人机回环演示用单，请忽略。用于观察门禁挂起与放行的差别。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-23 02:56:40.817530",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610230005",
+      "title": "笔记本无法开机（按电源键无反应）",
+      "description": "员工笔记本开不了机，按电源键无任何反应，屏幕不亮、无指示灯/风扇声。已尝试（可选补充：长按电源键 10-15 秒强制重启、外接电源后仍无反应）。申请硬件检测与维修。",
+      "categoryId": "C_HW_PC",
+      "createdAt": "2026-10-23 02:56:57.766861",
+      "resolution": "现场检测判定电源适配器损坏（输出端无电压），更换同型号适配器后正常开机。"
+    },
+    {
+      "ticketId": "TK202610230006",
+      "title": "hello",
+      "description": "test",
+      "categoryId": "C_OTH",
+      "createdAt": "2026-10-23 03:36:55.005853",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610230007",
+      "title": "123",
+      "description": "123",
+      "categoryId": "C_ACC",
+      "createdAt": "2026-10-23 06:19:45.109395",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610230008",
+      "title": "test123",
+      "description": "test321",
+      "categoryId": "C_OTH",
+      "createdAt": "2026-10-23 06:21:04.270060",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610230009",
+      "title": "笔记本电脑无法开机",
+      "description": "早上到公司按下电源键后电脑屏幕黑屏无任何反应，电源指示灯不亮，已更换插座无效",
+      "categoryId": "C_ACC",
+      "createdAt": "2026-10-23 06:43:22.542274",
+      "resolution": "拆机排查发现主板供电模块损坏，电源指示灯始终不亮；更换主板后恢复。"
+    },
+    {
+      "ticketId": "TK202610230010",
+      "title": "test",
+      "description": "test312",
+      "categoryId": "C_OTH",
+      "createdAt": "2026-10-23 07:41:10.964906",
+      "resolution": ""
+    },
+    {
+      "ticketId": "TK202610230011",
+      "title": "电脑蓝屏",
+      "description": "电脑蓝屏打不开",
+      "categoryId": "C_OTH",
+      "createdAt": "2026-10-23 08:19:17.119922",
+      "resolution": "拆机重新插拔内存条并用橡皮清洁金手指，判定内存条接触不良导致偶发蓝屏。"
+    },
+    {
+      "ticketId": "TK202610230012",
+      "title": "VPN连接失败",
+      "description": "VPN总是断开，连接不稳定，影响远程办公。",
+      "categoryId": "C_NET",
+      "createdAt": "2026-10-23 08:56:13.052250",
+      "resolution": "定位为客户端配置漂移（路由表被改），恢复标准配置模板后连接稳定。"
+    },
+    {
+      "ticketId": "TK202610230013",
+      "title": "电脑蓝屏",
+      "description": "test31",
+      "categoryId": "C_OTH",
+      "createdAt": "2026-10-23 09:37:09.994683",
+      "resolution": "蓝屏日志判定为显卡驱动版本缺陷，回退到上一稳定版本后不再蓝屏。"
+    }
+  ]
+}

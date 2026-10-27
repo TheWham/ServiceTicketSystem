@@ -125,7 +125,8 @@ import { refusalApi } from '../api/index.js'
 
 const reasonMap = {
   NO_RELIABLE_KNOWLEDGE: '无可靠知识', LOW_CONFIDENCE: '置信度不足', CONFLICTING_KNOWLEDGE: '知识冲突',
-  HIGH_RISK_TOPIC: '高风险话题', MODEL_UNAVAILABLE: '服务不可用', POLICY_BLOCKED: '策略拦截', OFF_TOPIC: '越界话题'
+  HIGH_RISK_TOPIC: '高风险话题', MODEL_UNAVAILABLE: '服务不可用', POLICY_BLOCKED: '策略拦截', OFF_TOPIC: '越界话题',
+  OUT_OF_SCOPE: '不在能力范围'
 }
 const reasonTagType = (r) => ({ HIGH_RISK_TOPIC: 'danger', POLICY_BLOCKED: 'danger', OFF_TOPIC: 'info', MODEL_UNAVAILABLE: 'warning' }[r] || 'primary')
 const decisionMap = { GOLDEN_QA: '已进黄金集·正常区', GOLDEN_REFUSAL: '已进对抗区', DISCARD: '已丢弃' }

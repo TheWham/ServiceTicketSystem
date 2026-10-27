@@ -22,7 +22,7 @@ spring:
         - id: consultation-service
           uri: lb://consultation-service
           predicates:
-            - Path=/api/v1/consultations/**,/api/v1/knowledge/**
+            - Path=/api/v1/consultations/**,/api/v1/knowledge/**,/api/v1/analytics/**
         - id: rag-service
           uri: lb://rag-service
           predicates:

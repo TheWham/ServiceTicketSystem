@@ -102,7 +102,7 @@ class RagCompositionHttpTest {
         client = new GuardedRagClient(new ComposedRagAdapter(new SemanticRequestClassifier(model),
                 new RagServiceKnowledgeRetriever(config, http), new RetrievalPolicy(knowledge),
                 new OpenAiCompatibleAnswerGenerator(model, config, null),
-                false), config);
+                false, null), config);
     }
     private RagResult ask() {
         return client.answer(new RagQuery("S1", "开会别人听不到我", "C_NET", "ASSET1", 5,

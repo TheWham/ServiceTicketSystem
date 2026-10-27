@@ -18,6 +18,10 @@ const routes = [
   { path: '/knowledge-admin', name: 'KnowledgeAdmin', component: () => import('../views/KnowledgeAdminView.vue'), meta: { role: ['KNOWLEDGE_ADMIN', 'KB_ADMIN'] } },
   { path: '/knowledge-admin/refusals', name: 'RefusalCases', component: () => import('../views/RefusalCaseView.vue'), meta: { role: ['KNOWLEDGE_ADMIN', 'KB_ADMIN'] } },
   { path: '/knowledge-admin/golden', name: 'GoldenCases', component: () => import('../views/GoldenCaseView.vue'), meta: { role: ['KNOWLEDGE_ADMIN', 'KB_ADMIN'] } },
+  // 跨工单分析：跨人聚合，**仅工程师**可进（与后端 AuthzService 的角色门禁一致）。
+  // EMPLOYEE 与 PLATFORM_ADMIN 都不在此列表 —— 前端不展示入口，后端也会拒答
+  // （POLICY_BLOCKED / 403），两层都不放行。
+  { path: '/analytics', name: 'Analytics', component: () => import('../views/AnalyticsView.vue'), meta: { role: ['ENGINEER'] } },
   { path: '/accounts', name: 'Accounts', component: () => import('../views/AccountManageView.vue'), meta: { role: ['PLATFORM_ADMIN', 'KB_ADMIN'] } },
   // 通知跳转：/tickets/:id → 按当前角色重定向到对应工作台并带上 ticket query（工作台自动打开详情）
   { path: '/tickets/:id', redirect: (to) => {

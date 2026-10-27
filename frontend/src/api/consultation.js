@@ -175,7 +175,10 @@ export const REFUSAL_REASON = {
   HIGH_RISK_TOPIC: '该请求涉及未经授权、绕过安全控制或需要人工核实的操作，请联系 IT 人员处理',
   MODEL_UNAVAILABLE: 'AI 服务暂时不可用',
   POLICY_BLOCKED: 'AI 综合回答当前未开放',
-  OFF_TOPIC: '抱歉，这个问题不属于 IT 或电脑技术范围，不能答复。我可以帮助你处理电脑、网络、软件、编程和设备使用等问题。'
+  OFF_TOPIC: '抱歉，这个问题不属于 IT 或电脑技术范围，不能答复。我可以帮助你处理电脑、网络、软件、编程和设备使用等问题。',
+  // 跨工单分析收到单条故障提问时的熔断原因。与 NO_RELIABLE_KNOWLEDGE 分开：
+  // 那个是"数据不足以支撑结论"（该补细节或转人工），这个是"问题不该在这条链路问"。
+  OUT_OF_SCOPE: '这个问题不在跨工单统计的范围内，请到智能客服提问具体故障的处理办法'
 }
 
 export const TERMINAL_STATUS = ['RESOLVED', 'CONVERTED_TO_TICKET', 'CLOSED']

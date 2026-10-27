@@ -17,7 +17,16 @@ public enum AiRefusalReason {
     HIGH_RISK_TOPIC("HIGH_RISK_TOPIC"),
     MODEL_UNAVAILABLE("MODEL_UNAVAILABLE"),
     POLICY_BLOCKED("POLICY_BLOCKED"),
-    OFF_TOPIC("OFF_TOPIC");
+    OFF_TOPIC("OFF_TOPIC"),
+    /**
+     * 能力范围外:问题本身不归这条链路管(2026-10-27 新增)。
+     *
+     * <p>与 {@code NO_RELIABLE_KNOWLEDGE} 刻意分开——后者是"数据不足以支撑结论",
+     * 处置方向是补样本或转人工;这个是"问题根本不归这条链路管",处置方向是换入口
+     * (跨工单分析收到单条故障提问时,引导去智能客服)。两者下一步动作相反,
+     * 合成一个值会把工程师引错方向。
+     */
+    OUT_OF_SCOPE("OUT_OF_SCOPE");
 
     @EnumValue
     @JsonValue

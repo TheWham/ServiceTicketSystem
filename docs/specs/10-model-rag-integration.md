@@ -267,3 +267,34 @@ AI-007 事件 envelope Schema：
 Secret ref、allowlist、egress proxy、TLS verify 和 IP pin 在启动与配置热更新时校验。若不使用 egress proxy，每次连接前重新解析 DNS、校验全部地址、选取已校验 IP 建立连接并绑定 Host/SNI；连接期间 DNS 变化不允许切换到未校验地址。每一跳重定向重新执行 allowlist、DNS、IP pin 和端口校验；失败立即拒绝。
 
 MODEL_SECRET_REF 仅是单 provider 部署的兼容默认键；当 ai_provider_config 存在 api_key_secret_ref 时，provider 版本引用优先，MODEL_SECRET_REF 不得覆盖它。多 provider 环境必须为每个 provider 版本显式配置 api_key_secret_ref，禁止回退到全局键。
+
+## MR-016 分析型确定性链路
+
+跨工单宏观聚合类请求**不走检索链路**——`retrieval.top_k` 的单卡口径物理上凑不齐跨数十条记录的归纳材料，且工单从不进入知识库。该能力由独立的分析链路承担。
+
+**入口与默认行为**：`itticket.consultation.ai.analytics.enabled` 默认 `true`，即分析链路**默认接通**（与 `retrieval-provider=rag-service` 同样要求依赖在线）。链路不可用时返回 `503 AI_UNAVAILABLE`，**不得回退到知识问答** —— 回退会让一个统计请求收到单卡答案，那是本链路要消灭的答非所问。只跑其余链路时显式置 `false`。
+
+**两个入口的意图归属不同，不得混同**：
+
+- **客服入口**（`ComposedRagAdapter` 分流）：Java 分类器已判为分析型才进来，因此透传 `upstreamIntent=ANALYTICS`，分析链路据此**锁死意图、不再翻案**。分类器误判由上游负责，不在下游二次裁决。
+- **看板入口**（`/api/v1/analytics/query`）：**不透传 `upstreamIntent`**，交由分析链路自行判定。判为非分析型时**熔断**：返回 `REFUSE` + `refusalReason=OUT_OF_SCOPE`，并在正文里指路（引导去智能客服）。**不得回退到知识问答** —— 回退会让同一个 HTTP 入口按用户措辞切换成两套链路，答复类型随措辞漂移，前端无从预期该渲染哪一套结构。
+
+`OUT_OF_SCOPE` 与 `NO_RELIABLE_KNOWLEDGE` 刻意分开：后者是"数据不足以支撑结论"（该补细节或转人工），前者是"问题根本不归这条链路管"（该换入口）——两者下一步动作相反。
+
+**请求理解**沿用既有分类器：`SemanticRequestClassifier` 主判、`KeywordRequestClassifier` 兜底，新增 `ANALYTICS` 取值并纳入 `RequestVerdict` 白名单，白名单外一律归一为 `NONE`。分析链路侧同构实现"规则先跑 -> 安全闸 -> 模型判定 -> 仲裁"，分歧且规则未命中时返回澄清而非直接进入链路（误判将跨服务边界）。**上游已指定意图或规则明确命中时，分析链路仍然调用模型一次，但意图直接采信上游/规则、模型不得推翻** —— 那一次调用用于抽取槽位（见下条），不是二次分类。
+
+**槽位抽取**：同一次调用同时产出**意图**与**槽位**——时间窗、范围限定（子域）、关注维度。**模型只给语义槽位，日期算术一律由代码完成**：模型输出 `kind/anchor/quarter/amount`（如"本季度"→ `QUARTER/CURRENT`），`start/end` 由 `timewindow` 计算；唯一例外是用户原话给出了两个日期，模型复述 ISO 日期、代码校验格式、次序与量程。理由是模型算错季度边界不会报错，只会静默给出错误的分母。槽位必须携带**原样抄录提问片段**的 `rawText`，且该片段须在提问中字面出现，否则整段槽位作废、退回正则解析——与数字门禁同构。**意图判定与槽位抽取相互独立**：不得因意图判为非分析型而将槽位留空。
+
+**时间口径的裁决**：规则解析（`parse_window`）保留为兜底与对照，两者都跑。仅当**模型与规则均从提问字面命中且区间不同**时才记录 `WINDOW_CONFLICT`；规则未命中时返回的是默认窗口而非空值，不得据此判冲突。模型声明"无时间表达"而规则字面命中时，采信规则。口径来源（模型抽取 / 规则解析 / 默认）必须随结论披露。
+
+**取数**走 ticket-service 只读投影扫描（`GET /api/internal/tickets/analytics/scan`），仅按时间窗过滤，**不做 `GROUP BY`、不跨库读 ticket 表、不返回姓名与联系方式**。去噪、词表抽取与聚合全部在分析链路侧完成，以保证剔除口径与分母一致。
+
+**数字纪律**：占比由代码以 `Decimal` 计算并输出**双分母**（以命中工单为分母 / 以全部工单为分母）；备件与巡检建议由决策表产出，模型无权增删条目；模型只接收已算好的事实包，**不接收任何原始工单文本**。生成后执行门禁：回答中的每个百分比/数量必须能在事实包内找到、每个单号必须在本次样本白名单内，否则剔除该句；剔除后不足则退回确定性模板。
+
+**小样本与拒答**：全库样本低于 `MIN_UNIVERSE` 时整体拒答并说明原因；条目分母低于 `MIN_DENOM` 或命中数低于 `MIN_LABEL_HITS` 时**只输出计数、不输出占比**并挂 `SMALL_SAMPLE` 闸门。子域过滤依据词表抽取结果，**不依据 `category_id`**。
+
+**降级**：模型未配置、调用失败、输出不可解析或被 `max_tokens` 截断，均退回确定性模板文案并保留真实原因与原始输出；**不得把半截 JSON 当作答复回传**。token 来源区分 `estimated` 与 `reported`，不得合并统计。
+
+**权限**：**仅 `ENGINEER` 可调用**，`EMPLOYEE` 与 `PLATFORM_ADMIN` 返回 `POLICY_BLOCKED` / `403`。跨人聚合是管理动作之外的读场景，不因角色层级高低自动放开；三处门禁（ticket-service `ANALYTICS_ROLES`、consultation 控制器、Python 侧预检）必须一致。慢查询超时熔断沿用统一超时预算。
+
+**词表**：受控词表外置于 `configs/taxonomy.yaml`，版本参与配置指纹——词表变更会影响历史统计口径的可复现性，须与索引配置同等对待。未命中任何标签的工单落入 `unmatched` 桶，作为词表演化的输入。
