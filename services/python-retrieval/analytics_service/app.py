@@ -95,6 +95,9 @@ def create_app(workflow: AnalyticsWorkflow | None = None) -> FastAPI:
             "status": "UP",
             "modelConfigured": cfg.model_configured(),
             "model": cfg.LLM_MODEL if cfg.model_configured() else None,
+            # 请求理解是否走模型（意图 + 槽位）。运维要能一眼看出"这台是不是纯规则模式"——
+            # 时间口径是模型抽的还是正则解析的，直接决定排查方向。
+            "modelRouting": cfg.MODEL_ROUTING_ENABLED,
             "ticketServiceBaseUrl": cfg.TICKET_SERVICE_BASE_URL,
             "taxonomy": tax_info,
             "policy": policy_info,

@@ -75,12 +75,33 @@ public final class AnalyticsClient {
      */
     public RagResult analyze(RagQuery query, RagCallContext context) {
         JsonNode data = queryPayload(query.question(), query.caller().userId(),
-                query.caller().role(), context);
+                query.caller().role(), context, UPSTREAM_ANALYTICS);
         return toRagResult(data);
     }
 
-    /** 取完整负载（含 analyticsFacts），供前端分析看板使用。 */
-    public JsonNode queryPayload(String question, String userId, String role, RagCallContext context) {
+    /**
+     * 上游已定性的意图 —— **客服入口专用的传值**。
+     *
+     * <p>客服入口的"是不是分析题"由 Java 分类器判定（判为分析型才会调到本类），
+     * 所以如实告诉 Python"上游已定性"：Python 侧据此锁死意图、不再翻案。分类器误判
+     * 时由上游负责，不在下游二次裁决 —— 否则同一个问题会在两处各被判一次，还给出
+     * 不同结论。
+     *
+     * <p>看板入口**不传这个值**，见 {@link #queryPayload} 的说明。
+     */
+    private static final String UPSTREAM_ANALYTICS = "ANALYTICS";
+
+    /**
+     * 取完整负载（含 analyticsFacts），供前端分析看板使用。
+     *
+     * <p>{@code upstreamIntent} 传空表示**不预设**：由 Python 自己判定是不是分析型问题，
+     * 判为非分析型就熔断（{@code refusalReason=OUT_OF_SCOPE}）并引导去智能客服。
+     * 看板入口刻意走这条路 —— 工程师进了统计工作台也可能问一个具体故障，那种问题
+     * 不该被硬当成统计题作答（实测踩到过：问"VPN 连不上怎么办"会收到一份 29 张工单的
+     * 季度分布报告，正是这条链路要消灭的答非所问）。
+     */
+    public JsonNode queryPayload(String question, String userId, String role,
+                                 RagCallContext context, String upstreamIntent) {
         if (!enabled()) {
             throw new DependencyFailure(RagStatus.UNAVAILABLE, "ANALYTICS_DISABLED", false);
         }
@@ -88,8 +109,8 @@ public final class AnalyticsClient {
                 .put("userId", userId == null ? "" : userId)
                 .put("role", role == null ? "" : role)
                 .put("requestId", context == null ? "" : context.requestId())
-                // 上游已判定的意图：Python 侧据此跳过二次分类，省一次推理费
-                .put("upstreamIntent", "ANALYTICS");
+                // 上游定性信号。空串＝不预设，交由 Python 判定（判非分析型即熔断）
+                .put("upstreamIntent", upstreamIntent == null ? "" : upstreamIntent);
 
         String base = analytics.getServiceBaseUrl().replaceAll("/+$", "");
         JsonNode root = http.post(URI.create(base + "/api/v1/analytics/query"), body,

@@ -274,7 +274,18 @@ MODEL_SECRET_REF 仅是单 provider 部署的兼容默认键；当 ai_provider_c
 
 **入口与默认行为**：`itticket.consultation.ai.analytics.enabled` 默认 `true`，即分析链路**默认接通**（与 `retrieval-provider=rag-service` 同样要求依赖在线）。链路不可用时返回 `503 AI_UNAVAILABLE`，**不得回退到知识问答** —— 回退会让一个统计请求收到单卡答案，那是本链路要消灭的答非所问。只跑其余链路时显式置 `false`。
 
-**意图判定**沿用既有分类器：`SemanticRequestClassifier` 主判、`KeywordRequestClassifier` 兜底，新增 `ANALYTICS` 取值并纳入 `RequestVerdict` 白名单，白名单外一律归一为 `NONE`。分析链路侧同构实现"规则先跑 -> 安全闸 -> 模型判定 -> 仲裁"，分歧且规则未命中时返回澄清而非直接进入链路（误判将跨服务边界）。上游已指定意图或规则明确命中时，分析链路不得重复调用模型做二次分类。
+**两个入口的意图归属不同，不得混同**：
+
+- **客服入口**（`ComposedRagAdapter` 分流）：Java 分类器已判为分析型才进来，因此透传 `upstreamIntent=ANALYTICS`，分析链路据此**锁死意图、不再翻案**。分类器误判由上游负责，不在下游二次裁决。
+- **看板入口**（`/api/v1/analytics/query`）：**不透传 `upstreamIntent`**，交由分析链路自行判定。判为非分析型时**熔断**：返回 `REFUSE` + `refusalReason=OUT_OF_SCOPE`，并在正文里指路（引导去智能客服）。**不得回退到知识问答** —— 回退会让同一个 HTTP 入口按用户措辞切换成两套链路，答复类型随措辞漂移，前端无从预期该渲染哪一套结构。
+
+`OUT_OF_SCOPE` 与 `NO_RELIABLE_KNOWLEDGE` 刻意分开：后者是"数据不足以支撑结论"（该补细节或转人工），前者是"问题根本不归这条链路管"（该换入口）——两者下一步动作相反。
+
+**请求理解**沿用既有分类器：`SemanticRequestClassifier` 主判、`KeywordRequestClassifier` 兜底，新增 `ANALYTICS` 取值并纳入 `RequestVerdict` 白名单，白名单外一律归一为 `NONE`。分析链路侧同构实现"规则先跑 -> 安全闸 -> 模型判定 -> 仲裁"，分歧且规则未命中时返回澄清而非直接进入链路（误判将跨服务边界）。**上游已指定意图或规则明确命中时，分析链路仍然调用模型一次，但意图直接采信上游/规则、模型不得推翻** —— 那一次调用用于抽取槽位（见下条），不是二次分类。
+
+**槽位抽取**：同一次调用同时产出**意图**与**槽位**——时间窗、范围限定（子域）、关注维度。**模型只给语义槽位，日期算术一律由代码完成**：模型输出 `kind/anchor/quarter/amount`（如"本季度"→ `QUARTER/CURRENT`），`start/end` 由 `timewindow` 计算；唯一例外是用户原话给出了两个日期，模型复述 ISO 日期、代码校验格式、次序与量程。理由是模型算错季度边界不会报错，只会静默给出错误的分母。槽位必须携带**原样抄录提问片段**的 `rawText`，且该片段须在提问中字面出现，否则整段槽位作废、退回正则解析——与数字门禁同构。**意图判定与槽位抽取相互独立**：不得因意图判为非分析型而将槽位留空。
+
+**时间口径的裁决**：规则解析（`parse_window`）保留为兜底与对照，两者都跑。仅当**模型与规则均从提问字面命中且区间不同**时才记录 `WINDOW_CONFLICT`；规则未命中时返回的是默认窗口而非空值，不得据此判冲突。模型声明"无时间表达"而规则字面命中时，采信规则。口径来源（模型抽取 / 规则解析 / 默认）必须随结论披露。
 
 **取数**走 ticket-service 只读投影扫描（`GET /api/internal/tickets/analytics/scan`），仅按时间窗过滤，**不做 `GROUP BY`、不跨库读 ticket 表、不返回姓名与联系方式**。去噪、词表抽取与聚合全部在分析链路侧完成，以保证剔除口径与分母一致。
 
@@ -284,6 +295,6 @@ MODEL_SECRET_REF 仅是单 provider 部署的兼容默认键；当 ai_provider_c
 
 **降级**：模型未配置、调用失败、输出不可解析或被 `max_tokens` 截断，均退回确定性模板文案并保留真实原因与原始输出；**不得把半截 JSON 当作答复回传**。token 来源区分 `estimated` 与 `reported`，不得合并统计。
 
-**权限**：仅 `ENGINEER` 与 `PLATFORM_ADMIN` 可调用，`EMPLOYEE` 返回 `POLICY_BLOCKED`；慢查询超时熔断沿用统一超时预算。
+**权限**：**仅 `ENGINEER` 可调用**，`EMPLOYEE` 与 `PLATFORM_ADMIN` 返回 `POLICY_BLOCKED` / `403`。跨人聚合是管理动作之外的读场景，不因角色层级高低自动放开；三处门禁（ticket-service `ANALYTICS_ROLES`、consultation 控制器、Python 侧预检）必须一致。慢查询超时熔断沿用统一超时预算。
 
 **词表**：受控词表外置于 `configs/taxonomy.yaml`，版本参与配置指纹——词表变更会影响历史统计口径的可复现性，须与索引配置同等对待。未命中任何标签的工单落入 `unmatched` 桶，作为词表演化的输入。

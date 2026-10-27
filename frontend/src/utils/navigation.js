@@ -9,7 +9,7 @@ export function navigationFor(role) {
   switch (String(role).toUpperCase()) {
     case 'EMPLOYEE': return [item('consultation', '智能客服', 'ChatDotRound', '/consultation'), item('create', '提交工单', 'CirclePlus', '/employee', { tab: 'create' }), item('list', '我的工单', 'Tickets', '/employee', { tab: 'list' })]
     case 'ENGINEER': return [item('all', '工作概览', 'DataBoard', '/engineer'), item('pool', '待接工单', 'Download', '/engineer', { view: 'pool' }), item('tasks', '我的任务', 'Tools', '/engineer', { view: 'tasks' }), item('completed', '已结束工单', 'CircleCheck', '/engineer', { view: 'completed' }), item('consultations', '人工咨询', 'Service', '/engineer', { view: 'consultations' }), item('analytics', '跨工单分析', 'TrendCharts', '/analytics')]
-    case 'PLATFORM_ADMIN': return [item('supervisor', '工单管理', 'DataBoard', '/supervisor'), item('analytics', '跨工单分析', 'TrendCharts', '/analytics'), item('accounts', '账号管理', 'User', '/accounts')]
+    case 'PLATFORM_ADMIN': return [item('supervisor', '工单管理', 'DataBoard', '/supervisor'), item('accounts', '账号管理', 'User', '/accounts')]
     case 'KNOWLEDGE_ADMIN': return [item('ingest', '文档导入', 'Upload', '/knowledge-admin', { tab: 'ingest' }), item('lifecycle', '知识管理', 'Collection', '/knowledge-admin', { tab: 'lifecycle' }), item('refusals', '拒答处置', 'Filter', '/knowledge-admin/refusals'), item('golden', '黄金数据集', 'Trophy', '/knowledge-admin/golden')]
     case 'KB_ADMIN': return [...navigationFor('KNOWLEDGE_ADMIN'), item('supervisor', '工单管理', 'DataBoard', '/supervisor'), item('accounts', '账号管理', 'User', '/accounts')]
     default: return []

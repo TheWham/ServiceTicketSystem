@@ -42,6 +42,10 @@ VERDICT_TO_REPLY_TYPE = {
 REFUSAL_NO_RELIABLE_KNOWLEDGE = "NO_RELIABLE_KNOWLEDGE"
 REFUSAL_POLICY_BLOCKED = "POLICY_BLOCKED"
 REFUSAL_MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
+# 问题不在本链路能力范围内（判为非分析型）。与 NO_RELIABLE_KNOWLEDGE 刻意分开：
+# 后者是"数据不足以支撑结论"（该引导转人工），这个是"问题根本不归这条链路管"
+# （该引导去智能客服问）—— 两者的下一步动作相反，混用会把工程师引错方向。
+REFUSAL_OUT_OF_SCOPE = "OUT_OF_SCOPE"
 
 # 闸门 code
 GATE_SMALL_SAMPLE = "SMALL_SAMPLE"
@@ -152,10 +156,25 @@ class Entry:
 
 @dataclass
 class Dimension:
+    """一个聚合维度（SYMPTOM / DEVICE / ROOT_CAUSE）及其分布条目。
+
+    两个"没归入标签"的计数刻意分开，它们回答的是不同问题：
+
+      · `other_count`   —— 设计意图是"该轴有值、但没命中任何标签"的工单数。
+                           **当前实现里该值恒为 0**：`_best_hit` 对每个轴、每张单
+                           最多只产出一个标签，所以 `labelled_count` 恰好等于各
+                           标签计数之和（见 aggregate.build_facts）。字段保留是
+                           为了将来支持单工单多标签时不必改契约。
+      · `unmatched_count` —— 该轴**完全抽不出标签**的工单数。这是覆盖率披露的
+                           原料：它偏大说明词表没覆盖到，而不是"这种事没发生"。
+
+    页面上展示的是 `unmatched_count`（"未归入任何标签 N 单"）。
+    """
+
     axis: str
     entries: List[Entry] = field(default_factory=list)
-    other_count: int = 0             # 有该维度但未命中任何标签的工单数
-    unmatched_count: int = 0         # 该维度完全抽不出标签的工单数
+    other_count: int = 0
+    unmatched_count: int = 0
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -224,6 +243,19 @@ class Recommendation:
 
 @dataclass
 class Gate:
+    """一条统计闸门：**"这次结论能不能用"的可解释判据**。
+
+    `severity` 直接决定后果，不只是展示用的颜色：
+
+      · `BLOCK` —— 结论不可用（如全库样本 < `MIN_UNIVERSE`），`aggregate_facts`
+                   据此把 verdict 转成拒答，**不进叙事模型**；
+      · `WARN`  —— 结论可用但受限（小样本、低覆盖率、默认时间窗），照常作答，
+                   但必须披露、且压低置信度。
+
+    闸门不是日志：它原样进 `facts`（前端逐条渲染）与提示词的「数据限制」段 ——
+    **结论的适用范围必须跟着结论一起走**，而不是留在服务端日志里。
+    """
+
     code: str
     severity: str
     message: str
@@ -295,6 +327,12 @@ class AnalyticsFacts:
         return nums
 
     def allowed_ticket_ids(self) -> set:
+        """回答里允许出现的单号集合（`rules.verify_ticket_ids` 的白名单）。
+
+        只收**进了分布条目**的单号 —— 它们才是"可下钻核验"的那些。刻意不收
+        未命中任何标签的工单号：正文里出现一个没参与统计的单号，读者会以为
+        它被算进了分母。
+        """
         out = set()
         for d in self.dimensions:
             for e in d.entries:
@@ -310,6 +348,13 @@ class AnalyticsFacts:
 
 @dataclass
 class RuleFinding:
+    """一条判定依据，进 `state.findings` 供页面展示与事后排查。
+
+    与 `Gate` 的分工：`Gate` 是**统计结论层面**的约束（进 facts，决定结论能不能用）；
+    `RuleFinding` 是**链路执行层面**的记录（谁在什么条件下做了什么决定）。
+    两者都会透出到页面，所以 `message` 要写成员工读得懂的话，不能只留内部术语。
+    """
+
     code: str
     message: str
     severity: str = SEVERITY_INFO
@@ -332,6 +377,9 @@ class AnalyticsState:
     model_intent: Optional[str] = None
     scope_domains: List[str] = field(default_factory=list)
     window: Optional[Any] = None
+    # Node A 模型抽出的槽位（classifier.Slots）。类型用 Any 是为了不给 contract
+    # 反向依赖 classifier —— 契约层不该认识"是谁抽的槽位"，只认识"有这么个槽位"。
+    slots: Optional[Any] = None
 
     tickets: List[TicketRow] = field(default_factory=list)
     facts: Optional[AnalyticsFacts] = None
@@ -402,5 +450,6 @@ class AnalyticsRunRequest(BaseModel):
     user_id: str = Field(default="", alias="userId", max_length=64)
     role: str = Field(default="", max_length=32)
     request_id: str = Field(default="", alias="requestId", max_length=64)
-    # 上游已判定的意图：非空且为 ANALYTICS 时，本链路不再重复调模型做二次分类
+    # 上游已判定的意图：非空且为 ANALYTICS 时，Node A 仍然调模型一次抽槽位，
+    # 但意图直接采信上游、模型不得推翻（它这一趟不是二次分类）。
     upstream_intent: str = Field(default="", alias="upstreamIntent", max_length=32)

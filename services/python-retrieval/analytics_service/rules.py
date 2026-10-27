@@ -38,6 +38,11 @@ _SENTENCE_SPLIT = re.compile(r"(?<=[。！？；\n])")
 
 
 def _allowed_ratios(facts: AnalyticsFacts) -> List[float]:
+    """占比白名单：两个分母的占比都收（它们都是合法口径），外加覆盖率。
+
+    未达阈值的条目 `ratio` 为 None，因此**天然不进白名单** —— 模型也就写不出
+    这些占比。这是"小样本不给占比"能从提示词落到硬约束的原因。
+    """
     ratios: List[float] = []
     for d in facts.dimensions:
         for e in d.entries:

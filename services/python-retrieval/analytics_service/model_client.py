@@ -51,6 +51,16 @@ def _configured_temperature() -> Optional[float]:
 
 
 class ModelReply:
+    """一次模型调用的结果，以及 token 到底是从哪来的。
+
+    `finish_reason` 必须原样带出来：调用方要靠它区分「正常结束但没有正文」与
+    「被 max_tokens 砍断」。前者多半是提示词或模型选择问题，后者要调预算或换
+    模型 —— 处置完全不同，合成一句"没拿到正文"就只能靠猜。
+
+    `tokens_source` 同理：`reported` 是服务端 usage，`estimated` 是本地估算
+    （误差 ±20%），两者不合并统计。
+    """
+
     __slots__ = ("content", "tokens_in", "tokens_out", "tokens_source", "finish_reason")
 
     def __init__(self, content: str, tokens_in: int, tokens_out: int, tokens_source: str,
@@ -86,8 +96,14 @@ class ModelClient:
 
     def complete(self, messages: List[Dict[str, str]], max_tokens: Optional[int] = None,
                  temperature: Optional[float] = None,
+                 timeout: Optional[float] = None,
                  trace_id: Optional[str] = None) -> ModelReply:
-        """一次无工具对话；token 一律取服务端 usage，拿不到则如实标 estimated。"""
+        """一次无工具对话；token 一律取服务端 usage，拿不到则如实标 estimated。
+
+        `timeout` 可逐次覆盖（默认用构造时的 `self.timeout`）：链路上两处调用的
+        合理等待时间差一个量级 —— Node A 的路由/抽槽是短任务，卡住就该立刻退回
+        规则；Node D 的归因叙事要给推理模型几十秒。共用一个超时会让短的迁就长的。
+        """
         if not self.available:
             raise ModelUnavailable(
                 "未配置 ANALYTICS_LLM_* / LLM_* 或 .env 中的 base_url 与 api_key")
@@ -105,7 +121,7 @@ class ModelClient:
         if trace_id:
             headers["X-Request-Id"] = trace_id
         try:
-            with httpx.Client(timeout=self.timeout) as client:
+            with httpx.Client(timeout=timeout or self.timeout) as client:
                 resp = client.post(f"{self.base_url}/chat/completions",
                                    json=payload, headers=headers)
                 resp.raise_for_status()

@@ -36,8 +36,14 @@ import java.util.concurrent.TimeUnit;
  * <p><b>两条路径共用同一个后端口径</b>：问答链路的 {@code AnalyticsClient.analyze}
  * 与这里的 {@code queryPayload} 调的是同一个 Python 接口、同一份 facts。
  *
- * <p><b>权限</b>：跨工单聚合是跨人分析，仅 ENGINEER 与 PLATFORM_ADMIN 可调，
- * 与 Python 侧 {@code ALLOWED_ROLES} 对齐。这里这道是权威的一道。
+ * <p><b>与客服入口的关键差别</b>：本入口**不预设 upstreamIntent**。客服入口由 Java
+ * 分类器先定性、判为分析型才进来；而本入口是工程师主动进统计工作台，他也可能问一个
+ * 具体故障 —— 那种问题必须由 Python 判为非分析型后**熔断拒答**（reason=
+ * {@code OUT_OF_SCOPE}）并引导去智能客服，而不是硬给一份工单分布统计。
+ *
+ * <p><b>权限</b>：跨工单聚合是跨人分析，<b>仅 ENGINEER 可调</b>，
+ * 与 ticket-service 侧 {@code ANALYTICS_ROLES}、Python 侧 {@code ALLOWED_ROLES} 对齐。
+ * 这里这道是权威的一道。
  */
 @Validated
 @RestController
@@ -52,8 +58,8 @@ public class AnalyticsController {
     @PostMapping("/query")
     public ApiEnvelope<JsonNode> query(@Valid @RequestBody AnalyticsQueryRequest request) {
         CurrentUser user = authzService.currentUser();   // 触发认证校验：未认证不得调用
-        if (user.role() != RoleCode.ENGINEER && user.role() != RoleCode.PLATFORM_ADMIN) {
-            throw new ApiException(ApiCode.FORBIDDEN, "跨工单统计分析仅限 工程师 或 平台管理员 权限");
+        if (user.role() != RoleCode.ENGINEER) {
+            throw new ApiException(ApiCode.FORBIDDEN, "跨工单统计分析仅限工程师权限");
         }
         if (!analyticsClient.enabled()) {
             throw new ApiException(ApiCode.AI_UNAVAILABLE, "分析链路未启用（itticket.consultation.ai.analytics）");
@@ -66,7 +72,9 @@ public class AnalyticsController {
                 new RagExecutionAudit());
         try {
             return ApiEnvelope.ok(analyticsClient.queryPayload(request.question(),
-                    user.userId(), user.role().getValue(), call), RequestContext.get());
+                    user.userId(), user.role().getValue(), call,
+                    // 空串＝不预设意图：让 Python 判定，判非分析型即熔断
+                    ""), RequestContext.get());
         } catch (DependencyFailure failure) {
             // 依赖失败如实透出，不用"通用建议"顶上（AGENTS.md：不静默回退）
             throw new ApiException(ApiCode.AI_UNAVAILABLE,

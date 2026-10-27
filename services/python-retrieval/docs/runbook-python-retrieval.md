@@ -209,16 +209,68 @@ export ANALYTICS_TICKET_BASE_URL=http://127.0.0.1:8201  # 工单投影扫描来�
 export ANALYTICS_MIN_UNIVERSE=20                        # 全库样本下限（低于则整体拒答）
 export ANALYTICS_MIN_DENOM=10                           # 条目分母下限（低于则只给计数不给占比）
 export ANALYTICS_MIN_LABEL_HITS=5                       # 条目命中下限
+export ANALYTICS_MODEL_ROUTING=0                        # 关掉模型路由与抽槽（纯规则+正则）
 ```
 
 **模型未配置时链路照走**：聚合、闸门、覆盖率全部不受影响，只有归因叙事退回确定性模板，
 token 标 `estimated`。所以这个服务可以在没有模型凭据的环境里完整演示。
 
+### 请求理解：模型给槽位，代码算日期
+
+Node A 一次调用同时产出**意图**与**槽位**（时间窗 / 范围限定 / 关注维度）。时间区间由
+`timewindow` 从槽位算出来，不由模型算 —— 模型算错季度边界不会报错，只会安静地给一个
+错误的分母，这是全链路里最难查的一类失败。
+
+排障时看两处：
+
+- **`WINDOW_SOURCE`**（每条分析请求都有）：这次的时间口径是谁定的（模型抽取 / 规则解析 /
+  默认最近90天）。前端「统计口径」卡片上也有同一份来源标签。
+- **`WINDOW_CONFLICT` / `WINDOW_SLOT_REJECTED` / `WINDOW_MODEL_MISSED`**（只在异常时出现）：
+  模型与规则**都从字面命中**却给出不同区间 / 槽位被弃用（附原因，最常见是 `rawText` 没在
+  提问里原样出现）/ 模型说"没有时间词"而正则字面命中。
+
+### 判为非分析型 → 熔断（不回退）
+
+看板入口（`/api/v1/analytics/query`）收到一个不属于跨工单统计的问题时，链路**熔断**：
+
+```
+Trace 只有 2 个 span：A.Intent_Router → A.Short_Circuit
+响应：verdict=REFUSED  replyType=REFUSE  refusalReason=OUT_OF_SCOPE
+      analyticsFacts=null（未取数、未聚合、未调叙事模型）
+```
+
+正文会指路（引导去智能客服），**不会**静默换成知识问答 —— 回退会让同一个 HTTP 入口
+按措辞切换成两套链路，答复类型随措辞漂移。
+
+**客服入口不熔断**：它由 Java 分类器先定性（透传 `upstreamIntent=ANALYTICS`），本链路
+据此锁死意图、不翻案。两个入口的差别是刻意的。
+
+> ⚠️ 若看到看板入口对任何问题都照样跑完 5 个 span，先查 Java 侧是不是又给看板
+> 传了 `upstreamIntent`。`upstreamIntent=ANALYTICS` 会锁死意图，使熔断永远不触发 ——
+> 这是排查"熔断为什么不生效"的第一个检查点。
+
+> ⚠️ 判 `WINDOW_CONFLICT` 时**必须带前置条件**：`parse_window` 在正则没命中时返回的是
+> **默认窗口而不是 `None`**。不加区分地拿它和模型窗口比区间，每一条靠模型立功救回来的
+> 提问（"第三季度""自9月以来"）都会误报冲突，恰好把最该看见的信号淹没。
+
+三个开关：
+
+| 键 | 默认 | 说明 |
+|---|---|---|
+| `ANALYTICS_MODEL_ROUTING` | `1` | 置 `0` 则 Node A 不调模型：意图走规则、时间走正则、子域走词表匹配 |
+| `ANALYTICS_ROUTER_MAX_OUTPUT_TOKENS` | `2048` | 路由调用输出预算。原来是 `max_tokens=16`，而本端点的模型是推理模型，思维链会先吃掉额度 |
+| `ANALYTICS_ROUTER_TIMEOUT` | `60` | 路由调用独立超时，**须小于** `ANALYTICS_LLM_TIMEOUT`（180）；超时即退回正则 |
+
+**代价**：每次分析请求多一次模型调用（改造前规则命中时是 0 次）。要零调用就设
+`ANALYTICS_MODEL_ROUTING=0`。
+
 ### 评测：与检索评测**分成两套**
 
 ```bash
-# 聚合题（跨工单宏观归纳，6 项指标）
+# 聚合题（跨工单宏观归纳，7 项指标）
 python -m rag_pipeline.pipelines.aggregate_evaluation --fixture analytics_service/tests/fixtures/tickets_q4.json
+# 确定性基线：关掉模型，规则与正则全权决策
+python -m rag_pipeline.pipelines.aggregate_evaluation --fixture analytics_service/tests/fixtures/tickets_q4.json --no-model
 # 检索题（原有 5 项指标，不受影响）
 python -m rag_pipeline.pipelines.golden_evaluation
 ```

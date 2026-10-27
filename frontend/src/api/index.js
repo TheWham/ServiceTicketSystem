@@ -160,7 +160,7 @@ export const refusalApi = {
   review: (messageId, data) => api.post(`/consultations/refusal-cases/${messageId}/review`, data, withRequestId())
 }
 
-// ---- 跨工单分析 API（consultation-service,ApiEnvelope 包络,仅工程师/平台管理员） ----
+// ---- 跨工单分析 API（consultation-service,ApiEnvelope 包络,仅工程师） ----
 // 与拒答处置同款：consultation-service 强制要求 X-Request-Id（AI-002）。
 //
 // 超时单列：分析要扫时间窗内的全部工单再让归因模型写叙事，比普通查询重得多。

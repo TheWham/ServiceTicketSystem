@@ -38,15 +38,17 @@
                             │    其余 → 原 ragPipeline（上面那条读路径）
                             │
                             └─ analytics_service:8340（确定性节点链）
-                                 ├ 意图路由（模型主判 + 规则兜底 + 安全闸）
+                                 ├ 请求理解（意图判定 + 时间/范围/维度槽位抽取）
                                  ├ 取数：ticket-service:8201 只读投影扫描（★不 GROUP BY、不跨库）
+                                 ├ 时间口径：模型给语义槽位 → Python 算具体日期区间
                                  ├ 聚合：纯 Python 词表抽取 + 占比/覆盖率/小样本闸门/备件决策表
                                  ├ 模型：只做归因叙事（拿不到原始工单，只有已算好的事实）
                                  └ 门禁：verify_numbers / verify_ticket_ids（数字与单号必须可溯源）
 ```
 
 **要点**：三个模型角色（对话生成 / Embedding / Rerank）可以各自独立配 base_url 与 key，互不影响。
-分析链路的模型调用点只有一处（归因叙事），**聚合出的数字全部由 Python 算出、模型无权改**。
+分析链路的模型调用点有两处（请求理解、归因叙事），**数字由 Python 算、日期由 Python 算，
+模型一处也改不到**。
 
 ---
 
@@ -248,7 +250,7 @@ python -m rag_pipeline.pipelines.indexing     # 用 EMBED_* + configs/pipeline.y
 [consultation-service/application.yml](it-ticket-cloud/consultation-service/src/main/resources/application.yml) —
 `AI_ANALYTICS_ENABLED`（**默认 `true`**）+ `ANALYTICS_SERVICE_BASE_URL`（默认 `http://127.0.0.1:8340`）。
 判定为 ANALYTICS 的请求由 `ComposedRagAdapter` 在**领域门禁之后、知识检索之前**分流过去；
-前端另有专用看板 `/analytics`（工程师 / 平台管理员）。
+前端另有专用看板 `/analytics`（**仅工程师**）。
 
 > ⚠️ **默认开着 = analytics_service 成了硬依赖**。它没启动时，判定为分析型的提问会
 > 返回 `503 AI_UNAVAILABLE`（如实拒绝，**不静默回退成知识问答**——回退会让统计请求
@@ -261,9 +263,25 @@ python -m rag_pipeline.pipelines.indexing     # 用 EMBED_* + configs/pipeline.y
 `ANALYTICS_TICKET_BASE_URL` 指向 ticket-service 内部接口（默认 `http://127.0.0.1:8201`），
 **只走只读投影扫描 `GET /api/internal/tickets/analytics/scan`，不跨库读 ticket 表**（架构 8.1）。
 
-该服务是**确定性节点链**，不是 ReAct：`route_analytics` 意图路由 → 投影扫描取数 →
-**纯 Python 词表抽取 + 聚合**（占比/覆盖率/小样本闸门/备件数量，全部不调模型）→
-模型只做归因叙事与建议方向 → 数字/单号/标签门禁。模型不可用时走确定性模板，链路照走。
+该服务是**确定性节点链**，不是 ReAct：请求理解（意图判定 + 时间/范围/维度槽位抽取）→
+投影扫描取数 → **纯 Python 词表抽取 + 聚合**（占比/覆盖率/小样本闸门/备件数量，全部不调
+模型）→ 模型只做归因叙事与建议方向 → 数字/单号/标签门禁。模型不可用时走确定性模板，
+链路照走。
+
+**两个入口的意图归属不同**：看板入口**不预设** `upstreamIntent`，由分析链路自行判定，
+判为非分析型即**熔断**（`REFUSE` / `refusalReason=OUT_OF_SCOPE`，正文指路去智能客服，
+只留 2 个 span、不取数）；客服入口由 Java 分类器先定性并透传 `upstreamIntent=ANALYTICS`，
+分析链路据此锁死意图、不翻案。**两个入口都不回退成知识问答** —— 回退会让同一个 HTTP
+入口按措辞切换成两套链路，答复类型随措辞漂移。
+
+**模型给的是语义槽位，日期与数字都由代码算**：模型输出「本季度」「网络设备」这类槽位，
+时间区间由 `timewindow` 算（模型算错季度边界不会报错，只会静默给一个错误的分母）；
+槽位里的 `rawText` 必须在提问里字面出现，否则整段作废、退回正则。
+
+三个请求理解开关：`ANALYTICS_MODEL_ROUTING`（置 `0` 则 Node A 不调模型，纯规则+正则，
+**回归基线与确定性演示走它**）、`ANALYTICS_ROUTER_MAX_OUTPUT_TOKENS`（默认 2048）、
+`ANALYTICS_ROUTER_TIMEOUT`（默认 60s，须小于 `ANALYTICS_LLM_TIMEOUT`）。
+**代价：每次分析请求多一次模型调用**（改造前规则命中时是 0 次）。
 
 **两份外置配置**，都参与配置指纹（改了口径就不可复现）：
 [configs/taxonomy.yaml](services/python-retrieval/configs/taxonomy.yaml) 是受控词表，

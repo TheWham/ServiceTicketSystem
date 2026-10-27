@@ -41,6 +41,15 @@ class TaxonomyError(ValueError):
 
 @dataclass(frozen=True)
 class Keyword:
+    """词表里的一个关键词。
+
+    · `order`           —— 该词在其轴内的**书写顺序**（下标）。`_best_hit` 在长度
+                           相同时据此裁决，所以它是人工维护的优先级，不是元数据；
+    · `requires_device` —— 泛化词专用标记：仅当同一段文本另有 DEVICE 命中时才计数。
+                           这是让 `打印无反应` 这类泛化词能安全使用的唯一方式
+                           （裸泛化词在加载期就被 `generic_denylist` 拒掉）。
+    """
+
     word: str
     label: str
     axis: str
@@ -109,17 +118,29 @@ class Domain:
 
 @dataclass
 class Taxonomy:
+    """加载并校验后的受控词表。
+
+    刻意用**列表**而非 dict/set 保存 `keywords`：同长度词的裁决完全依赖书写顺序，
+    换成无序结构会悄悄改变历史工单的标签归属。`fingerprint` 是词表文件的内容哈希，
+    与 `version` 一起进配置快照，保证历史统计口径可追溯。
+    """
+
     version: str
     fingerprint: str
     generic_denylist: frozenset
-    keywords: Dict[str, List[Keyword]]          # axis -> 按书写顺序
-    labels: Dict[str, List[str]]                # axis -> 标签顺序
+    keywords: Dict[str, List[Keyword]]          # axis -> 按书写顺序（顺序参与裁决）
+    labels: Dict[str, List[str]]                # axis -> 标签顺序（给 DOMAIN 引用校验用）
     domains: List[Domain] = field(default_factory=list)
 
 
 # ------------------------------------------------------------------ 加载与校验
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
+    """读词表 YAML。文件缺失 / 语法错 / 根节点不是映射，三种都直接抛 TaxonomyError。
+
+    不做任何兜底：词表坏了必须让人看见。静默降级成一个空词表的表现是"所有工单都
+    抽不出标签"，那看起来像数据问题，会把排查方向带偏。
+    """
     if not path.exists():
         raise TaxonomyError(f"词表文件不存在：{path}")
     try:
@@ -156,6 +177,17 @@ def _normalize_keywords(raw: Any, axis: str, label: str) -> List[Tuple[str, bool
 
 
 def build_taxonomy(data: Dict[str, Any], fingerprint: str) -> Taxonomy:
+    """把词表 YAML 解析成 `Taxonomy`，并把**全部纪律在这里一次性校验**。
+
+    校验项（任一不满足即抛 TaxonomyError，不做静默降级）：
+      · `generic_denylist` 非空 —— 它是防截胡的唯一硬约束；
+      · 关键词不得是裸泛化词，除非标注 `requires_device`；
+      · 同一轴内标签不重名、不得有空关键词、每个轴不得为空；
+      · DOMAIN 引用的设备/症状标签必须真实存在。
+
+    最后一条尤其重要：写错标签名会让子域过滤**静默失效**，表现是"过滤没生效"
+    却查不出原因 —— 在加载期拦下，比在统计结果里发现少了几张单容易得多。
+    """
     denylist = frozenset(
         str(w).strip().lower() for w in (data.get("generic_denylist") or []) if str(w).strip()
     )
@@ -308,7 +340,12 @@ def low_information_reason(title: str, description: str) -> Optional[str]:
 
 def _best_hit(axis_kw: Sequence[Keyword], text_lower: str,
               device_present: bool) -> Optional[Keyword]:
-    """在一组关键词里取命中：最长优先，长度相同取词表靠前者。"""
+    """在一组关键词里取命中：最长优先，长度相同取词表靠前者。
+
+    裁决用严格 `>` 而非 `>=` —— 这正是"长度相同取靠前者"的实现方式：只有**更长**
+    的词才顶掉当前命中，等长的后来者不覆盖。改这个符号会静默改变标签归属，
+    `test_taxonomy.py` 有对应用例。
+    """
     best: Optional[Keyword] = None
     for kw in axis_kw:
         if kw.word not in text_lower:
@@ -406,6 +443,50 @@ def resolve_domains(text: str, taxonomy: Optional[Taxonomy] = None) -> List[Doma
         taken.append((start, end))
         kept.append(dom)
     return kept
+
+
+def resolve_domain_names(names: Sequence[str],
+                         taxonomy: Optional[Taxonomy] = None) -> List[Domain]:
+    """把名字列表解析成 `Domain` 对象（Node A 的模型槽位走这条入口）。
+
+    `resolve_domains` 从**提问文本**里匹配子域，本函数从**已抽好的名字**里取 ——
+    两条入口共用同一份词表，所以"哪些子域存在"只有一处真源。
+
+    两条纪律：
+
+    1. **只认词表里真实存在的名字**，其余静默丢弃。模型多写一个不存在的领域，
+       后果只是范围限定少生效一项、退回更宽的口径；为它让整条链路失败是本末倒置。
+    2. **子集去重**。词表里存在组合子域（`网络与打印设备`）与它的子域（`网络设备`
+       `打印设备`）并存的情况，模型可能两个都给出。三者的成员是同一批，全留着只会让
+       页面上的"范围限定"出现重复项。覆盖关系明确时保留更大的那个；成员完全相同时
+       保留书写顺序靠前的，避免互相顶掉导致一个都不剩。
+    """
+    tax = taxonomy or load_taxonomy()
+    by_name = {d.name: d for d in tax.domains}
+    picked: List[Domain] = []
+    for raw in names or ():
+        name = str(raw or "").strip().strip("「」【】\"'")
+        dom = by_name.get(name)
+        if dom is None or any(d.name == dom.name for d in picked):
+            continue
+        picked.append(dom)
+
+    out: List[Domain] = []
+    for i, dom in enumerate(picked):
+        key = (frozenset(dom.devices), frozenset(dom.symptoms))
+        superseded = False
+        for j, other in enumerate(picked):
+            if i == j:
+                continue
+            if not (key[0] <= frozenset(other.devices) and key[1] <= frozenset(other.symptoms)):
+                continue
+            if key == (frozenset(other.devices), frozenset(other.symptoms)) and j > i:
+                continue      # 成员完全相同的两个域：保留靠前的，不互相顶掉
+            superseded = True
+            break
+        if not superseded:
+            out.append(dom)
+    return out
 
 
 def describe(taxonomy: Taxonomy) -> str:

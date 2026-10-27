@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+from typing import Optional
 
 import pytest
 
@@ -25,11 +26,21 @@ PLAIN_Q = "我的 VPN 连不上怎么办"
 
 
 class FakeModel:
-    """可编排的假模型：给定回复内容，验证链路对模型输出的处理。"""
+    """可编排的假模型：给定回复内容，验证链路对模型输出的处理。
 
-    def __init__(self, content: str = "", *, available: bool = True,
-                 finish_reason: str = "stop", raises: bool = False):
+    链路有**两处**模型调用 —— Node A（意图判定 + 槽位抽取）与 Node D（归因叙事）——
+    所以回复要能分开编排：`route` 供前者，`content` 供后者。不传 `route` 时两处
+    共用一份，于是"只关心叙事"的老用例不必逐条改写。
+
+    按提示词内容分流而不是按调用次序：次序会随短路路径变化（拒答/澄清时只有 A
+    这一次），靠次序判断哪个调用是哪个会让用例随链路结构变动而碎掉。
+    """
+
+    def __init__(self, content: str = "", *, route: Optional[str] = None,
+                 available: bool = True, finish_reason: str = "stop",
+                 raises: bool = False):
         self._content = content
+        self._route = content if route is None else route
         self._available = available
         self._finish = finish_reason
         self._raises = raises
@@ -39,12 +50,15 @@ class FakeModel:
     def available(self) -> bool:
         return self._available
 
-    def complete(self, messages, max_tokens=None, temperature=None, trace_id=None):
+    def complete(self, messages, max_tokens=None, temperature=None, timeout=None,
+                 trace_id=None):
         self.calls += 1
         if self._raises:
             from analytics_service.model_client import ModelUnavailable
             raise ModelUnavailable("模拟模型故障")
-        return ModelReply(self._content, 10, 20, "reported", self._finish)
+        prompt = messages[0].get("content") if messages else ""
+        content = self._route if "请求理解器" in prompt else self._content
+        return ModelReply(content, 10, 20, "reported", self._finish)
 
 
 @pytest.fixture
@@ -85,13 +99,37 @@ def test_facts以带外字段返回(ds, relaxed):
 
 # ---------------------------------------------------------------- 短路出口
 
-def test_非分析型请求短路不跑聚合(ds, relaxed):
-    """这是本条链路最重要的行为断言：普通问题不能被当成统计题作答。"""
+def test_非分析型请求熔断不跑聚合(ds, relaxed):
+    """这是本条链路最重要的行为断言：普通问题不能被当成统计题作答。
+
+    改造后是**熔断**（拒答 + 指路），不再返回 `NOT_ANALYTICS` 让上游回退知识问答 ——
+    回退会让同一个 HTTP 入口按用户措辞切换成两套完全不同的链路，答复类型
+    （统计结论 / 单卡排查步骤）跟着措辞漂移，前端也无从预期渲染哪一套结构。
+    """
     r = AnalyticsWorkflow(ds=ds, model=NullModelClient()).run(PLAIN_Q, role="ENGINEER")
-    assert r["intent"] == INTENT_NOT_ANALYTICS
-    assert r["replyType"] == "NOT_ANALYTICS"
+    assert r["intent"] == INTENT_NOT_ANALYTICS, "判定结论仍要透出，误判率才统计得出来"
+    assert r["verdict"] == "REFUSED"
+    assert r["replyType"] == "REFUSE"
+    assert r["refusalReason"] == "OUT_OF_SCOPE"
     assert r["analyticsFacts"] is None, "短路路径不应产生任何统计结果"
+    assert "智能客服" in r["answerText"], "拒答要指路，不能只说不行"
     assert _spans(r) == ["A.Intent_Router", "A.Short_Circuit"]
+
+
+def test_客服入口带上游定性时不熔断(ds, relaxed):
+    """客服入口由 Java 分类器定性，Python 不翻案 —— 这里连线照跑。
+
+    与看板入口的差别是**故意的**：看板是工程师主动进的统计工作台，判非分析就熔断
+    并指路；客服入口若也熔断，用户问的本是能正常回答的问题（只是分类器判错了），
+    却会收到一句"无法分析"。
+    """
+    model = FakeModel(content="", route=json.dumps({"intent": "NOT_ANALYTICS"},
+                                                   ensure_ascii=False))
+    r = AnalyticsWorkflow(ds=ds, model=model).run(
+        PLAIN_Q, role="ENGINEER", upstream_intent=INTENT_ANALYTICS)
+    assert r["intent"] == INTENT_ANALYTICS
+    assert r["replyType"] == "ANSWER"
+    assert r["refusalReason"] is None
 
 
 def test_越权角色被拒答且不取数(ds, relaxed):
@@ -120,21 +158,109 @@ def test_模型判分析但规则未命中则澄清(ds, relaxed):
     assert model.calls == 1
 
 
-def test_上游已指定意图时不重复调模型(ds, relaxed):
-    """Java 侧已判过一次，Python 侧不该再花一次推理费。"""
-    model = FakeModel(content="ANALYTICS")
+def test_上游已指定意图时模型不推翻上游(ds, relaxed):
+    """Java 侧已判过一次，Python 侧的模型没有翻案权 —— 它这一趟只抽槽位。
+
+    "本季度工单的分布"刻意选在规则阈值之下，这样 pinned 只能来自上游，
+    才真正测到上游那一条分支。
+    """
+    model = FakeModel(content="", route=json.dumps({"intent": "NOT_ANALYTICS"},
+                                                   ensure_ascii=False))
     r = AnalyticsWorkflow(ds=ds, model=model).run(
         "本季度工单的分布", role="ENGINEER", upstream_intent=INTENT_ANALYTICS)
     assert r["intent"] == INTENT_ANALYTICS
     router = next(s for s in r["trace"]["spans"] if s["spanName"] == "A.Intent_Router")
-    assert router["output"]["modelCalled"] is False
+    assert router["output"]["pinnedBy"] == "upstream"
+    assert router["output"]["modelIntent"] == INTENT_NOT_ANALYTICS, "模型判了什么要留痕"
 
 
-def test_规则命中时不调模型(ds, relaxed):
+def test_规则命中时模型仍被调用但只抽槽位(ds, relaxed):
+    """改造前规则命中会跳过模型，于是"模型主抽槽位"在最常见的那条路径上永不生效。
+
+    现在模型仍然调用（要抽槽位），但意图直接采信规则、模型没有翻案权。
+    """
+    model = FakeModel(content="", route=json.dumps(
+        {"intent": "NOT_ANALYTICS", "focusAxis": "ROOT_CAUSE"}, ensure_ascii=False))
+    r = AnalyticsWorkflow(ds=ds, model=model).run(ANALYTICS_Q, role="ENGINEER")
+
+    assert r["intent"] == INTENT_ANALYTICS, "规则已定性时模型判了什么都不该推翻它"
+    router = next(s for s in r["trace"]["spans"] if s["spanName"] == "A.Intent_Router")
+    assert router["output"]["modelCalled"] is True
+    assert router["output"]["pinnedBy"] == "rule"
+    assert router["output"]["slots"]["focusAxis"] == "ROOT_CAUSE", "槽位仍要抽出来"
+
+
+# ---------------------------------------------------------------- 槽位抽取
+
+SLOT_Q = "第三季度网络与打印设备的共性根因是什么"      # 正则接不住"第三季度"
+
+
+def _slot_route(**over) -> str:
+    payload = {"intent": "ANALYTICS",
+               "timeWindow": {"kind": "QUARTER", "anchor": "ABSOLUTE", "quarter": 3,
+                              "rawText": "第三季度"},
+               "domains": ["网络与打印设备"],
+               "focusAxis": "ROOT_CAUSE"}
+    payload.update(over)
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def test_模型槽位决定时间口径(ds):
+    """正则在"第三季度"上会退回默认 90 天，模型把它抽成 2026 Q3。"""
+    model = FakeModel(content="", route=_slot_route())
+    r = AnalyticsWorkflow(ds=ds, model=model).run(SLOT_Q, role="ENGINEER")
+
+    assert r["window"]["label"] == "2026 Q3"
+    assert r["window"]["source"] == "模型抽取"
+    # 模型接管的是"默认窗口"，不是与规则字面命中打架 —— 不该报冲突
+    assert "WINDOW_CONFLICT" not in {f["code"] for f in r["findings"]}
+
+
+def test_模型判非分析但槽位照填时槽位仍被采用(ds, relaxed):
+    """模型极易"连坐偷懒"：intent 判成 NOT_ANALYTICS 就把后面所有槽位填成 NONE。
+
+    提示词里专门写了"意图与槽位相互独立"来防它；这条验证代码这一侧也不会因为
+    意图最终被定性为 ANALYTICS 就把槽位丢掉。
+    """
+    model = FakeModel(content="", route=_slot_route(intent="NOT_ANALYTICS"))
+    r = AnalyticsWorkflow(ds=ds, model=model).run(SLOT_Q, role="ENGINEER")
+
+    assert r["intent"] == INTENT_ANALYTICS
+    assert r["window"]["label"] == "2026 Q3", "意图被扭回来的同时，槽位必须还在"
+
+
+def test_模型槽位rawText无据时退回正则(ds):
+    """与数字门禁同构的一道闸：模型编一个用户没说过的"上个月"会被当场拦下。"""
+    model = FakeModel(content="", route=_slot_route(
+        timeWindow={"kind": "MONTH", "anchor": "PREVIOUS", "rawText": "上个月"}))
+    r = AnalyticsWorkflow(ds=ds, model=model).run(SLOT_Q, role="ENGINEER")
+
+    assert r["window"]["source"] == "默认最近90天", "提问里没有时间词，退回默认窗口"
+    assert "WINDOW_SLOT_REJECTED" in {f["code"] for f in r["findings"]}
+
+
+def test_模型调用失败时时间口径退回规则(ds, relaxed):
+    r = AnalyticsWorkflow(ds=ds, model=FakeModel(raises=True)).run(ANALYTICS_Q, role="ENGINEER")
+    assert r["window"]["source"] == "规则解析", "模型挂了不该连时间口径一起丢"
+    assert r["degradedReason"] == DEGRADED_CALL_FAILED, "叙事那一路照旧降级"
+
+
+def test_关闭模型路由则完全不调模型(ds, relaxed, monkeypatch):
+    """ANALYTICS_MODEL_ROUTING=0 是"纯确定性演示"与回归基线的口子。
+
+    关掉的是**路由那一次**调用（意图与槽位全部走规则），Node D 的归因叙事不受影响
+    —— 那个开关管的是"请求怎么理解"，不是"结论怎么写"。
+    """
+    monkeypatch.setattr(cfg, "MODEL_ROUTING_ENABLED", False)
     model = FakeModel(content="ANALYTICS")
     r = AnalyticsWorkflow(ds=ds, model=model).run(ANALYTICS_Q, role="ENGINEER")
+
     router = next(s for s in r["trace"]["spans"] if s["spanName"] == "A.Intent_Router")
     assert router["output"]["modelCalled"] is False
+    assert router["output"]["slots"] is None
+    assert model.calls == 1, "只有 Node D 那一次叙事调用"
+    assert r["intent"] == INTENT_ANALYTICS
+    assert r["window"]["source"] == "规则解析"
 
 
 # ---------------------------------------------------------------- 降级出口
@@ -368,3 +494,15 @@ def test_节点异常不中断链路(ds_boom, relaxed):
     assert r["success"] is True
     assert r["errors"], "节点异常必须被记录而不是吞掉"
     assert r["answerText"], "异常后仍要给一个可读的答复"
+
+def test_模板文案不泄漏英文轴名(ds, relaxed):
+    """降级模板是**用户可见的正文**，`SYMPTOM 分布：…` 这种内部枚举不该出现在里面。
+
+    与事实包那条纪律同源（见 test_事实包不泄漏内部字段名）：内部名一旦流到用户面前，
+    页面看着像半成品，排查时还会让人以为是另一个环节的 bug。
+    """
+    import re
+    from analytics_service.engine import AnalyticsWorkflow
+    r = AnalyticsWorkflow(ds=ds, model=NullModelClient()).run(ANALYTICS_Q, role="ENGINEER")
+    assert not re.search(r"\b(SYMPTOM|DEVICE|ROOT_CAUSE)\b", r["answerText"]), r["answerText"][:200]
+    assert "故障现象分布" in r["answerText"]

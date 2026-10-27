@@ -833,7 +833,7 @@
     "category": "跨工单宏观归纳",
     "difficulty": "EASY",
     "query": "我的 VPN 连不上怎么办",
-    "ground_truth_answer": "这是单个故障的排查请求，不是跨记录归纳，不应进入分析链路；判定为 NOT_ANALYTICS 后交回常规知识问答，配套答复不得是一份统计报告。",
+    "ground_truth_answer": "这是单个故障的排查请求，不是跨记录归纳，不应进入分析链路；判定为 NOT_ANALYTICS 后分析链路熔断拒答（refusalReason=OUT_OF_SCOPE）并引导到智能客服，配套答复不得是一份工单统计报告，也不得静默切换成知识问答链路。",
     "reference_chunk_ids": [],
     "expected_keywords": [],
     "is_conflict_check": false,

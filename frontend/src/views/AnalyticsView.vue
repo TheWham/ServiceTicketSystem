@@ -10,7 +10,7 @@
         </p>
       </div>
       <div class="heading-actions">
-        <el-tag type="info" effect="plain" size="small">仅工程师 / 平台管理员</el-tag>
+        <el-tag type="info" effect="plain" size="small">仅工程师</el-tag>
       </div>
     </div>
 
@@ -62,8 +62,11 @@
           <div class="card-header">
             <span class="section-title">分析结论</span>
             <div class="header-tags">
-              <el-tag v-if="result.replyType" size="small" :type="replyTagType(result.replyType)">
-                {{ replyLabel(result.replyType) }}
+              <el-tag v-if="result.replyType" size="small" :type="replyTagType(result.replyType, result.refusalReason)">
+                {{ replyLabel(result.replyType, result.refusalReason) }}
+              </el-tag>
+              <el-tag v-if="result.refusalReason" size="small" effect="plain" type="info">
+                {{ refusalLabel(result.refusalReason) }}
               </el-tag>
               <el-tag v-if="result.confidence != null" size="small" effect="plain">
                 置信度 {{ Number(result.confidence).toFixed(2) }}
@@ -107,6 +110,12 @@
             <span class="muted">
               （{{ result.analyticsFacts.window?.start }} ~ {{ result.analyticsFacts.window?.end }}）
             </span>
+            <!-- 口径来源要看得见：区间可能是模型抽的语义槽位算出来的，也可能是
+                 正则解析或默认值。读者得知道"这个区间是谁定的"。 -->
+            <el-tag v-if="result.analyticsFacts.window?.source" size="small" effect="plain"
+                    :type="windowSourceTag(result.analyticsFacts.window.source)">
+              {{ result.analyticsFacts.window.source }}
+            </el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="范围限定">
             {{ (result.analyticsFacts.scope?.domains || []).join('、') || '全库' }}
@@ -270,9 +279,26 @@ const DEGRADED_LABEL = {
 }
 
 const axisLabel = (axis) => AXIS_LABEL[axis] || axis
-const replyLabel = (t) => REPLY_LABEL[t] || t
 const degradedLabel = (r) => DEGRADED_LABEL[r] || `已降级：${r}`
-const replyTagType = (t) => ({ ANSWER: 'success', CLARIFY: 'warning', REFUSE: 'danger' }[t] || 'info')
+// 拒答原因要说人话、并且**要指路**：工程师在统计工作台上被拒，最需要的不是"失败了"，
+// 而是"这问题该去哪问"。
+const REFUSAL_LABEL = {
+  OUT_OF_SCOPE: '不属于跨工单统计，请到智能客服提问',
+  POLICY_BLOCKED: '权限不足',
+  MODEL_UNAVAILABLE: '分析服务暂不可用',
+  NO_RELIABLE_KNOWLEDGE: '样本不足以支撑结论',
+}
+const refusalLabel = (r) => REFUSAL_LABEL[r] || r
+const REPLY_TAG_TYPE = { ANSWER: 'success', CLARIFY: 'warning', REFUSE: 'danger' }
+// 熔断（OUT_OF_SCOPE）不是错误，别染成红色：工程师只是问错了地方，不是系统出问题。
+// 另外它比裸的"已拒答"更能说明发生了什么，所以复用这一格显示。
+const replyLabel = (t, reason) =>
+  (t === 'REFUSE' && reason === 'OUT_OF_SCOPE' ? '不在本页范围' : REPLY_LABEL[t]) || t
+const replyTagType = (t, reason) =>
+  (t === 'REFUSE' && reason === 'OUT_OF_SCOPE' ? 'warning' : REPLY_TAG_TYPE[t] || 'info')
+// 时间口径的来源：模型抽的槽位 / 正则解析 / 默认值。只有"模型抽取"值得高亮 ——
+// 另外两种是既有行为，不该抢注意力。
+const windowSourceTag = (s) => (s === '模型抽取' ? 'success' : 'info')
 
 const excludedRows = computed(() => {
   const excluded = result.value?.analyticsFacts?.coverage?.excluded || {}

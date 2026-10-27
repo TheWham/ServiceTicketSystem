@@ -425,9 +425,14 @@ public class TicketService {
     // ---------------- 工单分析投影（只读，跨人聚合） ----------------
 
     /** 分析链路可调用的角色。跨人聚合是本系统唯一需要「看别人工单」的读场景，
-     *  因此单独收口，不复用列表接口的角色语义。 */
+     *  因此单独收口，不复用列表接口的角色语义。
+     *
+     *  <p><b>只放 ENGINEER</b>：这个能力是给一线工程师做归纳用的，不是管理动作。
+     *  平台管理员的职责面在派单与账号，把它也放进来等于凭空多开一个「批量看全员工单」
+     *  的口子，与最小权限相悖。若要放开，须连同 consultation 侧的控制器守卫、
+     *  Python 侧 {@code ANALYTICS_ALLOWED_ROLES} 与前端路由 meta.role 一起改。 */
     private static final java.util.Set<String> ANALYTICS_ROLES =
-            java.util.Set.of("ENGINEER", "PLATFORM_ADMIN");
+            java.util.Set.of("ENGINEER");
 
     /** 单次投影扫描的取数上限。分析要在 Python 内存里跑词表匹配，几百到几千行都只需
      *  几毫秒；但这个上限必须有 —— 没有上限的「全量拉取」迟早撞上内存与超时。 */
@@ -447,7 +452,7 @@ public class TicketService {
     public List<TicketScanVO> analyticsScan(UserContext.CurrentUser viewer, String createdAfter,
                                             String createdBefore, int limit) {
         if (viewer == null || !ANALYTICS_ROLES.contains(viewer.getRole())) {
-            throw new BizException(ErrorCode.FORBIDDEN, "跨工单统计分析仅限工程师与平台管理员");
+            throw new BizException(ErrorCode.FORBIDDEN, "跨工单统计分析仅限工程师");
         }
         QueryWrapper<Ticket> qw = new QueryWrapper<>();
         LocalDateTime after = parseSlotDate(createdAfter, true);

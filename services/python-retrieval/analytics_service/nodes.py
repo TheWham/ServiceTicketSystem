@@ -1,11 +1,15 @@
 # -*- coding: utf-8 -*-
 """五个节点。每个节点是 `(state, ctx) -> None`：只读写状态对象，不返回。
 
-- Node A 分析意图路由     [ROUTER]        模型主判 + 规则兜底 + 安全闸
+- Node A 分析意图路由     [ROUTER]        模型主判 + 规则兜底 + 安全闸 + 槽位抽取
 - Node B 投影扫描取数     [SPAN]          只按时间窗，不做子域粗筛
 - Node C 确定性聚合       [EVALUATOR]     零模型调用 ★核心
-- Node D 归因叙事         [GENERATION]    唯一一处模型调用
+- Node D 归因叙事         [GENERATION]    模型写的唯一一处用户可见正文
 - Node E 输出门禁         [GATE]          数字与单号守卫
+
+**模型给语义，代码给数字与日期。** Node A 的模型输出的是"本季度""网络设备"这类
+槽位，区间由 timewindow 算、占比由 aggregate 算；Node D 的模型写的是措辞，每个
+数字都来自 facts。两处模型调用，无一能够改数。
 
 约定：节点内部异常不向外抛（由 engine 统一兜底），单个节点失败不影响 Trace 落库。
 """
@@ -24,7 +28,8 @@ from rag_pipeline.observability.tracer import (KIND_EVALUATOR, KIND_GATE, KIND_G
 
 from . import config as cfg
 from . import rules
-from .classifier import (CLARIFY_TEXT, classify_with_model, resolve_analytics_intent,
+from . import taxonomy as tx
+from .classifier import (CLARIFY_TEXT, resolve_analytics_intent, route_with_model,
                          rule_route)
 from .contract import (DEGRADED_CALL_FAILED, DEGRADED_NO_MODEL, DEGRADED_TRUNCATED,
                        DEGRADED_UNPARSABLE, GATE_SMALL_UNIVERSE, INTENT_ANALYTICS,
@@ -35,7 +40,7 @@ from .contract import (DEGRADED_CALL_FAILED, DEGRADED_NO_MODEL, DEGRADED_TRUNCAT
                        VERDICT_TO_REPLY_TYPE, AnalyticsState, Recommendation, parse_narrative)
 from .data_source import DataSource, ScanError
 from .model_client import ModelClient, ModelUnavailable, estimate_tokens
-from .timewindow import parse_window
+from .timewindow import resolve_window
 
 
 @dataclass
@@ -49,18 +54,33 @@ class WorkflowContext:
     model: ModelClient
     tracer: Tracer
     taxonomy: Any = None
-    # 上游（Java 侧 SemanticRequestClassifier）已判定的意图。非空且为 ANALYTICS 时
-    # Node A 只跑安全闸与槽位提取，**不重复调模型做二次分类** —— 那是一次白花的推理费。
+    # 上游（Java 侧 SemanticRequestClassifier）已判定的意图。非空且为 ANALYTICS 时，
+    # Node A **仍然调模型一次**（要抽槽位），但意图直接采信上游、模型没有翻案权 ——
+    # 这一趟不是二次分类。
     upstream_intent: str = ""
 
 
 # ============================================================ Node A 意图路由
 
 def route_intent(state: AnalyticsState, ctx: WorkflowContext) -> None:
-    """Node A：判定是否走分析链路。
+    """Node A：判定是否走分析链路，并把请求里的参数抽成槽位。
 
     **顺序是重点**：先判红线，再决定要不要花钱调模型。越权角色的请求规则就能判死，
     先调模型再拒绝等于为一个注定被拦的请求付一次推理费。
+
+    `skip_model` 的语义变了。改造前它是**省钱开关**：规则命中或上游已定性就不调模型。
+    但模型现在还要抽槽位（时间窗/范围限定/关注维度），跳过它等于把槽位一并跳过，
+    而这些恰恰是正则接不住的部分 —— 常见分析型提问必然命中规则，于是"模型主抽"
+    在最需要它的那条路径上永远不生效。
+
+    所以现在：
+
+      · **上游或规则已定性时**，意图直接采信、模型**不推翻**（它这一趟只抽槽位）；
+        跨服务边界误判代价不对称，上游 Java 侧已经判过一次的结论不该被轻率改写；
+      · **其余情形**照旧走 `resolve_analytics_intent` 仲裁（分歧且规则未命中 → 澄清）；
+      · **没跑模型**（未配置 / `ANALYTICS_MODEL_ROUTING=0`）时完全退回规则行为。
+
+    代价是每次分析请求多一次模型调用（原来规则命中时是 0 次）。取舍写在 config.py。
     """
     with ctx.tracer.span("A.Intent_Router", kind=KIND_ROUTER) as span:
         span.record(input={"question": state.question, "role": state.role})
@@ -84,30 +104,38 @@ def route_intent(state: AnalyticsState, ctx: WorkflowContext) -> None:
                         detail={"decision": "命中原权限闸，未调用模型"})
             return
 
-        # (3) 上游已指定意图或规则明确命中时，不重复调模型做二次分类
-        #     —— Java 侧 SemanticRequestClassifier 已经判过一次了。
+        # (3) "已定性"信号：命中即刻锁定意图，模型只用来抽槽位。
         upstream_intent = ctx.upstream_intent or ""
-        skip_model = rule_hit or upstream_intent == INTENT_ANALYTICS
-        model_intent: Optional[str] = None
-        tokens: Dict[str, Any] = {"tokens_source": "none"}
+        pinned = rule_hit or upstream_intent == INTENT_ANALYTICS
 
-        if skip_model:
-            model_note = ("上游已指定为分析型请求，跳过二次分类" if upstream_intent == INTENT_ANALYTICS
-                          else "规则明确命中分析型信号，跳过模型分类")
+        # (4) 一次调用同时拿意图与槽位。
+        model_intent, model_note, tokens = None, "", {"tokens_source": "none"}
+        model_called = False
+        if not cfg.MODEL_ROUTING_ENABLED:
+            model_note = "模型路由已关闭（ANALYTICS_MODEL_ROUTING=0），意图与槽位全部走规则"
+        elif not ctx.model.available:
+            model_note = "模型未配置，意图与槽位全部走规则"
         else:
-            model_intent, model_note, tokens = classify_with_model(
-                ctx.model, state.question, trace_id=ctx.tracer.trace_id)
+            taxonomy = ctx.taxonomy or tx.load_taxonomy()
+            model_intent, slots, model_note, tokens = route_with_model(
+                ctx.model, state.question, taxonomy, trace_id=ctx.tracer.trace_id)
             state.model_intent = model_intent
+            state.slots = slots
+            model_called = True
 
-        # (4) 仲裁出最终意图。走到这里的 skip_model 分支必然是分析型
-        #     （规则命中 或 上游已认定），无需再仲裁。
-        if skip_model:
+        # (5) 裁决意图。已定性则不仲裁 —— 模型这一趟的产出只是槽位。
+        if pinned:
             state.intent = INTENT_ANALYTICS
-            decision_note = "规则/上游已定性，直接进入分析链路"
+            decision_note = ("上游已指定为分析型请求，直接采信"
+                             if upstream_intent == INTENT_ANALYTICS
+                             else "规则明确命中分析型信号，直接采信")
+            if model_intent and model_intent != INTENT_ANALYTICS:
+                decision_note += (f"；模型判为 {model_intent}，仅记录不采信"
+                                  f"（上游/规则已定性时模型只抽槽位）")
         else:
             state.intent, decision_note = resolve_analytics_intent(model_intent, rule_hit)
 
-        # (5) 澄清出口：模型判为分析但规则没背书 —— 跨服务边界误判代价高，先问一句
+        # (6) 澄清出口：模型判为分析但规则没背书 —— 跨服务边界误判代价高，先问一句
         if state.intent == INTENT_CLARIFY:
             state.verdict = VERDICT_CLARIFY
             state.answer_text = CLARIFY_TEXT
@@ -120,7 +148,10 @@ def route_intent(state: AnalyticsState, ctx: WorkflowContext) -> None:
         state.add_finding("INTENT_ROUTE", f"意图判定为 {state.intent}：{rule_detail}")
         span.record(
             output={"intent": state.intent, "ruleIntent": state.rule_intent,
-                    "modelIntent": state.model_intent, "modelCalled": not skip_model},
+                    "modelIntent": state.model_intent, "modelCalled": model_called,
+                    "pinnedBy": ("upstream" if upstream_intent == INTENT_ANALYTICS
+                                 else "rule" if rule_hit else ""),
+                    "slots": state.slots.brief() if state.slots else None},
             status=STATUS_SUCCESS,
             detail={"decision": decision_note, "modelNote": model_note,
                     "ruleDetail": rule_detail, **tokens})
@@ -134,13 +165,35 @@ def scan_tickets(state: AnalyticsState, ctx: WorkflowContext) -> None:
     **只按时间窗过滤，不传 category** —— 子域过滤 100% 交给 Node C 的词表。
     实测算过：若在这一层按 `category IN ('C_NET','C_HW_PR')` 粗筛，那张
     `category_id = C_HW_PC` 的打印机工单在数据库层就被滤掉，根本活不到 Node C。
+
+    时间口径由 `resolve_window` 定：模型槽位优先，正则兜底与对照。**"区间是谁定的"
+    必须可解释** —— 它是结论能不能用的前提，所以每条分析请求都留一条 `WINDOW_SOURCE`
+    说明来源（模型接管默认窗口属于正常，不另记告警）；只有真出岔子时才另加一条：
+    模型与规则**都从字面命中**却区间不同（`WINDOW_CONFLICT`）、槽位被弃用
+    （`WINDOW_SLOT_REJECTED`）、模型漏抽而正则字面命中（`WINDOW_MODEL_MISSED`）。
     """
     with ctx.tracer.span("B.Projection_Scan", kind=KIND_SPAN) as span:
-        window = parse_window(state.question)
+        slot = state.slots.time_window if state.slots else None
+        res = resolve_window(state.question, slot)
+        window = res.window
         state.window = window
+
+        source_note = f"时间口径：{window.label}（{window.start_iso} ~ {window.end_iso}）来源：{window.source}"
+        state.add_finding("WINDOW_SOURCE", source_note, severity=SEVERITY_INFO)
+        if res.conflict:
+            state.add_finding("WINDOW_CONFLICT", res.note, severity=SEVERITY_WARN)
+        if res.rejected:
+            state.add_finding("WINDOW_SLOT_REJECTED",
+                              f"模型时间槽位未采用，已退回规则：{res.rejected}",
+                              severity=SEVERITY_INFO)
+        if res.model_missed:
+            state.add_finding("WINDOW_MODEL_MISSED", res.note, severity=SEVERITY_INFO)
+
         span.record(input={"createdAfter": window.start_iso,
                            "createdBefore": window.end_iso,
-                           "windowSource": window.source})
+                           "windowSource": window.source,
+                           "modelSlot": slot,
+                           "resolution": res.note})
         try:
             rows = ctx.ds.scan_tickets(window, category="")
         except ScanError as e:
@@ -163,7 +216,6 @@ def aggregate_facts(state: AnalyticsState, ctx: WorkflowContext) -> None:
     这里产出的每个数字都是代码算的。跨过这一步之后，模型能自主决定的只剩措辞。
     """
     from . import aggregate as agg
-    from . import taxonomy as tx
 
     with ctx.tracer.span("C.Deterministic_Aggregate", kind=KIND_EVALUATOR) as span:
         if state.verdict == VERDICT_REFUSED:
@@ -171,7 +223,11 @@ def aggregate_facts(state: AnalyticsState, ctx: WorkflowContext) -> None:
             return
 
         tax = ctx.taxonomy or tx.load_taxonomy()
-        scope_domains = tx.resolve_domains(state.question, tax)
+        # 范围限定：模型槽位优先，词表匹配兜底。模型给的名字要对照词表校验
+        # （见 taxonomy.resolve_domain_names），造出来的名字进不来。
+        model_domains = tx.resolve_domain_names(state.slots.domains, tax) if state.slots else []
+        scope_domains = model_domains or tx.resolve_domains(state.question, tax)
+        scope_source = "模型抽取" if model_domains else ("规则匹配" if scope_domains else "无")
         state.scope_domains = [d.name for d in scope_domains]
 
         t0 = time.perf_counter()
@@ -185,7 +241,7 @@ def aggregate_facts(state: AnalyticsState, ctx: WorkflowContext) -> None:
 
         span.record(
             input={"scanned": len(state.tickets), "scope": state.scope_domains,
-                   "window": facts.window},
+                   "scopeSource": scope_source, "window": facts.window},
             output={"universe": facts.universe,
                     "topSymptoms": [{"label": e.label, "count": e.count, "ratio": e.ratio}
                                     for d in facts.dimensions if d.axis == tx.AXIS_SYMPTOM
@@ -234,7 +290,9 @@ recommendations 的要求：
 - 结合上面给出的**真实统计**归纳出排查方向与巡检重点。可以对成因作合理推断
   （如"蓝屏集中在少数机型"→ 建议先做内存与驱动的一致性排查），这是本次归纳的价值所在；
 - **不得写任何数量**。备件的数量已由系统按固定系数算出并列在上面，你写的数字会与它打架；
-- 每条必须用 basisLabels 声明依据的是上面哪一个标签，**标签名必须原样抄写、不得新造**；
+- 每条必须用 basisLabels 声明依据。**只能从每个维度下「标签」一栏里原样抄写实体名**
+  （如「橡胶老化」「驱动缺陷」），**绝不能填「共性根因」「设备分布」「故障现象分布」
+  这类维度名** —— 它们是分类目录，不是命中项，填了整条建议会被判为无法核对而剔除；
 - 给 2~4 条即可，宁可少而准。
 
 【可引用的样例单号】
@@ -242,15 +300,12 @@ recommendations 的要求：
 
 
 def _focus_axis(question: str) -> Optional[str]:
-    """识别提问**明确要的是哪个维度**，用于把它排到事实包最前面。
+    """**兜底**：按确定性关键词猜提问要的是哪个维度。
 
-    为什么必须做：三个维度平铺给模型、正文又有长度上限时，被问到却排在最后的那个
-    维度会被整个挤掉。实测踩到过 —— 问「本季度工单的共性根因是什么？」，模型通篇写
-    现象分布，**根因一个字没提**，只在一句"样本不足"里捎带了名词。答案看着完整，
-    其实没回答问题。
+    主路径已改为读 Node A 的模型槽位（见 `resolve_focus_axis`）。这条保留是因为
+    模型不可用或抽不出 focusAxis 时仍要给一个排序依据，而且它确定、可测。
 
-    识别走确定性关键词，不调模型：这一步只是排序提示，判错最多让展示顺序不理想，
-    不会改变任何数字。
+    识别走关键词，判错最多让展示顺序不理想，不会改变任何数字。
     """
     q = question or ""
     if any(k in q for k in ("根因", "原因", "为什么坏", "为什么坏", "故障原因")):
@@ -268,6 +323,19 @@ AXIS_DEVICE_LABEL = "设备分布"
 AXIS_ROOT_CAUSE_LABEL = "共性根因"
 _AXIS_LABEL = {"SYMPTOM": AXIS_SYMPTOM_LABEL, "DEVICE": AXIS_DEVICE_LABEL,
                "ROOT_CAUSE": AXIS_ROOT_CAUSE_LABEL}
+
+
+def resolve_focus_axis(state: AnalyticsState) -> Optional[str]:
+    """提问关注哪个维度：模型槽位优先，关键词表兜底。
+
+    为什么必须把被问到的维度排到最前：三个维度平铺给模型、正文又有长度上限时，
+    被问到却排在最后的那个会被整个挤掉。实测踩到过 —— 问「本季度工单的共性根因
+    是什么？」，模型通篇写现象分布，**根因一个字没提**。
+    """
+    slot = (state.slots.focus_axis if state.slots else "") or ""
+    if slot in _AXIS_LABEL:
+        return _AXIS_LABEL[slot]
+    return _focus_axis(state.question)
 
 
 def _facts_block(state: AnalyticsState) -> Dict[str, Any]:
@@ -292,7 +360,10 @@ def _facts_block(state: AnalyticsState) -> Dict[str, Any]:
         # 完整包（3 维 × 8 项 + 建议）要 9344 个 completion token、其中 9004 是推理、耗时 55s；
         # 精简单维只需 411 个、4s —— 差 23 倍。明细在页面上有表格，正文不需要它。
         for e in d.entries[:4]:
-            row: Dict[str, Any] = {"项目": e.label, "命中单数": e.count}
+            # 键名用「标签」而不是「项目」：模型要照抄这里的字段当 basisLabels，
+            # 而"项目"与上面的"维度"在它眼里都是名词，实测踩到过 —— 它把「共性根因」
+            # 这类**维度名**填进了 basisLabels，于是三条建议全被门禁判为无法核对剔除。
+            row: Dict[str, Any] = {"标签": e.label, "命中单数": e.count}
             if e.ratio is not None:
                 row["占本维度比例"] = f"{e.ratio}%"
                 row["占全部工单比例"] = f"{e.ratio_of_all}%"
@@ -303,7 +374,7 @@ def _facts_block(state: AnalyticsState) -> Dict[str, Any]:
         dims.append({"维度": label, "分布": items})
 
     # 被问到的维度排最前：正文有长度上限，排在最后的维度会被整个挤掉（实测踩到过）
-    focus = _focus_axis(state.question)
+    focus = resolve_focus_axis(state)
     if focus:
         dims.sort(key=lambda x: 0 if x.get("维度") == focus else 1)
 
@@ -374,7 +445,9 @@ def _fallback_text(state: AnalyticsState) -> str:
         for e in d.entries[:5]:
             parts.append(f"{e.label} {e.count} 单（{e.ratio}%）" if e.ratio is not None
                          else f"{e.label} {e.count} 单（样本不足，不出占比）")
-        lines.append(f"{d.axis} 分布：" + "；".join(parts) + "。")
+        # 轴名走中文映射：这里是**用户可见的正文**，`SYMPTOM 分布：…` 这种内部枚举
+        # 不该出现在给主管看的文案里（与 _facts_block 同一条纪律）。
+        lines.append(f"{_AXIS_LABEL.get(d.axis, d.axis)}：" + "；".join(parts) + "。")
 
     excluded = facts.coverage.excluded
     if excluded:

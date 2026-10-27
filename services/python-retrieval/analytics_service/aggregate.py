@@ -85,6 +85,8 @@ class Policy:
 
 
 def policy_fingerprint(path: Path) -> str:
+    """策略配置的内容哈希（截 12 位）。与词表指纹同一条纪律 —— 系数一改，
+    历史的备件建议就不可复现，指纹让"当时用的是哪一版"可追溯。"""
     if not path.exists():
         return "missing"
     return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
@@ -122,6 +124,8 @@ _policy_cache: Dict[str, Policy] = {}
 
 
 def load_policy(path: Optional[Path] = None, *, use_cache: bool = True) -> Policy:
+    """加载备件策略。**缺失即失败**（不返回空策略）—— 没有备件规则就产不出任何
+    备件建议，静默空转比启动期报错难查得多。"""
     target = Path(path) if path is not None else cfg.POLICY_PATH
     key = str(target)
     if use_cache and key in _policy_cache:

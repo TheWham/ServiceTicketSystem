@@ -63,7 +63,7 @@ public class InternalTicketController {
      * 分析投影扫描（只读）：按时间窗拉出脱敏工单明细，供 analytics_service 去噪与聚合。
      *
      * <p>与 {@link #list} 的关键区别：list 是「查我的工单」，归属由 {@code creator_id} 绑定；
-     * 本接口是**跨人聚合**，允许 ENGINEER / PLATFORM_ADMIN 读全部工单的脱敏投影
+     * 本接口是**跨人聚合**，允许 ENGINEER 读全部工单的脱敏投影
      * （不含姓名、联系方式、location）。角色判定是权威的一道，在
      * {@code TicketService.analyticsScan} 里，缺角色直接 403。
      *
