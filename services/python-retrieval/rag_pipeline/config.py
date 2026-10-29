@@ -123,9 +123,16 @@ class RetrievalConfig:
 
 
 @dataclass
+class DocstoreConfig:
+    type: str = "mysql"
+    table: str = "rag_parent_docstore"
+
+
+@dataclass
 class PipelineConfig:
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
+    docstore: DocstoreConfig = field(default_factory=DocstoreConfig)
     embedding_model: str = "qwen3-embedding-8b"
     embedding_cache_dir: str = "data/.emb_cache"
     store_persist_dir: str = "data/chroma_wiki_structured"
@@ -157,6 +164,7 @@ def load_config(path: Optional[str] = None) -> PipelineConfig:
     return PipelineConfig(
         chunking=_fill(ChunkingConfig(), raw.get("chunking")),
         retrieval=_fill(RetrievalConfig(), raw.get("retrieval")),
+        docstore=_fill(DocstoreConfig(), raw.get("docstore")),
         embedding_model=(raw.get("embedding") or {}).get("model", "qwen3-embedding-8b"),
         embedding_cache_dir=(raw.get("embedding") or {}).get("cache_dir", "data/.emb_cache"),
         store_persist_dir=(raw.get("store") or {}).get("persist_dir", "data/chroma_wiki_structured"),

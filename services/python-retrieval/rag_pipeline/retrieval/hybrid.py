@@ -34,11 +34,13 @@ class IndustrialHybridRetriever:
         corpus_docs: List[Document],
         reranker_model_name: str = "qwen3-reranker-8b",
         default_exclude: Optional[Dict[str, List[str]]] = None,
-        reranker_backend: str = "dashscope"
+        reranker_backend: str = "dashscope",
+        docstore: Optional[Any] = None,
     ):
         self.vector_db = vector_db
         self.corpus_docs = corpus_docs
         self.default_exclude = default_exclude or {}
+        self.docstore = docstore
 
         print("🔍 [1/3] 正在对高纯度结构化语料进行分词并构建 BM25 倒排索引...")
         self.tokenized_corpus = [
@@ -258,22 +260,41 @@ class IndustrialHybridRetriever:
                 print(f"      {rank}. [{cid}]  RRF分 {score:.5f}")
                 print(f"         ↳ {_brief(doc)}")
 
-        # Step 2.5（父块精排）：按父块去重
+        # Step 2.5 按父块去重
         rerank_texts = None
-        parent_mode = rerank_granularity == "parent" and all(
-            "parent_content" in doc.metadata for doc, _ in fused_candidates
+        parent_mode = rerank_granularity == "parent" and (
+            self.docstore is not None or any("parent_content" in doc.metadata for doc, _ in fused_candidates)
         )
+        parent_text_map: Dict[str, str] = {}
         if parent_mode:
             seen_parents = set()
             card_candidates = []
+            pids_to_fetch = []
             for doc, score in fused_candidates:
                 pid = doc.metadata.get("parent_id") or doc.metadata.get("wiki_id")
                 if pid in seen_parents:
                     continue
                 seen_parents.add(pid)
                 card_candidates.append((doc, score))
+                if pid and not doc.metadata.get("parent_content"):
+                    pids_to_fetch.append(pid)
             fused_candidates = card_candidates
-            rerank_texts = [doc.metadata["parent_content"] for doc, _ in fused_candidates]
+
+            if self.docstore is not None and pids_to_fetch:
+                parent_text_map = self.docstore.mget(pids_to_fetch)
+
+            rerank_texts = []
+            for doc, _ in fused_candidates:
+                pid = doc.metadata.get("parent_id") or doc.metadata.get("wiki_id")
+                p_text = (
+                    doc.metadata.get("parent_content")
+                    or parent_text_map.get(pid)
+                    or doc.page_content
+                )
+                rerank_texts.append(p_text)
+                if pid and pid not in parent_text_map and p_text:
+                    parent_text_map[pid] = p_text
+
             if verbose:
                 print(f"\n[③' 父块去重] 精排粒度=parent，候选 {len(fused_candidates)} 张卡（按整卡全文精排）")
 
@@ -336,9 +357,12 @@ class IndustrialHybridRetriever:
             fused_candidates, rerank_scores, rrf_ranks, rerank_ranks
         ):
             fused_score = (w_rrf_eff / (fuse_k + rrf_rank)) + (w_rerank_eff / (fuse_k + rr_rank))
+            pid = doc.metadata.get("parent_id") or doc.metadata.get("wiki_id")
+            p_content = parent_text_map.get(pid) or doc.metadata.get("parent_content")
             scored_docs.append({
                 "content": doc.page_content,
                 "metadata": doc.metadata,
+                "parent_content": p_content,
                 "rrf_score": round(rrf_score, 5),
                 "rerank_score": round(r_score, 4),
                 "rrf_rank": rrf_rank,
@@ -347,6 +371,22 @@ class IndustrialHybridRetriever:
             })
 
         final_results = sorted(scored_docs, key=lambda x: x["fused_score"], reverse=True)[:final_top_k]
+
+        # 确保 final_results 中的父块内容已补齐
+        if self.docstore is not None:
+            missing_final_pids = [
+                (d.get("metadata", {}).get("parent_id") or d.get("metadata", {}).get("wiki_id"))
+                for d in final_results
+                if not d.get("parent_content") and not d.get("metadata", {}).get("parent_content")
+            ]
+            missing_final_pids = [p for p in missing_final_pids if p]
+            if missing_final_pids:
+                fetched = self.docstore.mget(missing_final_pids)
+                for d in final_results:
+                    if not d.get("parent_content"):
+                        pid = d.get("metadata", {}).get("parent_id") or d.get("metadata", {}).get("wiki_id")
+                        if pid and pid in fetched:
+                            d["parent_content"] = fetched[pid]
 
         # Top-1/Top-2 双路共振保护：
         # 修复旧版对 4 通道直接求全交集导致口语/改写题上保护失效的问题——

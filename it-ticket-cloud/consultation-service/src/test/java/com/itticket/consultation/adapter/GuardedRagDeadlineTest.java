@@ -80,7 +80,7 @@ class GuardedRagDeadlineTest {
                     }
                     return new GenerationResult(AiReplyType.ANSWER, "检查输入设备。", List.of("V1"),
                             BigDecimal.ONE, null, "test");
-                }, false);
+                }, false, null);
         var client = new GuardedRagClient(adapter, properties);
         try {
             long began = System.nanoTime();

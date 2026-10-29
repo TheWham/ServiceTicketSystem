@@ -55,7 +55,7 @@ class ToolIntentBypassTest {
                     return new GenerationResult(AiReplyType.ANSWER, answerText.get(), List.of(),
                             BigDecimal.ONE, null, "agent", null);
                 },
-                agentEnabled);
+                agentEnabled, null);
     }
 
     @ParameterizedTest
@@ -130,7 +130,7 @@ class ToolIntentBypassTest {
                 (query, material, ctx) -> new GenerationResult(AiReplyType.ANSWER,
                         "已生成工单草稿（test），请确认后建单。", List.of(),
                         BigDecimal.ONE, null, "agent", null),
-                true);
+                true, null);
 
         RagResult result = adapter.answer(ask("新建一个工单,标题为test"), context());
 
@@ -143,9 +143,8 @@ class ToolIntentBypassTest {
     }
 
     @Test
-    void agentGeneralAnswerWithoutCitationsIsAllowedWhenMaterialPresent() {
-        // Python agent 可以判断预检索材料与问题无关，按通用 IT 建议作答；
-        // 零引用不等于“忽略可靠材料”，但必须走 generalAnswer 通道并显示无知识库依据。
+    void nonToolIntentWithMaterialStillRequiresCitations() {
+        // 同样的弱命中，无工具意图时「有材料零引用」守卫照常生效（防伪造语义不放宽）
         var knowledge = mock(KnowledgeQueryService.class);
         org.mockito.Mockito.when(knowledge.isPublishedCurrentVersion(org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
@@ -154,32 +153,8 @@ class ToolIntentBypassTest {
                 (query, ctx) -> weakHits(),
                 new RetrievalPolicy(knowledge),
                 (query, material, ctx) -> new GenerationResult(AiReplyType.ANSWER,
-                        "先记录蓝屏代码，再按驱动、内存、系统文件顺序排查。", List.of(),
-                        BigDecimal.ONE, null, "agent", null),
-                true);
-
-        RagResult result = adapter.answer(ask("电脑蓝屏"), context());
-
-        assertThat(result.replyType()).isEqualTo(AiReplyType.ANSWER);
-        assertThat(result.refusalReason()).isNull();
-        assertThat(result.citations()).isEmpty();
-        assertThat(result.generalAnswer()).isTrue();
-        assertThat(result.answerText()).contains("无知识库依据");
-    }
-
-    @Test
-    void nonAgentModelWithMaterialStillRequiresCitations() {
-        // 本地单轮生成没有“判断材料无关”的独立通道；有材料零引用仍按防伪造拒答。
-        var knowledge = mock(KnowledgeQueryService.class);
-        org.mockito.Mockito.when(knowledge.isPublishedCurrentVersion(org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString())).thenReturn(true);
-        ComposedRagAdapter adapter = new ComposedRagAdapter(
-                (query, ctx) -> RequestVerdict.of(OfficeDomain.OFFICE_IT, RequestVerdict.NO_TOOL),
-                (query, ctx) -> weakHits(),
-                new RetrievalPolicy(knowledge),
-                (query, material, ctx) -> new GenerationResult(AiReplyType.ANSWER,
-                        "凭通用经验给点建议。", List.of(), BigDecimal.ONE, null, "local", null),
-                false);
+                        "凭通用经验给点建议。", List.of(), BigDecimal.ONE, null, "agent", null),
+                true, null);
 
         RagResult result = adapter.answer(ask("会议室投影仪怎么连"), context());
 

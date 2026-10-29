@@ -112,10 +112,13 @@ public class AiConsultationService {
                 knowledgeQueryService::isPublishedCurrentVersion);
 
         String interactionId = persistInteraction(sessionId, result, verdict);
-        // 建单草稿只在正常回答时透出(拒答不携带草稿);同时随 AI 消息元数据落库,
-        // 供咨询转单预填读取,避免从完整时间线重新拼接上下文。
+
+        // 建单草稿只在正常回答时透出(拒答不携带草稿);员工确认后才经 /ticket-draft/confirm 建单
         TicketDraftDto draft = verdict.replyType() == AiReplyType.REFUSE
                 ? null : (result == null ? null : result.ticketDraft());
+
+        // 草稿要**随消息一起落库**，否则刷新页面后草稿卡就没了 —— 前端的历史消息映射
+        // 读不到它，员工看着一段"AI 拟好了草稿"的正文却没有卡片可点。
         persistAiMessage(sessionId, idempotencyKey, interactionId, verdict, draft);
 
         if (verdict.replyType() == AiReplyType.REFUSE) {
@@ -185,7 +188,7 @@ public class AiConsultationService {
     }
 
     private void persistAiMessage(String sessionId, String idempotencyKey, String interactionId,
-                                  AiAnswerGuard.Verdict verdict, TicketDraftDto ticketDraft) {
+                                  AiAnswerGuard.Verdict verdict, TicketDraftDto draft) {
         boolean refused = verdict.replyType() == AiReplyType.REFUSE;
         String content = refused ? refusalTranscript(verdict) : verdict.answerText();
         Map<String, Object> metadata = new LinkedHashMap<>();
@@ -195,8 +198,10 @@ public class AiConsultationService {
         metadata.put("replyType", verdict.replyType());
         metadata.put("refusalReason", verdict.refusalReason());
         metadata.put("generalAnswer", verdict.replyType() == AiReplyType.ANSWER && verdict.citations().isEmpty());
-        if (ticketDraft != null) {
-            metadata.put("ticketDraft", ticketDraft);
+        // 追加式键：老读者（含 RefusalCaseMapper 的 JSON_EXTRACT）不受影响，schemaVersion 保持 1。
+        // 有草稿才写 —— 无草稿写 null 会让投影里多一个恒为 null 的字段，徒增噪音。
+        if (draft != null) {
+            metadata.put("ticketDraft", draft);
         }
         messageService.appendAiMessage(sessionId, "ai-a:" + idempotencyKey, content, Json.write(metadata));
     }

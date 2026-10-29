@@ -5,5 +5,6 @@
     "name": "parent_child",
     "child_size": 512
   },
-  "embedding_engine": "KSP OpenAI兼容 /embeddings (qwen3-embedding-8b)"
+  "embedding_engine": "KSP OpenAI兼容 /embeddings (qwen3-embedding-8b)",
+  "docstore": "mysql"
 }

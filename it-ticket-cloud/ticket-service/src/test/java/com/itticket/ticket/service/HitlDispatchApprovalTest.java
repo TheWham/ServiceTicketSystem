@@ -38,15 +38,22 @@ import static org.mockito.Mockito.*;
  * HITL 派单草案门禁的核心场景测试（对齐讲义「写操作前刹车片」验收三条中第 3 条）：
  *
  * <ol>
- *   <li>路由产出草案而非直接派单 —— route() 返回 DRAFT_PENDING，工单保持 PENDING_ASSIGNMENT</li>
- *   <li>审批人批准（approve）→ confirmDispatch 落 assignment，工单 PENDING_ASSIGNMENT → ASSIGNED</li>
- *   <li>审批人驳回（reject，原因必填）→ 工单保持 PENDING_ASSIGNMENT，可重新路由</li>
+ *   <li>审批人批准（approve）→ confirmDispatch 落 assignment，工单 NEW → ASSIGNED</li>
+ *   <li>审批人驳回（reject，原因必填）→ 工单保持 NEW，可重新路由</li>
  *   <li>草案超时 → scanExpired 置 EXPIRED，不可再裁决</li>
  *   <li>重复生成同工单草案 → 幂等，只有一份 PENDING</li>
  *   <li>并发认领 → 只有一个审批人能认领成功</li>
  *   <li>并发裁决 → optimistic-lock 保证只有一人生效</li>
  *   <li>approve 回调失败 → 整笔事务回滚，草案回到 PENDING（不留半截）</li>
  * </ol>
+ *
+ * <p><b>接线状态（2026-10-27 起）：本门禁在生产路径上已不接线。</b>
+ * {@code RoutingService.route()} 改为直接落分派、不再产出草案，所以下面的用例覆盖的是
+ * <b>保留但不再被自动流程调用的机制</b> —— 它们会继续全绿，但**不代表线上会发生这些流程**。
+ * 绿着的、与现实不符的测试比红的更危险，故在此显式写明。
+ * 保留而非删除的理由：整套机制（表 / 控制器 / 管理员审批页）都还在，删它要连带改动
+ * DB 迁移与管理员界面，代价大于收益。
+ * 路由侧的新行为见 {@link RoutingDirectAssignTest}。
  */
 class HitlDispatchApprovalTest {
 
@@ -81,15 +88,18 @@ class HitlDispatchApprovalTest {
                 notifications, exceptionQueue, userClient, json);
     }
 
-    // ========== 场景 1：路由产出草案，工单保持 PENDING_ASSIGNMENT ==========
+    // ========== 场景 1：路由产出草案，工单保持 NEW ==========
 
     /**
-     * 自动路由找到工程师后不再直接落 assignment，而是生成 PENDING 草案。
-     * 对应讲义「第一步：状态持久化挂起」。
+     * 草案机制自身的挂起语义：{@code createDraft} 只落一份 PENDING 草案，不碰工单行。
+     *
+     * <p>这里测的是 {@code DispatchDraftService} **本身**，不是路由行为 —— 2026-10-27 起
+     * {@code route()} 已不再调用它（见类注释的接线状态）。原先这个用例的名字与前缀注释
+     * 声称"自动路由不再直接落 assignment"，那句已与现实相反，故改写为只断言机制语义。
      */
     @Test
-    void routeReturnsDraftPendingAndPreservesNewStatus() {
-        Ticket ticket = ticket("TK01", TicketStatus.PENDING_ASSIGNMENT);
+    void createDraftPersistsPendingWithoutTouchingTicket() {
+        Ticket ticket = ticket("TK01", TicketStatus.NEW);
         // 路由配置 → 候选人 → 负载 → ENG01
         // （完整路由链路在 RoutingDirtyDataTest 中已有覆盖，此处只验证 route() 产出）
         // 模拟：创建草案成功
@@ -106,7 +116,7 @@ class HitlDispatchApprovalTest {
         assertEquals(DispatchDraft.STATUS_PENDING, created.getStatus());
         assertEquals("ENG01", created.getEngineerId());
 
-        // 工单没有被直接改动（仍保持创建时的 PENDING_ASSIGNMENT 状态）
+        // 工单没有被直接改动（仍保持创建时的 NEW 状态）
         verify(ticketMapper, never()).updateById(any(Ticket.class));
         verify(ticketMapper, never()).update(any(), any());
     }
@@ -138,10 +148,10 @@ class HitlDispatchApprovalTest {
         assertEquals(DispatchDraft.STATUS_APPROVED, result.getStatus());
     }
 
-    // ========== 场景 3：驳回 → 工单保持 PENDING_ASSIGNMENT ==========
+    // ========== 场景 3：驳回 → 工单保持 NEW ==========
 
     /**
-     * reject（approve=false）→ 草案 REJECTED，工单保持 PENDING_ASSIGNMENT，无分派发生。
+     * reject（approve=false）→ 草案 REJECTED，工单保持 NEW，无分派发生。
      */
     @Test
     void rejectPreservesNewStatusAndRecordsReason() {
@@ -200,7 +210,7 @@ class HitlDispatchApprovalTest {
         DispatchDraft existing = newDraft("DD_EXISTING", "TK01", "ENG01", DispatchDraft.STATUS_PENDING);
         when(draftMapper.selectOne(any(QueryWrapper.class))).thenReturn(existing);
 
-        Ticket ticket = ticket("TK01", TicketStatus.PENDING_ASSIGNMENT);
+        Ticket ticket = ticket("TK01", TicketStatus.NEW);
         DispatchDraft result = draftService.createDraft(ticket, "ENG02", "idem-2", "重试");
 
         assertEquals("DD_EXISTING", result.getDraftId(), "已有待确认草案时应复用，不生成第二份");
@@ -320,7 +330,7 @@ class HitlDispatchApprovalTest {
     
     @Test
     void confirmDispatchDirectlyTransitionsTicketAndAllowsEngineerClaim() {
-        Ticket ticket = ticket("TK01", TicketStatus.PENDING_ASSIGNMENT);
+        Ticket ticket = ticket("TK01", TicketStatus.NEW);
         DispatchDraft approvedDraft = newDraft("DD01", "TK01", "ENG01", DispatchDraft.STATUS_APPROVED);
         approvedDraft.setResolvedBy("ADM01");
 
@@ -339,7 +349,7 @@ class HitlDispatchApprovalTest {
                 mock(com.itticket.ticket.mapper.CategoryMapper.class),
                 mock(com.itticket.ticket.mapper.AttachmentMapper.class),
                 flowLogMapper,
-                mock(com.itticket.ticket.mapper.TicketPurgeMapper.class),
+                mock(com.itticket.ticket.mapper.TicketPurgeMapper.class), mock(com.itticket.ticket.mapper.TicketResolutionMapper.class),
                 mock(TicketNoGenerator.class), notifications,
                 mock(UserClient.class), mock(SlaService.class),
                 routing, exceptionQueue, dispatch, mock(ConsultationConvertNotifier.class), json);
@@ -353,23 +363,23 @@ class HitlDispatchApprovalTest {
 
         ts.confirmDispatch("DD01");
 
-        // ① 工单状态真的流转 PENDING_ASSIGNMENT→ASSIGNED
+        // ① 工单状态真的流转 NEW→ASSIGNED
         assertEquals(TicketStatus.ASSIGNED, ticket.getStatus(),
             "confirmDispatch 放行后工单必须为 ASSIGNED");
-        // ② 工程师接单的状态机校验在 ASSIGNED 上是合法的（PENDING_ASSIGNMENT 才会 409）
+        // ② 工程师接单的状态机校验在 ASSIGNED 上是合法的（NEW 才会 409）
         assertEquals("ASSIGNED", ticket.getStatus().getValue(),
-            "工程师接单校验在 ASSIGNED 上合法（与此相反的 PENDING_ASSIGNMENT 会 409）");
+            "工程师接单校验在 ASSIGNED 上合法（与此相反的 NEW 会 409）");
     }
 
-    // ========== 场景 14：assign() 放行后工单状态必然流转 PENDING_ASSIGNMENT→ASSIGNED ==========
+    // ========== 场景 14：assign() 放行后工单状态必然流转 NEW→ASSIGNED ==========
     //
     // 对应 P0 问题报告：此前 assign() 只写 assignee不写 status，
-    // 导致流转日志 PENDING_ASSIGNMENT→ASSIGNED 与工单实际状态矛盾、工程师端不可见。
+    // 导致流转日志 NEW→ASSIGNED 与工单实际状态矛盾、工程师端不可见。
     // 此测试直接断言真实 Ticket.status，而非仅断言回调被调用。
     
     @Test
     void assignSetsTicketStatusFromNewToAssigned() {
-        Ticket ticket = ticket("TK01", TicketStatus.PENDING_ASSIGNMENT);
+        Ticket ticket = ticket("TK01", TicketStatus.NEW);
         when(ticketMapper.selectOne(any())).thenReturn(ticket);
         // MyBatis-Plus Wrapper 不反射回填 Java 对象，
         // doAnswer 模拟 DB 生效：任何 update 都使 ticket 变为 ASSIGNED
@@ -387,7 +397,7 @@ class HitlDispatchApprovalTest {
         // 直接断言真实工单状态（而非仅验回调被调用）
         // 这正是过去测试漏掉的断言——只验了 DispatchDraft.status，从未验 Ticket.status
         assertEquals(TicketStatus.ASSIGNED, ticket.getStatus(),
-            "RoutingService.assign() 必须将工单状态从 PENDING_ASSIGNMENT 更新为 ASSIGNED");
+            "RoutingService.assign() 必须将工单状态从 NEW 更新为 ASSIGNED");
     }
     
     // ========== 辅助 ==========

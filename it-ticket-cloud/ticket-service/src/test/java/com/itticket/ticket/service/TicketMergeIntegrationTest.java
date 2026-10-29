@@ -54,7 +54,7 @@ class TicketMergeIntegrationTest {
         // LambdaUpdateWrapper 依赖 MyBatis-Plus 实体元数据，纯单测需手动初始化
         com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
                 new org.apache.ibatis.builder.MapperBuilderAssistant(new com.baomidou.mybatisplus.core.MybatisConfiguration(), ""), Ticket.class);
-        service = new TicketService(tickets, categories, attachments, flows, mock(com.itticket.ticket.mapper.TicketPurgeMapper.class), numbers,
+        service = new TicketService(tickets, categories, attachments, flows, mock(com.itticket.ticket.mapper.TicketPurgeMapper.class), mock(com.itticket.ticket.mapper.TicketResolutionMapper.class), numbers,
                 notifications, mock(UserClient.class), sla, routing, mock(ExceptionQueueService.class),
                 mock(DispatchDraftService.class), conversions, json);
         // 分类桩：叶子分类 C_NET 存在且 ACTIVE；无同名冲突（selectCount=0）

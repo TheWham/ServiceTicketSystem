@@ -123,6 +123,7 @@ public class ConsultationProperties {
 
         /** Function Calling 智能体配置(生成侧下沉到 Python agent_service)。 */
         private Agent agent = new Agent();
+        private Analytics analytics = new Analytics();
     }
 
     /**
@@ -136,5 +137,20 @@ public class ConsultationProperties {
         private String serviceBaseUrl;
         /** ticket-service 内部接口基址(供「确认建单」回写工单;工单是 ticket-service 事实源)。 */
         private String ticketServiceBaseUrl;
+    }
+
+    /**
+     * 跨工单分析链路配置。默认关闭;开启后判定为 ANALYTICS 的请求改调 Python
+     * `analytics_service`(确定性聚合 + 归因叙事)。
+     *
+     * <p>与 {@link Agent} 分开配而不是合并成一个开关:两者是**不同的链路** ——
+     * 分析走确定性聚合、不做 function call,端口、超时与失败语义都不同。
+     * 合并会让「想开分析但不想开 ReAct」这种合理组合变得不可表达。
+     */
+    @Data
+    public static class Analytics {
+        private boolean enabled = false;
+        /** Python analytics_service 基址,如 http://127.0.0.1:8340。 */
+        private String serviceBaseUrl;
     }
 }

@@ -494,6 +494,7 @@ function component(name, props, api, urlApi = urls()) {
     vue: { ...vue, resolveComponent: name => name, onBeforeUnmount: fn => unmount.push(fn), onMounted: fn => mounted.push(fn) },
     '@element-plus/icons-vue': icons,
     '../api/consultation.js': { consultationApi: api },
+    '../utils/aiTicketDraft.js': { saveAiTicketDraft() {}, takeAiTicketDraft: () => null },
     '../utils/chatAttachments.js': {
       ...attachments,
       createAttachmentUploader: options => attachments.createAttachmentUploader({ ...options, urlApi }),

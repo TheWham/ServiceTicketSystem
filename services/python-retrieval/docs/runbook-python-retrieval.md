@@ -184,6 +184,136 @@ export KNOWLEDGE_SEARCH_BASE_URL=http://127.0.0.1:8301 # 补搜知识（默认 8
 差别只在延迟。**`config.py`、`docker-compose.yml`、`agent_service/README.md` 里的默认值
 本来就是 `deepseek-v4-flash`**，只有手工启动时才容易被 `LLM_CHAT_MODEL` 覆盖掉。
 
+## analytics_service（跨工单聚合归纳）
+
+回答「请根据全部网络与打印设备工单，总结本季度共性根因并给出备件建议」这类
+**跨多记录宏观归纳**问题。与既有 RAG 链路是两条独立链路——`retrieval.top_k=3` 的
+单卡口径物理上凑不齐跨数十条记录的材料，且**工单从不进入知识库**。
+职责边界、五段链路与设计取舍见 `analytics_service/README.md`。
+
+> ⚠️ **consultation-service 默认会往这条链路分流**（`AI_ANALYTICS_ENABLED` 默认 `true`）。
+> 所以本服务未启动时，判定为分析型的提问会返回 `503 AI_UNAVAILABLE` ——
+> 这是**如实拒绝，不是故障**；它也**不会静默回退成知识问答**（回退会让统计请求收到
+> 一份单卡答案，那正是这条链路要消灭的答非所问）。
+> 只跑其余链路、不想起本服务时，在 consultation 侧设 `AI_ANALYTICS_ENABLED=false`。
+>
+> 本服务反过来依赖 ticket-service（:8201）取数，**启动顺序上排在它之后**。
+
+```bash
+cd services/python-retrieval
+# 启动 HTTP 服务（默认 127.0.0.1:8340）：
+python -m analytics_service
+# 环境变量（优先级：环境变量 > .env > 默认）：
+export ANALYTICS_LLM_MODEL=deepseek-v4-flash            # 归因叙事模型，缺省回退 LLM_*
+export ANALYTICS_TICKET_BASE_URL=http://127.0.0.1:8201  # 工单投影扫描来源
+export ANALYTICS_MIN_UNIVERSE=20                        # 全库样本下限（低于则整体拒答）
+export ANALYTICS_MIN_DENOM=10                           # 条目分母下限（低于则只给计数不给占比）
+export ANALYTICS_MIN_LABEL_HITS=5                       # 条目命中下限
+export ANALYTICS_MODEL_ROUTING=0                        # 关掉模型路由与抽槽（纯规则+正则）
+```
+
+**模型未配置时链路照走**：聚合、闸门、覆盖率全部不受影响，只有归因叙事退回确定性模板，
+token 标 `estimated`。所以这个服务可以在没有模型凭据的环境里完整演示。
+
+### 请求理解：模型给槽位，代码算日期
+
+Node A 一次调用同时产出**意图**与**槽位**（时间窗 / 范围限定 / 关注维度）。时间区间由
+`timewindow` 从槽位算出来，不由模型算 —— 模型算错季度边界不会报错，只会安静地给一个
+错误的分母，这是全链路里最难查的一类失败。
+
+排障时看两处：
+
+- **`WINDOW_SOURCE`**（每条分析请求都有）：这次的时间口径是谁定的（模型抽取 / 规则解析 /
+  默认最近90天）。前端「统计口径」卡片上也有同一份来源标签。
+- **`WINDOW_CONFLICT` / `WINDOW_SLOT_REJECTED` / `WINDOW_MODEL_MISSED`**（只在异常时出现）：
+  模型与规则**都从字面命中**却给出不同区间 / 槽位被弃用（附原因，最常见是 `rawText` 没在
+  提问里原样出现）/ 模型说"没有时间词"而正则字面命中。
+
+### 判为非分析型 → 熔断（不回退）
+
+看板入口（`/api/v1/analytics/query`）收到一个不属于跨工单统计的问题时，链路**熔断**：
+
+```
+Trace 只有 2 个 span：A.Intent_Router → A.Short_Circuit
+响应：verdict=REFUSED  replyType=REFUSE  refusalReason=OUT_OF_SCOPE
+      analyticsFacts=null（未取数、未聚合、未调叙事模型）
+```
+
+正文会指路（引导去智能客服），**不会**静默换成知识问答 —— 回退会让同一个 HTTP 入口
+按措辞切换成两套链路，答复类型随措辞漂移。
+
+**客服入口不熔断**：它由 Java 分类器先定性（透传 `upstreamIntent=ANALYTICS`），本链路
+据此锁死意图、不翻案。两个入口的差别是刻意的。
+
+> ⚠️ 若看到看板入口对任何问题都照样跑完 5 个 span，先查 Java 侧是不是又给看板
+> 传了 `upstreamIntent`。`upstreamIntent=ANALYTICS` 会锁死意图，使熔断永远不触发 ——
+> 这是排查"熔断为什么不生效"的第一个检查点。
+
+> ⚠️ 判 `WINDOW_CONFLICT` 时**必须带前置条件**：`parse_window` 在正则没命中时返回的是
+> **默认窗口而不是 `None`**。不加区分地拿它和模型窗口比区间，每一条靠模型立功救回来的
+> 提问（"第三季度""自9月以来"）都会误报冲突，恰好把最该看见的信号淹没。
+
+三个开关：
+
+| 键 | 默认 | 说明 |
+|---|---|---|
+| `ANALYTICS_MODEL_ROUTING` | `1` | 置 `0` 则 Node A 不调模型：意图走规则、时间走正则、子域走词表匹配 |
+| `ANALYTICS_ROUTER_MAX_OUTPUT_TOKENS` | `2048` | 路由调用输出预算。原来是 `max_tokens=16`，而本端点的模型是推理模型，思维链会先吃掉额度 |
+| `ANALYTICS_ROUTER_TIMEOUT` | `60` | 路由调用独立超时，**须小于** `ANALYTICS_LLM_TIMEOUT`（180）；超时即退回正则 |
+
+**代价**：每次分析请求多一次模型调用（改造前规则命中时是 0 次）。要零调用就设
+`ANALYTICS_MODEL_ROUTING=0`。
+
+### 评测：与检索评测**分成两套**
+
+```bash
+# 聚合题（跨工单宏观归纳，7 项指标）
+python -m rag_pipeline.pipelines.aggregate_evaluation --fixture analytics_service/tests/fixtures/tickets_q4.json
+# 确定性基线：关掉模型，规则与正则全权决策
+python -m rag_pipeline.pipelines.aggregate_evaluation --fixture analytics_service/tests/fixtures/tickets_q4.json --no-model
+# 检索题（原有 5 项指标，不受影响）
+python -m rag_pipeline.pipelines.golden_evaluation
+```
+
+两者由黄金集的 `is_aggregate_check` 字段分流，共用一个 JSON 文件：`golden_evaluation`
+会**跳过**聚合题并在控制台打印跳过条数——聚合题没有"该命中哪张卡"这回事
+（`reference_chunk_ids` 为空），若按单卡口径评分会恒判未命中，把召回率整体拉下去。
+
+`--fixture` 用真实库 Q4 窗口快照离线跑（55 张原始单，已脱敏，无姓名与联系方式）；
+不传 `--fixture` 则走 ticket-service 的真实投影扫描接口。
+
+### 词表维护（这是本服务唯一需要人工照看的东西）
+
+受控词表在 `configs/taxonomy.yaml`，**外置且版本化**——词表一改，历史统计口径就不可复现，
+所以版本号参与配置指纹，与索引配置同等对待。
+
+```bash
+# 未命中回捞：把没命中任何标签的工单落盘 + 给出词频候选
+python -m analytics_service.pipelines.unmatched_report --fixture analytics_service/tests/fixtures/tickets_q4.json
+```
+
+输出 `artifacts/analytics/unmatched_<窗口>.jsonl` 与候选词。**打标本身只由词典完成**——
+LLM 可以提候选，不参与判定，否则口径不可复现。`taxonomy_coverage_rate` 是这项工作的
+验收指标（门槛 ≥ 80%）。
+
+> ⚠️ **别把泛化词写成独立关键词。** `无反应` / `无法调节` 这类词单独出现时不构成症状判据：
+> 实测「打印机再次脱机」的描述里同时有"打印机"和"无反应"，「电脑音量无法调节」的描述里
+> 也有"无反应"——任何一条裸泛化词都会把它们从各自的正确标签下抢走（截胡，已实测复现）。
+> 加载时校验，违规直接抛错而不是静默降级。
+
+### 已知限制（如实登记，不是待办）
+
+- **根因维度可用，但数据是演示数据**：`ticket_resolution` 已由
+  `tools/seed_ticket_resolutions.py` 写入 **28 条**处置记录，根因维度因此可归纳
+  （实测：电源故障 6 单 25.0% / 驱动缺陷 6 单 25.0% / 内存故障 5 单 20.8%）。
+  ⚠️ **这 28 条是按工单实际症状写的演示数据，不是真实业务沉淀**——主键 `DEMO-RES-<ticket_id>`
+  前缀，`--rollback` 可一键撤销。删掉它们，本维度会如实退回「无解决方案记录，不可归纳」。
+  另外：**服务端没有任何代码写这张表**（Java 侧零引用），真实数据得由业务侧沉淀。
+- **样本量小**：Q4 窗口内有效工单 24 单（原始 55 张中 31 张被判定为联调噪声/测试串/标注忽略）。
+  子域限定后往往只剩个位数，会按设计走「只给计数不给占比」。
+- **不改 `00-schema.sql`**：`validate_schema.py` 会断言列集合全等，所有 DDL 走
+  `db/migration/V2_7__*.sql` / `V2_8__*.sql`（纯增量、幂等）。
+
 ## 已知行为与运维要点
 
 1. **网关限流降级**：KSP 网关 429 密集时，收紧后的在线预算（1.5s/8 次）可能拿不到

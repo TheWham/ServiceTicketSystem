@@ -146,11 +146,11 @@
                   </el-popover>
                 </div>
 
-                <!-- AI 建单草稿（人机回环）：AI 只起草、不落库，员工跳转建单页确认后再创建 -->
+                <!-- AI 建单草稿（人机回环）：AI 只起草、不落库，员工确认后才真正建单 -->
                 <div v-if="msg.ticketDraft" class="ticket-draft-card">
                   <div class="ticket-draft-head">
                     <el-icon><Tickets /></el-icon>
-                    <span>AI 拟好的工单草稿 <em>（不会直接创建工单，跳转后可编辑确认）</em></span>
+                    <span>AI 拟好的工单草稿 <em>（确认前不会创建工单）</em></span>
                   </div>
                   <div class="ticket-draft-body">
                     <div class="ticket-draft-row"><span class="k">标题</span><span class="v">{{ msg.ticketDraft.title }}</span></div>
@@ -159,10 +159,21 @@
                     <div class="ticket-draft-row"><span class="k">描述</span><span class="v">{{ msg.ticketDraft.description }}</span></div>
                   </div>
                   <div class="ticket-draft-actions">
-                    <el-button type="primary" size="small" :icon="Tickets"
-                               @click="goCreateTicket">
-                      编辑并创建工单
-                    </el-button>
+                    <template v-if="draftTicketIdOf(msg)">
+                      <el-tag type="success" size="small">已创建工单 {{ draftTicketIdOf(msg) }}</el-tag>
+                    </template>
+                    <template v-else>
+                      <el-button type="primary" size="small" :icon="Tickets"
+                                 :loading="msg.draftSubmitting" @click="submitTicketDraft(msg)">
+                        确认建单
+                      </el-button>
+                      <!-- 不满意 AI 拟的字段就先去提单表单改：那里有完整校验与草稿保存，
+                           聊天里内联编辑等于把整套表单逻辑再复制一份 -->
+                      <el-button size="small" :icon="Edit"
+                                 :disabled="msg.draftSubmitting" @click="editTicketDraft(msg)">
+                        编辑
+                      </el-button>
+                    </template>
                   </div>
                 </div>
 
@@ -284,11 +295,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ChatDotRound, Service, Close, Promotion, Tickets,
   Document, WarningFilled, CircleCheck, RefreshLeft, MagicStick,
-  Monitor, Connection, Message, Printer, ArrowRight
+  Monitor, Connection, Message, Printer, ArrowRight, Edit
 } from '@element-plus/icons-vue'
 import {
   consultationApi, REFUSAL_REASON, TERMINAL_STATUS, TICKET_ENTRY_MESSAGE, CONSULTATION_STATUS
 } from '../api/consultation.js'
+import { saveAiTicketDraft } from '../utils/aiTicketDraft.js'
 
 /**
  * 员工侧智能客服聊天面板(无外部布局假设):
@@ -500,6 +512,8 @@ function toLocalMessage(item) {
     replyType: item.reply_type || null,
     refusalReason: item.refusal_reason || null,
     generalAnswer: item.general_answer === true,
+    // AI 建单草稿随消息落库，所以**刷新后草稿卡还在**（服务端元数据里的 ticketDraft）
+    ticketDraft: item.ticket_draft || null,
     feedback: null,
     local: false,
     sentAt: item.sent_at,
@@ -529,6 +543,26 @@ function pushLocal(senderType, content, extra = {}) {
 }
 
 const GREETING_TEXT = '你好，我是 IT 智能助手小 T 👋 我可以帮你解决 VPN 连不上、邮箱收不到邮件、打印机故障、账号权限等常见 IT 问题。请描述你遇到的情况，我会先尝试帮你解决；如果解决不了，可以随时转接人工客服。'
+
+/**
+ * 确认 AI 拟好的建单草稿 —— 人机回环第二步。
+ * 草稿此前只存在于回答里，服务端没有写任何工单；这一步才真正创建，归属由服务端绑定当前员工。
+ */
+async function submitTicketDraft(msg) {
+  if (msg.draftSubmitting || msg.draftTicketId) return
+  const sid = session.value?.sessionId
+  if (!sid) return
+  msg.draftSubmitting = true
+  try {
+    const res = await consultationApi.confirmTicketDraft(sid, msg.ticketDraft)
+    msg.draftTicketId = res.ticketId
+    pushLocal('SYSTEM', `已为你创建工单 ${res.ticketId}，可在「我的工单」中跟进；工程师接单后会有通知。`)
+  } catch (e) {
+    ElMessage.error(e.message || '建单失败，请重试')
+  } finally {
+    msg.draftSubmitting = false
+  }
+}
 
 function createGreeting() {
   return {
@@ -575,7 +609,7 @@ async function send(event) {
           suggestTransfer: res.suggestTransfer,
           replyType: res.replyType,
           generalAnswer: res.replyType === 'ANSWER' && !hasCitations,
-          // AI 只产草稿不落库；由员工跳转建单页编辑确认后再创建（人机回环）
+          // AI 只产草稿不落库；由员工点「确认建单」才真正创建（人机回环）
           ticketDraft: res.ticketDraft || null
         })
         if (res.replyType === 'ANSWER' && !hasCitations) {
@@ -773,19 +807,47 @@ function finishSession(status) {
 }
 
 function goCreateTicket() {
-  // 跳到新建工单页并带上咨询会话；提单页会自动读取并预填当前咨询内容
+  pushToCreateForm({})
+}
+
+/**
+ * 「编辑」AI 拟好的建单草稿 —— 人机回环的第三条路：不在聊天里落库，而是带着**这份草稿**
+ * 跳到提单表单，预填好、员工改完再手动提交（提交时经 source_session_id 回写会话归属）。
+ *
+ * **必须把卡片上这份草稿本身带过去**，不能让提单页自己从会话推导：那边的
+ * `GET /consultations/{id}/ticket-draft` 是「按整条会话时间线起草」（标题取员工说过的第一句、
+ * 描述取整段对话摘要），与 agent 按当前这句话拟的草稿不是一回事 —— 复用会让员工点完
+ * 「编辑」看到一串与卡片无关的旧对话内容（实测踩到过）。详见 utils/aiTicketDraft.js。
+ *
+ * 多带 autofill=1，让提单页到达时直接填入；其余「提交工单」入口不带这个标志，
+ * 仍靠那里的「填入并关联咨询」按钮显式触发 —— 那条路径下表单里可能已有员工正在写的内容。
+ */
+function editTicketDraft(msg) {
+  saveAiTicketDraft(session.value?.sessionId, msg?.ticketDraft)
+  pushToCreateForm({ autofill: '1' })
+}
+
+/**
+ * 这张草稿卡对应的工单号，用来决定显示「已创建工单」还是两个按钮。
+ *
+ * 先看消息本地态（本次会话里刚点的确认），刷新之后本地态没了，就取会话上的
+ * `converted_ticket_id` —— 否则刷新后卡片会退回「确认建单」，员工以为没建成会再点一次。
+ * （服务端 confirmTicketDraft 有幂等守卫兜底，但界面上不该制造这种困惑。）
+ */
+function draftTicketIdOf(msg) {
+  return msg?.draftTicketId || session.value?.converted_ticket_id || ''
+}
+
+/** 跳到提单页并带上会话让提单页拉取咨询预填(PRD 9.1)。 */
+function pushToCreateForm(extraQuery) {
   emit('navigate')
   if (session.value?.sessionId && !isTerminal.value) {
     router.push({
       path: '/employee',
-      query: {
-        tab: 'create',
-        from: 'consultation',
-        session: session.value.sessionId
-      }
+      query: { from: 'consultation', session: session.value.sessionId, ...extraQuery }
     })
   } else {
-    router.push({ path: '/employee', query: { tab: 'create' } })
+    router.push('/employee')
   }
 }
 

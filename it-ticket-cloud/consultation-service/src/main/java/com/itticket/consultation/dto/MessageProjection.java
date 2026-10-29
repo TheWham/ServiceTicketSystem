@@ -34,6 +34,12 @@ public record MessageProjection(
         @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("reply_type") String replyType,
         @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("refusal_reason") String refusalReason,
         @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("general_answer") Boolean generalAnswer,
+        /**
+         * AI 拟好的建单草稿，随消息一起落库（元数据里的 {@code ticketDraft}）。
+         *
+         * <p>之所以要持久化：草稿卡原先只活在本次对话的消息对象里，历史消息映射读不到它，
+         * 于是**刷新页面卡片就没了** —— 员工看到"AI 已拟好草稿"的正文却无从点起。
+         */
         @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("ticket_draft") TicketDraftDto ticketDraft,
         @JsonProperty("sent_at") String sentAt,
         @JsonProperty("withdrawn_at") String withdrawnAt) {
@@ -64,8 +70,9 @@ public record MessageProjection(
 
     private record Metadata(List<KnowledgeCitationDto> citations, String interactionId,
                             String replyType, String refusalReason, Boolean generalAnswer,
-                            TicketDraftDto ticketDraft, List<AttachmentProjection> attachments) {
-        private static final Metadata EMPTY = new Metadata(null, null, null, null, null, null, List.of());
+                            List<AttachmentProjection> attachments, TicketDraftDto ticketDraft) {
+        private static final Metadata EMPTY =
+                new Metadata(null, null, null, null, null, List.of(), null);
     }
 
     private static Metadata parseMetadata(String citationJson) {
@@ -75,17 +82,34 @@ public record MessageProjection(
         try {
             JsonNode root = Json.read(citationJson, JsonNode.class);
             if (root.isArray()) {
-                return new Metadata(readCitations(root), null, null, null, null, null, List.of());
+                return new Metadata(readCitations(root), null, null, null, null, List.of(), null);
             }
             if (!root.isObject() || root.path("schemaVersion").asInt() != 1) return Metadata.EMPTY;
             return new Metadata(readCitations(root.path("citations")),
                     text(root, "interactionId"), text(root, "replyType"), text(root, "refusalReason"),
                     root.path("generalAnswer").isBoolean() ? root.path("generalAnswer").asBoolean() : null,
-                    readTicketDraft(root.path("ticketDraft")),
-                    readAttachments(root.path("attachments")));
+                    readAttachments(root.path("attachments")),
+                    readTicketDraft(root.path("ticketDraft")));
         } catch (RuntimeException e) {
-            // 旧数据或元数据损坏不影响正文展示，也不猜测引用或交互 ID。
+            // 旧数据或元数据损坏不影响正文展示，也不猜测引用、交互 ID 或草稿。
             return Metadata.EMPTY;
+        }
+    }
+
+    /**
+     * 读取元数据里的建单草稿。缺字段或结构不对一律返回 null —— 草稿只是"能不能点"的前提，
+     * 它坏了不该把整条消息的正文和引用一起拖没。
+     */
+    private static TicketDraftDto readTicketDraft(JsonNode node) {
+        if (!node.isObject()) return null;
+        try {
+            TicketDraftDto draft = Json.read(node.toString(), TicketDraftDto.class);
+            boolean blank = draft == null
+                    || ((draft.title() == null || draft.title().isBlank())
+                        && (draft.description() == null || draft.description().isBlank()));
+            return blank ? null : draft;
+        } catch (RuntimeException e) {
+            return null;
         }
     }
 
@@ -100,9 +124,5 @@ public record MessageProjection(
 
     private static List<AttachmentProjection> readAttachments(JsonNode node) {
         return node.isArray() ? List.of(Json.read(node.toString(), AttachmentProjection[].class)) : List.of();
-    }
-
-    private static TicketDraftDto readTicketDraft(JsonNode node) {
-        return node.isObject() ? Json.read(node.toString(), TicketDraftDto.class) : null;
     }
 }

@@ -108,6 +108,14 @@ itticket:
         # ticket-service 内部接口基址(工单是 ticket-service 事实源,咨询域不跨库读;供「确认建单」用)
         ticket-service-base-url: ${TICKET_SERVICE_BASE_URL:http://127.0.0.1:8201}
 
+      # 跨工单分析链路(智能客服「跨记录宏观归纳」:总结一批工单的共性根因/分布/趋势)。
+      # 与 agent 分开开关 —— 分析走确定性聚合链路、不做 function call,
+      # 聚合维度与占比算法固化在 Python 侧的词表与代码里,模型只负责措辞。
+      analytics:
+        enabled: ${AI_ANALYTICS_ENABLED:true}
+        # Python analytics_service 基址
+        service-base-url: ${ANALYTICS_SERVICE_BASE_URL:http://127.0.0.1:8340}
+
       # thinking 模型的推理 token 也计入该上限,给小了会出现推理占满、content 为空
       max-output-tokens: 8192
       # 受约束问答不发散,固定 0 保证同一问题可复现(AI 评测要求可重复)

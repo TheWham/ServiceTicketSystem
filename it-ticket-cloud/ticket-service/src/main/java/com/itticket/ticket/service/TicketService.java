@@ -33,6 +33,7 @@ import com.itticket.ticket.mapper.TicketMapper;
 import com.itticket.ticket.statemachine.TicketStateMachine;
 import com.itticket.ticket.vo.FlowLogVO;
 import com.itticket.ticket.vo.TicketListVO;
+import com.itticket.ticket.vo.TicketScanVO;
 import com.itticket.ticket.vo.TicketVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -65,6 +66,7 @@ public class TicketService {
     private final AttachmentMapper attachmentMapper;
     private final TicketFlowLogMapper flowLogMapper;
     private final com.itticket.ticket.mapper.TicketPurgeMapper ticketPurgeMapper;
+    private final com.itticket.ticket.mapper.TicketResolutionMapper ticketResolutionMapper;
     private final TicketNoGenerator noGenerator;
     private final NotificationService notificationService;
     private final UserClient userClient;
@@ -142,7 +144,7 @@ public class TicketService {
         bindAttachments(ticketId, req.getAttachments(), creator.getUserId());
         slaService.startCompletionSla(ticketId, created.getPriority(), created.getCreatedAt());
         String finalTicketId = ticketId;
-        insertFlowLog(finalTicketId, null, TicketStatus.PENDING_ASSIGNMENT.getValue(), "TICKET_CREATE", creator.getUserId(), "提交工单");
+        insertFlowLog(finalTicketId, null, TicketStatus.NEW.getValue(), "TICKET_CREATE", creator.getUserId(), "提交工单");
 
         // 异步通知 + SLA 起算 + 自动路由（事务提交后）
         afterCommit(() -> notificationService.sendNotification(finalTicketId, "SUBMIT_SUCCESS", creator.getUserId()));
@@ -174,7 +176,7 @@ public class TicketService {
         ticket.setContact(req.getContact());
         ticket.setAssetId(req.getAssetId());
         ticket.setAssetCheckStatus(req.getAssetId() == null ? null : "PENDING");
-        ticket.setStatus(TicketStatus.PENDING_ASSIGNMENT);
+        ticket.setStatus(TicketStatus.NEW);
         // 新单暂按中优先级计时（§11.4），接单时按矩阵确认正式优先级
         ticket.setPriority(PriorityMatrix.MEDIUM);
         ticket.setAssigneeId(null);
@@ -267,13 +269,13 @@ public class TicketService {
 
     // ---------------- 提单人编辑并重新提交 ----------------
 
-    /** 提单人可编辑状态：未被工程师接单（待分配/已分配），或工程师请求补充阶段 */
+    /** 提单人可编辑状态：未被工程师接单（新建/已分配），或工程师请求补充阶段 */
     private static final java.util.Set<TicketStatus> CREATOR_EDITABLE =
-            java.util.Set.of(TicketStatus.PENDING_ASSIGNMENT, TicketStatus.ASSIGNED, TicketStatus.PENDING_SUPPLEMENT);
+            java.util.Set.of(TicketStatus.NEW, TicketStatus.ASSIGNED, TicketStatus.PENDING_SUPPLEMENT);
 
     /**
      * 提单人编辑工单并重新提交。
-     * PENDING_ASSIGNMENT/ASSIGNED：原地更新内容；PENDING_SUPPLEMENT：更新后回到 IN_PROGRESS（等同 supply_info）。
+     * NEW/ASSIGNED：原地更新内容；PENDING_SUPPLEMENT：更新后回到 IN_PROGRESS（等同 supply_info）。
      * attachments 为全量语义：未出现在列表中的原有附件会被撤回；列表中的草稿态附件绑定到工单。
      */
     @Transactional
@@ -394,14 +396,14 @@ public class TicketService {
                 log.warn("[工单查询] created_after 非法，弃用该槽位: {}", createdAfter);
             }
         }
-        // 待分配池:尚未派单的「待处理」工单
+        // 待领取池:尚未派单的「待处理」工单
         if ("true".equals(unassigned) || "1".equals(unassigned)) {
-            qw.isNull("assignee_id").eq("status", TicketStatus.PENDING_ASSIGNMENT.getValue());
+            qw.isNull("assignee_id").eq("status", TicketStatus.NEW.getValue());
         }
         // 工程师看板:我负责的工单 + 尚无人认领的待处理工单
         if (mineOrPool != null && !mineOrPool.isBlank()) {
             qw.and(w -> w.eq("assignee_id", mineOrPool)
-                    .or(o -> o.isNull("assignee_id").eq("status", TicketStatus.PENDING_ASSIGNMENT.getValue())));
+                    .or(o -> o.isNull("assignee_id").eq("status", TicketStatus.NEW.getValue())));
         }
         qw.orderByDesc("created_at").orderByDesc("ticket_id");
 
@@ -418,6 +420,97 @@ public class TicketService {
             return vo;
         }).toList();
         return new TicketListVO(list, result.getTotal(), page, pageSize);
+    }
+
+    // ---------------- 工单分析投影（只读，跨人聚合） ----------------
+
+    /** 分析链路可调用的角色。跨人聚合是本系统唯一需要「看别人工单」的读场景，
+     *  因此单独收口，不复用列表接口的角色语义。
+     *
+     *  <p><b>只放 ENGINEER</b>：这个能力是给一线工程师做归纳用的，不是管理动作。
+     *  平台管理员的职责面在派单与账号，把它也放进来等于凭空多开一个「批量看全员工单」
+     *  的口子，与最小权限相悖。若要放开，须连同 consultation 侧的控制器守卫、
+     *  Python 侧 {@code ANALYTICS_ALLOWED_ROLES} 与前端路由 meta.role 一起改。 */
+    private static final java.util.Set<String> ANALYTICS_ROLES =
+            java.util.Set.of("ENGINEER");
+
+    /** 单次投影扫描的取数上限。分析要在 Python 内存里跑词表匹配，几百到几千行都只需
+     *  几毫秒；但这个上限必须有 —— 没有上限的「全量拉取」迟早撞上内存与超时。 */
+    private static final int ANALYTICS_MAX_ROWS = 5000;
+
+    /**
+     * 只读投影扫描：按时间窗拉出脱敏后的工单明细，供 analytics_service 去噪与聚合。
+     *
+     * <p><b>不做任何 GROUP BY</b>：库里是未清洗的原始工单，SQL 聚合会把联调测试单算进
+     * 分母；而且按「故障症状」聚合依赖 Python 侧的词表，SQL 表达不了。聚合与排除口径
+     * 全部收口在 Python 侧，才能保证「排除明细」与两个分母绝对一致。
+     *
+     * <p><b>不接受 category 槽位做子域粗筛</b>：实测唯一那张打印机工单的 {@code category_id}
+     * 是 {@code C_HW_PC} 而非 {@code C_HW_PR}（分类由提交人手选），按分类过滤会让它
+     * 在数据库层就被滤掉、根本活不到 Python 侧。子域限定改用词表在 Python 内存里完成。
+     */
+    public List<TicketScanVO> analyticsScan(UserContext.CurrentUser viewer, String createdAfter,
+                                            String createdBefore, int limit) {
+        if (viewer == null || !ANALYTICS_ROLES.contains(viewer.getRole())) {
+            throw new BizException(ErrorCode.FORBIDDEN, "跨工单统计分析仅限工程师");
+        }
+        QueryWrapper<Ticket> qw = new QueryWrapper<>();
+        LocalDateTime after = parseSlotDate(createdAfter, true);
+        LocalDateTime before = parseSlotDate(createdBefore, false);
+        if (after != null) qw.ge("created_at", after);
+        if (before != null) qw.le("created_at", before);
+        qw.orderByAsc("created_at").orderByAsc("ticket_id");
+
+        int size = Math.max(1, Math.min(ANALYTICS_MAX_ROWS,
+                limit <= 0 ? ANALYTICS_MAX_ROWS : limit));
+        // searchCount=false：分析链路只要明细，不需要总数 —— 省掉的是一次全表 COUNT。
+        List<Ticket> rows = ticketMapper.selectPage(new Page<>(1, size, false), qw).getRecords();
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        Map<String, String> solutions = loadSolutions(
+                rows.stream().map(Ticket::getTicketId).toList());
+        return rows.stream().map(t -> new TicketScanVO(
+                t.getTicketId(), t.getCategoryId(), t.getTitle(), t.getDescription(),
+                t.getCreatedAt(), t.getFirstResponseAt(), t.getSolvedAt(), t.getCompletedAt(),
+                solutions.getOrDefault(t.getTicketId(), ""))).toList();
+    }
+
+    /** 批量取处理方案。整批一次查询而不是逐单查 —— 一次要扫几百上千行，N+1 会把
+     *  取数耗时从毫秒级推到秒级。 */
+    private Map<String, String> loadSolutions(List<String> ticketIds) {
+        try {
+            Map<String, String> out = new java.util.HashMap<>();
+            for (Map<String, Object> row : ticketResolutionMapper.selectSolutions(ticketIds)) {
+                Object id = row.get("ticketId");
+                Object solution = row.get("solution");
+                if (id != null && solution != null) {
+                    out.put(String.valueOf(id), String.valueOf(solution));
+                }
+            }
+            return out;
+        } catch (RuntimeException e) {
+            // 处理方案是根因维度的**可选**来源：读不到只影响根因能否归纳，不该让整次
+            // 分析失败。如实记日志 —— Python 侧会据「根因维度无条目」声明降级，而不是
+            // 静默当成"没有根因"。
+            log.warn("[分析投影] 处理方案读取失败，根因维度将不可归纳: {}", e.toString());
+            return Map.of();
+        }
+    }
+
+    /** 时间槽位解析：格式不合法一律**弃用该槽位**（而非报错），与 list() 的口径一致。 */
+    private LocalDateTime parseSlotDate(String raw, boolean startOfDay) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            java.time.LocalDate day = java.time.LocalDate.parse(raw.trim());
+            return startOfDay ? day.atStartOfDay(java.time.ZoneOffset.UTC).toLocalDateTime()
+                              : day.atTime(23, 59, 59);
+        } catch (java.time.format.DateTimeParseException invalidSlot) {
+            log.warn("[分析投影] 时间槽位非法，弃用: {}", raw);
+            return null;
+        }
     }
 
     // ---------------- 工单详情 ----------------
@@ -905,20 +998,20 @@ public class TicketService {
 
     /**
      * 创建后后处理（事务提交后异步）：SLA 起算（§11.2）+ 自动路由发起（F-06）。
-     * 自动路由只产出<b>待确认派单草案</b>，工单保持 PENDING_ASSIGNMENT，由 confirmDispatch 在
-     * 审批人确认后置 ASSIGNED 并通知工程师 —— 见 DispatchDraftService（HITL 写操作门禁）。
-     * 路由失败：RoutingService 已落异常队列，工单保持 PENDING_ASSIGNMENT 待管理员处理。
+     * 自动路由<b>直接落分派</b>，工单进入 ASSIGNED 等待工程师接单（2026-10-27 起不再
+     * 走派单草案审批，理由见 {@link RoutingService#route}）。
+     * 路由失败：RoutingService 已落异常队列，工单保持 NEW 待管理员处理。
      */
     private void afterCreate(String ticketId) {
         try {
             Ticket ticket = ticketMapper.selectById(ticketId);
-            if (ticket == null || ticket.getStatus() != TicketStatus.PENDING_ASSIGNMENT) {
+            if (ticket == null || ticket.getStatus() != TicketStatus.NEW) {
                 return;
             }
             // 1. SLA 起算（完成 SLA 创建起算，新单默认 MEDIUM）
 
 
-            // 2. 自动路由 —— 只挂草案，不落分派（需求归因文档:50 强制 HITL）
+            // 2. 自动路由 —— 直接落分派，工单进入 ASSIGNED 等待工程师接单
             routingService.route(ticket);
         } catch (Exception e) {
             log.error("[TICKET] 创建后处理失败: " + ticketId, e);
@@ -928,16 +1021,21 @@ public class TicketService {
     /**
      * 确认派单草案 —— 门禁的<b>唯一放行执行点</b>。
      *
+     * <p><b>当前正常流程不再触达本方法</b>：2026-10-27 起 {@link RoutingService#route}
+     * 直接落分派，不再产出草案（见该方法 javadoc）。本方法与配套的
+     * {@code DispatchDraftController} 保留，供"机制尚在但未接线"的状态说明；
+     * 除非有人手工往 {@code dispatch_draft} 插行，否则不会被执行。
+     *
      * <p>审批人对草案 approve 后（DispatchDraftService.decide 判定通过）由
      * DispatchDraftController 调用本方法，真正落分派：
-     * 写 assignment、PENDING_ASSIGNMENT → ASSIGNED、记流转日志、通知工程师。
+     * 写 assignment、NEW → ASSIGNED、记流转日志、通知工程师。
      * 事务由调用方（DispatchDraftService.decide）持有，本方法不再自开事务。
      *
      * <p>这里重新校验工单当前状态而不是信任调用方：草案可能在挂起期间因用户撤回、
-     * 重复建单合并等原因离开 PENDING_ASSIGNMENT；此时必须拒绝放行并抛出，不允许把
+     * 重复建单合并等原因离开 NEW；此时必须拒绝放行并抛出，不允许把
      * ASSIGNED 写到一个已终态的工单上。
      *
-     * @throws BizException 工单不存在或已不是 PENDING_ASSIGNMENT（草案失效，需驳回后重路由）
+     * @throws BizException 工单不存在或已不是 NEW（草案失效，需驳回后重路由）
      */
     public void confirmDispatch(String draftId) {
         DispatchDraft draft = dispatchDraftService.get(draftId);
@@ -950,12 +1048,12 @@ public class TicketService {
         if (ticket == null) {
             throw new BizException(ErrorCode.TICKET_NOT_FOUND, "工单不存在");
         }
-        if (ticket.getStatus() != TicketStatus.PENDING_ASSIGNMENT) {
+        if (ticket.getStatus() != TicketStatus.NEW) {
             throw new BizException(ErrorCode.ILLEGAL_TRANSITION,
                                 "工单当前状态为 " + ticket.getStatus() + "，该派单草案已失效");
         }
         routingService.assign(ticket, draft.getEngineerId(), "首次分派");
-        insertFlowLog(ticketId, TicketStatus.PENDING_ASSIGNMENT.getValue(), TicketStatus.ASSIGNED.getValue(),
+        insertFlowLog(ticketId, TicketStatus.NEW.getValue(), TicketStatus.ASSIGNED.getValue(),
                 "TICKET_ASSIGN", "PLATFORM_ADMIN",
                 "审批人确认派单草案 " + draftId + "，分配工程师: " + draft.getEngineerId());
         notificationService.sendNotification(ticketId, "ASSIGNED", draft.getEngineerId());

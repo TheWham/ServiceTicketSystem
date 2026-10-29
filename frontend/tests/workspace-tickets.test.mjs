@@ -32,6 +32,7 @@ function component(name, api = {}, options = {}) {
     '@element-plus/icons-vue': {},
     '../api/index.js': { ticketApi: { list: async () => ({ data: { list: [], total: 0 } }), ...api }, categoryApi: { leaf: async () => ({ data: [] }) }, draftApi: { get: async () => ({ data: null }), delete: async () => {}, ...options.draftApi } },
     '../api/consultation.js': { consultationApi: options.consultationApi || {} },
+    '../utils/aiTicketDraft.js': { saveAiTicketDraft() {}, takeAiTicketDraft: () => null },
     '../stores/user.js': { useUserStore: () => user },
     '../utils/attachmentPhotos.js': { loadPhotoUrls: async () => [], revokePhotoUrls() {} },
     '../utils/ticketEditing.js': ticketEditing,

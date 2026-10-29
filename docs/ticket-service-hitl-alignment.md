@@ -4,6 +4,30 @@
 
 ---
 
+## ⚠️ 接线状态：本门禁自 2026-10-27 起**已不在生产路径上接线**
+
+`RoutingService.route()` 改为**直接落分派**（选人成功后写 `assignee` + `status=ASSIGNED`
++ 流转日志 + 通知工程师），**不再产出派单草案**。原因：那一步审批不做任何决策——人选本就由
+路由算好，平台管理员只是盖章——却成了「建单」到「工程师可见」之间的必经环节。
+
+**保留而非删除**：`dispatch_draft` 表、`DispatchDraftService`、`DispatchDraftController`、
+`TicketService.confirmDispatch`、15 个 HITL 用例全部保留，只是不再被自动流程调用。
+删它要连带动 DB 迁移与前端管理员页，代价大于收益。
+
+**连带变化**（本文档下方描述的是门禁本身的机制，仍然成立，只是不再被触发）：
+
+| | 改造前 | 改造后 |
+|---|---|---|
+| 未接单兜底 | 草案超时 `scanExpired()` → 管理员处理 | `RoutingService.scanResponseTimeout()` → 转派或入异常队列 |
+| 响应 SLA 起算 | 管理员放行时（10 工作分钟） | **建单时**（`assign()` 内写 `response_deadline`） |
+| 幂等防重 | 草案唯一键 `uk_dispatch_draft_idem` | `route()` 自身守卫：非 `NEW` 即跳过 |
+| 前端管理员页 | 「派单待确认」卡片 + 草案详情弹窗 | 已移除（永远为空，且卡上"工单仍停在新建"的说法已过时） |
+
+路由侧当前行为的测试见 `RoutingDirectAssignTest`；`HitlDispatchApprovalTest` 覆盖的是
+**保留但不再接线的机制**，其类注释已注明这一点。
+
+---
+
 ## 一、变更总览
 
 | 项目 | 数据 |

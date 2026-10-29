@@ -1,0 +1,8 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2
+httpx>=0.27
+PyYAML>=6
+# 复用同仓库的 rag_service.contract（Result 包络）与
+# rag_pipeline.observability.tracer（链路追踪，与 agent_service 同源），
+# 运行时需要把 services/python-retrieval 放进 sys.path（`python -m analytics_service` 已处理）。

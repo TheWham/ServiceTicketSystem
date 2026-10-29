@@ -295,7 +295,7 @@ class PolicyResolver:
                 continue
             key = article_id
             score = float(item.get("rerank_score") or 0.0)
-            content = md.get("parent_content") or item.get("content") or ""
+            content = item.get("parent_content") or md.get("parent_content") or item.get("content") or ""
             existing = by_card.get(key)
             if existing is None or score > existing["score"]:
                 by_card[key] = {

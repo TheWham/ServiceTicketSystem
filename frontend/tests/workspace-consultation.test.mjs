@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { parse, compileScript } from '@vue/compiler-sfc'
 import * as vue from 'vue'
-import * as navigation from '../src/utils/navigation.js'
 
 function component(path, api = {}) {
   const source = readFileSync(new URL(`../src/${path}.vue`, import.meta.url), 'utf8')
@@ -18,15 +17,10 @@ function component(path, api = {}) {
     '../api/index.js': { userApi: api, notificationApi: api, categoryApi: api },
     '../stores/user.js': { useUserStore: () => ({ setLogin() {} }) },
     '../api/consultation.js': { consultationApi: api, CONSULTATION_STATUS: {}, REFUSAL_REASON: {}, TERMINAL_STATUS: ['RESOLVED', 'CLOSED', 'CONVERTED_TO_TICKET'] },
-    '../components/OrbitalCore.vue': {},
-    '../utils/navigation.js': navigation
+    '../utils/aiTicketDraft.js': { saveAiTicketDraft() {}, takeAiTicketDraft: () => null },
   }
-  const code = compiled.content
-    .replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g,
-      (_, names, name) => `const {${names}} = modules[${JSON.stringify(name)}]`)
-    .replace(/import\s+(\w+)\s+from\s*['"]([^'"]+)['"]/g,
-      (_, name, path) => `const ${name} = modules[${JSON.stringify(path)}]`)
-    .replace('export default', 'return')
+  const code = compiled.content.replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g,
+    (_, names, name) => `const {${names}} = modules[${JSON.stringify(name)}]`).replace('export default', 'return')
   const state = new Function('modules', 'setInterval', 'clearInterval', code)(modules, () => 1, () => {}).setup({}, { expose() {}, emit() {} })
   return { state, routes, notices }
 }

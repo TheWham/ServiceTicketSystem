@@ -23,6 +23,23 @@ public final class KeywordRequestClassifier implements RequestClassifier {
     private static final List<String> CREATE_TOOL = List.of("报修", "提单", "建单", "提交工单",
             "提个单", "提张单", "建个单", "开个单", "报个修", "报修单");
     private static final List<String> QUERY_TOOL = List.of("工单");
+    // 跨工单分析的兜底关键词。强信号单独即可定性；弱信号必须叠加「时间范围」或
+    // 「集合范围」才成立 —— 「帮我总结一下这个报错」里有"总结"但不是分析题，
+    // 靠叠加条件把它排除掉。这套阈值与 Python 侧 analytics_service.classifier
+    // 的 rule_route 是同构的，两边都要维护，改动时记得对齐。
+    private static final List<String> ANALYTICS_STRONG = List.of("共性根因", "共性问题", "采购建议",
+            "巡检建议", "全面总结", "综合分析", "占比", "分布情况", "趋势分析", "规律", "盘点");
+    private static final List<String> ANALYTICS_WEAK = List.of("总结", "归纳", "汇总", "统计", "分布",
+            "趋势", "根因", "分析", "建议", "展望");
+    private static final List<String> ANALYTICS_WINDOW = List.of("本季度", "这个季度", "这季度", "上季度",
+            "上一季度", "本月", "这个月", "上个月", "今年", "当季");
+    private static final List<String> ANALYTICS_SCOPE = List.of("全部", "所有", "整体", "跨", "数十",
+            "各大类", "各类", "哪些类型");
+    // 相对时间范围（"近 90 天""最近 3 个月""Q2""2026 年"）与季度词表合起来才算覆盖完整 ——
+    // 只列固定词会漏掉「分析近 90 天的趋势」这类说法（单测实测踩到过）。
+    private static final java.util.regex.Pattern ANALYTICS_WINDOW_RE =
+            java.util.regex.Pattern.compile(
+                    "(?:近|最近|过去|前)\\s*\\d+\\s*(?:天|日|周|个?星期|个?月)|\\bq[1-4]\\b|20\\d{2}\\s*年");
     @Override public RequestVerdict classify(RagQuery query, RagCallContext context) {
         context.timeoutMillis(Long.MAX_VALUE);
         String question = query.question().toLowerCase(Locale.ROOT);
@@ -35,6 +52,11 @@ public final class KeywordRequestClassifier implements RequestClassifier {
         if (OFF_TOPIC.stream().anyMatch(question::contains))
             return RequestVerdict.of(OfficeDomain.OFF_TOPIC, RequestVerdict.NO_TOOL);
         String tool = toolIntent(question);
+        // 分析型请求优先于工具位：它走确定性聚合链路，不是 function call。
+        // 也刻意不走下面的 technicalSubject/symptomOrHelp 判据 —— 「统计本季度工单分布」
+        // 既没有故障词也不是"求助排查"，那条判据会把它落到 UNCERTAIN（要求澄清），
+        // 而它其实是本域内一个明确的、可执行的请求。
+        if (analyticsIntent(question)) return RequestVerdict.analyticsRequest();
         boolean technicalSubject = OFFICE.stream().anyMatch(question::contains);
         boolean symptomOrHelp = contains(question, List.of("故障", "打不开", "不行", "不能", "不上", "听不到",
                 "看不到", "没声音", "黑屏", "过期", "错误", "报错", "失败", "卡住", "怎么设置", "如何设置",
@@ -47,6 +69,14 @@ public final class KeywordRequestClassifier implements RequestClassifier {
         if (CREATE_TOOL.stream().anyMatch(question::contains)) return "prepare_ticket";
         if (QUERY_TOOL.stream().anyMatch(question::contains)) return "query_my_tickets";
         return RequestVerdict.NO_TOOL;
+    }
+    /** 分析意图兜底：强信号直接命中；弱信号需叠加时间或集合范围。 */
+    private static boolean analyticsIntent(String question) {
+        if (ANALYTICS_STRONG.stream().anyMatch(question::contains)) return true;
+        if (ANALYTICS_WEAK.stream().noneMatch(question::contains)) return false;
+        return ANALYTICS_WINDOW.stream().anyMatch(question::contains)
+                || ANALYTICS_SCOPE.stream().anyMatch(question::contains)
+                || ANALYTICS_WINDOW_RE.matcher(question).find();
     }
     private static boolean contains(String question, List<String> terms) {
         return terms.stream().anyMatch(question::contains);
