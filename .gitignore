@@ -55,3 +55,17 @@ services/python-retrieval/AI客服配置交接包/
 .tmp_*.json
 codex-clipboard-*.png
 skills_backup_*.txt
+
+# 会话产物与大文件(不入库)
+.tmp_cls/
+.jars/
+.DS_Store
+/artifacts/
+fc.json
+rag_test.json
+
+# 课程讲义资料(本地留档,不入库)
+day17/
+day18/
+day19/
+day20/

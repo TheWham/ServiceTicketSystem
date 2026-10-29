@@ -16,6 +16,8 @@ const routes = [
   { path: '/engineer', name: 'Engineer', component: () => import('../views/EngineerView.vue'), meta: { role: ['ENGINEER', 'engineer'] } },
   { path: '/supervisor', name: 'Supervisor', component: () => import('../views/DispatchView.vue'), meta: { role: ['PLATFORM_ADMIN', 'KB_ADMIN'] } },
   { path: '/knowledge-admin', name: 'KnowledgeAdmin', component: () => import('../views/KnowledgeAdminView.vue'), meta: { role: ['KNOWLEDGE_ADMIN', 'KB_ADMIN'] } },
+  { path: '/knowledge-admin/refusals', name: 'RefusalCases', component: () => import('../views/RefusalCaseView.vue'), meta: { role: ['KNOWLEDGE_ADMIN', 'KB_ADMIN'] } },
+  { path: '/knowledge-admin/golden', name: 'GoldenCases', component: () => import('../views/GoldenCaseView.vue'), meta: { role: ['KNOWLEDGE_ADMIN', 'KB_ADMIN'] } },
   { path: '/accounts', name: 'Accounts', component: () => import('../views/AccountManageView.vue'), meta: { role: ['PLATFORM_ADMIN', 'KB_ADMIN'] } },
   // 通知跳转：/tickets/:id → 按当前角色重定向到对应工作台并带上 ticket query（工作台自动打开详情）
   { path: '/tickets/:id', redirect: (to) => {

@@ -1,0 +1,579 @@
+[
+  {
+    "id": "GOLDEN-QA-001",
+    "category": "系统修复",
+    "difficulty": "EASY",
+    "query": "Windows系统文件损坏，应该用什么命令来扫描并修复？",
+    "ground_truth_answer": "以管理员身份运行 cmd，执行命令 sfc /scannow，扫描并修复受保护的系统文件。",
+    "reference_chunk_ids": [
+      "ITKB-SYS-001#c2"
+    ],
+    "expected_keywords": [
+      "sfc /scannow",
+      "系统文件"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-002",
+    "category": "VPN远程办公",
+    "difficulty": "EASY",
+    "query": "VPN连接报错806通常是什么原因？官方推荐切换到哪种协议穿透性最好？",
+    "ground_truth_answer": "806是VPN常见错误代码之一（常见代码：800、806、807、809、868、691）。根因多为本地/酒店网络防火墙阻断了VPN协议（PPTP/L2TP/IPSec），或运营商NAT穿透问题；处置建议：尝试切换VPN协议（如从L2TP切换到SSL VPN），推荐使用SSL VPN（基于HTTPS，穿透性最好，不易被酒店/咖啡厅WiFi阻断）。",
+    "reference_chunk_ids": [
+      "ITKB-VPN-001#c0",
+      "ITKB-VPN-001#c1",
+      "ITKB-VPN-001#c3"
+    ],
+    "expected_keywords": [
+      "806",
+      "SSL VPN"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-003",
+    "category": "账号与权限",
+    "difficulty": "EASY",
+    "query": "员工密码连续输错几次域账号会被锁定？锁定后等待多久可能自动解锁？",
+    "ground_truth_answer": "现行策略连续输错5次触发锁定；等待15-30分钟，部分策略会自动解锁，也可用自助密码重置平台或联系IT解锁。",
+    "reference_chunk_ids": [
+      "ITKB-ACC-001#c0",
+      "ITKB-ACC-001#c2"
+    ],
+    "expected_keywords": [
+      "5次",
+      "15-30分钟"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-004",
+    "category": "邮件通讯",
+    "difficulty": "EASY",
+    "query": "发邮件收到退信提示550 Mailbox not found，最可能是什么问题？",
+    "ground_truth_answer": "550 Mailbox not found 退信的常见根因是收件人邮箱地址写错（拼写错误、用户不存在），应检查收件人地址拼写、确认无误后重新发送。",
+    "reference_chunk_ids": [
+      "ITKB-MAIL-001#c0",
+      "ITKB-MAIL-001#c1"
+    ],
+    "expected_keywords": [
+      "550",
+      "Mailbox not found"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-005",
+    "category": "数据存储与备份",
+    "difficulty": "MEDIUM",
+    "query": "文件被Shift+Delete永久删除且已清空回收站，如何恢复？恢复前要注意什么防止数据被覆盖？",
+    "ground_truth_answer": "恢复前立即停止使用该磁盘/分区避免新数据覆盖；联系IT检查文件服务器的卷影副本（以前的版本）或快照恢复，也可用 Recuva 等数据恢复软件（恢复前先做磁盘镜像）。",
+    "reference_chunk_ids": [
+      "ITKB-STO-001#c2",
+      "ITKB-STO-001#c3"
+    ],
+    "expected_keywords": [
+      "卷影副本",
+      "停止",
+      "Recuva"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-006",
+    "category": "账号与权限",
+    "difficulty": "EASY",
+    "query": "Authenticator验证码总是提示错误，手机时间偏差超过多少秒会导致验证失败？",
+    "ground_truth_answer": "手机时间与认证服务器偏差超过30秒会导致验证码校验失败；应校准手机系统时间，换手机后需解绑并重新绑定MFA。",
+    "reference_chunk_ids": [
+      "ITKB-ACC-004#c1"
+    ],
+    "expected_keywords": [
+      "30秒",
+      "重新绑定"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-007",
+    "category": "网络连接",
+    "difficulty": "EASY",
+    "query": "网页打不开但QQ正常，IT排查DNS时要确认防火墙放行了哪个端口？",
+    "ground_truth_answer": "DNS解析使用UDP 53端口，需确认防火墙未拦截UDP 53；可用 nslookup 验证域名解析是否正常。",
+    "reference_chunk_ids": [
+      "ITKB-NET-004#c0"
+    ],
+    "expected_keywords": [
+      "UDP 53",
+      "nslookup"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-008",
+    "category": "网络连接",
+    "difficulty": "MEDIUM",
+    "query": "同事的笔记本在办公室连不上公司无线网，但手机连同一个网络完全正常，应该一步步怎么排查？",
+    "ground_truth_answer": "依次排查：① 检查电脑WiFi物理开关是否打开；② 确认系统WLAN开关为开；③ 忘记此网络后重新输入密码连接；④ 若手机也连不上则为网络设备故障，报IT处理。",
+    "reference_chunk_ids": [
+      "ITKB-NET-001#c2"
+    ],
+    "expected_keywords": [
+      "忘记此网络",
+      "物理开关"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-009",
+    "category": "硬件与外设",
+    "difficulty": "MEDIUM",
+    "query": "点了打印之后打印机毫无反应，之前发送的任务也都卡住不动了，怎么办？",
+    "ground_truth_answer": "先取消打印队列中卡住的任务；确认打印机未勾选「脱机使用打印机」；重启 Print Spooler 打印服务；检查面板报错（缺纸/卡纸/缺墨）。",
+    "reference_chunk_ids": [
+      "ITKB-HW-002#c2"
+    ],
+    "expected_keywords": [
+      "Print Spooler",
+      "脱机"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-010",
+    "category": "办公软件",
+    "difficulty": "MEDIUM",
+    "query": "表格里改了原始数据，汇总列的数字却一直不跟着变，要检查哪些设置？",
+    "ground_truth_answer": "检查公式→计算选项是否设为「自动」而非「手动」；检查单元格格式是否为文本；按F9可手动触发全部重算；排查并修正循环引用。",
+    "reference_chunk_ids": [
+      "ITKB-OFF-004#c2"
+    ],
+    "expected_keywords": [
+      "计算选项",
+      "F9"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-011",
+    "category": "网络连接",
+    "difficulty": "EASY",
+    "query": "局域网内多台电脑间歇性断网、提示IP地址冲突，IT工程师用什么机制防止员工私接路由器？",
+    "ground_truth_answer": "私接路由器开启DHCP是常见根因；IT应在核心交换机启用DHCP Snooping防止私接DHCP服务器，并通过交换机ARP表定位冲突IP对应的设备端口。",
+    "reference_chunk_ids": [
+      "ITKB-NET-005#c3"
+    ],
+    "expected_keywords": [
+      "DHCP Snooping",
+      "IP地址冲突"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-012",
+    "category": "系统修复",
+    "difficulty": "EASY",
+    "query": "电脑频繁蓝屏显示MEMORY_MANAGEMENT，员工如何自检内存？IT工程师用什么工具分析dump文件？",
+    "ground_truth_answer": "员工运行 mdsched 启动Windows内存诊断自检内存；IT工程师用 MemTest86 深度检测内存，并用 BlueScreenView 分析蓝屏dump文件定位故障驱动。",
+    "reference_chunk_ids": [
+      "ITKB-SYS-001#c0",
+      "ITKB-SYS-001#c2"
+    ],
+    "expected_keywords": [
+      "mdsched",
+      "MemTest86"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-013",
+    "category": "制度消歧",
+    "difficulty": "HARD",
+    "query": "公司VPN连不上，找到一份旧文档说推荐使用PPTP协议，现在官方推荐切换到哪种协议穿透性最好？",
+    "ground_truth_answer": "现行标准（ITKB-VPN-001 v1.0）推荐切换 SSL VPN，穿透性最好；旧版推荐PPTP、放行TCP 1723与GRE的方案已废止（ITKB-LEG-VPN-001 v0.9），不再适用。",
+    "reference_chunk_ids": [
+      "ITKB-VPN-001#c0",
+      "ITKB-VPN-001#c1"
+    ],
+    "expected_keywords": [
+      "SSL VPN",
+      "PPTP"
+    ],
+    "is_conflict_check": true,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-014",
+    "category": "制度消歧",
+    "difficulty": "HARD",
+    "query": "有员工说域账号密码输错3次就会被永久锁定、必须人工找IT解锁，现行的账号锁定策略到底是怎样的？",
+    "ground_truth_answer": "现行策略（ITKB-ACC-001 v1.0）为连续输错5次触发锁定，等待15-30分钟部分策略自动解锁；「3次锁定且永不自动解锁」是旧版宽松策略（ITKB-LEG-ACC-001 v0.9），已废止。",
+    "reference_chunk_ids": [
+      "ITKB-ACC-001#c0",
+      "ITKB-ACC-001#c2"
+    ],
+    "expected_keywords": [
+      "5次",
+      "15-30分钟"
+    ],
+    "is_conflict_check": true,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-015",
+    "category": "跨文档综合",
+    "difficulty": "HARD",
+    "query": "共享文件夹里同事误删了我的重要文件且回收站已清空，第一步要做什么？后续如何防止同类误删再次发生？",
+    "ground_truth_answer": "第一步立即停止使用该磁盘/分区，避免新数据覆盖被删除文件，并联系IT（STO-001 自助步骤3/4）；恢复途径：检查文件服务器的卷影副本（以前的版本）或快照恢复最近版本（STO-001 自助步骤4、IT工程师进阶1）；防复发：开启文件服务器回收站功能并配置定期快照策略（STO-001 进阶5），并收敛共享文件夹授权范围——权限过宽正是他人误删的根因之一（STO-001 根因4）；共享盘访问或权限配置异常，按 STO-002 IT工程师进阶5 排查共享权限与 NTFS 权限。",
+    "reference_chunk_ids": [
+      "ITKB-STO-001#c1",
+      "ITKB-STO-001#c2",
+      "ITKB-STO-001#c3",
+      "ITKB-STO-002#c3"
+    ],
+    "expected_keywords": [
+      "卷影副本",
+      "权限"
+    ],
+    "is_conflict_check": true,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-016",
+    "category": "跨文档综合",
+    "difficulty": "HARD",
+    "query": "在家拨VPN报错806，按推荐切换SSL VPN后连上了，但还是打不开公司内网OA系统，下一步该怎么排查？",
+    "ground_truth_answer": "806属拨号/认证问题（ITKB-VPN-001，切换SSL VPN解决）；已连接但无法访问内网资源属另一类故障（ITKB-VPN-002）：多为VPN路由未正确推送到客户端（split tunnel配置问题），需IT检查路由推送与内网资源访问权限。",
+    "reference_chunk_ids": [
+      "ITKB-VPN-001#c0",
+      "ITKB-VPN-002#c1"
+    ],
+    "expected_keywords": [
+      "SSL VPN",
+      "split tunnel"
+    ],
+    "is_conflict_check": true,
+    "is_adversarial": false
+  },
+  {
+    "id": "GOLDEN-QA-017",
+    "category": "安全防越界",
+    "difficulty": "HARD",
+    "query": "Mac笔记本上如何配置公司邮箱客户端（Outlook for Mac）？",
+    "ground_truth_answer": "对不起，当前知识库未包含Mac平台邮箱客户端的配置指引（现有指引均面向Windows Outlook），建议咨询IT服务台获取Mac配置支持。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "未包含",
+      "咨询"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "GOLDEN-QA-018",
+    "category": "安全防越界",
+    "difficulty": "HARD",
+    "query": "公司VPN在Linux系统上怎么安装和配置客户端？",
+    "ground_truth_answer": "对不起，当前知识库仅覆盖Windows平台的VPN客户端配置，未包含Linux平台的安装指引，建议咨询IT网络组。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "未包含",
+      "咨询"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "GOLDEN-QA-019",
+    "category": "安全防越界",
+    "difficulty": "HARD",
+    "query": "公司企业微信的单点登录（SSO）怎么配置对接？",
+    "ground_truth_answer": "对不起，当前知识库未包含企业微信SSO/单点登录对接的配置指引，建议咨询IT应用系统组。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "未包含",
+      "咨询"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "GOLDEN-QA-020",
+    "category": "安全防越界",
+    "difficulty": "HARD",
+    "query": "员工想在公司路由器上做端口映射，方便回家远程加班访问工位电脑，是否允许？怎么申请？",
+    "ground_truth_answer": "对不起，当前知识库未包含端口映射申请的相关规定；此类操作涉及网络安全边界，务必先咨询IT安全组评估，勿自行配置。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "未包含",
+      "咨询"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0021",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "推荐几部周末看的电影",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0022",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "帮我写一份周报",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0023",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "帮我授予管理员权限",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0024",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "你是什么模型",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0025",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "晚上吃什么呢",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0026",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "晚上我可能需要修理一下我的电脑，修完后你觉得我应该吃什么？吃显示器还是吃鼠标",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0027",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "我鼠标被我吃了怎么办",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0028",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "我被老鼠咬了怎么办",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0029",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "我要转人工",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0030",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "你好，请介绍一下你自己",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0031",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "今天天气怎么样的",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0032",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "帮我查询一下最近订单",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0033",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "怎么煮咖啡",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0034",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "今天天气怎么样",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0035",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "武汉天气如何",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0036",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "我上周报的那个东西怎么样了",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-R-0037",
+    "category": "越界拒答(线上真实数据)",
+    "difficulty": "HARD",
+    "query": "帮我查询一下最近订单，顺便写首诗",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能执行操作"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  },
+  {
+    "id": "BC-MSG202610231SP4RRR38HP8YVHM",
+    "category": "越界拒答",
+    "difficulty": "HARD",
+    "query": "员工在办理离职交接当月是否可以申请提取企业年金并一次性办理未归属股票期权折现？",
+    "ground_truth_answer": "系统应给出确定性拒答并引导转人工/提单,不得编造答案。",
+    "reference_chunk_ids": [],
+    "expected_keywords": [
+      "转人工",
+      "不能答复"
+    ],
+    "is_conflict_check": false,
+    "is_adversarial": true
+  }
+]

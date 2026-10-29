@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>确定性工作流编排 · 链路追踪演示</title>
+<style>
+  /* 视觉对齐 design-system/it-service-desk/MASTER.md：深空蓝黑 + 电光青，暗色为主 */
+  :root {
+    --page: #060D19; --card: #0D1B2C; --card-2: #0A1524;
+    --text: #E8F4FF; --text-2: #A1B6CF; --line: #233C55;
+    --blue: #78ADFF; --cyan: #67E8F9; --purple: #A78BFA; --amber: #F2BF71;
+    --green: #78DCA0; --red: #FFA0A0;
+    --mono: ui-monospace, "Cascadia Mono", "Consolas", "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--page); color: var(--text);
+    font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    font-size: 14px; line-height: 1.6;
+    background-image:
+      linear-gradient(rgba(120,173,255,.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120,173,255,.045) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+  .en { font-family: var(--mono); letter-spacing: .04em; }
+  header { padding: 26px 28px 14px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0 0 6px; font-size: 22px; font-weight: 600; letter-spacing: .01em; }
+  h1 span { color: var(--cyan); }
+  .sub { color: var(--text-2); font-size: 13px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip {
+    font-family: var(--mono); font-size: 11.5px; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--text-2); background: var(--card-2);
+  }
+  .chip.on { color: var(--green); border-color: #2c5b44; }
+  .chip.warn { color: var(--amber); border-color: #5a4520; }
+  main { display: grid; grid-template-columns: 320px 1fr; gap: 20px; padding: 20px 28px 60px; align-items: start; }
+  @media (max-width: 1080px) { main { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px; margin-bottom: 16px;
+  }
+  .card h2 { margin: 0 0 12px; font-size: 15px; font-weight: 600; color: var(--text); }
+  .card h2 .en { color: var(--cyan); font-size: 11px; margin-left: 6px; font-weight: 400; }
+  button.case {
+    display: block; width: 100%; text-align: left; margin-bottom: 8px; cursor: pointer;
+    background: var(--card-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 9px 11px; font-size: 13px; font-family: inherit;
+    transition: border-color .15s, transform .15s;
+  }
+  button.case:hover { border-color: var(--blue); transform: translateX(2px); }
+  button.case:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  button.case small { display: block; color: var(--text-2); font-size: 11.5px; margin-top: 3px; }
+  textarea {
+    width: 100%; background: var(--card-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; font-family: inherit; font-size: 13px; resize: vertical;
+  }
+  textarea:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
+  .run-row { display: flex; gap: 8px; margin-top: 8px; }
+  .btn {
+    flex: 1; cursor: pointer; border: none; border-radius: 8px; padding: 9px 14px;
+    background: linear-gradient(180deg, #166BA5, #245DCE); color: #fff;
+    font-family: inherit; font-size: 13px; font-weight: 600;
+  }
+  .btn:disabled { opacity: .55; cursor: progress; }
+  .badge {
+    display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px;
+    font-family: var(--mono); border: 1px solid currentColor;
+  }
+  .b-ok { color: var(--green); } .b-block { color: var(--red); }
+  .b-warn { color: var(--amber); } .b-info { color: var(--blue); }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+  .metric { background: var(--card-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .metric .k { color: var(--text-2); font-size: 11.5px; }
+  .metric .v { font-family: var(--mono); font-size: 17px; margin-top: 3px; }
+  .metric .v small { font-size: 11px; color: var(--text-2); font-family: inherit; }
+  /* 甘特条 */
+  .gantt-row { display: grid; grid-template-columns: 210px 1fr 92px; gap: 10px; align-items: center; margin-bottom: 5px; }
+  .gantt-name { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gantt-track { position: relative; height: 16px; background: var(--card-2); border-radius: 4px; border: 1px solid var(--line); }
+  .gantt-bar { position: absolute; top: 2px; bottom: 2px; border-radius: 3px; min-width: 3px; }
+  .gantt-dur { font-family: var(--mono); font-size: 11px; color: var(--text-2); text-align: right; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--text-2); font-weight: 500; font-size: 11.5px; white-space: nowrap; }
+  td.num, th.num { text-align: right; font-family: var(--mono); white-space: nowrap; }
+  tr.span-row { cursor: pointer; }
+  tr.span-row:hover { background: rgba(120,173,255,.06); }
+  tr.detail-row td { background: var(--card-2); }
+  pre { margin: 0; font-family: var(--mono); font-size: 11.5px; color: var(--text-2);
+        white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow: auto; }
+  .answer { white-space: pre-wrap; background: var(--card-2); border: 1px solid var(--line);
+            border-radius: 8px; padding: 12px; font-size: 13.5px; }
+  .finding { display: flex; gap: 8px; padding: 5px 0; border-bottom: 1px dashed var(--line); font-size: 12.5px; }
+  .finding:last-child { border-bottom: none; }
+  .finding code { font-family: var(--mono); color: var(--cyan); font-size: 11px; min-width: 150px; }
+  .finding.blk code { color: var(--red); }
+  .empty { color: var(--text-2); font-size: 13px; text-align: center; padding: 40px 0; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; font-size: 11.5px; color: var(--text-2); }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; }
+  .hint { color: var(--text-2); font-size: 11.5px; margin-top: 8px; }
+  .cmp-bar { height: 10px; border-radius: 3px; background: linear-gradient(90deg, #166BA5, #67E8F9); min-width: 3px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>IT 服务台 · <span>确定性工作流编排</span> 与链路追踪</h1>
+  <div class="sub">代码锁死流程骨架，模型只填局部语义 —— 路由 · 并行扇出 · 确定性裁决 · 动作门禁</div>
+  <div class="chips" id="chips"></div>
+</header>
+
+<main>
+  <section>
+    <div class="card">
+      <h2>演示用例<span class="en">CASES</span></h2>
+      <div id="cases"></div>
+    </div>
+    <div class="card">
+      <h2>自由输入<span class="en">AD-HOC</span></h2>
+      <textarea id="q" rows="4" placeholder="例如：VPN 连不上，一直拨号超时，怎么排查？"></textarea>
+      <div class="run-row"><button class="btn" id="runBtn">运行工作流</button></div>
+      <div class="hint">与用例走完全相同的四个节点，只是没有预期结论可比对。</div>
+    </div>
+    <div class="card">
+      <h2>多次运行对比<span class="en">COMPARE</span></h2>
+      <div id="compare"><div class="empty">跑两个用例，这里会对比时延与成本差异。</div></div>
+    </div>
+  </section>
+
+  <section id="output">
+    <div class="card"><div class="empty">← 点一个用例开始</div></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const json = (v) => esc(JSON.stringify(v, null, 2));
+const fmtMs = (n) => (n >= 1000 ? (n / 1000).toFixed(2) + "s" : n.toFixed(2) + "ms");
+// 成本一律用小数，不用科学计数法 —— $1.26e-4 这种写法没人能在脑子里换算成钱。
+// 只有小到 1e-6 美元（约合 0.0007 分人民币）以下才退回科学计数法。
+const fmtCost = (n) => {
+  if (!n) return "$0.000000";
+  if (n < 1e-6) return "$" + n.toExponential(2);
+  return "$" + n.toFixed(6);
+};
+
+// 本页需要通过服务打开。直接双击 HTML 时协议是 file:，没有 origin，
+// 浏览器会拒绝解析 /api/... 这类相对地址（报 "Failed to parse URL"）。
+// 与其把这种晦涩错误抛给使用者，不如在这里就把话说清楚。
+const SERVED = location.protocol === "http:" || location.protocol === "https:";
+
+const KIND_COLOR = {
+  ROUTER: "#78ADFF", PARALLEL_TASK: "#67E8F9", EVALUATOR: "#A78BFA",
+  GENERATION: "#F2BF71", GATE: "#78DCA0", SPAN: "#7C93AD",
+};
+const KIND_LABEL = {
+  ROUTER: "意图路由", PARALLEL_TASK: "并行扇出", EVALUATOR: "确定性裁决",
+  GENERATION: "模型推理", GATE: "动作门禁", SPAN: "逻辑阶段",
+};
+const STATUS_BADGE = { SUCCESS: "b-ok", INTERCEPTED: "b-block", FAILED: "b-block", SKIPPED: "b-info" };
+const runs = [];
+let cases = [];
+
+// ------------------------------------------------------------------ 初始化
+async function boot() {
+  if (!SERVED) { showNotServed(); return; }
+
+  try {
+    const h = (await (await fetch("/api/health")).json()).data;
+    const c = [];
+    c.push(`<span class="chip ${h.modelConfigured ? "on" : "warn"}">模型 ${h.modelConfigured ? esc(h.model) : "未配置 · 走确定性兜底"}</span>`);
+    c.push(`<span class="chip">费率 输入 $${h.priceInputPerM}/M · 输出 $${h.priceOutputPerM}/M</span>`);
+    c.push(`<span class="chip">重复单窗口 ${h.duplicateWindowHours}h</span>`);
+    c.push(`<span class="chip">种子库 ${esc(h.dbPath.split(/[\\/]/).pop())}</span>`);
+    $("chips").innerHTML = c.join("");
+  } catch (e) { /* 健康检查失败不阻塞演示 */ }
+
+  let data;
+  try {
+    const resp = await fetch("/api/v1/workflow/cases");
+    const body = await resp.json();
+    if (body.code !== 0) throw new Error(body.msg);
+    data = body.data;
+  } catch (e) {
+    // 服务已关闭 / 端口不对：给出可执行的下一步，而不是一个空页面
+    $("output").innerHTML = `<div class="card"><div class="empty">
+      取不到用例清单：${esc(e.message || e)}<br>
+      请确认服务在运行：<code class="en">cd services/python-retrieval &amp;&amp; python -m workflow_demo</code>
+    </div></div>`;
+    return;
+  }
+
+  cases = data.cases;
+  $("cases").innerHTML = cases.map((c) =>
+    `<button class="case" data-id="${esc(c.caseId)}">${esc(c.label)}<small>${esc(c.question)}</small></button>`
+  ).join("");
+  document.querySelectorAll("button.case").forEach((b) =>
+    b.addEventListener("click", () => run({ caseId: b.dataset.id })));
+}
+
+function showNotServed() {
+  document.querySelectorAll("button.case").forEach((b) => (b.disabled = true));
+  $("runBtn").disabled = true;
+  $("q").placeholder = "请先启动服务";
+  $("output").innerHTML = `<div class="card">
+    <h2>请通过服务打开本页<span class="en">NOT SERVED</span></h2>
+    <div class="answer">当前是以 <code class="en">file://</code> 直接打开的 HTML 文件，
+    没有 origin，浏览器无法解析 <code class="en">/api/…</code> 这类相对地址
+    （表现为 <code class="en">Failed to parse URL</code>）。</div>
+    <div class="hint">在终端启动服务：</div>
+    <pre>cd services/python-retrieval
+python -m workflow_demo</pre>
+    <div class="hint">然后访问 <a href="http://127.0.0.1:8330" style="color:var(--cyan)">http://127.0.0.1:8330</a></div>
+  </div>`;
+}
+
+// ------------------------------------------------------------------ 运行
+$("runBtn").addEventListener("click", () => {
+  const q = $("q").value.trim();
+  if (!q) { $("q").focus(); return; }
+  run({ question: q });
+});
+
+async function run(payload) {
+  const btns = [ $("runBtn"), ...document.querySelectorAll("button.case") ];
+  btns.forEach((b) => (b.disabled = true));
+  $("output").innerHTML = `<div class="card"><div class="empty">执行中…</div></div>`;
+  try {
+    const res = await fetch("/api/v1/workflow/run", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json();
+    if (body.code !== 0) { $("output").innerHTML = `<div class="card"><div class="empty">${esc(body.msg)}</div></div>`; return; }
+    const r = body.data;
+    render(r);
+    remember(r, payload);
+    renderCompare();
+  } catch (e) {
+    $("output").innerHTML = `<div class="card"><div class="empty">
+      请求失败：${esc(e.message || e)}<br>
+      <span class="en">服务可能已停止，请确认 python -m workflow_demo 仍在运行</span>
+    </div></div>`;
+  } finally {
+    btns.forEach((b) => (b.disabled = false));
+  }
+}
+
+// ------------------------------------------------------------------ 渲染
+function render(r) {
+  const t = r.trace;
+  const meta = cases.find((c) => c.caseId === r.caseId);
+  const verdictClass = { ANSWERED: "b-ok", DRAFT_READY: "b-ok", NEEDS_INFO: "b-warn", BLOCKED: "b-block", REFUSED: "b-block" }[r.verdict] || "b-info";
+
+  $("output").innerHTML = `
+    <div class="card">
+      <h2>结论<span class="en">VERDICT</span></h2>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px">
+        <span class="badge ${verdictClass}">${esc(r.verdict)}</span>
+        <span class="badge b-info">intent = ${esc(r.intent)}</span>
+        <span class="badge b-info">replyType = ${esc(r.replyType)}</span>
+        ${r.refusalReason ? `<span class="badge b-block">${esc(r.refusalReason)}</span>` : ""}
+        ${r.expected ? `<span class="badge ${r.matched ? "b-ok" : "b-block"}">预期 ${esc(r.expected)} ${r.matched ? "✓ 一致" : "✗ 不符"}</span>` : ""}
+      </div>
+      <div class="sub" style="margin-bottom:10px">${esc(r.question)}</div>
+      <div class="answer">${esc(r.answerText)}</div>
+      ${r.ticketDraft ? `
+        <div class="hint">建单草稿（<b>未落库</b>，需员工确认后才真正建单）：</div>
+        <pre>${json(r.ticketDraft)}</pre>` : ""}
+      ${r.teamName ? `<div class="hint">承办：${esc(r.teamName)}（${esc(r.teamId)}） · 优先级 ${esc(r.priority)} · 完成 SLA ${esc(r.sla.completionTargetText || "-")} · 响应 SLA ${esc(r.sla.responseTargetText || "-")}</div>` : ""}
+    </div>
+
+    <div class="card">
+      <h2>链路追踪大盘<span class="en">TRACE / SPAN / GENERATION</span></h2>
+      <div class="metrics">
+        <div class="metric"><div class="k">端到端时延</div><div class="v">${fmtMs(t.totalLatencyMs)}</div></div>
+        <div class="metric"><div class="k">总 Token</div><div class="v">${t.totalTokens}<small> (${t.totalInputTokens}/${t.totalOutputTokens})</small></div></div>
+        <div class="metric"><div class="k">总成本</div><div class="v">${fmtCost(t.totalCostUsd)}<small> ${perThousand(t.totalCostUsd)}</small></div></div>
+        <div class="metric"><div class="k">节点数</div><div class="v">${t.spanCount}<small> / 模型调用 ${t.modelCallCount}</small></div></div>
+        <div class="metric"><div class="k">最慢节点</div><div class="v" style="font-size:13px">${t.slowestSpan ? esc(t.slowestSpan.spanName) : "-"}<small> ${t.slowestSpan ? fmtMs(t.slowestSpan.durationMs) : ""}</small></div></div>
+      </div>
+      ${costNote(t)}
+      <div style="margin-top:14px">${gantt(t)}</div>
+      <div class="legend">${Object.entries(KIND_LABEL).map(([k, v]) =>
+        `<span><i style="background:${KIND_COLOR[k]}"></i>${v} <span class="en">${k}</span></span>`).join("")}</div>
+      ${parallelNote(t)}
+    </div>
+
+    <div class="card">
+      <h2>节点明细<span class="en">SPANS</span></h2>
+      <table>
+        <thead><tr>
+          <th>节点</th><th>类型</th><th>状态</th>
+          <th class="num">耗时</th><th class="num">Token 入/出</th><th>Token 来源</th><th class="num">成本</th>
+        </tr></thead>
+        <tbody>${t.spans.map((s, i) => spanRow(s, i)).join("")}</tbody>
+      </table>
+      <div class="hint">点任意一行展开该节点的输入/输出。</div>
+    </div>
+
+    <div class="card">
+      <h2>规则依据<span class="en">FINDINGS · 全部由代码算出</span></h2>
+      ${r.findings.map((f) => `<div class="finding ${f.severity === "BLOCK" ? "blk" : ""}"><code>${esc(f.code)}</code><span>${esc(f.message)}</span></div>`).join("")}
+      ${r.errors.length ? `<div class="hint" style="color:var(--red)">降级记录：${esc(r.errors.join(" | "))}</div>` : ""}
+    </div>
+  `;
+
+  document.querySelectorAll("tr.span-row").forEach((tr) =>
+    tr.addEventListener("click", () => toggleDetail(tr, t.spans[+tr.dataset.i])));
+}
+
+// 成本的三种情况要分开说：零消耗、有估算、全部可对账。
+// 短路链路明明没调模型，还说「所有 Token 都来自 usage」是句废话。
+function costNote(t) {
+  if (t.modelCallCount === 0) {
+    return `<div class="hint" style="color:var(--cyan)">ⓘ 本条链路在 Node 1 短路返回，未调用模型 —— 零 Token、零成本。</div>`;
+  }
+  if (t.estimatedSpans) {
+    return `<div class="hint" style="color:var(--amber)">⚠ 有 ${t.estimatedSpans} 个节点的 Token 是本地估算（未接模型或网关未回传 usage），成本仅供量级参考，不是账单。</div>`;
+  }
+  return `<div class="hint" style="color:var(--green)">✓ ${t.modelCallCount} 次模型调用的 Token 均来自服务端回传的 usage，可对账（费率仍按配置值折算）。</div>`;
+}
+
+// 单次成本小到没有直觉时，给出「每千次多少钱」的参照系。
+function perThousand(cost) {
+  if (!cost) return "";
+  return `≈ 每千次 ${fmtCost(cost * 1000)}`;
+}
+
+function gantt(t) {
+  const total = Math.max(...t.spans.map((s) => s.startOffsetMs + s.durationMs), 0.001);
+  return t.spans.map((s) => {
+    const left = (s.startOffsetMs / total) * 100;
+    const width = Math.max((s.durationMs / total) * 100, 0.6);
+    const color = s.status === "INTERCEPTED" || s.status === "FAILED"
+      ? "linear-gradient(90deg,#8E3B3B,#B04A4A)" : KIND_COLOR[s.kind] || KIND_COLOR.SPAN;
+    return `<div class="gantt-row">
+      <div class="gantt-name" title="${esc(s.spanName)}">${esc(s.spanName)}</div>
+      <div class="gantt-track"><div class="gantt-bar" style="left:${left.toFixed(3)}%;width:${width.toFixed(3)}%;background:${color}" title="${esc(s.spanName)} · ${fmtMs(s.durationMs)}"></div></div>
+      <div class="gantt-dur">${fmtMs(s.durationMs)}</div>
+    </div>`;
+  }).join("");
+}
+
+function parallelNote(t) {
+  const reducer = t.spans.find((s) => s.detail && s.detail.serialEstimateMs !== undefined);
+  if (!reducer) return "";
+  const d = reducer.detail;
+  const gain = d.serialEstimateMs - d.parallelWallMs;
+  const verdict = gain > 0
+    ? `并行省下 ${gain.toFixed(2)}ms`
+    : `并行反而慢了 ${(-gain).toFixed(2)}ms —— 任务太短，线程池开销没赚回来`;
+  return `<div class="hint">并行扇出：串行等效 ${d.serialEstimateMs}ms → 并行墙钟 ${d.parallelWallMs}ms（${verdict}）。
+    本地 SQLite 只有毫秒级，换成真实 HTTP 数据源时收益才显现。</div>`;
+}
+
+function spanRow(s, i) {
+  const src = { reported: "b-ok", estimated: "b-warn", none: "b-info" }[s.tokensSource] || "b-info";
+  return `<tr class="span-row" data-i="${i}">
+    <td class="en">${esc(s.spanName)}</td>
+    <td style="color:${KIND_COLOR[s.kind] || "#7C93AD"}">${esc(KIND_LABEL[s.kind] || s.kind)}</td>
+    <td><span class="badge ${STATUS_BADGE[s.status] || "b-info"}">${esc(s.status)}</span></td>
+    <td class="num">${fmtMs(s.durationMs)}</td>
+    <td class="num">${s.tokensInput}/${s.tokensOutput}</td>
+    <td><span class="badge ${src}">${esc(s.tokensSource)}</span></td>
+    <td class="num">${fmtCost(s.costUsd)}</td>
+  </tr>`;
+}
+
+function toggleDetail(tr, s) {
+  const next = tr.nextElementSibling;
+  if (next && next.classList.contains("detail-row")) { next.remove(); return; }
+  const detail = {
+    input: s.input, output: s.output, error: s.error,
+    ...(s.detail && Object.keys(s.detail).length ? { 说明: s.detail } : {}),
+  };
+  const row = document.createElement("tr");
+  row.className = "detail-row";
+  row.innerHTML = `<td colspan="7"><pre>${json(detail)}</pre></td>`;
+  tr.after(row);
+}
+
+// ------------------------------------------------------------------ 对比
+function remember(r, payload) {
+  const label = cases.find((c) => c.caseId === r.caseId)?.label || (payload.question || "").slice(0, 14);
+  runs.unshift({
+    label, verdict: r.verdict, latency: r.trace.totalLatencyMs,
+    tokens: r.trace.totalTokens, cost: r.trace.totalCostUsd, spans: r.trace.spanCount,
+  });
+  if (runs.length > 8) runs.pop();
+}
+
+function renderCompare() {
+  if (runs.length < 2) { return; }
+  const maxL = Math.max(...runs.map((x) => x.latency), 0.001);
+  const maxC = Math.max(...runs.map((x) => x.cost), 1e-9);
+  $("compare").innerHTML = runs.map((x) => `
+    <div style="margin-bottom:9px">
+      <div class="sub" style="display:flex;justify-content:space-between;font-size:12px">
+        <span>${esc(x.label)}</span>
+        <span class="en">${x.spans} spans</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:3px">
+        <div class="cmp-bar" style="width:${((x.latency / maxL) * 100).toFixed(1)}%"></div>
+        <span class="en" style="font-size:11px;color:var(--text-2)">${fmtMs(x.latency)} · ${fmtCost(x.cost)}</span>
+      </div>
+    </div>`).join("");
+}
+
+boot();
+</script>
+</body>
+</html>

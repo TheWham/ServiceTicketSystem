@@ -36,8 +36,14 @@ public record RagResult(RagStatus status, AiReplyType replyType, String answerTe
                 null, null, List.copyOf(retrievedVersionIds), 0, errorClass, false, retryable, null);
     }
     public static RagResult refuse(AiRefusalReason reason, String model, List<String> versions) {
+        return refuse(reason, model, versions, ZERO_CONFIDENCE);
+    }
+    /** 检索不足类拒答透传真实最高命中分(检索类拒答的 topScore);分类拒答无评分语义,保持 ZERO。 */
+    public static RagResult refuse(AiRefusalReason reason, String model, List<String> versions,
+                                   BigDecimal confidence) {
         return new RagResult(RagStatus.SUCCESS, AiReplyType.REFUSE, null, List.of(),
-                ZERO_CONFIDENCE, reason, model, versions, 0, null, false, false, null);
+                confidence == null ? ZERO_CONFIDENCE : confidence.setScale(CONFIDENCE_SCALE,
+                        java.math.RoundingMode.HALF_UP), reason, model, versions, 0, null, false, false, null);
     }
     public RagResult withLatency(long latency) {
         return new RagResult(status, replyType, answerText, citations, confidence,
