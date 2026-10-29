@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 from rag_pipeline.chunking.corpus import load_corpus_with_deterministic_ids
 from rag_pipeline.chunking.fingerprint import compute_wiki_fingerprint
 from rag_pipeline.config import REPO_ROOT, build_gate, config_fingerprint, load_config
+from rag_pipeline.docstore import build_docstore
 from rag_pipeline.embedding import KspEmbeddingProvider
 from rag_pipeline.retrieval.hybrid import IndustrialHybridRetriever
 from rag_pipeline.retrieval.query_rewriter import QueryRewriter
@@ -72,6 +73,9 @@ class ServiceAssembly:
         # ---- 2) 向量库（manifest 指纹校验失败即 fail-fast，不做内存重建）----
         self.vector_db = self._load_vector_db()
 
+        # ---- 2.5) 文档存储（MySQL Docstore，管理父块正文）----
+        self.docstore = build_docstore(self.cfg)
+
         # ---- 3) 检索器（与 evaluation.py 同参，reranker_backend 显式传入）----
         self.retriever = IndustrialHybridRetriever(
             vector_db=self.vector_db,
@@ -79,6 +83,7 @@ class ServiceAssembly:
             reranker_model_name=self.cfg.reranker_model,
             default_exclude=rc.default_exclude,
             reranker_backend=self.cfg.reranker_backend,
+            docstore=self.docstore,
         )
         # 在线收紧限流预算：实例级覆盖（类属性/实例默认值均可安全遮蔽，离线评测行为不变）
         self.rerank_wait_budget = float(os.environ.get("RAG_RERANK_WAIT_BUDGET", "1.5"))
@@ -167,7 +172,8 @@ class ServiceAssembly:
 
         return build_response(res, wiki_mapping=self.mapping,
                               request_category_id=req.category_id,
-                              reject_threshold=self.cfg.retrieval.reject_threshold)
+                              reject_threshold=self.cfg.retrieval.reject_threshold,
+                              docstore=self.docstore)
 
     def _run_search(self, req: RetrievalRequest) -> Dict[str, Any]:
         rc = self.cfg.retrieval

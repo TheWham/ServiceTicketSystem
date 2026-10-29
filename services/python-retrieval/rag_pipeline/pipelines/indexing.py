@@ -8,6 +8,7 @@ from ..config import load_config, config_fingerprint, build_chunker, PipelineCon
 from ..embedding import KspEmbeddingProvider
 from ..chunking.structure_aware import NaiveFixedChunker, Document
 from ..chunking.parent_child import expand_to_parents
+from ..docstore import build_docstore
 from ..chunking.fingerprint import compute_wiki_fingerprint
 from ..store import VectorStoreManager
 from ..evaluation.suite import BENCHMARK_QUERIES
@@ -66,7 +67,13 @@ def run_indexing(
         naive_chunks.extend(chunks)
         print(f"    - 处理文件: {rf.name} -> 生成 {len(chunks)} 个朴素切片")
 
-    print(f"\n[3/5] 构建持久化 Chroma 向量数据库...")
+    print(f"\n[2.5/5] 同步父块正文至文档存储库 (Docstore)...")
+    docstore = build_docstore(cfg)
+    if parent_docs:
+        docstore.save_documents(parent_docs)
+        print(f"       -> 已成功同步 {len(parent_docs)} 篇父块至 Docstore ({docstore.__class__.__name__})")
+
+    print(f"\n[3/5] 构建持久化 Chroma 向量数据库 (子块轻量元数据)...")
     vsm = VectorStoreManager(base_persist_dir=str(out_path), embedding_provider=embed_provider)
 
     db_structured = vsm.build_store(
@@ -78,6 +85,7 @@ def run_indexing(
             "config_fingerprint": config_fingerprint(cfg),
             "chunker": {"name": cfg.chunking.strategy, "child_size": cfg.chunking.child_size},
             "embedding_engine": embed_provider.engine_type,
+            "docstore": cfg.docstore.type,
         }
     )
     db_naive = vsm.build_store(
@@ -102,7 +110,7 @@ def run_indexing(
         # 2. 父子切片检索 (Small-to-Big)：多召回候选子块，回溯去重后取前 3 张父卡
         fetch_k = 12 if use_parent_child else 3
         child_res = db_structured.similarity_search(query, k=fetch_k)
-        struct_res = expand_to_parents(child_res)[:3]
+        struct_res = expand_to_parents(child_res, docstore=docstore)[:3]
         struct_top = struct_res[0].page_content.replace("\n", " ")[:120] if struct_res else "无结果"
         struct_combined = " ".join([d.page_content for d in struct_res])
         struct_meta = struct_res[0].metadata if struct_res else {}

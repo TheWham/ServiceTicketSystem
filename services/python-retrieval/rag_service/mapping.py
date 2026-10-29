@@ -39,6 +39,7 @@ def build_response(
     wiki_mapping: Dict[str, Dict[str, Any]],
     request_category_id: Optional[str] = None,
     reject_threshold: Optional[float] = None,
+    docstore: Optional[Any] = None,
 ) -> RagRetrievalResponse:
     """把 hybrid_rerank_search 的返回装配为 RagRetrievalResponse。
 
@@ -63,7 +64,11 @@ def build_response(
         pid = md.get("parent_id") or md.get("wiki_id")
         entry = wiki_mapping.get(pid) or {} if pid else {}
 
-        content = md.get("parent_content") or it.get("content") or ""
+        content = it.get("parent_content") or md.get("parent_content")
+        if not content and docstore and pid:
+            content = docstore.get(pid)
+        if not content:
+            content = it.get("content") or ""
         version_id = entry.get("versionId") or md.get("wiki_version") or "unknown"
         article_id = entry.get("articleId") or pid or "unknown"
         title = _collapse(md.get("Header_1") or pid or "未命名知识片段") or "未命名知识片段"

@@ -24,6 +24,10 @@ store:
   persist_dir: artifacts/indexing/chroma_wiki_structured
   collection: wiki_structured_kb
 
+docstore:
+  type: mysql                   # 文档存储类型: mysql (标准企业级) | memory (测试/无外置DB)
+  table: rag_parent_docstore    # MySQL 父块存储表
+
 retrieval:
   top_k: 3                      # 最终返回条数
   rough_top_k: 15               # 粗排候选数（双路各取）

@@ -30,6 +30,8 @@ def create_app(assembly: ServiceAssembly = None) -> FastAPI:
         yield
 
     app = FastAPI(title="rag-service (python retrieval kernel)", version="0.1.0", lifespan=lifespan)
+    if assembly is not None:
+        app.state.assembly = assembly
 
     def _envelope(code: int, msg: str) -> dict:
         return ResultEnvelope.err(code, msg).model_dump(by_alias=True, exclude_none=True)

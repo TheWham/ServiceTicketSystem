@@ -19,6 +19,7 @@ except ImportError:
 from ..config import load_config, config_fingerprint, build_chunker, load_rerank_config, build_gate
 from ..embedding import KspEmbeddingProvider
 from ..chunking.parent_child import expand_to_parents
+from ..docstore import build_docstore
 from ..chunking.fingerprint import compute_wiki_fingerprint
 from ..retrieval.hybrid import IndustrialHybridRetriever
 from ..retrieval.query_rewriter import QueryRewriter
@@ -170,12 +171,14 @@ def run_evaluation():
             vector_db = SimpleVectorStore.from_documents(all_chunks, embed_provider)
 
     print(f"\n[2/4] 初始化装配 IndustrialHybridRetriever 混合检索与重排核心...")
+    docstore = build_docstore(cfg)
     retriever = IndustrialHybridRetriever(
         vector_db=vector_db,
         corpus_docs=all_chunks,
         reranker_model_name=reranker_model,
         default_exclude=cfg.retrieval.default_exclude,
-        reranker_backend=cfg.reranker_backend
+        reranker_backend=cfg.reranker_backend,
+        docstore=docstore,
     )
 
     suite_name = {"main": "主题集", "dev": "开发集", "test": "测试集（封存，定稿后只运行一次）"}[args.suite]
@@ -221,7 +224,7 @@ def run_evaluation():
         dense_rough = retriever.dense_search(query, top_k=fetch_k, metadata_filter=m_filter)
         dense_time = round((time.time() - t0) * 1000, 1)
         dense_raw = dense_rough[:rc.top_k]
-        dense_parents = (expand_to_parents([d for d, _, _ in dense_rough]) if expand_to_parents else [d for d, _, _ in dense_rough])[:rc.top_k]
+        dense_parents = (expand_to_parents([d for d, _, _ in dense_rough], docstore=docstore) if expand_to_parents else [d for d, _, _ in dense_rough])[:rc.top_k]
         dense_ids, dense_rank, dense_hits, dense_false = _track_metrics(dense_parents)
 
         # 轨 2: 纯 BM25 关键词检索
@@ -229,7 +232,7 @@ def run_evaluation():
         bm25_rough = retriever.bm25_search(query, top_k=fetch_k, metadata_filter=m_filter)
         bm25_time = round((time.time() - t0) * 1000, 1)
         bm25_raw = bm25_rough[:rc.top_k]
-        bm25_parents = (expand_to_parents([d for d, _, _ in bm25_rough]) if expand_to_parents else [d for d, _, _ in bm25_rough])[:rc.top_k]
+        bm25_parents = (expand_to_parents([d for d, _, _ in bm25_rough], docstore=docstore) if expand_to_parents else [d for d, _, _ in bm25_rough])[:rc.top_k]
         bm25_ids, bm25_rank, bm25_hits, bm25_false = _track_metrics(bm25_parents)
 
         # 轨 3: Dense + BM25 双路粗排 (Top-15) + RRF 融合 -> 回溯去重取 Top-3 父卡
@@ -238,7 +241,7 @@ def run_evaluation():
         fusion_time = round((time.time() - t0) * 1000, 1)
         fused_time = round(dense_time + bm25_time + fusion_time, 1)
         fused = fused_all[:rc.top_k]
-        fused_parents = (expand_to_parents([d for d, _ in fused_all]) if expand_to_parents else [d for d, _ in fused_all])[:rc.top_k]
+        fused_parents = (expand_to_parents([d for d, _ in fused_all], docstore=docstore) if expand_to_parents else [d for d, _ in fused_all])[:rc.top_k]
         fused_ids, fused_rank, fused_hits, fused_false = _track_metrics(fused_parents)
 
         # 轨 4: 顶级工业级全链路
@@ -262,7 +265,7 @@ def run_evaluation():
             verbose=args.verbose
         )
         full_docs = full_res["final_results"]
-        full_parents = (expand_to_parents(full_docs) if expand_to_parents else [Document(page_content=d["content"], metadata=d["metadata"]) for d in full_docs])[:rc.top_k]
+        full_parents = (expand_to_parents(full_docs, docstore=docstore) if expand_to_parents else [Document(page_content=d["content"], metadata=d["metadata"]) for d in full_docs])[:rc.top_k]
         full_ids, full_rank, full_hits, full_false = _track_metrics(full_parents)
         top1_score = full_docs[0]["fused_score"] if full_docs else 0.0
         top1_rerank = full_docs[0]["rerank_score"] if full_docs else None
