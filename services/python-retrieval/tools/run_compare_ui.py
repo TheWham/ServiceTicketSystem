@@ -177,6 +177,86 @@ def get_neo4j_status():
         )
 
 
+@app.get("/api/neo4j/graph_data")
+def get_neo4j_graph_data(scene: str = "vpn"):
+    """从 Neo4j 动态读取特定场景的子图拓扑数据用于前端可视化。"""
+    try:
+        kg, _, _, _ = get_components()
+        if scene == "vpn":
+            cypher = """
+            MATCH path = (e:Entity {name: 'VPN错误691'})-[r*1..2]-(m)
+            UNWIND relationships(path) AS rel
+            RETURN DISTINCT startNode(rel).name AS source, type(rel) AS rel, endNode(rel).name AS target,
+                   coalesce(startNode(rel).is_deprecated, false) AS src_dep,
+                   coalesce(endNode(rel).is_deprecated, false) AS tgt_dep,
+                   coalesce(rel.quote, '') AS quote
+            LIMIT 50
+            """
+        elif scene == "replaces":
+            cypher = """
+            MATCH (e:Entity)-[r:REPLACES]->(m:Entity)
+            RETURN e.name AS source, type(r) AS rel, m.name AS target,
+                   coalesce(e.is_deprecated, false) AS src_dep,
+                   coalesce(m.is_deprecated, false) AS tgt_dep,
+                   coalesce(r.quote, '') AS quote
+            LIMIT 50
+            """
+        elif scene == "cmdb":
+            cypher = """
+            MATCH path = (e:Entity {name: '财务报销系统'})-[*1..2]-(m)
+            UNWIND relationships(path) AS rel
+            RETURN DISTINCT startNode(rel).name AS source, type(rel) AS rel, endNode(rel).name AS target,
+                   coalesce(startNode(rel).is_deprecated, false) AS src_dep,
+                   coalesce(endNode(rel).is_deprecated, false) AS tgt_dep,
+                   coalesce(rel.quote, '') AS quote
+            LIMIT 50
+            """
+        else:
+            cypher = """
+            MATCH (n:Entity)-[r]->(m:Entity)
+            RETURN n.name AS source, type(r) AS rel, m.name AS target,
+                   coalesce(n.is_deprecated, false) AS src_dep,
+                   coalesce(m.is_deprecated, false) AS tgt_dep,
+                   coalesce(r.quote, '') AS quote
+            LIMIT 60
+            """
+
+        nodes_map = {}
+        edges = []
+
+        with kg.driver.session() as s:
+            records = list(s.run(cypher))
+            for rec in records:
+                src = rec["source"]
+                tgt = rec["target"]
+                rel = rec["rel"]
+                src_dep = rec["src_dep"]
+                tgt_dep = rec["tgt_dep"]
+                quote = rec["quote"]
+
+                if src not in nodes_map:
+                    nodes_map[src] = {"id": src, "label": src, "is_deprecated": src_dep}
+                if tgt not in nodes_map:
+                    nodes_map[tgt] = {"id": tgt, "label": tgt, "is_deprecated": tgt_dep}
+
+                edges.append({
+                    "from": src,
+                    "to": tgt,
+                    "label": rel,
+                    "title": quote or rel,
+                })
+
+        return JSONResponse(content={
+            "code": 0,
+            "data": {
+                "nodes": list(nodes_map.values()),
+                "edges": edges,
+            }
+        })
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"code": 1, "error": str(e)})
+
+
 @app.get("/api/presets")
 def get_presets():
     """获取预置多跳评测用例集。"""

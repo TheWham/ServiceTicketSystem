@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GraphRAG vs 纯向量检索 工业级对照评测工作台</title>
   <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
   <style>
     /* 滚动条美化 */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -61,23 +62,62 @@
       </div>
     </header>
 
-    <!-- Neo4j 实时可视化探索直通卡片 -->
-    <div class="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/30 rounded-2xl p-5 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
-      <div class="space-y-1">
-        <div class="flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span class="text-sm font-bold text-white tracking-wide">Neo4j 生产级图数据库已就绪 (Docker 7474 / 7687)</span>
-          <span class="px-2 py-0.5 text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded">已持久化 604 关系</span>
+    <!-- Neo4j 实时可视化探索直通与交互画布 -->
+    <div class="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/30 rounded-2xl p-5 shadow-lg space-y-4">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="space-y-1">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-sm font-bold text-white tracking-wide">Neo4j 生产级图数据库交互画布 (Docker 7474 / 7687)</span>
+            <span class="px-2 py-0.5 text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded" id="neo4jRelPill">已持久化 604 关系</span>
+          </div>
+          <p class="text-xs text-slate-300">
+            下方已直接连通 Neo4j 渲染实时拓扑图：节点自带中文标签、连线带有关系箭头与佐证，支持自由拖拽与滚轮缩放。也可点击右侧直通官方 Neo4j Browser 控制台。
+          </p>
         </div>
-        <p class="text-xs text-slate-300">
-          基于 Docker 启动，已持久化 458 核心节点与 604 条原文字符级拓扑边，支持原生 Cypher 拓扑遍历与废弃版本剪枝。点击右侧按钮直接在浏览器中打开官方 Neo4j Browser 可视化控制台！
-        </p>
+        <div class="flex items-center gap-2 shrink-0">
+          <a href="http://localhost:7474" target="_blank" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-md hover:shadow-indigo-500/20 transition-all flex items-center gap-1.5 border border-indigo-400/40 cursor-pointer">
+            <span>🚀 直达 Neo4j Browser</span>
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+          </a>
+        </div>
       </div>
-      <div class="flex items-center gap-3 shrink-0">
-        <a href="http://localhost:7474" target="_blank" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-md hover:shadow-indigo-500/20 transition-all flex items-center gap-1.5 border border-indigo-400/40 cursor-pointer">
-          <span>🚀 打开 Neo4j 可视化 Browser</span>
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-        </a>
+
+      <!-- 快捷图谱切换选项卡 -->
+      <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
+        <div class="flex flex-wrap items-center gap-2" id="graphSceneBtns">
+          <button onclick="loadGraphScene('vpn')" id="sceneBtn_vpn" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-sm transition-all cursor-pointer">
+            🔍 VPN 691 故障因果网
+          </button>
+          <button onclick="loadGraphScene('cmdb')" id="sceneBtn_cmdb" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all cursor-pointer">
+            🏢 财务系统 CMDB 依赖网
+          </button>
+          <button onclick="loadGraphScene('replaces')" id="sceneBtn_replaces" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all cursor-pointer">
+            ✂️ 知识卡片新旧替代链
+          </button>
+          <button onclick="loadGraphScene('overview')" id="sceneBtn_overview" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all cursor-pointer">
+            🌐 全局拓扑随机采样 (60条边)
+          </button>
+        </div>
+        <div class="text-[11px] text-slate-400 flex items-center gap-2">
+          <span class="inline-block w-2.5 h-2.5 rounded-full bg-indigo-500"></span> Wiki卡片
+          <span class="inline-block w-2.5 h-2.5 rounded-full bg-rose-500"></span> 故障/诱因
+          <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"></span> 处置/排查
+          <span class="inline-block w-2.5 h-2.5 rounded-full bg-cyan-500"></span> 系统/资产
+          <span class="inline-block w-2.5 h-2.5 rounded-full bg-slate-600"></span> 废止旧规
+        </div>
+      </div>
+
+      <!-- Vis-Network 交互容器 -->
+      <div class="relative bg-slate-950/80 rounded-xl border border-slate-800 overflow-hidden shadow-inner">
+        <div id="visNetworkContainer" style="height: 440px; width: 100%;"></div>
+        <div id="graphLoadingOverlay" class="absolute inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center text-xs text-indigo-400 font-medium hidden">
+          <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-indigo-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+          正在从 Neo4j 读取拓扑数据并进行力导向布局...
+        </div>
+        <div class="absolute bottom-2 right-3 text-[10px] text-slate-500 pointer-events-none">
+          提示：滚轮缩放画布 / 鼠标按住拖拽节点 / 悬停查看关系原文佐证
+        </div>
       </div>
     </div>
 
@@ -418,7 +458,109 @@
       await checkServerHealth();
       await loadPresets();
       selectPreset(0);
+      loadGraphScene('vpn');
     });
+
+    let visNetworkInstance = null;
+    let currentScene = 'vpn';
+
+    async function loadGraphScene(scene) {
+      currentScene = scene;
+      ['vpn', 'cmdb', 'replaces', 'overview'].forEach(s => {
+        const btn = document.getElementById(`sceneBtn_${s}`);
+        if (btn) {
+          if (s === scene) {
+            btn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-sm transition-all cursor-pointer";
+          } else {
+            btn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all cursor-pointer";
+          }
+        }
+      });
+
+      const overlay = document.getElementById("graphLoadingOverlay");
+      if (overlay) overlay.classList.remove("hidden");
+
+      try {
+        const res = await fetch(`${API_BASE}/api/neo4j/graph_data?scene=${scene}`);
+        const json = await res.json();
+        if (json.code === 0 && json.data) {
+          renderVisNetwork(json.data.nodes, json.data.edges);
+        }
+      } catch (err) {
+        console.error("加载图谱数据异常", err);
+      } finally {
+        if (overlay) overlay.classList.add("hidden");
+      }
+    }
+
+    function getNodeColor(node) {
+      if (node.is_deprecated) return { background: "#475569", border: "#64748b" };
+      const id = node.id || "";
+      if (id.startsWith("ITKB-")) return { background: "#4f46e5", border: "#6366f1" };
+      if (/锁定|错误|故障|失败|超时|异常/.test(id)) return { background: "#e11d48", border: "#f43f5e" };
+      if (/处置|排查|重置|等待|日志|平台|用户和计算机/.test(id)) return { background: "#059669", border: "#10b981" };
+      if (/系统|网络|VPN|服务|组|矩阵|ERP|CRM/.test(id)) return { background: "#0891b2", border: "#06b6d4" };
+      return { background: "#7c3aed", border: "#8b5cf6" };
+    }
+
+    function renderVisNetwork(rawNodes, rawEdges) {
+      const container = document.getElementById("visNetworkContainer");
+      if (!container || !window.vis) return;
+
+      const nodes = new vis.DataSet(rawNodes.map(n => {
+        const col = getNodeColor(n);
+        return {
+          id: n.id,
+          label: n.label,
+          shape: "dot",
+          size: n.id.startsWith("ITKB-") ? 20 : 15,
+          color: {
+            background: col.background,
+            border: col.border,
+            highlight: { background: "#818cf8", border: "#c7d2fe" },
+            hover: { background: "#6366f1", border: "#a5b4fc" }
+          },
+          font: { color: "#ffffff", size: 12, strokeWidth: 2, strokeColor: "#020617" },
+          title: `实体: ${n.label}${n.is_deprecated ? ' (已废止)' : ''}`,
+        };
+      }));
+
+      const edges = new vis.DataSet(rawEdges.map((e, idx) => ({
+        id: `e_${idx}`,
+        from: e.from,
+        to: e.to,
+        label: e.label,
+        title: e.title || e.label,
+        arrows: "to",
+        color: { color: "#334155", highlight: "#818cf8", hover: "#a5b4fc" },
+        font: { size: 10, color: "#94a3b8", background: "#020617", strokeWidth: 0 },
+      })));
+
+      const data = { nodes, edges };
+      const options = {
+        physics: {
+          barnesHut: {
+            gravitationalConstant: -3500,
+            centralGravity: 0.25,
+            springLength: 90,
+            springConstant: 0.04,
+            damping: 0.09,
+          },
+          stabilization: { iterations: 120 },
+        },
+        interaction: {
+          hover: true,
+          tooltipDelay: 100,
+          zoomView: true,
+          dragView: true,
+        },
+      };
+
+      if (visNetworkInstance) {
+        visNetworkInstance.destroy();
+      }
+      visNetworkInstance = new vis.Network(container, data, options);
+    }
 
     async function checkServerHealth() {
       const indicator = document.getElementById("apiStatusIndicator");
