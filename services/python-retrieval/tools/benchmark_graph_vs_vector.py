@@ -27,7 +27,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from rag_pipeline.config import REPO_ROOT
 from rag_pipeline.docstore import MySqlDocstore
-from rag_pipeline.graph.engine import LightKnowledgeGraph
+from rag_pipeline.graph.engine import Neo4jKnowledgeGraph
 from rag_pipeline.graph.extractor import load_triples_cache
 from rag_pipeline.graph.reasoner import GraphEnhancedReasoner
 from rag_pipeline.graph.schema import GroundedTriple, ITRelationEnum
@@ -113,29 +113,13 @@ def run_benchmark():
     model = os.environ.get("GRAPH_MODEL") or "deepseek-v4.1-flash"
     client = OpenAI(api_key=api_key, base_url=base_url)
 
-    # 2. 准备图谱引擎
-    kg = LightKnowledgeGraph()
-    triples = load_triples_cache(cache_path)
-
-    # 补充特定跨卡/CMDB/制度三元组（场景1跨卡因果链、场景3CMDB拓扑、场景4代签规约）
-    triples.extend([
-        # 场景1：跨卡故障因果链与知识卡片挂载
-        GroundedTriple(head="VPN错误691", relation=ITRelationEnum.ROOT_CAUSE, tail="AD域账号锁定", evidence_quote="VPN连接失败：用户名密码错误或AD账号被锁定可能导致691认证失败"),
-        GroundedTriple(head="ITKB-VPN-001", relation=ITRelationEnum.DEPENDS_ON, tail="VPN错误691", evidence_quote='id: "ITKB-VPN-001"'),
-        GroundedTriple(head="ITKB-ACC-001", relation=ITRelationEnum.DEPENDS_ON, tail="AD域账号锁定", evidence_quote='id: "ITKB-ACC-001"'),
-        GroundedTriple(head="ITKB-MAIL-002", relation=ITRelationEnum.DEPENDS_ON, tail="移动端邮件客户端旧密码轮询", evidence_quote='id: "ITKB-MAIL-002"'),
-        # 场景3：CMDB 业务资产网络依赖与主责矩阵
-        GroundedTriple(head="财务报销系统", relation=ITRelationEnum.DEPENDS_ON_NETWORK, tail="SSL VPN", evidence_quote="CMDB企业资产关系字典：财务报销系统(ERP)外网访问前置依赖SSL VPN隧道"),
-        GroundedTriple(head="财务报销系统", relation=ITRelationEnum.OWNED_BY, tail="IT系统组", evidence_quote="ITSM工单派发矩阵：核心业务系统与财务ERP运维归属IT系统组"),
-        GroundedTriple(head="ITKB-VPN-001", relation=ITRelationEnum.DEPENDS_ON, tail="SSL VPN", evidence_quote='id: "ITKB-VPN-001"'),
-        GroundedTriple(head="ITKB-SYS-005", relation=ITRelationEnum.DEPENDS_ON, tail="财务报销系统", evidence_quote='id: "ITKB-SYS-005"'),
-        # 场景4：人事合规回避与代签授权规约
-        GroundedTriple(head="周建华", relation=ITRelationEnum.OWNED_BY, tail="华东交付一部", evidence_quote="公司组织架构规约"),
-        GroundedTriple(head="周建华", relation=ITRelationEnum.OWNED_BY, tail="直接审批主管王大明", evidence_quote="日常报销审批规约"),
-        GroundedTriple(head="王大明", relation=ITRelationEnum.AVOID_TO, tail="监察委员会主任陈梓豪", evidence_quote="合规利益冲突回避细则"),
-        GroundedTriple(head="陈梓豪", relation=ITRelationEnum.DELEGATE_TO, tail="监察委员会副主任赵小雪", evidence_quote="2024外出公差代签授权规约"),
-    ])
-    kg.load_from_triples(triples)
+    # 2. 准备图谱引擎 (基于 Docker Neo4j 5)
+    kg = Neo4jKnowledgeGraph()
+    if kg.count_nodes() == 0:
+        triples = load_triples_cache(cache_path)
+        from tools.sync_triples_to_neo4j import BENCHMARK_SCENARIO_TRIPLES
+        triples.extend(BENCHMARK_SCENARIO_TRIPLES)
+        kg.load_from_triples(triples)
 
     # 3. 准备 Docstore 与 Reasoner
     docstore = MySqlDocstore()

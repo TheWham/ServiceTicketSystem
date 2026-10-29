@@ -1,5 +1,5 @@
 # ==============================================================================
-# RAG 模块本地依赖环境: Elasticsearch 8 + Kibana 8
+# RAG 模块本地依赖环境: Elasticsearch 8 + Kibana 8 + Neo4j 5
 # ==============================================================================
 # 启动命令: docker compose up -d
 # 停止命令: docker compose down
@@ -7,6 +7,8 @@
 # 服务访问说明:
 # 1. Elasticsearch API: http://localhost:9200
 # 2. Kibana 控制台 UI:  http://localhost:5601 (已配置简体中文)
+# 3. Neo4j Browser:     http://localhost:7474
+# 4. Neo4j Bolt 端点:   bolt://localhost:7687 (凭据: neo4j / neo4j123456)
 # ==============================================================================
 
 version: '3.8'
@@ -53,11 +55,42 @@ services:
     networks:
       - rag-net
 
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: it-ticket-neo4j
+    restart: unless-stopped
+    ports:
+      - "7474:7474"   # HTTP / Browser 控制台
+      - "7687:7687"   # Bolt 协议驱动连接
+    environment:
+      - NEO4J_AUTH=neo4j/neo4j123456
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+      - NEO4J_server_memory_heap_initial__size=512m
+      - NEO4J_server_memory_heap_max__size=1G
+      - NEO4J_server_memory_pagecache_size=512m
+      - TZ=Asia/Shanghai
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - rag-net
+
 volumes:
   es-data:
     name: it-ticket-es-data
   kibana-data:
     name: it-ticket-kibana-data
+  neo4j-data:
+    name: it-ticket-neo4j-data
+  neo4j-logs:
+    name: it-ticket-neo4j-logs
 
 networks:
   rag-net:

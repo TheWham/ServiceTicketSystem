@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
+"""GraphEnhancedReasoner 双轨融合推理单元测试。"""
+
 import pytest
 from rag_pipeline.docstore import InMemoryDocstore
 from rag_pipeline.graph.schema import ITRelationEnum, GroundedTriple
-from rag_pipeline.graph.engine import LightKnowledgeGraph
+from rag_pipeline.graph.engine import Neo4jKnowledgeGraph
 from rag_pipeline.graph.reasoner import (
     extract_query_entities,
     GraphEnhancedReasoner,
@@ -11,7 +13,8 @@ from rag_pipeline.graph.reasoner import (
 
 @pytest.fixture
 def mock_reasoner() -> GraphEnhancedReasoner:
-    kg = LightKnowledgeGraph()
+    kg = Neo4jKnowledgeGraph()
+    kg.clear()
     triples = [
         GroundedTriple(
             head="VPN错误691",
@@ -31,7 +34,10 @@ def mock_reasoner() -> GraphEnhancedReasoner:
         "ITKB-VPN-001": "# 【VPN-001】VPN连接排查全文...",
         "ITKB-ACC-001": "# 【ACC-001】域账号锁定排查全文...",
     })
-    return GraphEnhancedReasoner(kg=kg, docstore=docstore, client=None)
+    reasoner = GraphEnhancedReasoner(kg=kg, docstore=docstore, client=None)
+    yield reasoner
+    kg.clear()
+    kg.close()
 
 
 def test_extract_query_entities():

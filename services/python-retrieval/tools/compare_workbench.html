@@ -39,7 +39,7 @@
         <div class="flex flex-wrap items-center gap-2 text-xs">
           <div class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/80 border border-slate-700/80 rounded-lg text-emerald-400">
             <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>拓扑引擎: NetworkX (596 条三元组)</span>
+            <span id="neo4jBadgeText">图数据库: Docker Neo4j 5 (458 节点 / 604 关系)</span>
           </div>
           <div class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/80 border border-slate-700/80 rounded-lg text-cyan-400">
             <span>MySQL Docstore: 38 篇父卡正文</span>
@@ -55,11 +55,31 @@
         <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
           📌 点击选择典型多跳评测场景 (秒级查看对比)：
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3" id="presetTabs">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3" id="presetTabs">
           <!-- 动态注入预置场景 -->
         </div>
       </div>
     </header>
+
+    <!-- Neo4j 实时可视化探索直通卡片 -->
+    <div class="bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-500/30 rounded-2xl p-5 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div class="space-y-1">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span class="text-sm font-bold text-white tracking-wide">Neo4j 生产级图数据库已就绪 (Docker 7474 / 7687)</span>
+          <span class="px-2 py-0.5 text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded">已持久化 604 关系</span>
+        </div>
+        <p class="text-xs text-slate-300">
+          基于 Docker 启动，已持久化 458 核心节点与 604 条原文字符级拓扑边，支持原生 Cypher 拓扑遍历与废弃版本剪枝。点击右侧按钮直接在浏览器中打开官方 Neo4j Browser 可视化控制台！
+        </p>
+      </div>
+      <div class="flex items-center gap-3 shrink-0">
+        <a href="http://localhost:7474" target="_blank" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-md hover:shadow-indigo-500/20 transition-all flex items-center gap-1.5 border border-indigo-400/40 cursor-pointer">
+          <span>🚀 打开 Neo4j 可视化 Browser</span>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+        </a>
+      </div>
+    </div>
 
     <!-- 交互提问与控制面板 -->
     <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
@@ -309,7 +329,7 @@
                 <span>🟢 Graph 双轨融合产出：因果拓扑网 + 完整父卡正文</span>
               </div>
               <p class="text-slate-300 leading-relaxed">
-                输入 Query 后识别出种子实体，在 NetworkX 图中执行 2-Hop BFS 遍历，抽取出<strong>显式因果链路</strong>（<code class="text-emerald-300">VPN错误691 ──(根因)──> AD域锁定 ──(根因)──> 手机邮箱旧密码轮询</code>）；同时将指向已废止旧规的边在内存中物理剪枝；接着顺藤摸瓜找到涉及的两张核心卡片 ID，批量从 MySQL Docstore 中取出完整父卡。
+                输入 Query 后识别出种子实体，在 Neo4j 图数据库中执行原生 Cypher 2-Hop 变长路径遍历与拓扑匹配，抽取出<strong>显式因果链路</strong>（<code class="text-emerald-300">VPN错误691 ──(根因)──> AD域锁定 ──(根因)──> 手机邮箱旧密码轮询</code>）；同时将指向已废止旧规的节点在 Cypher 索引层执行剪枝过滤；接着顺藤摸瓜找到涉及的核心卡片 ID，批量从 MySQL Docstore 中取出完整父卡。
               </p>
             </div>
           </div>
@@ -356,6 +376,31 @@
           </div>
         </div>
 
+        <!-- 步骤4: Neo4j Browser 常用 Cypher 探索命令 -->
+        <div class="p-5 bg-slate-950/70 border border-slate-800 rounded-xl">
+          <h4 class="text-sm font-bold text-indigo-400 flex items-center gap-2 mb-3">
+            <span class="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-300 flex items-center justify-center text-xs">4</span>
+            Neo4j Browser 常用 Cypher 可视化探索命令 (一键复制到 <a href="http://localhost:7474" target="_blank" class="underline hover:text-indigo-300">http://localhost:7474</a> 执行)
+          </h4>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <div class="p-3 bg-slate-900 border border-slate-800 rounded-lg space-y-1.5">
+              <div class="font-bold text-slate-200">🔍 探索 1：VPN 691 因果拓扑网</div>
+              <code class="block p-2 bg-slate-950 text-emerald-300 font-mono text-[11px] rounded border border-slate-800 overflow-x-auto select-all">MATCH path = (e:Entity {name: 'VPN错误691'})-[r*1..2]-(m) RETURN path</code>
+              <p class="text-[11px] text-slate-400">直观查看 VPN 691 关联的 AD 账号锁定、手机邮箱密码轮询因果链。</p>
+            </div>
+            <div class="p-3 bg-slate-900 border border-slate-800 rounded-lg space-y-1.5">
+              <div class="font-bold text-slate-200">✂️ 探索 2：知识卡片废止与替代网络</div>
+              <code class="block p-2 bg-slate-950 text-cyan-300 font-mono text-[11px] rounded border border-slate-800 overflow-x-auto select-all">MATCH (e:Entity)-[r:REPLACES]->(m:Entity) RETURN e, r, m</code>
+              <p class="text-[11px] text-slate-400">查看现行 Wiki 卡片如何替代废止旧规，以及被标记 is_deprecated 的节点。</p>
+            </div>
+            <div class="p-3 bg-slate-900 border border-slate-800 rounded-lg space-y-1.5">
+              <div class="font-bold text-slate-200">🏢 探索 3：CMDB 财务报销系统依赖拓扑</div>
+              <code class="block p-2 bg-slate-950 text-amber-300 font-mono text-[11px] rounded border border-slate-800 overflow-x-auto select-all">MATCH path = (e:Entity {name: '财务报销系统'})-[*1..2]-(m) RETURN path</code>
+              <p class="text-[11px] text-slate-400">查看报销系统、SSL VPN、主责 IT系统组之间的网络与责任依赖关系。</p>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -383,6 +428,20 @@
           isServerOnline = true;
           indicator.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> 实时推理后端 (8350): 在线`;
           indicator.className = "inline-flex items-center gap-1 text-emerald-400 font-medium";
+
+          // 动态探测 Neo4j 规模
+          try {
+            const neoRes = await fetch(`${API_BASE}/api/neo4j/status`, { method: "GET", signal: AbortSignal.timeout(1200) });
+            if (neoRes.ok) {
+              const neoJson = await neoRes.json();
+              if (neoJson.code === 0 && neoJson.data) {
+                const badge = document.getElementById("neo4jBadgeText");
+                if (badge) {
+                  badge.innerText = `图数据库: Docker Neo4j 5 (${neoJson.data.nodes} 节点 / ${neoJson.data.edges} 关系)`;
+                }
+              }
+            }
+          } catch (err) {}
         }
       } catch (e) {
         isServerOnline = false;
@@ -463,25 +522,6 @@
             "graph_cards": ["ITKB-VPN-001", "ITKB-SYS-005"],
             "graph_ms": 3490.8,
             "graph_answer": "🎯【诊断结论】\n- 主责运维团队：IT系统组（核心业务系统与财务ERP主责团队）；\n- 提单前必经前置条件：外网访问必须先成功建立 SSL VPN 网络隧道！\n\n🔗【证据链推导】\n依据 CMDB 拓扑：财务报销系统(ERP) ──(依赖网络通道)──> SSL VPN，且由 IT系统组负责。外网若未接入 SSL VPN，直接访问内网 ERP 必报网关不可达；若已连通 VPN 仍报 502，则属于服务端异常，应按照 ITKB-SYS-005 自查后直接派单给 IT系统组。"
-          },
-          {
-            "id": "MH-004",
-            "title": "组织规约与代签流转",
-            "tag": "周建华 -> 王大明回避 -> 陈梓豪出差 -> 赵小雪",
-            "query": "周建华在华东项目申报3万元紧急现场改造补贴，直接审批主管王大明因利益冲突回避，转派的监察委员会主任陈梓豪外出公差，该申请最终应由谁审批？推导依据是什么？",
-            "vector_trap": "没有单个切片包含完整代签闭环，纯向量召回数为 0，大模型只能空泛给出通用合规建议",
-            "vector_recalled": [],
-            "vector_ms": 4970.9,
-            "vector_answer": "根据现有资料，未检索到相关内容，无法确定该申请最终由谁审批。建议查阅华东项目适用的费用审批权限表及合规制度，按回避和授权委托规定办理。",
-            "graph_facts": [
-              "周建华 ──(主责运维组)──> 华东交付一部",
-              "周建华 ──(主责运维组)──> 直接审批主管王大明",
-              "王大明 ──(利益回避转派)──> 陈梓豪",
-              "陈梓豪 ──(出差代签人)──> 监察委员会副主任赵小雪"
-            ],
-            "graph_cards": [],
-            "graph_ms": 2520.7,
-            "graph_answer": "🎯【诊断结论】\n该申请最终审批责任人应为：监察委员会副主任赵小雪。\n\n🔗【证据链推导】\n第1跳：周建华提交申请，直接主管为王大明；\n第2跳：王大明因利益冲突回避，规约强制转派至监察委员会主任陈梓豪；\n第3跳：陈梓豪外出公差，触发《外出公差代签授权规约》，授权代签人登记为赵小雪；\n第4跳：审批闭环最终落地至监察委员会副主任赵小雪执行。"
           }
         ];
       }
@@ -503,7 +543,7 @@
           <div>
             <div class="flex items-center justify-between mb-1">
               <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${idx === currentPresetIdx ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400'}">${p.id}</span>
-              <span class="text-[10px] text-slate-500 font-mono">${idx === 0 ? '跨卡链路' : idx === 1 ? '版本剪枝' : idx === 2 ? 'CMDB依赖' : '代签规约'}</span>
+              <span class="text-[10px] text-slate-500 font-mono">${idx === 0 ? '跨卡链路' : idx === 1 ? '版本剪枝' : 'CMDB依赖'}</span>
             </div>
             <div class="text-xs font-semibold text-slate-200 line-clamp-1">${p.title}</div>
           </div>
@@ -633,7 +673,6 @@
         if (query.includes("VPN") || query.includes("691") || query.includes("邮箱")) score += (idx === 0 ? 5 : 0);
         if (query.includes("输错") || query.includes("密码") || query.includes("锁定")) score += (idx === 1 ? 5 : 0);
         if (query.includes("502") || query.includes("财务") || query.includes("ERP")) score += (idx === 2 ? 5 : 0);
-        if (query.includes("周建华") || query.includes("代签") || query.includes("王大明") || query.includes("陈梓豪")) score += (idx === 3 ? 5 : 0);
         if (score > maxScore) {
           maxScore = score;
           bestIdx = idx;

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """拓扑事实与 MySQL Docstore 双轨融合推理器。
 
-支持从提问中抽取核心种子实体、NetworkX 拓扑多跳因果链遍历、
+支持从提问中抽取核心种子实体、Neo4j 原生 Cypher 拓扑多跳因果链遍历、
 关联卡片联动 MySQL Docstore 批量回溯、组装双轨 Prompt 并驱动 LLM 综合逻辑演绎。
 """
 
@@ -11,7 +11,7 @@ import re
 from typing import Any, Dict, List, Optional, Set
 
 from rag_pipeline.docstore import BaseDocstore, build_docstore
-from .engine import CARD_ID_PATTERN, LightKnowledgeGraph
+from .engine import CARD_ID_PATTERN, Neo4jKnowledgeGraph
 from .schema import canonicalize_entity
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,6 @@ COMMON_ENTITY_TERMS: List[str] = [
     "蓝屏", "死机", "内存溢出", "0x0000007B",
     "财务报销系统", "财务系统", "报销系统", "ERP", "CRM", "OA",
     "网络打印机", "打印机", "DNS", "网关",
-    "陈梓豪", "陈主任", "赵小雪", "王大明", "周建华",
     "IT网络基础运维组", "IT系统组", "桌面运维支持组", "网络组", "系统组",
 ]
 
@@ -72,7 +71,7 @@ class GraphEnhancedReasoner:
 
     def __init__(
         self,
-        kg: LightKnowledgeGraph,
+        kg: Neo4jKnowledgeGraph,
         docstore: Optional[BaseDocstore] = None,
         client: Any = None,
         model: str = "deepseek-v4.1-flash",

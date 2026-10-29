@@ -1,0 +1,52 @@
+# ==============================================================================
+# Neo4j 5 图数据库本地开发与生产编排配置
+# ==============================================================================
+# 启动命令: docker compose -f docker-compose.neo4j.yml up -d
+# 停止命令: docker compose -f docker-compose.neo4j.yml down
+#
+# 服务访问说明:
+# 1. Neo4j Browser 可视化控制台: http://localhost:7474
+# 2. Bolt 协议驱动连接端点:    bolt://localhost:7687
+# 默认认证凭据: 用户名 neo4j / 密码 neo4j123456
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  neo4j:
+    image: neo4j:5.26-community
+    container_name: it-ticket-neo4j
+    restart: unless-stopped
+    ports:
+      - "7474:7474"   # HTTP / Browser 控制台
+      - "7687:7687"   # Bolt 协议驱动连接
+    environment:
+      - NEO4J_AUTH=neo4j/neo4j123456
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+      - NEO4J_server_memory_heap_initial__size=512m
+      - NEO4J_server_memory_heap_max__size=1G
+      - NEO4J_server_memory_pagecache_size=512m
+      - TZ=Asia/Shanghai
+    volumes:
+      - it-ticket-neo4j-data:/data
+      - it-ticket-neo4j-logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - it-ticket-graph-net
+
+volumes:
+  it-ticket-neo4j-data:
+    name: it-ticket-neo4j-data
+  it-ticket-neo4j-logs:
+    name: it-ticket-neo4j-logs
+
+networks:
+  it-ticket-graph-net:
+    name: it-ticket-graph-net
+    driver: bridge
