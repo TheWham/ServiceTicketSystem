@@ -46,7 +46,7 @@ export const test = base.extend({
         return reply({ list, total: list.length })
       }
       if (path === '/tickets' && method === 'POST') {
-        const created = { ...ticket, ...record.body, ticket_id: 'TK-1003', status: 'PENDING_ASSIGNMENT', assignee_name: null }
+        const created = { ...ticket, ...record.body, ticket_id: 'TK-1003', status: 'NEW', assignee_name: null }
         state.tickets.unshift(created)
         return reply(created)
       }

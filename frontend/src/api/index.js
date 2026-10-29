@@ -105,7 +105,7 @@ export const notificationApi = {
 }
 
 // ---- 派单草案 API（HITL 写操作门禁：认领 → 裁决）----
-// 自动路由只产出待确认草案，工单保持 PENDING_ASSIGNMENT；approve 才真正落分派（PLATFORM_ADMIN 专属）。
+// 自动路由只产出待确认草案，工单保持 NEW；approve 才真正落分派（PLATFORM_ADMIN 专属）。
 export const dispatchDraftApi = {
   list: (params) => api.get('/dispatch-drafts', { params }),
   detail: (draftId) => api.get(`/dispatch-drafts/${draftId}`),

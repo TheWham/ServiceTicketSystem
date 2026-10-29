@@ -320,7 +320,7 @@ const filteredTickets = computed(() => filterEngineerTickets(allTickets.value, a
 
 const columns = computed(() => {
   const statusMap = {
-    'PENDING_ASSIGNMENT':                { label: '待分配', dotColor: '#f56c6c' },
+    'NEW':                { label: '待分配', dotColor: '#f56c6c' },
     'ASSIGNED':           { label: '已分配 / 待接单', dotColor: '#e6a23c' },
     'IN_PROGRESS':        { label: '处理中', dotColor: '#409eff' },
     'PENDING_SUPPLEMENT': { label: '待补充', dotColor: '#909399' },
@@ -344,7 +344,7 @@ const stats = computed(() => {
   const count = (s) => t.filter(x => x.status === s).length
   const active = t.filter(x => ['ASSIGNED','IN_PROGRESS','PENDING_SUPPLEMENT','PENDING_EXTERNAL','PENDING_ACCEPTANCE'].includes(x.status)).length
   return [
-    { label: '待分配', value: count('PENDING_ASSIGNMENT'), icon: Tickets },
+    { label: '待分配', value: count('NEW'), icon: Tickets },
     { label: '待接单', value: count('ASSIGNED'), icon: Pointer },
     { label: '处理中', value: count('IN_PROGRESS'), icon: Loading },
     { label: '待验收', value: count('PENDING_ACCEPTANCE'), icon: CircleCheck },
@@ -354,13 +354,13 @@ const stats = computed(() => {
 
 // 状态/优先级映射（PRD §9.2 九态 + HIGH/MEDIUM/LOW）
 const STATUS_LABEL = {
-  PENDING_ASSIGNMENT: '待分配', ASSIGNED: '已分配', IN_PROGRESS: '处理中',
+  NEW: '待分配', ASSIGNED: '已分配', IN_PROGRESS: '处理中',
   PENDING_SUPPLEMENT: '待补充', PENDING_EXTERNAL: '外部等待',
   PENDING_ACCEPTANCE: '待验收', COMPLETED: '已完成',
   CANCELLED: '已撤回', CLOSED: '已关闭'
 }
 const STATUS_TYPE = {
-  PENDING_ASSIGNMENT: 'warning', ASSIGNED: 'primary', IN_PROGRESS: 'primary',
+  NEW: 'warning', ASSIGNED: 'primary', IN_PROGRESS: 'primary',
   PENDING_SUPPLEMENT: 'info', PENDING_EXTERNAL: 'info',
   PENDING_ACCEPTANCE: 'primary', COMPLETED: 'success',
   CANCELLED: 'info', CLOSED: 'info'
@@ -381,7 +381,7 @@ function priorityTagType(p) { return PRIORITY_TYPE[p] || 'info' }
 function flowTimelineType(status) {
   const map = {
     COMPLETED: 'success', PENDING_ACCEPTANCE: 'primary', IN_PROGRESS: 'primary',
-    PENDING_ASSIGNMENT: 'warning', ASSIGNED: 'primary', CANCELLED: 'info', CLOSED: 'info'
+    NEW: 'warning', ASSIGNED: 'primary', CANCELLED: 'info', CLOSED: 'info'
   }
   return map[status] || 'primary'
 }

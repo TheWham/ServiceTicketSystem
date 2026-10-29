@@ -201,7 +201,7 @@ class RoutingDirtyDataTest {
     @Test
     void routeFailureRaisesQueueAndSwallowsAdminNotifyFailure() {
         Ticket t = ticket("TK02", "C_ACC");
-        t.setStatus(com.itticket.ticket.enums.TicketStatus.PENDING_ASSIGNMENT);
+        t.setStatus(com.itticket.ticket.enums.TicketStatus.NEW);
         when(tickets.selectOne(any())).thenReturn(t);
         when(routes.selectList(any())).thenReturn(List.of());
         when(users.admins()).thenThrow(new IllegalStateException("user-service unavailable"));
@@ -218,7 +218,7 @@ class RoutingDirtyDataTest {
     @Test
     void routeFailureNotifiesEachAdmin() {
         Ticket t = ticket("TK03", "C_ACC");
-        t.setStatus(com.itticket.ticket.enums.TicketStatus.PENDING_ASSIGNMENT);
+        t.setStatus(com.itticket.ticket.enums.TicketStatus.NEW);
         when(tickets.selectOne(any())).thenReturn(t);
         when(routes.selectList(any())).thenReturn(List.of());
         when(users.admins()).thenReturn(Result.ok(

@@ -89,7 +89,7 @@ test('failed switch keeps retry targeted at B and polling cannot replace the err
 })
 
 const tickets = [
-  { ticket_id: 'IT-PENDING_ASSIGNMENT', title: '打印机', creator_name: '王小明', status: 'PENDING_ASSIGNMENT' },
+  { ticket_id: 'IT-NEW', title: '打印机', creator_name: '王小明', status: 'NEW' },
   { ticket_id: 'IT-ASG', title: '打印机', creator_name: '王小明', status: 'ASSIGNED' },
   { ticket_id: 'IT-1', title: 'VPN connection', creator_name: '王小明', status: 'IN_PROGRESS' },
   { ticket_id: 'IT-PS', title: '打印机', creator_name: '王小明', status: 'PENDING_SUPPLEMENT' },
@@ -106,7 +106,7 @@ test('query resolves supported views and keeps overview fallback', () => {
   assert.equal(engineerView('unknown'), 'all')
 })
 test('views isolate the backend ticket states without conflating terminal states', () => {
-  assert.deepEqual(filterEngineerTickets(tickets, 'pool').map(t => t.status), ['PENDING_ASSIGNMENT', 'ASSIGNED'])
+  assert.deepEqual(filterEngineerTickets(tickets, 'pool').map(t => t.status), ['NEW', 'ASSIGNED'])
   assert.deepEqual(filterEngineerTickets(tickets, 'tasks').map(t => t.status), ['IN_PROGRESS', 'PENDING_SUPPLEMENT', 'PENDING_EXTERNAL', 'PENDING_ACCEPTANCE'])
   assert.deepEqual(filterEngineerTickets(tickets, 'completed').map(t => t.status), ['COMPLETED', 'CANCELLED', 'CLOSED'])
   assert.equal(filterEngineerTickets(tickets, 'all').length, 9)
@@ -119,8 +119,8 @@ test('search combines view and case insensitive title id or applicant search', (
   assert.equal(filterEngineerTickets(tickets, 'tasks', 'it-1').length, 1)
   assert.deepEqual(filterEngineerTickets([{ status: 'ASSIGNED' }], 'pool', 'unknown'), [])
 })
-test('unassigned PENDING_ASSIGNMENT pool tickets stay visible and searchable by ticket id', () => {
-  const pool = filterEngineerTickets(tickets, 'pool', 'it-pending_assignment')
-  assert.deepEqual(pool.map(t => t.ticket_id), ['IT-PENDING_ASSIGNMENT'])
-  assert.deepEqual(filterEngineerTickets(tickets, 'all', 'IT-PENDING_ASSIGNMENT').map(t => t.ticket_id), ['IT-PENDING_ASSIGNMENT'])
+test('unassigned NEW pool tickets stay visible and searchable by ticket id', () => {
+  const pool = filterEngineerTickets(tickets, 'pool', 'it-NEW')
+  assert.deepEqual(pool.map(t => t.ticket_id), ['IT-NEW'])
+  assert.deepEqual(filterEngineerTickets(tickets, 'all', 'IT-NEW').map(t => t.ticket_id), ['IT-NEW'])
 })

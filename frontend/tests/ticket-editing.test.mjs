@@ -7,7 +7,7 @@ import * as editing from '../src/utils/ticketEditing.js'
 import { ticketToForm, ticketTypeLabel, ticketNatureLabel, editableTicketPayload, canWithdrawTicket } from '../src/utils/ticketEditing.js'
 
 test('withdraw is available only to the owner of an active ticket', () => {
-  for (const status of ['PENDING_ASSIGNMENT', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_SUPPLEMENT', 'PENDING_EXTERNAL', 'PENDING_ACCEPTANCE']) {
+  for (const status of ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_SUPPLEMENT', 'PENDING_EXTERNAL', 'PENDING_ACCEPTANCE']) {
     assert.equal(canWithdrawTicket({ creator_id: 'U1', status }, 'U1'), true)
     assert.equal(canWithdrawTicket({ creator_id: 'U1', status }, 'OTHER'), false)
   }
@@ -37,7 +37,7 @@ test('category display uses historical snapshot and supports legacy or incomplet
 test('saving includes only editable content and final attachment IDs, never timing or state fields', () => {
   const payload = editableTicketPayload({ nature: 'INCIDENT', category_id: 'C1', title: ' 标题 ', description: ' 描述 ',
     impact_description: ' 影响 ', urgency_description: ' 紧急 ', location: ' ', contact: '', asset_id: ' PC01 ',
-    status: 'PENDING_ASSIGNMENT', priority: 'HIGH', created_at: 'tomorrow', source_session_id: 'S1' }, ['A2', 'A3'])
+    status: 'NEW', priority: 'HIGH', created_at: 'tomorrow', source_session_id: 'S1' }, ['A2', 'A3'])
   assert.deepEqual(payload, { title: '标题', description: '描述', impact_description: '影响', urgency_description: '紧急',
     location: null, contact: null, asset_id: 'PC01', attachments: ['A2', 'A3'] })
   assert.deepEqual(editableTicketPayload({}, []).attachments, [])

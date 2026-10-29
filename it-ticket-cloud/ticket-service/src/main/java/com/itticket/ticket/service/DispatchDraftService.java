@@ -37,7 +37,7 @@ import java.util.UUID;
  *
  * <p>机制（对齐 Day18 讲义「写操作前刹车片」三要素）：
  * <ol>
- *   <li><b>刹车片</b>：路由不再直接写 assignment，只产出 PENDING 草案，工单保持 PENDING_ASSIGNMENT；</li>
+ *   <li><b>刹车片</b>：路由不再直接写 assignment，只产出 PENDING 草案，工单保持 NEW；</li>
  *   <li><b>状态持久化挂起</b>：草案落库（非内存），进程重启不丢；</li>
  *   <li><b>凭证 + 失效</b>：logical idempotency_key 保证同一轮路由只落一份草案，
  *       expires_at 到期即失效（对应讲义 Token 超时语义）。</li>
@@ -237,12 +237,12 @@ public class DispatchDraftService {
         }
 
         if (!approve) {
-            insertFlowLog(draft.getTicketId(), "PENDING_ASSIGNMENT", "PENDING_ASSIGNMENT", "TICKET_DISPATCH_REJECTED", operatorId,
+            insertFlowLog(draft.getTicketId(), "NEW", "NEW", "TICKET_DISPATCH_REJECTED", operatorId,
                     "派单草案驳回: " + reason + " (草案 " + draftId + ")");
             notifyApproversResult(draft, "派单草案被驳回，工单保持待路由");
             log.info("[派单草案] 已驳回: {} by {} 原因={}", draftId, operatorId, reason);
         } else {
-            // 放行：在本事务内执行真正的分派。回调失败（如工单已离开 PENDING_ASSIGNMENT）会抛出，
+            // 放行：在本事务内执行真正的分派。回调失败（如工单已离开 NEW）会抛出，
             // 整笔事务回滚，草案状态一并撤销 —— 不留「已批准但没分派」的半截状态。
             onApproved.accept(draftId);
             log.info("[派单草案] 已批准并放行分派: {} by {}", draftId, operatorId);
@@ -284,7 +284,7 @@ public class DispatchDraftService {
             return false;
         }
         DispatchDraft d = dispatchDraftMapper.selectById(draftId);
-        insertFlowLog(d.getTicketId(), "PENDING_ASSIGNMENT", "PENDING_ASSIGNMENT", "TICKET_DISPATCH_DRAFT_EXPIRED", "SYSTEM",
+        insertFlowLog(d.getTicketId(), "NEW", "NEW", "TICKET_DISPATCH_DRAFT_EXPIRED", "SYSTEM",
                 "派单草案超时失效: " + draftId);
         notifyApproversResult(d, "派单草案已超时失效，工单仍待路由，请重新处理");
         log.warn("[派单草案] 已失效: {} 原因={}", draftId, reason);

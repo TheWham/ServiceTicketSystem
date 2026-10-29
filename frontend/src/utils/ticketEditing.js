@@ -8,7 +8,7 @@ export function ticketNatureLabel(nature) {
 
 export function canWithdrawTicket(ticket, userId) {
   return !!userId && ticket?.creator_id === userId
-    && ['PENDING_ASSIGNMENT', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_SUPPLEMENT', 'PENDING_EXTERNAL', 'PENDING_ACCEPTANCE'].includes(ticket.status)
+    && ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_SUPPLEMENT', 'PENDING_EXTERNAL', 'PENDING_ACCEPTANCE'].includes(ticket.status)
 }
 
 export function ticketToForm(ticket) {

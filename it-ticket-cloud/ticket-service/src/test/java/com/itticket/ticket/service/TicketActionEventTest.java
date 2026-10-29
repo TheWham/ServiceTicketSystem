@@ -82,7 +82,7 @@ class TicketActionEventTest {
         "external,IN_PROGRESS,TICKET_START_EXTERNAL_WAIT",      // 挂起等待外部
         "done,IN_PROGRESS,TICKET_SUBMIT_RESOLUTION",            // 工程师提交解决方案
         "accept,PENDING_ACCEPTANCE,TICKET_APPROVE_ACCEPTANCE",  // 员工验收通过
-        "cancel,PENDING_ASSIGNMENT,TICKET_CANCEL"                              // 员工撤单
+        "cancel,NEW,TICKET_CANCEL"                              // 员工撤单
     })
     void actionWritesItsOwnEventEvenWhenTargetStateIsShared(String action, TicketStatus from, String event) {
         ticket(from);

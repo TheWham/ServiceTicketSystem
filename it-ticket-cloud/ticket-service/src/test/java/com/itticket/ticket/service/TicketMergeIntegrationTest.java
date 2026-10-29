@@ -89,7 +89,7 @@ class TicketMergeIntegrationTest {
 
     /**
      * 主流程全链路断言：
-     *  1) 落库工单字段逐项固化（状态 PENDING_ASSIGNMENT、默认 MEDIUM、INCIDENT 性质、会话来源、幂等键、
+     *  1) 落库工单字段逐项固化（状态 NEW、默认 MEDIUM、INCIDENT 性质、会话来源、幂等键、
      *     分类名称快照、字段定义快照含 ai_summary、未接婚前无 first_response_at）；
      *  2) 提交前：派单/会话回执均未触发（尚在事务内）；
      *  3) 手工触发 afterCommit 后：会话回执 + 路由执行（产出派单草案而非直接派单 —— HITL A1）；
@@ -101,7 +101,7 @@ class TicketMergeIntegrationTest {
         var captor = ArgumentCaptor.forClass(Ticket.class);
         verify(tickets).insert(captor.capture());
         Ticket saved = captor.getValue();
-        assertEquals(TicketStatus.PENDING_ASSIGNMENT, saved.getStatus());
+        assertEquals(TicketStatus.NEW, saved.getStatus());
         assertEquals("MEDIUM", saved.getPriority());
         assertEquals("INCIDENT", saved.getNature());
         assertEquals("CS001", saved.getSourceSessionId());
@@ -121,7 +121,7 @@ class TicketMergeIntegrationTest {
         TransactionSynchronizationManager.getSynchronizations().forEach(s -> s.afterCommit());
         verify(conversions).notifyConverted("CS001", "TK001", employee);
         verify(routing).route(saved);
-        // HITL：此时只产生了派单草案，工单仍为 PENDING_ASSIGNMENT，流转日志只有创建，没有 TICKET_ASSIGN
+        // HITL：此时只产生了派单草案，工单仍为 NEW，流转日志只有创建，没有 TICKET_ASSIGN
         var flowCaptor = ArgumentCaptor.forClass(com.itticket.ticket.entity.TicketFlowLog.class);
         verify(flows).insert(flowCaptor.capture());
         assertEquals("TICKET_CREATE", flowCaptor.getValue().getEvent());
@@ -160,7 +160,7 @@ class TicketMergeIntegrationTest {
         Ticket ticket = new Ticket();
         ticket.setTicketId("TK001");
         ticket.setCreatorId("U_EMP01");
-        ticket.setStatus(TicketStatus.PENDING_ASSIGNMENT);
+        ticket.setStatus(TicketStatus.NEW);
         when(tickets.selectById("TK001")).thenReturn(ticket);
         service.get(employee, "TK001");
         var query = ArgumentCaptor.forClass(QueryWrapper.class);

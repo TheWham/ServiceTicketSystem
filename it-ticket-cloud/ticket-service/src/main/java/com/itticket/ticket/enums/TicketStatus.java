@@ -9,8 +9,8 @@ import com.fasterxml.jackson.annotation.JsonValue;
  * 旧版 7 态中文枚举已废弃；验收驳回不占独立状态，而是 PENDING_ACCEPTANCE→IN_PROGRESS 的流转事件。
  */
 public enum TicketStatus {
-    /** 已提交，等待自动路由或人工派单 */
-    PENDING_ASSIGNMENT("PENDING_ASSIGNMENT", "待分配", false),
+    /** 已提交，系统正在路由 */
+    NEW("NEW", "已提交待路由", false),
     /** 已分配，等待工程师接单 */
     ASSIGNED("ASSIGNED", "已分配", false),
     /** 工程师正在处理 */
