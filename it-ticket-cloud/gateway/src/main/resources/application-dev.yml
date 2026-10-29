@@ -45,6 +45,10 @@ spring:
           uri: lb://ticket-service
           predicates:
             - Path=/api/v1/notifications/**
+        - id: dispatch-draft-service
+          uri: lb://ticket-service
+          predicates:
+            - Path=/api/v1/dispatch-drafts/**
         - id: exception-service
           uri: lb://ticket-service
           predicates:

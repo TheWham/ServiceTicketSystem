@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
  *   <li><b>③ 知识检索</b>：retriever → rag-service(:8302) → Python 检索服务(:8310)，
  *       返回材料 + reliable/reason；</li>
  *   <li><b>④ 工具意图放行</b>：检索无果/低置信本应拒答；若判定给了具体工具且 agent 已开启
- *       （构造参数 toolBypassEnabled = pythonAgentClient.enabled()），放行给第 ⑤ 步——
+ *       （构造参数 agentEnabled = pythonAgentClient.enabled()），放行给第 ⑤ 步——
  *       这是 Function Calling 智能体（查工单/建单）唯一的入口；</li>
  *   <li><b>⑤ 生成</b>：generator 在装配期二选一——tool 路径走 PythonAgentClient(:8320，
  *       ReAct 循环 + 白名单工具)，知识路径走 OpenAiCompatibleModelClient（单轮、引用 material）；</li>
@@ -27,7 +27,7 @@ import org.slf4j.LoggerFactory;
  *       usedVersionIds ⊆ 预检索材料、PUBLISHED 复核、置信度门槛；
  *       工具意图作答实据来自工具返回，标记 generalAnswer=true 走「无知识依据」通道；</li>
  *   <li><b>⑦ 返回</b>：正常回答带引用；建单请求额外携带带外 ticketDraft（人机回环——
- *       员工确认后才真正建单，落库在 ConsultationService.confirmTicketDraft）。</li>
+ *       前端跳转建单页确认后走正常建单；外部客户端可经 ConsultationService.confirmTicketDraft）。</li>
  * </ol>
  *
  * <p>失败语义：检索/生成的一切依赖故障都收敛为 RagResult.failure（AiAnswerGuard 统一转
@@ -39,12 +39,12 @@ public final class ComposedRagAdapter implements RagAdapter {
     private final KnowledgeRetriever retriever;
     private final RetrievalPolicy policy;
     private final AnswerGenerator generator;
-    /** 仅当 Function Calling 开启时为 true —— agent 关了就不消费判定结果里的 tool。 */
-    private final boolean toolBypassEnabled;
+    /** Function Calling 是否开启 —— 仅开启时才消费判定结果里的 tool，也才信任 agent 的零引用通用回答。 */
+    private final boolean agentEnabled;
     public ComposedRagAdapter(RequestClassifier classifier, KnowledgeRetriever retriever,
-                              RetrievalPolicy policy, AnswerGenerator generator, boolean toolBypassEnabled) {
+                              RetrievalPolicy policy, AnswerGenerator generator, boolean agentEnabled) {
         this.classifier = classifier; this.retriever = retriever; this.policy = policy; this.generator = generator;
-        this.toolBypassEnabled = toolBypassEnabled;
+        this.agentEnabled = agentEnabled;
     }
     @Override public RagResult answer(RagQuery query, RagCallContext context) {
         List<String> retrieved = List.of();
@@ -65,7 +65,7 @@ public final class ComposedRagAdapter implements RagAdapter {
                 if (blocked != null) return blocked;
             }
             // 工具意图（查工单/建单）：预检索无果时不直接拒答，放行给 agent 用工具去查。
-            boolean toolBypass = toolBypassEnabled && !RequestVerdict.NO_TOOL.equals(verdict.tool());
+            boolean toolBypass = agentEnabled && !RequestVerdict.NO_TOOL.equals(verdict.tool());
             if (result.refusalReason() != null && !toolBypass)
                 return RagResult.refuse(result.refusalReason(), null, retrieved);
             List<RetrievedKnowledge> material = policy.material(result, context);
@@ -83,8 +83,14 @@ public final class ComposedRagAdapter implements RagAdapter {
             // 「有材料却零引用=伪造嫌疑」守卫：但工具意图放行的作答实据来自工具返回
             // （工单列表/建单草稿），本就不依赖知识引用——检索给建单类请求带出的低分杂项
             // （如「员工IT故障自助排查流程」0.44）不构成引用义务，零引用是合法状态。
+            // agent 可能判断预检索 material 与当前问题无关，而选择明确标注的通用回答。
+            // 此时零引用不是“忽略可靠材料”，而是模型对证据充分性的判断；
+            // 本地单轮生成仍保留“有材料却零引用=拒答”的严格守卫。
+            boolean agentGeneralAnswer = agentEnabled && generated.replyType() == AiReplyType.ANSWER
+                    && generated.usedVersionIds().isEmpty();
             if (generated.replyType() == AiReplyType.REFUSE
-                    || !material.isEmpty() && generated.usedVersionIds().isEmpty() && !toolBypass)
+                    || !material.isEmpty() && generated.usedVersionIds().isEmpty()
+                    && !toolBypass && !agentGeneralAnswer)
                 return RagResult.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, generated.modelVersion(), retrieved);
             List<KnowledgeCitationDto> citations = generated.usedVersionIds().stream().distinct()
                     .map(byVersion::get).map(item -> new KnowledgeCitationDto(item.articleId(), item.versionId(),
@@ -92,11 +98,11 @@ public final class ComposedRagAdapter implements RagAdapter {
             // 工具意图的作答实据来自工具返回（工单列表/建单草稿），不来自知识引用——
             // 即使检索带出了材料也按「无知识依据」通道放行（AiAnswerGuard 第 7 条），
             // 否则会被第 8 条「知识回答必须带引用」当伪造拒掉。置信度门槛照常约束。
-            boolean general = material.isEmpty() || (toolBypass && generated.usedVersionIds().isEmpty());
+            boolean general = material.isEmpty() || agentGeneralAnswer;
             String text = generated.answerText();
             // 工具意图越过的作答是「凭工具查到的实据」（如本人工单列表），不是通用建议——
             // 加这句前缀会与正文自相矛盾。general 标记本身保留（确实无知识库引用），只是不展示该措辞。
-            if (general && !toolBypass && text != null && !text.isBlank())
+            if (general && !toolBypass && text != null && !text.isBlank() && !hasGeneralAnswerDisclosure(text))
                 text = "以下为通用办公 IT 建议，无知识库依据。\n\n" + text;
             if (text != null && text.length() > 12000) throw DependencyFailure.invalid();
             RagResult answered = new RagResult(RagStatus.SUCCESS, generated.replyType(), text, citations,
@@ -108,6 +114,10 @@ public final class ComposedRagAdapter implements RagAdapter {
         } catch (DependencyFailure failure) {
             return failure.result(retrieved);
         }
+    }
+    private static boolean hasGeneralAnswerDisclosure(String text) {
+        return text.contains("通用办公 IT") &&
+                (text.contains("无知识库依据") || text.contains("非公司内部知识库"));
     }
     private static RagResult restrict(OfficeDomain domain) {
         return switch (domain) {

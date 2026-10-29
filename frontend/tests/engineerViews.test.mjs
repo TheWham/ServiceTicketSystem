@@ -87,7 +87,17 @@ test('failed switch keeps retry targeted at B and polling cannot replace the err
   assert.equal(c.selected.value.session_id, 'B')
 })
 
-const tickets = ['ASSIGNED', 'IN_PROGRESS', 'PENDING_SUPPLEMENT', 'PENDING_EXTERNAL', 'PENDING_ACCEPTANCE', 'COMPLETED', 'CANCELLED', 'CLOSED'].map((status, i) => ({ ticket_id: `IT-${i}`, title: i === 1 ? 'VPN connection' : '打印机', creator_name: '王小明', status }))
+const tickets = [
+  { ticket_id: 'IT-PENDING_ASSIGNMENT', title: '打印机', creator_name: '王小明', status: 'PENDING_ASSIGNMENT' },
+  { ticket_id: 'IT-ASG', title: '打印机', creator_name: '王小明', status: 'ASSIGNED' },
+  { ticket_id: 'IT-1', title: 'VPN connection', creator_name: '王小明', status: 'IN_PROGRESS' },
+  { ticket_id: 'IT-PS', title: '打印机', creator_name: '王小明', status: 'PENDING_SUPPLEMENT' },
+  { ticket_id: 'IT-PE', title: '打印机', creator_name: '王小明', status: 'PENDING_EXTERNAL' },
+  { ticket_id: 'IT-PA', title: '打印机', creator_name: '王小明', status: 'PENDING_ACCEPTANCE' },
+  { ticket_id: 'IT-DONE', title: '打印机', creator_name: '王小明', status: 'COMPLETED' },
+  { ticket_id: 'IT-CAN', title: '打印机', creator_name: '王小明', status: 'CANCELLED' },
+  { ticket_id: 'IT-CLOSE', title: '打印机', creator_name: '王小明', status: 'CLOSED' }
+]
 test('query resolves supported views and keeps overview fallback', () => {
   for (const view of ['pool', 'tasks', 'completed', 'consultations']) assert.equal(engineerView(view), view)
   assert.equal(engineerView(undefined), 'all')
@@ -95,10 +105,10 @@ test('query resolves supported views and keeps overview fallback', () => {
   assert.equal(engineerView('unknown'), 'all')
 })
 test('views isolate the backend ticket states without conflating terminal states', () => {
-  assert.deepEqual(filterEngineerTickets(tickets, 'pool').map(t => t.status), ['ASSIGNED'])
+  assert.deepEqual(filterEngineerTickets(tickets, 'pool').map(t => t.status), ['PENDING_ASSIGNMENT', 'ASSIGNED'])
   assert.deepEqual(filterEngineerTickets(tickets, 'tasks').map(t => t.status), ['IN_PROGRESS', 'PENDING_SUPPLEMENT', 'PENDING_EXTERNAL', 'PENDING_ACCEPTANCE'])
   assert.deepEqual(filterEngineerTickets(tickets, 'completed').map(t => t.status), ['COMPLETED', 'CANCELLED', 'CLOSED'])
-  assert.equal(filterEngineerTickets(tickets, 'all').length, 8)
+  assert.equal(filterEngineerTickets(tickets, 'all').length, 9)
   assert.deepEqual(engineerStatuses('consultations'), [])
 })
 test('search combines view and case insensitive title id or applicant search', () => {
@@ -107,4 +117,9 @@ test('search combines view and case insensitive title id or applicant search', (
   assert.equal(filterEngineerTickets(tickets, 'completed', '王小明').length, 3)
   assert.equal(filterEngineerTickets(tickets, 'tasks', 'it-1').length, 1)
   assert.deepEqual(filterEngineerTickets([{ status: 'ASSIGNED' }], 'pool', 'unknown'), [])
+})
+test('unassigned PENDING_ASSIGNMENT pool tickets stay visible and searchable by ticket id', () => {
+  const pool = filterEngineerTickets(tickets, 'pool', 'it-pending_assignment')
+  assert.deepEqual(pool.map(t => t.ticket_id), ['IT-PENDING_ASSIGNMENT'])
+  assert.deepEqual(filterEngineerTickets(tickets, 'all', 'IT-PENDING_ASSIGNMENT').map(t => t.ticket_id), ['IT-PENDING_ASSIGNMENT'])
 })

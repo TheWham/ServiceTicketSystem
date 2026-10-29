@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * 工单状态机行为回归测试（对齐 PRD-Ultimate §9.3 状态转换表）。
  *
- * 主链路：NEW ->(route)-> ASSIGNED ->(accept)-> IN_PROGRESS ->(submit_resolution)->
+ * 主链路：PENDING_ASSIGNMENT ->(route)-> ASSIGNED ->(accept)-> IN_PROGRESS ->(submit_resolution)->
  *         PENDING_ACCEPTANCE ->(accept)-> COMPLETED
  * 分支：request_supplement / reject 回到 IN_PROGRESS；外部等待挂起与恢复；
  *       cancel 为任意非终态通用边；abnormal_close 仅 PLATFORM_ADMIN；
@@ -17,18 +17,18 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class TicketStateMachineTest {
 
-    /** 系统路由成功：NEW -> ASSIGNED，动作编码 route 须原样返回供流转日志使用 */
+    /** 系统路由成功：PENDING_ASSIGNMENT -> ASSIGNED，动作编码 route 须原样返回供流转日志使用 */
     @Test
     void newToAssigned_route_system() {
-        var r = TicketStateMachine.validateTransition(TicketStatus.NEW, TicketStatus.ASSIGNED, "system", "route");
+        var r = TicketStateMachine.validateTransition(TicketStatus.PENDING_ASSIGNMENT, TicketStatus.ASSIGNED, "system", "route");
         assertTrue(r.isValid());
         assertEquals("route", r.getTransition().action());
     }
 
-    /** 路由失败是 NEW -> NEW 的自环（工单留在待派单池等待人工/重试），动作 route_failed */
+    /** 路由失败是 PENDING_ASSIGNMENT -> PENDING_ASSIGNMENT 的自环（工单留在待派单池等待人工/重试），动作 route_failed */
     @Test
     void newRouteFailed_selfLoop_system() {
-        var r = TicketStateMachine.validateTransition(TicketStatus.NEW, TicketStatus.NEW, "system", "route_failed");
+        var r = TicketStateMachine.validateTransition(TicketStatus.PENDING_ASSIGNMENT, TicketStatus.PENDING_ASSIGNMENT, "system", "route_failed");
         assertTrue(r.isValid());
         assertEquals("route_failed", r.getTransition().action());
     }
@@ -63,11 +63,11 @@ class TicketStateMachineTest {
         assertEquals("reject", r.getTransition().action());
     }
 
-    /** 通用边：任意非终态（抽验 NEW/ASSIGNED/IN_PROGRESS）员工都可撤销工单 */
+    /** 通用边：任意非终态（抽验 PENDING_ASSIGNMENT/ASSIGNED/IN_PROGRESS）员工都可撤销工单 */
     @Test
     void universal_cancel_anyNonTerminal_employee() {
         // 任意非终态员工可撤销（通用边）
-        for (TicketStatus s : new TicketStatus[]{TicketStatus.NEW, TicketStatus.ASSIGNED, TicketStatus.IN_PROGRESS}) {
+        for (TicketStatus s : new TicketStatus[]{TicketStatus.PENDING_ASSIGNMENT, TicketStatus.ASSIGNED, TicketStatus.IN_PROGRESS}) {
             var r = TicketStateMachine.validateTransition(s, TicketStatus.CANCELLED, "EMPLOYEE", "cancel");
             assertTrue(r.isValid(), s + " 应允许员工撤销");
         }

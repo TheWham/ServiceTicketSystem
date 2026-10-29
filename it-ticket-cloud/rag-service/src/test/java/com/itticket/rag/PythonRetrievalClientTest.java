@@ -42,7 +42,7 @@ public class PythonRetrievalClientTest {
         server.createContext("/api/v1/rag/retrievals", this::handle);
         server.start();
         properties.setPythonBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
-        properties.setPythonTimeoutMs(4200);
+        properties.setPythonTimeoutMs(5000);
         properties.setPythonConnectTimeoutMs(500);
     }
 

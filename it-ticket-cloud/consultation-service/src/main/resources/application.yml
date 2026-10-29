@@ -92,7 +92,7 @@ itticket:
       rag-base-url: ${RAG_BASE_URL:http://127.0.0.1:8302}
       retrieval-timeout-ms: ${RAG_RETRIEVAL_TIMEOUT_MS:20000}
       rag-citation-min-score: ${RAG_CONFIDENCE_THRESHOLD:0.70}
-      base-url: ${AI_BASE_URL:}
+      base-url: ${AI_BASE_URL:https://kspmas.ksyun.com/v1}
       # 【手动配置入口】模块根目录 consultation-service/ai-secrets.yml。
       # 在该文件填写 base-url、api-key、model；也支持环境变量 / Nacos。
       api-key: ${AI_API_KEY:}
@@ -102,7 +102,7 @@ itticket:
       # 生成侧下沉 Python agent_service(ReAct 循环 + 白名单工具),Java 只做编排与守卫。
       # 默认关闭;开启后生成层改调 Python /api/v1/agent/chat,关闭时维持本地单轮强制 JSON。
       agent:
-        enabled: ${AI_AGENT_ENABLED:false}
+        enabled: ${AI_AGENT_ENABLED:true}
         # Python agent_service 基址
         service-base-url: ${AGENT_SERVICE_BASE_URL:http://127.0.0.1:8320}
         # ticket-service 内部接口基址(工单是 ticket-service 事实源,咨询域不跨库读;供「确认建单」用)
@@ -135,21 +135,6 @@ itticket:
       circuit-open-millis: 30000
       circuit-half-open-success-threshold: 3
       # AI-001 高风险主题必须拒答并给出转人工/提单入口
-      high-risk-keywords:
-        - 密码
-        - 账号权限
-        - 提权
-        - 越权
-        - 数据泄露
-        - 数据丢失
-        - 删库
-        - 格式化
-        - rm -rf
-        - 病毒
-        - 勒索
-        - 拆机
-        - 更换主板
-        - 硬盘拆
 
 logging:
   level:

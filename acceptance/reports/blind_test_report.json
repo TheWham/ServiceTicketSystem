@@ -1,0 +1,166 @@
+{
+  "executedAt": "2026/10/23 16:44:55",
+  "total": 13,
+  "pass": 13,
+  "fail": 0,
+  "rate": "100.0%",
+  "elapsedSec": 277,
+  "rows": [
+    {
+      "id": "GOLDEN-QA-002",
+      "type": "normal",
+      "query": "登录系统时手机 Authenticator 动态验证码总是提示验证失败，手机时间与服务器时间偏差超过多少秒会导致验证失败？",
+      "replyType": "ANSWER",
+      "citations": 1,
+      "hitKeywords": [
+        "时间偏差",
+        "时间校正"
+      ],
+      "ok": true,
+      "note": "ANSWER citations=1"
+    },
+    {
+      "id": "GOLDEN-QA-008",
+      "type": "normal",
+      "query": "从苹果 Mac 电脑拷贝资料的移动硬盘插到 Windows 电脑上提示需要格式化，真实根因是什么？该如何安全处理？",
+      "replyType": "ANSWER",
+      "citations": 1,
+      "hitKeywords": [
+        "APFS",
+        "exFAT"
+      ],
+      "ok": true,
+      "note": "ANSWER citations=1"
+    },
+    {
+      "id": "GOLDEN-QA-004",
+      "type": "normal",
+      "query": "电脑右下角显示黄色感叹号并提示 IP 地址冲突，IT 工程师在交换机上如何定位冲突源并防范私接路由器？",
+      "replyType": "ANSWER",
+      "citations": 1,
+      "hitKeywords": [
+        "DHCP Snooping"
+      ],
+      "ok": true,
+      "note": "ANSWER citations=1"
+    },
+    {
+      "id": "GOLDEN-QA-006",
+      "type": "normal",
+      "query": "Windows 更新安装失败报错 0x80070002，C 盘至少需要多少临时空间？IT 工程师手动重置更新组件需重命名哪两个文件夹？",
+      "replyType": "ANSWER",
+      "citations": 1,
+      "hitKeywords": [
+        "10-20GB",
+        "SoftwareDistribution",
+        "Catroot2"
+      ],
+      "ok": true,
+      "note": "ANSWER citations=1"
+    },
+    {
+      "id": "GOLDEN-QA-001",
+      "type": "normal",
+      "query": "员工登录公司系统时提示密码已过期或密码不符合复杂度要求，公司密码策略要求每隔多少天定期更换密码？",
+      "replyType": "ANSWER",
+      "citations": 1,
+      "hitKeywords": [
+        "90天",
+        "复杂度",
+        "密码"
+      ],
+      "ok": true,
+      "note": "ANSWER citations=1"
+    },
+    {
+      "id": "GOLDEN-QA-016",
+      "type": "conflict",
+      "query": "在家连上公司 VPN 后显示已连接，但内网 OA 和共享文件夹全都打不开，用远程桌面（mstsc）连工位电脑也提示失败，跨卡片排查时应如何区分并检查路由与端口？",
+      "replyType": "ANSWER",
+      "citations": 1,
+      "hitKeywords": [
+        "路由"
+      ],
+      "ok": true,
+      "note": "ANSWER citations=1 命中关键词=1/3"
+    },
+    {
+      "id": "GOLDEN-QA-015",
+      "type": "conflict",
+      "query": "电脑能上 QQ 但打不开网页提示 DNS_PROBE_FINISHED_NXDOMAIN，现行 v1.0 规范如何清缓存及配置阿里公共 DNS？旧版 v0.9 禁用 223.5.5.5 强制改 10.0.0.1 的规定是否还有效？",
+      "replyType": "ANSWER",
+      "citations": 1,
+      "hitKeywords": [
+        "ipconfig /flushdns",
+        "223.5.5.5",
+        "DHCP"
+      ],
+      "ok": true,
+      "note": "ANSWER citations=1 命中关键词=3/3"
+    },
+    {
+      "id": "GOLDEN-QA-014",
+      "type": "conflict",
+      "query": "依据现行 v1.0 域账号安全规范，员工密码连续输错几次会被锁定？等待多久可自动解锁？旧版 v0.9 输错 3 次锁定且不自动解锁的规定是否有效？",
+      "replyType": "ANSWER",
+      "citations": 1,
+      "hitKeywords": [],
+      "ok": true,
+      "note": "ANSWER citations=1 命中关键词=0/3"
+    },
+    {
+      "id": "GOLDEN-QA-013",
+      "type": "conflict",
+      "query": "出差在酒店连公司 VPN 一直报错 806 无法连接，现行 v1.0 规范推荐改用哪种 VPN 协议穿透性最好？旧版 v0.9 推荐的 PPTP 协议是否依然有效？",
+      "replyType": "ANSWER",
+      "citations": 1,
+      "hitKeywords": [
+        "806",
+        "SSL VPN",
+        "防火墙"
+      ],
+      "ok": true,
+      "note": "ANSWER citations=1 命中关键词=3/3"
+    },
+    {
+      "id": "GOLDEN-QA-019",
+      "type": "outofbound",
+      "query": "集团驻海外办事处（如欧美分部）的外币出差伙食津贴每日按何种基准汇率折算人民币报销？",
+      "replyType": "REFUSE",
+      "citations": 0,
+      "hitKeywords": [],
+      "ok": true,
+      "note": "REFUSE/OFF_TOPIC citations=0"
+    },
+    {
+      "id": "GOLDEN-QA-020",
+      "type": "outofbound",
+      "query": "员工在办理离职交接当月是否可以申请提取企业年金并一次性办理未归属股票期权折现？",
+      "replyType": "REFUSE",
+      "citations": 0,
+      "hitKeywords": [],
+      "ok": true,
+      "note": "REFUSE/OFF_TOPIC citations=0"
+    },
+    {
+      "id": "GOLDEN-QA-018",
+      "type": "outofbound",
+      "query": "员工因私出国旅游度假期间能否申请报销国际漫游话费与境外自驾租车补贴？",
+      "replyType": "REFUSE",
+      "citations": 0,
+      "hitKeywords": [],
+      "ok": true,
+      "note": "REFUSE/OFF_TOPIC citations=0"
+    },
+    {
+      "id": "GOLDEN-QA-017",
+      "type": "outofbound",
+      "query": "公司目前是否允许员工使用个人住房公积金向财务部申请企业内部低息购房免息贷款？",
+      "replyType": "REFUSE",
+      "citations": 0,
+      "hitKeywords": [],
+      "ok": true,
+      "note": "REFUSE/OFF_TOPIC citations=0"
+    }
+  ]
+}

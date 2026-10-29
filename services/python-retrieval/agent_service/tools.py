@@ -13,6 +13,7 @@
 from typing import Any, Dict, List, Optional
 import json
 import logging
+import re
 import uuid
 
 import httpx
@@ -25,18 +26,30 @@ log = logging.getLogger(__name__)
 _PRIORITIES = {"HIGH", "MEDIUM", "LOW"}
 # 建单分类兜底：种子里的「其他」末级分类（有路由规则，建单后可由管理员调整）。
 _CATEGORY_FALLBACK = "C_OTH"
+_TICKET_FIELD_SEP = r"[\s,，;；]*"
+_TICKET_TITLE_RE = re.compile(
+    r"(?:标题|主题)\s*(?:为|是|[:：])\s*"
+    r"(?P<title>.*?)"
+    r"(?=" + _TICKET_FIELD_SEP + r"(?:内容|描述|问题描述)\s*(?:为|是|[:：])|$)",
+    re.S,
+)
+_TICKET_DESC_RE = re.compile(
+    r"(?:内容|描述|问题描述)\s*(?:为|是|[:：])\s*(?P<description>.+)$",
+    re.S,
+)
 _LEAF_CACHE: Dict[str, Any] = {"ids": None}
 
 
 class ToolContext:
     """一次 ReAct 调用的上下文：已认证主体 + 草稿收集 + 追踪 ID。"""
 
-    __slots__ = ("user_id", "role", "draft", "request_id")
+    __slots__ = ("user_id", "role", "draft", "request_id", "question")
 
-    def __init__(self, user_id: str, role: str, request_id: str = ""):
+    def __init__(self, user_id: str, role: str, request_id: str = "", question: str = ""):
         self.user_id = user_id or ""
         self.role = role or ""
         self.draft: TicketDraft = None
+        self.question = (question or "").strip()
         # 追踪 ID：优先透传上游（Java 侧 DependencyHttpClient 会带 X-Request-Id），
         # 缺失时本次 ReAct 自生成一个 —— 下游 consultation-service 的知识搜索接口
         # **强制要求**该头，缺失即 400 VALIDATION_ERROR（工具恒失败）。
@@ -90,14 +103,16 @@ def tool_specs() -> List[Dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "prepare_ticket",
-                "description": "把员工的 IT 故障/服务请求整理成工单草稿（标题、描述、可选分类与优先级）。"
+                "description": "把员工本轮消息里的 IT 故障/服务请求整理成工单草稿（标题、描述、可选分类与优先级）。"
                                "重要：只生成草稿，不会真正建单；草稿需员工确认后才会创建工单。"
+                               "标题和描述只能取自员工当前消息，不得引用历史对话、知识资料或补充排查建议。"
+                               "若员工明确写了“标题为… 内容为…”，只填字段值，不要把整句指令或上下文写入 description。"
                                "无法确定分类时不要编造，直接省略 category。",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "title": {"type": "string", "description": "工单标题，简洁概括问题"},
-                        "description": {"type": "string", "description": "问题描述：现象、已做排查、影响范围"},
+                        "title": {"type": "string", "description": "工单标题；只能使用员工当前消息中的短语"},
+                        "description": {"type": "string", "description": "问题描述；只能使用员工当前消息中的描述，不补充上下文"},
                         "category": {"type": "string", "description": "可选分类 ID，仅限系统启用末级分类："
                                                                        "C_HW_PC/C_HW_PR/C_SW/C_NET/C_ACC/C_OTH；"
                                                                        "不确定就省略，不要编造"},
@@ -225,13 +240,48 @@ def _leaf_category_ids(ctx: "ToolContext") -> Optional[set]:
     return _LEAF_CACHE["ids"]
 
 
+def _clean_field_value(value: str) -> str:
+    return value.strip().strip("，,。.;；")
+
+
+def _explicit_ticket_fields(employee_message: str) -> Optional[tuple]:
+    """从“标题为X 内容为Y”这类显式建单指令中抽取字段值。"""
+    title_match = _TICKET_TITLE_RE.search(employee_message)
+    desc_match = _TICKET_DESC_RE.search(employee_message)
+    if not title_match or not desc_match:
+        return None
+    title = _clean_field_value(title_match.group("title"))
+    description = _clean_field_value(desc_match.group("description"))
+    if not title or not description:
+        return None
+    return title, description
+
+
 def _prepare_ticket(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    title = str(args.get("title") or "").strip()[:acfg.DRAFT_TITLE_MAX]
-    description = str(args.get("description") or "").strip()[:acfg.DRAFT_DESC_MAX]
+    # 草稿字段只允许来自员工当前消息，避免模型把历史对话/知识资料/排查建议写进工单。
+    employee_message = ctx.question
+    if not employee_message:
+        return {"success": False, "error": "缺少员工本轮消息，无法安全生成建单草稿"}
+
+    explicit = _explicit_ticket_fields(employee_message)
+    if explicit:
+        # 员工明确写了“标题为… 内容为…”时，以员工原话为准，避免模型把整句指令
+        # 或上下文填进 description。
+        title, description = explicit
+    else:
+        title = str(args.get("title") or "").strip()
+        description = str(args.get("description") or "").strip()
+    title = title[:acfg.DRAFT_TITLE_MAX]
+    description = description[:acfg.DRAFT_DESC_MAX]
     if not title:
         return {"success": False, "error": "缺少工单标题 title"}
     if not description:
         return {"success": False, "error": "缺少问题描述 description"}
+    if title not in employee_message or description not in employee_message:
+        return {"success": False, "error": "标题和描述必须来自员工本轮消息"}
+    if not explicit and description == employee_message:
+        return {"success": False, "error": "问题描述不能直接使用整段员工消息，请只提取员工描述的问题内容"}
+
     category = str(args.get("category") or "").strip() or None
     priority = str(args.get("priority") or "").strip().upper()
     if priority not in _PRIORITIES:

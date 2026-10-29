@@ -3,10 +3,9 @@
 
 - `POST /api/v1/agent/chat`：**同步 def**（Starlette 线程池执行，不阻塞事件循环）。
   主体由 `X-User-Id` / `X-User-Role` 头透传（归属安全，不接受请求体指定操作者）。
-- `GET /api/health`：自检（模型/工具是否已配置），不调用模型。
+- `GET /api/health`：自检（模型/工具/Langfuse 是否已配置），不调用模型。
 - 统一 Result 包络（`{code,msg,data}`，code=0 成功）；模型不可用 → 503 code=5032。
 """
-
 from contextlib import asynccontextmanager
 import logging
 
@@ -20,9 +19,8 @@ from . import config as acfg
 from .agent import AgentRunner
 from .contract import AgentChatRequest
 from .model_client import ModelError
+from .observability.langfuse_exporter import LangfuseExporter
 
-# uvicorn 只配置它自己的 logger，不碰 root —— 不显式设级别，本服务的 INFO 日志
-# （如 [工具] 调用 xxx）根本不会输出，排查时只能从回答反推。
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
@@ -36,6 +34,7 @@ def create_app(runner: AgentRunner = None) -> FastAPI:
 
     app = FastAPI(title="agent-service (function calling)", version="0.1.0", lifespan=lifespan)
     app.state.runner = runner        # 可注入；None 表示首个请求懒加载（模型未配置也不崩）
+    app.state.langfuse_exporter = LangfuseExporter()
 
     def _envelope(code: int, msg: str) -> dict:
         return ResultEnvelope.err(code, msg).model_dump(by_alias=True, exclude_none=True)
@@ -54,21 +53,34 @@ def create_app(runner: AgentRunner = None) -> FastAPI:
 
     @app.get("/api/health")
     async def health():
-        return {"status": "UP", "model_configured": acfg.model_configured(), "model": acfg.LLM_MODEL,
-                "max_steps": acfg.MAX_STEPS,
-                "ticket_service_configured": bool(acfg.TICKET_SERVICE_BASE_URL),
-                "knowledge_search_configured": bool(acfg.KNOWLEDGE_SEARCH_BASE_URL)}
+        exporter = app.state.langfuse_exporter
+        return {
+            "status": "UP",
+            "model_configured": acfg.model_configured(),
+            "model": acfg.LLM_MODEL,
+            "max_steps": acfg.MAX_STEPS,
+            "ticket_service_configured": bool(acfg.TICKET_SERVICE_BASE_URL),
+            "knowledge_search_configured": bool(acfg.KNOWLEDGE_SEARCH_BASE_URL),
+            "langfuse": {
+                "enabled": acfg.LANGFUSE_ENABLED,
+                "host": acfg.LANGFUSE_HOST,
+                "configured": bool(exporter.configured),
+                "includeContent": acfg.LANGFUSE_INCLUDE_CONTENT,
+            },
+        }
 
     @app.post("/api/v1/agent/chat")
     def chat(req: AgentChatRequest,
              x_user_id: str = Header(default="", alias="X-User-Id"),
              x_user_role: str = Header(default="", alias="X-User-Role"),
-             x_request_id: str = Header(default="", alias="X-Request-Id")):
+             x_request_id: str = Header(default="", alias="X-Request-Id"),
+             x_session_id: str = Header(default="", alias="X-Session-Id")):
         runner_ = app.state.runner
         if runner_ is None:                       # 懒加载：模型未配置时启动不崩，请求时才报 503
-            runner_ = AgentRunner()
+            runner_ = AgentRunner(langfuse_exporter=app.state.langfuse_exporter)
             app.state.runner = runner_
-        response = runner_.run(req, x_user_id, x_user_role, x_request_id)
+        session_id = req.session_id or x_session_id
+        response = runner_.run(req, x_user_id, x_user_role, x_request_id, session_id=session_id)
         return ResultEnvelope.ok(response.model_dump(by_alias=True, exclude_none=True)) \
             .model_dump(by_alias=True, exclude_none=True)
 

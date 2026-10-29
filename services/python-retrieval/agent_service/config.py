@@ -36,13 +36,6 @@ def _cfg(name: str, dotenv_key: str = "", default: str = "") -> str:
     return os.environ.get(name) or (_DOTENV.get(dotenv_key, "") if dotenv_key else "") or default
 
 
-def _env_bool(name: str, default: bool = False) -> bool:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in ("1", "true", "yes", "on")
-
-
 HOST = os.environ.get("AGENT_SERVICE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("AGENT_SERVICE_PORT", "8320"))
 
@@ -75,3 +68,27 @@ DRAFT_DESC_MAX = int(os.environ.get("AGENT_DRAFT_DESC_MAX", "2000"))
 def model_configured() -> bool:
     """生成模型是否已配置（缺失时接口返回明确的未配置错误）。"""
     return bool(LLM_BASE_URL and LLM_API_KEY)
+# ---- Langfuse APM（可关闭；不配置时零依赖降级，不阻塞业务） ----
+def _langfuse_bool(name: str, default: bool) -> bool:
+    return _cfg(name, name, str(default)).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _langfuse_host() -> str:
+    # 兼容两类常见变量名：SDK 文档用 LANGFUSE_HOST，项目 .env 用 LANGFUSE_BASE_URL。
+    return (os.environ.get("LANGFUSE_HOST")
+            or _DOTENV.get("LANGFUSE_HOST", "")
+            or os.environ.get("LANGFUSE_BASE_URL")
+            or _DOTENV.get("LANGFUSE_BASE_URL", "")
+            or "https://cloud.langfuse.com")
+
+
+LANGFUSE_ENABLED = _langfuse_bool("LANGFUSE_ENABLED", False)
+LANGFUSE_HOST = _langfuse_host()
+LANGFUSE_PUBLIC_KEY = _cfg("LANGFUSE_PUBLIC_KEY", "LANGFUSE_PUBLIC_KEY")
+LANGFUSE_SECRET_KEY = _cfg("LANGFUSE_SECRET_KEY", "LANGFUSE_SECRET_KEY")
+LANGFUSE_ENV = _cfg("LANGFUSE_ENV", "LANGFUSE_ENV",
+                    default=os.environ.get("SPRING_PROFILES_ACTIVE", "dev"))
+LANGFUSE_TIMEOUT_SECONDS = float(
+    _cfg("LANGFUSE_TIMEOUT_SECONDS", "LANGFUSE_TIMEOUT_SECONDS", "5"))
+# 默认 false：只上报指标与状态，不上传 prompt/回答/知识正文。
+LANGFUSE_INCLUDE_CONTENT = _langfuse_bool("LANGFUSE_INCLUDE_CONTENT", False)

@@ -78,7 +78,7 @@ public class RoutingService {
                  exceptionQueueService.raise("TICKET", ticket.getTicketId(),
                          ExceptionQueueService.TYPE_ROUTE_FAILED,
                          "自动路由失败", "分类【" + ticket.getCategoryId() + "】无可分配工程师", ticket.getPriority());
-                 // PRD §9.3：路由失败保持 NEW，通知平台管理员
+                 // PRD §9.3：路由失败保持 PENDING_ASSIGNMENT，通知平台管理员
                  notifyAdminsRouteFailed(ticket);
                  return RouteOutcome.routeFailed();
              }
@@ -126,7 +126,7 @@ public class RoutingService {
                         .and(w -> w.isNull("expired_at").or().gt("expired_at", LocalDateTime.now(java.time.ZoneOffset.UTC)))
                         .orderByAsc("route_order"));
         if (routes.isEmpty()) {
-            // PRD §9.3：分类无可用候选人 → 保持 NEW 进异常队列，不做兑底分配
+            // PRD §9.3：分类无可用候选人 → 保持 PENDING_ASSIGNMENT 进异常队列，不做兑底分配
             log.warn("[路由] 分类无路由配置: {}", category);
             return null;
         }
@@ -199,7 +199,7 @@ public class RoutingService {
      * <p>状态改为 ASSIGNED 是本分派的固有语义，与写 assignment 在同一事务内完成。
      * 调用方不再需要也不应当再单独 update status，三条调用路径（手动派单 /
      * HITL 审批放行 / 超时转派）的行为收敛到此处。此前 HITL 放行只更新了 assignee_id
-     * 而忘赋 status，导致流转日志 NEW→ASSIGNED 与工单实际状态矛盾、工程师端不可见。
+     * 而忘赋 status，导致流转日志 PENDING_ASSIGNMENT→ASSIGNED 与工单实际状态矛盾、工程师端不可见。
      */
     @Transactional
     public void assign(Ticket ticket, String engineerId, String endReason) {

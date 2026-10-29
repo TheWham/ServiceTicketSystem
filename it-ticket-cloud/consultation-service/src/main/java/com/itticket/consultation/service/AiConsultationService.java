@@ -112,16 +112,16 @@ public class AiConsultationService {
                 knowledgeQueryService::isPublishedCurrentVersion);
 
         String interactionId = persistInteraction(sessionId, result, verdict);
-        persistAiMessage(sessionId, idempotencyKey, interactionId, verdict);
+        // 建单草稿只在正常回答时透出(拒答不携带草稿);同时随 AI 消息元数据落库,
+        // 供咨询转单预填读取,避免从完整时间线重新拼接上下文。
+        TicketDraftDto draft = verdict.replyType() == AiReplyType.REFUSE
+                ? null : (result == null ? null : result.ticketDraft());
+        persistAiMessage(sessionId, idempotencyKey, interactionId, verdict, draft);
 
         if (verdict.replyType() == AiReplyType.REFUSE) {
             log.info("[ai] 拒答 session={} reason={} requestId={}",
                     sessionId, verdict.refusalReason(), RequestContext.get());
         }
-
-        // 建单草稿只在正常回答时透出(拒答不携带草稿);员工确认后才经 /ticket-draft/confirm 建单
-        TicketDraftDto draft = verdict.replyType() == AiReplyType.REFUSE
-                ? null : (result == null ? null : result.ticketDraft());
 
         return new AiChatResponse(
                 sessionId,
@@ -185,7 +185,7 @@ public class AiConsultationService {
     }
 
     private void persistAiMessage(String sessionId, String idempotencyKey, String interactionId,
-                                  AiAnswerGuard.Verdict verdict) {
+                                  AiAnswerGuard.Verdict verdict, TicketDraftDto ticketDraft) {
         boolean refused = verdict.replyType() == AiReplyType.REFUSE;
         String content = refused ? refusalTranscript(verdict) : verdict.answerText();
         Map<String, Object> metadata = new LinkedHashMap<>();
@@ -195,6 +195,9 @@ public class AiConsultationService {
         metadata.put("replyType", verdict.replyType());
         metadata.put("refusalReason", verdict.refusalReason());
         metadata.put("generalAnswer", verdict.replyType() == AiReplyType.ANSWER && verdict.citations().isEmpty());
+        if (ticketDraft != null) {
+            metadata.put("ticketDraft", ticketDraft);
+        }
         messageService.appendAiMessage(sessionId, "ai-a:" + idempotencyKey, content, Json.write(metadata));
     }
 

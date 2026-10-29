@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -61,7 +62,9 @@ class QueryRewriter:
         if self.client is None:
             self.last_ok = False
             return query
+
         for _ in range(self.retries):
+            started = time.perf_counter()
             try:
                 resp = self.client.chat.completions.create(
                     model=self.model,
@@ -70,7 +73,8 @@ class QueryRewriter:
                 )
                 text = (resp.choices[0].message.content or "").strip()
             except Exception as e:
-                print(f"       ⚠️ 查询改写失败，回落原查询：{e}")
+                elapsed_ms = (time.perf_counter() - started) * 1000
+                print(f"⚠️ 查询改写失败，耗时 {elapsed_ms}ms 错误：{type(e).__name__}: {e}")
                 break
             if text:
                 rewritten = text.splitlines()[0].strip()

@@ -17,10 +17,12 @@ import com.itticket.consultation.dto.ConsultationCreatedResponse;
 import com.itticket.consultation.dto.ConsultationProjection;
 import com.itticket.consultation.dto.ConsultationResolutionRequest;
 import com.itticket.consultation.dto.CreateConsultationRequest;
+import com.itticket.consultation.dto.MessageProjection;
 import com.itticket.consultation.dto.ReasonRequest;
 import com.itticket.consultation.dto.QueueStatusResponse;
 import com.itticket.consultation.dto.TicketDraftConfirmRequest;
 import com.itticket.consultation.dto.TicketDraftConfirmResponse;
+import com.itticket.consultation.dto.TicketDraftDto;
 import com.itticket.consultation.dto.TicketDraftResponse;
 import com.itticket.consultation.dto.TransferRequest;
 import com.itticket.consultation.dto.TransferResponse;
@@ -47,6 +49,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 咨询会话编排(AI-API-001/004、OpenAPI 05 的 /consultations 系列)。
@@ -503,35 +507,102 @@ public class ConsultationService {
     /**
      * OpenAPI 05 getTicketDraftFromConsultation:咨询转单预填。
      *
-     * <p>仅会话创建者可取(AX-006:own consultation 的 CREATE_TICKET)。标题取员工首条
-     * 实际消息,描述与会话摘要由完整时间线生成(PRD 9.1 第 3 条:可预填标题、分类、
-     * 描述、附件及会话摘要,但不得静默代替员工提交——本接口只读,不创建任何工单)。
+     * <p>仅会话创建者可取(AX-006:own consultation 的 CREATE_TICKET)。优先读取最近一条
+     * AI 消息中持久化的建单草稿,保证预填标题/描述与员工看到的 AI 草稿一致;没有草稿时才
+     * 从员工本人消息中提取显式字段或原始问题,绝不把 AI 回复和排查建议拼进描述。
      */
     public TicketDraftResponse ticketDraft(CurrentUser user, String sessionId) {
         Consultation consultation = transitionService.load(sessionId);
         authzService.requireCreator(user, consultation);
 
         List<ConsultationMessage> timeline = messageService.loadTimeline(sessionId);
-        String title = timeline.stream()
-                .filter(m -> m.getSenderType() == MessageSenderType.EMPLOYEE)
-                .map(m -> m.getContent() == null ? "" : m.getContent().trim())
-                .filter(c -> !c.isEmpty())
-                .flatMap(c -> c.lines())
-                .filter(l -> !l.isBlank())
-                .findFirst().orElse("");
-        if (title.length() > 100) {
-            title = title.substring(0, 100);
-        }
+        TicketDraftDto aiDraft = latestTicketDraft(timeline);
+        EmployeeTicketDraft employeeDraft = employeeTicketDraft(timeline);
+
+        String title = aiDraft != null && hasText(aiDraft.title())
+                ? aiDraft.title() : employeeDraft.title();
+        String description = aiDraft != null && hasText(aiDraft.description())
+                ? aiDraft.description() : employeeDraft.description();
+        String categoryId = aiDraft != null && hasText(aiDraft.category())
+                ? aiDraft.category() : consultation.getCategoryId();
 
         return new TicketDraftResponse(
                 consultation.getSessionId(),
                 consultation.getStatus().getValue(),
-                consultation.getCategoryId(),
+                categoryId,
                 !consultation.getStatus().isTerminal(),
-                title,
-                buildTimelineSummary(timeline, 4500),
+                limit(title, 100),
+                limit(description, 4500),
                 buildTimelineSummary(timeline, 2000));
     }
+
+    private TicketDraftDto latestTicketDraft(List<ConsultationMessage> timeline) {
+        for (int i = timeline.size() - 1; i >= 0; i--) {
+            ConsultationMessage message = timeline.get(i);
+            if (message.getSenderType() != MessageSenderType.AI) {
+                continue;
+            }
+            TicketDraftDto draft = MessageProjection.of(message).ticketDraft();
+            if (draft != null) {
+                return draft;
+            }
+        }
+        return null;
+    }
+
+    private EmployeeTicketDraft employeeTicketDraft(List<ConsultationMessage> timeline) {
+        String message = timeline.stream()
+                .filter(m -> m.getSenderType() == MessageSenderType.EMPLOYEE)
+                .map(ConsultationMessage::getContent)
+                .filter(this::hasText)
+                .findFirst()
+                .map(String::trim)
+                .orElse("");
+        if (!hasText(message)) {
+            return new EmployeeTicketDraft("", "");
+        }
+
+        String title = extractField(message, TICKET_TITLE_PATTERN);
+        String description = extractField(message, TICKET_DESCRIPTION_PATTERN);
+        if (!hasText(title)) {
+            title = message.lines().filter(this::hasText).findFirst().orElse("");
+        }
+        if (!hasText(description)) {
+            description = hasText(title) ? title : message;
+        }
+        return new EmployeeTicketDraft(limit(title, 100), limit(description, 4500));
+    }
+
+    private String extractField(String message, Pattern pattern) {
+        Matcher matcher = pattern.matcher(message);
+        return matcher.find() ? cleanField(matcher.group(1)) : "";
+    }
+
+    private String cleanField(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("^[，,。；;\\s]+|[，,。；;\\s]+$", "");
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private String limit(String value, int maxChars) {
+        String trimmed = value == null ? "" : value.trim();
+        return trimmed.length() <= maxChars ? trimmed : trimmed.substring(0, maxChars);
+    }
+
+    private record EmployeeTicketDraft(String title, String description) {
+    }
+
+    private static final Pattern TICKET_TITLE_PATTERN = Pattern.compile(
+            "(?:标题|主题|title)\\s*(?:为|是|[:：])\\s*([^\\n]+?)(?=\\s*(?:内容|描述|问题描述|description|详情)\\s*(?:为|是|[:：])|$)",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern TICKET_DESCRIPTION_PATTERN = Pattern.compile(
+            "(?:内容|描述|问题描述|description|详情)\\s*(?:为|是|[:：])\\s*([\\s\\S]+)$",
+            Pattern.CASE_INSENSITIVE);
 
     /** 会话摘要:非系统消息按「角色:内容」逐行拼接,超长截断。 */
     private String buildTimelineSummary(List<ConsultationMessage> timeline, int maxChars) {
@@ -561,15 +632,15 @@ public class ConsultationService {
 
     /**
      * 列表(OpenAPI 05 listConsultations)。
-     * 数据范围按 PRD 5.2:员工只看本人,工程师只看当前负责,平台管理员可看全部业务字段。
+     * 数据范围按 PRD 5.2:工程师只看当前负责,自助客服的发起方(员工与平台/知识库管理员)
+     * 只看本人发起的会话。管理员的管理视图不经过此自助入口,避免 /consultation
+     * 页面恢复或操作他人咨询。
      */
     public PagedData<ConsultationProjection> list(CurrentUser user, int page, int pageSize) {
         LambdaQueryWrapper<Consultation> query = Wrappers.<Consultation>lambdaQuery();
-        if (user.isPlatformAdmin()) {
-            // 不加归属条件
-        } else if (user.isEngineer()) {
+        if (user.isEngineer()) {
             query.eq(Consultation::getCurrentEngineerId, user.userId());
-        } else if (user.isEmployee()) {
+        } else if (user.isConsultationRequester()) {
             query.eq(Consultation::getCreatorId, user.userId());
         } else {
             throw new ApiException(ApiCode.FORBIDDEN, "当前角色无咨询查询权限");

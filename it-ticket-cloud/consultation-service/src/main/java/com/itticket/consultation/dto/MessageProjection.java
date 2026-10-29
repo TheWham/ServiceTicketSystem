@@ -22,7 +22,8 @@ import java.util.List;
  */
 @JsonInclude(JsonInclude.Include.ALWAYS)
 @JsonPropertyOrder({"message_id", "sender_type", "content", "attachments", "citations",
-        "interaction_id", "reply_type", "refusal_reason", "general_answer", "sent_at", "withdrawn_at"})
+        "interaction_id", "reply_type", "refusal_reason", "general_answer", "ticket_draft",
+        "sent_at", "withdrawn_at"})
 public record MessageProjection(
         @JsonProperty("message_id") String messageId,
         @JsonProperty("sender_type") String senderType,
@@ -33,6 +34,7 @@ public record MessageProjection(
         @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("reply_type") String replyType,
         @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("refusal_reason") String refusalReason,
         @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("general_answer") Boolean generalAnswer,
+        @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("ticket_draft") TicketDraftDto ticketDraft,
         @JsonProperty("sent_at") String sentAt,
         @JsonProperty("withdrawn_at") String withdrawnAt) {
 
@@ -55,14 +57,15 @@ public record MessageProjection(
                 metadata.replyType(),
                 metadata.refusalReason(),
                 metadata.generalAnswer(),
+                metadata.ticketDraft(),
                 Times.iso(message.getSentAt()),
                 Times.iso(message.getWithdrawnAt()));
     }
 
     private record Metadata(List<KnowledgeCitationDto> citations, String interactionId,
                             String replyType, String refusalReason, Boolean generalAnswer,
-                            List<AttachmentProjection> attachments) {
-        private static final Metadata EMPTY = new Metadata(null, null, null, null, null, List.of());
+                            TicketDraftDto ticketDraft, List<AttachmentProjection> attachments) {
+        private static final Metadata EMPTY = new Metadata(null, null, null, null, null, null, List.of());
     }
 
     private static Metadata parseMetadata(String citationJson) {
@@ -72,12 +75,13 @@ public record MessageProjection(
         try {
             JsonNode root = Json.read(citationJson, JsonNode.class);
             if (root.isArray()) {
-                return new Metadata(readCitations(root), null, null, null, null, List.of());
+                return new Metadata(readCitations(root), null, null, null, null, null, List.of());
             }
             if (!root.isObject() || root.path("schemaVersion").asInt() != 1) return Metadata.EMPTY;
             return new Metadata(readCitations(root.path("citations")),
                     text(root, "interactionId"), text(root, "replyType"), text(root, "refusalReason"),
                     root.path("generalAnswer").isBoolean() ? root.path("generalAnswer").asBoolean() : null,
+                    readTicketDraft(root.path("ticketDraft")),
                     readAttachments(root.path("attachments")));
         } catch (RuntimeException e) {
             // 旧数据或元数据损坏不影响正文展示，也不猜测引用或交互 ID。
@@ -96,5 +100,9 @@ public record MessageProjection(
 
     private static List<AttachmentProjection> readAttachments(JsonNode node) {
         return node.isArray() ? List.of(Json.read(node.toString(), AttachmentProjection[].class)) : List.of();
+    }
+
+    private static TicketDraftDto readTicketDraft(JsonNode node) {
+        return node.isObject() ? Json.read(node.toString(), TicketDraftDto.class) : null;
     }
 }

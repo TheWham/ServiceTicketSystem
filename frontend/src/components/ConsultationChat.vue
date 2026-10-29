@@ -146,11 +146,11 @@
                   </el-popover>
                 </div>
 
-                <!-- AI 建单草稿（人机回环）：AI 只起草、不落库，员工确认后才真正建单 -->
+                <!-- AI 建单草稿（人机回环）：AI 只起草、不落库，员工跳转建单页确认后再创建 -->
                 <div v-if="msg.ticketDraft" class="ticket-draft-card">
                   <div class="ticket-draft-head">
                     <el-icon><Tickets /></el-icon>
-                    <span>AI 拟好的工单草稿 <em>（确认前不会创建工单）</em></span>
+                    <span>AI 拟好的工单草稿 <em>（不会直接创建工单，跳转后可编辑确认）</em></span>
                   </div>
                   <div class="ticket-draft-body">
                     <div class="ticket-draft-row"><span class="k">标题</span><span class="v">{{ msg.ticketDraft.title }}</span></div>
@@ -159,12 +159,9 @@
                     <div class="ticket-draft-row"><span class="k">描述</span><span class="v">{{ msg.ticketDraft.description }}</span></div>
                   </div>
                   <div class="ticket-draft-actions">
-                    <template v-if="msg.draftTicketId">
-                      <el-tag type="success" size="small">已创建工单 {{ msg.draftTicketId }}</el-tag>
-                    </template>
-                    <el-button v-else type="primary" size="small" :icon="Tickets"
-                               :loading="msg.draftSubmitting" @click="submitTicketDraft(msg)">
-                      确认建单
+                    <el-button type="primary" size="small" :icon="Tickets"
+                               @click="goCreateTicket">
+                      编辑并创建工单
                     </el-button>
                   </div>
                 </div>
@@ -533,26 +530,6 @@ function pushLocal(senderType, content, extra = {}) {
 
 const GREETING_TEXT = '你好，我是 IT 智能助手小 T 👋 我可以帮你解决 VPN 连不上、邮箱收不到邮件、打印机故障、账号权限等常见 IT 问题。请描述你遇到的情况，我会先尝试帮你解决；如果解决不了，可以随时转接人工客服。'
 
-/**
- * 确认 AI 拟好的建单草稿 —— 人机回环第二步。
- * 草稿此前只存在于回答里，服务端没有写任何工单；这一步才真正创建，归属由服务端绑定当前员工。
- */
-async function submitTicketDraft(msg) {
-  if (msg.draftSubmitting || msg.draftTicketId) return
-  const sid = session.value?.sessionId
-  if (!sid) return
-  msg.draftSubmitting = true
-  try {
-    const res = await consultationApi.confirmTicketDraft(sid, msg.ticketDraft)
-    msg.draftTicketId = res.ticketId
-    pushLocal('SYSTEM', `已为你创建工单 ${res.ticketId}，可在「我的工单」中跟进；工程师接单后会有通知。`)
-  } catch (e) {
-    ElMessage.error(e.message || '建单失败，请重试')
-  } finally {
-    msg.draftSubmitting = false
-  }
-}
-
 function createGreeting() {
   return {
     id: `local-greeting-${++localSeq}`,
@@ -598,7 +575,7 @@ async function send(event) {
           suggestTransfer: res.suggestTransfer,
           replyType: res.replyType,
           generalAnswer: res.replyType === 'ANSWER' && !hasCitations,
-          // AI 只产草稿不落库；由员工点「确认建单」才真正创建（人机回环）
+          // AI 只产草稿不落库；由员工跳转建单页编辑确认后再创建（人机回环）
           ticketDraft: res.ticketDraft || null
         })
         if (res.replyType === 'ANSWER' && !hasCitations) {
@@ -796,12 +773,19 @@ function finishSession(status) {
 }
 
 function goCreateTicket() {
-  // 跳到提单页(默认落在“提交工单” tab);带 session 让提单页拉取咨询预填(PRD 9.1)
+  // 跳到新建工单页并带上咨询会话；提单页会自动读取并预填当前咨询内容
   emit('navigate')
   if (session.value?.sessionId && !isTerminal.value) {
-    router.push({ path: '/employee', query: { from: 'consultation', session: session.value.sessionId } })
+    router.push({
+      path: '/employee',
+      query: {
+        tab: 'create',
+        from: 'consultation',
+        session: session.value.sessionId
+      }
+    })
   } else {
-    router.push('/employee')
+    router.push({ path: '/employee', query: { tab: 'create' } })
   }
 }
 

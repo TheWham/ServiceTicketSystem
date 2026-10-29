@@ -41,7 +41,7 @@ def load_embedding_config() -> Dict[str, str]:
     dotenv = _load_dotenv()
     return {
         "api_key": os.environ.get("EMBED_API_KEY") or dotenv.get("EMBED_API_KEY", ""),
-        "base_url": os.environ.get("EMBED_BASE_URL") or dotenv.get("EMBED_BASE_URL", ""),
+        "base_url": os.environ.get("EMBED_BASE_URL") or dotenv.get("EMBED_BASE_URL", "https://kspmas.ksyun.com/v1"),
         "model": os.environ.get("EMBED_MODEL") or dotenv.get("EMBED_MODEL", "qwen3-embedding-8b"),
     }
 

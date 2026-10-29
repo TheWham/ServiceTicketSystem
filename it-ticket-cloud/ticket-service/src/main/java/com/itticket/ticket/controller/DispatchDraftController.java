@@ -89,8 +89,8 @@ public class DispatchDraftController {
     /**
      * 裁决草案 —— 门禁放行点。
      *
-     * <p>approve：先执行分派（TicketService.confirmDispatch），工单 NEW → ASSIGNED；
-     * reject：仅驳回草案，工单保持 NEW，由管理员改派或重新路由。
+     * <p>approve：先执行分派（TicketService.confirmDispatch），工单 PENDING_ASSIGNMENT → ASSIGNED；
+     * reject：仅驳回草案，工单保持 PENDING_ASSIGNMENT，由管理员改派或重新路由。
      * 两者都在 DispatchDraftService.decide 的同一事务内完成。
      */
     @PostMapping("/{draftId}/decide")

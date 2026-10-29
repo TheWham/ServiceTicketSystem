@@ -25,7 +25,7 @@ import java.util.Map;
  * 本类只负责:把问题、历史、预检索材料与已认证主体（X-User-Id/Role）传给 Python,
  * 取回结构化生成结果（6 键 JSON）与带外建单草稿。
  *
- * <p>引用守卫、会话状态、建单确认仍由 Java 侧负责（ComposedRagAdapter / AiAnswerGuard /
+ * <p>引用守卫、会话状态、建单确认仍由 Java/前端建单页负责（ComposedRagAdapter / AiAnswerGuard /
  * ConsultationService.confirmTicketDraft）——Python 只负责「脑+手」，Java 负责「门禁+账本」。
  */
 public final class PythonAgentClient {

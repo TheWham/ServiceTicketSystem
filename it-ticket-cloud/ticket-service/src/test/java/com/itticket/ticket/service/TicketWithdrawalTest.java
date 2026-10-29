@@ -58,7 +58,7 @@ class TicketWithdrawalTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = TicketStatus.class, names = {"NEW", "ASSIGNED", "IN_PROGRESS", "PENDING_SUPPLEMENT", "PENDING_EXTERNAL", "PENDING_ACCEPTANCE"})
+    @EnumSource(value = TicketStatus.class, names = {"PENDING_ASSIGNMENT", "ASSIGNED", "IN_PROGRESS", "PENDING_SUPPLEMENT", "PENDING_EXTERNAL", "PENDING_ACCEPTANCE"})
     @SuppressWarnings({"rawtypes", "unchecked"})
     void withdrawsActiveOwnTicketAndRetainsArchive(TicketStatus status) {
         ticket(status);

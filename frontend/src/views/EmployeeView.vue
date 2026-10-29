@@ -36,8 +36,8 @@
         <p v-if="prefillLoading" role="status">正在读取咨询内容，您也可以直接填写表单。</p>
         <p v-else-if="prefillError" class="origin-error">{{ prefillError }}。您仍可直接填写并提交工单。</p>
         <p v-else-if="prefillDraft && !prefillDraft.convert_allowed">{{ prefillDraft.status === 'CONVERTED_TO_TICKET' ? '该咨询已转为工单' : '当前咨询状态不支持转为工单' }}，您仍可直接提交新工单。</p>
-        <p v-else-if="prefillDraft && appliedSession !== consultationSession">咨询内容已就绪。点击填入空白内容并关联咨询，现有内容会保留。</p>
-        <div class="origin-actions"><el-button v-if="prefillDraft?.convert_allowed && appliedSession !== consultationSession" type="primary" plain :disabled="categoryLoading || prefillLoading || submitting" @click="applyConsultationPrefill">填入并关联咨询</el-button><el-button v-if="prefillError" :loading="prefillLoading" @click="loadConsultationPrefill">重试读取</el-button></div>
+        <p v-else-if="prefillDraft && appliedSession !== consultationSession">咨询内容已就绪，将自动填入空白内容并关联咨询，已有内容会保留。</p>
+        <div class="origin-actions"><el-button v-if="prefillError" :loading="prefillLoading" @click="loadConsultationPrefill">重试读取</el-button></div>
       </div>
       <!-- 草稿提示 -->
       <el-alert
@@ -571,6 +571,7 @@ const prefillLoading = ref(false)
 const prefillError = ref('')
 const prefillDraft = ref(null)
 const appliedSession = ref('')
+const autoPrefillSession = ref('')
 let prefillRequest = 0
 
 function mapConsultationDraft(draft, leaves) {
@@ -616,18 +617,26 @@ async function loadConsultationPrefill() {
   }
 }
 
-function applyConsultationPrefill() {
-  if (prefillLoading.value || categoryLoading.value || submitting.value) return
+function applyConsultationPrefill({ notify = true } = {}) {
+  if (prefillLoading.value || categoryLoading.value || submitting.value) return false
   const draft = prefillDraft.value
   const session = consultationSession.value
-  if (!session || draft?.session_id !== session) return
+  if (!session || draft?.session_id !== session) return false
   const mapped = mapConsultationDraft(draft, categories.value)
-  if (!mapped) return
+  if (!mapped) return false
   const result = fillEmptyDraftFields(form.value, mapped)
   if (result.changed) form.value = result.form
-  else ElMessage.info('已关联咨询，保留现有内容')
+  else if (notify) ElMessage.info('已关联咨询，保留现有内容')
   appliedSession.value = session
   formToken.value = genClientToken()
+  return true
+}
+
+function tryAutoApplyConsultationPrefill() {
+  const session = consultationSession.value
+  if (!session || editingTicket.value || autoPrefillSession.value === session) return
+  if (prefillLoading.value || categoryLoading.value || !prefillDraft.value?.convert_allowed) return
+  if (applyConsultationPrefill({ notify: false })) autoPrefillSession.value = session
 }
 
 const formRef = ref(null)
@@ -676,14 +685,14 @@ const page = ref(1)
 const pageSize = 10
 
 // 状态筛选项（英文枚举，显示用 statusLabel 转中文）
-const statuses = ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_SUPPLEMENT', 'PENDING_EXTERNAL', 'PENDING_ACCEPTANCE', 'COMPLETED', 'CANCELLED', 'CLOSED']
+const statuses = ['PENDING_ASSIGNMENT', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_SUPPLEMENT', 'PENDING_EXTERNAL', 'PENDING_ACCEPTANCE', 'COMPLETED', 'CANCELLED', 'CLOSED']
 
 // 我的工单统计条（简洁商务）
 const listStats = computed(() => {
   const t = tickets.value
   const count = (s) => t.filter(x => x.status === s).length
   return [
-    { label: '当前页待处理', value: count('NEW') + count('ASSIGNED'), icon: Clock, tone: 'warning' },
+    { label: '当前页待处理', value: count('PENDING_ASSIGNMENT') + count('ASSIGNED'), icon: Clock, tone: 'warning' },
     { label: '当前页处理中', value: count('IN_PROGRESS') + count('PENDING_EXTERNAL') + count('PENDING_SUPPLEMENT'), icon: Loading, tone: 'primary' },
     { label: '当前页待验收', value: count('PENDING_ACCEPTANCE'), icon: CircleCheck, tone: 'primary' },
     { label: '当前页已完成', value: count('COMPLETED'), icon: Finished, tone: 'success' }
@@ -717,13 +726,13 @@ function disablePastDate(time) { return time.getTime() < Date.now() - 86400000 }
 
 // 状态英文枚举 → 中文标签 + 颜色（PRD §9.2 九态）
 const STATUS_LABEL = {
-  NEW: '新建', ASSIGNED: '已分配', IN_PROGRESS: '处理中',
+  PENDING_ASSIGNMENT: '待分配', ASSIGNED: '已分配', IN_PROGRESS: '处理中',
   PENDING_SUPPLEMENT: '待补充', PENDING_EXTERNAL: '外部等待',
   PENDING_ACCEPTANCE: '待验收', COMPLETED: '已完成',
   CANCELLED: '已撤回', CLOSED: '已关闭'
 }
 const STATUS_TYPE = {
-  NEW: 'warning', ASSIGNED: 'primary', IN_PROGRESS: 'primary',
+  PENDING_ASSIGNMENT: 'warning', ASSIGNED: 'primary', IN_PROGRESS: 'primary',
   PENDING_SUPPLEMENT: 'info', PENDING_EXTERNAL: 'info',
   PENDING_ACCEPTANCE: 'primary', COMPLETED: 'success',
   CANCELLED: 'info', CLOSED: 'info'
@@ -740,7 +749,7 @@ function priorityTagType(p) { return PRIORITY_TYPE[p] || 'info' }
 function flowTimelineType(status) {
   const map = {
     COMPLETED: 'success', PENDING_ACCEPTANCE: 'primary', IN_PROGRESS: 'primary',
-    NEW: 'warning', ASSIGNED: 'primary', CANCELLED: 'info', CLOSED: 'info'
+    PENDING_ASSIGNMENT: 'warning', ASSIGNED: 'primary', CANCELLED: 'info', CLOSED: 'info'
   }
   return map[status] || 'primary'
 }
@@ -1134,8 +1143,8 @@ async function submitRating(t) {
   } catch (e) { ElMessage.error(e.message) }
 }
 
-// ---- 编辑工单并重新提交（提单人；NEW/ASSIGNED/待补充 可编辑）----
-const EDITABLE_STATUSES = ['NEW', 'ASSIGNED', 'PENDING_SUPPLEMENT']
+// ---- 编辑工单并重新提交（提单人；PENDING_ASSIGNMENT/ASSIGNED/待补充 可编辑）----
+const EDITABLE_STATUSES = ['PENDING_ASSIGNMENT', 'ASSIGNED', 'PENDING_SUPPLEMENT']
 function canEdit(t) { return !!t && EDITABLE_STATUSES.includes(t.status) }
 
 const editVisible = ref(false)
@@ -1273,7 +1282,12 @@ onMounted(async () => {
   }
 })
 
-watch(consultationSession, loadConsultationPrefill, { immediate: true })
+watch(consultationSession, (session) => {
+  appliedSession.value = ''
+  autoPrefillSession.value = ''
+  loadConsultationPrefill()
+}, { immediate: true })
+watch([consultationSession, categories, prefillDraft, prefillLoading, categoryLoading, editingTicket], tryAutoApplyConsultationPrefill, { immediate: true })
 
 // 关键：同页内点击通知只改 query，组件不重挂载、onMounted 不触发——需 watch query 变化
 watch(() => route.query.ticket, (tid) => {

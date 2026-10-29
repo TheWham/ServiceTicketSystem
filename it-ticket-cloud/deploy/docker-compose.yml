@@ -228,6 +228,13 @@ services:
       # ---- 工具依赖（容器名互访）----
       TICKET_SERVICE_BASE_URL: http://ticket-service:8201
       KNOWLEDGE_SEARCH_BASE_URL: http://consultation-service:8301
+      # ---- Langfuse APM（未配置时默认关闭）----
+      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-false}
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://cloud.langfuse.com}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_ENV: ${LANGFUSE_ENV:-prod}
+      LANGFUSE_INCLUDE_CONTENT: ${LANGFUSE_INCLUDE_CONTENT:-false}
     extra_hosts: *extra-hosts
     depends_on:
       ticket-service:

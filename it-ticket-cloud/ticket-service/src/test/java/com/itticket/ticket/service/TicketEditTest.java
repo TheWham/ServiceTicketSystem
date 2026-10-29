@@ -98,7 +98,7 @@ class TicketEditTest {
 
     @Test
     void rejectsAnotherCreatorWithoutWriting() {
-        ticket(TicketStatus.NEW);
+        ticket(TicketStatus.PENDING_ASSIGNMENT);
         assertThrows(BizException.class, () -> service.edit(
                 new UserContext.CurrentUser("OTHER", "Other", "PLATFORM_ADMIN", "IT"), "TK01", request()));
         verify(tickets, never()).update(any(), any());
@@ -107,7 +107,7 @@ class TicketEditTest {
 
     @Test
     void rejectsChangedCategoryOrNature() {
-        ticket(TicketStatus.NEW);
+        ticket(TicketStatus.PENDING_ASSIGNMENT);
         EditTicketRequest req = request();
         req.setCategoryId("OTHER");
         assertThrows(BizException.class, () -> service.edit(owner, "TK01", req));
@@ -119,7 +119,7 @@ class TicketEditTest {
 
     @Test
     void rejectsBlankContentAndTooManyAttachments() {
-        ticket(TicketStatus.NEW);
+        ticket(TicketStatus.PENDING_ASSIGNMENT);
         EditTicketRequest req = request();
         req.setDescription(" ");
         assertThrows(BizException.class, () -> service.edit(owner, "TK01", req));
@@ -131,7 +131,7 @@ class TicketEditTest {
 
     @Test
     void rejectsForeignOrUnavailableAttachmentsBeforeWriting() {
-        ticket(TicketStatus.NEW);
+        ticket(TicketStatus.PENDING_ASSIGNMENT);
         EditTicketRequest req = request();
         req.setAttachments(List.of("OTHER"));
         Attachment foreign = new Attachment();
@@ -180,7 +180,7 @@ class TicketEditTest {
 
     @Test
     void detailExposesCategorySnapshotEvenWhenCategoryIsNoLongerActive() throws Exception {
-        Ticket t = ticket(TicketStatus.NEW);
+        Ticket t = ticket(TicketStatus.PENDING_ASSIGNMENT);
         String json = new ObjectMapper().findAndRegisterModules().writeValueAsString(TicketVO.from(t));
         assertEquals("办公网络/网络连接", new ObjectMapper().readTree(json).path("category_name").asText());
     }

@@ -34,10 +34,10 @@ public record Transition(TicketStatus to, String action, Set<String> roles, Stri
             Transition.of(TicketStatus.CLOSED, "mark_duplicate", "标记重复单（关联主工单）", "platform_admin"));
 
     private static final Map<TicketStatus, List<Transition>> TRANSITIONS = Map.of(
-            // NEW：路由成功 / 无候选人（自环入异常队列）/ 撤销
-            TicketStatus.NEW, List.of(
+            // PENDING_ASSIGNMENT：路由成功 / 无候选人（自环入异常队列）/ 撤销
+            TicketStatus.PENDING_ASSIGNMENT, List.of(
                     Transition.of(TicketStatus.ASSIGNED, "route", "路由成功，记录工程师与响应截止", "system"),
-                    Transition.of(TicketStatus.NEW, "route_failed", "无可用候选人，进入异常队列", "system")),
+                    Transition.of(TicketStatus.PENDING_ASSIGNMENT, "route_failed", "无可用候选人，进入异常队列", "system")),
             // ASSIGNED：接单 / 响应超时转派（自环）
             TicketStatus.ASSIGNED, List.of(
                     Transition.of(TicketStatus.IN_PROGRESS, "accept", "工程师接单，确认影响与紧急程度", "ENGINEER"),

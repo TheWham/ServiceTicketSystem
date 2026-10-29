@@ -79,7 +79,7 @@ public class TicketController {
         return Result.ok("修改已保存", null);
     }
 
-    /** 提单人编辑工单并重新提交（新建/已分配可改内容；待补充提交后回到处理中） */
+    /** 提单人编辑工单并重新提交（待分配/已分配可改内容；待补充提交后回到处理中） */
     @PutMapping("/{id}")
     public Result<Map<String, Object>> update(@PathVariable String id, @RequestBody UpdateTicketRequest request) {
         Map<String, Object> result = ticketService.update(UserContext.get(), id, request);

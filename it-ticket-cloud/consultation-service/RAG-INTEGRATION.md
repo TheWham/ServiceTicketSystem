@@ -14,7 +14,7 @@
 | `AI_SECRETS_FILE` | `./ai-secrets.yml` | 客服本地配置文件，建议使用绝对路径 |
 | `RAG_SECRETS_FILE` | `./ai-secrets.yml` | RAG 本地配置文件，建议使用绝对路径 |
 
-两个服务可读取同一个本地文件，模板见 [ai-secrets.example.yml](../ai-secrets.example.yml)。复制为 `ai-secrets.yml` 后配置对话模型、Embedding、ES。模型 key 与 Embedding key 必须各自配置，不假设二者相同。共享数据库沿用既有配置。
+两个服务可读取同一个本地文件，模板见 [ai-secrets.example.yml](../ai-secrets.yml)。复制为 `ai-secrets.yml` 后配置对话模型、Embedding、ES。模型 key 与 Embedding key 必须各自配置，不假设二者相同。共享数据库沿用既有配置。
 
 `RAG_BASE_URL` 必须是可信内网服务地址：该调用按项目现有服务间约定透传已认证的 `X-User-Id`、`X-User-Role`，并带 `X-Request-Id`。身份在请求线程中取自 CurrentUser 后显式传入执行线程，不使用请求体里的身份。服务端口应由内网访问控制保护；此地址不能填网关地址（网关需要 JWT）或第三方地址。模型 API Key 不会发送给 RAG。
 

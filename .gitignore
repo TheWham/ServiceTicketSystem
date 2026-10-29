@@ -45,3 +45,13 @@ __pycache__/
 
 # 配置交接包(内含明文模型凭据,绝不入库)
 handoff-ai-config/
+# 本地 AI 环境变量覆盖（含明文凭据，绝不入库）
+**/ai-env.local.ps1
+
+# 配置交接包（内含明文模型凭据，绝不入库）
+services/python-retrieval/AI客服配置交接包/
+
+# 临时调试输出与备份
+.tmp_*.json
+codex-clipboard-*.png
+skills_backup_*.txt

@@ -22,7 +22,7 @@
 - 新增总超时预算、配置错误不重试的回归；补齐明确授予管理员权限/感染病毒的风险识别，保持普通权限申请流程和软件更新排障不误拦。
 - RAG YAML、Java 默认值和客服逐条引用门槛统一为 0.70；支持用同一个 RAG_CONFIDENCE_THRESHOLD 配置。代码审查发现的弱引用、冲突判断、权限申请误拦均已补回归并修复。
 
-配置模板：`it-ticket-cloud/ai-secrets.example.yml`；详细对接与执行说明：`it-ticket-cloud/consultation-service/RAG-INTEGRATION.md`。
+配置模板：`../../../it-ticket-cloud/ai-secrets.yml`；详细对接与执行说明：`it-ticket-cloud/consultation-service/RAG-INTEGRATION.md`。
 
 后续恢复记录（2026-10-08）：用户补齐模型配置后，重启客服与 RAG，直接验证对话模型 HTTP 200、Embedding HTTP 200 / 1024 维。按现有 localhost 配置部署 Elasticsearch 8.11.3（官方 ZIP 经 SHA-512 校验），仅绑定 127.0.0.1，初始化 knowledge_chunk，并通过 reindex 接口为两篇 PUBLISHED 当前版本知识重建本地索引。未修改知识内容与发布状态。真实“电脑坏了”返回通用 ANSWER；“VPN 无法连接的排查步骤”和“办公室 WiFi 速度慢的处理方式”均返回 ANSWER 及真实引用，分数分别为 0.8265 / 0.8414。信息不足时仍可能按既有置信度策略请求补充，不降低阈值绕过判断。
 

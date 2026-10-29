@@ -8,7 +8,7 @@ import java.util.List;
 
 /**
  * 提单人编辑工单请求 —— 与创建工单字段一致（§10.2 固定字段）。
- * 仅允许在 NEW / ASSIGNED / PENDING_SUPPLEMENT 状态下编辑；
+ * 仅允许在 PENDING_ASSIGNMENT / ASSIGNED / PENDING_SUPPLEMENT 状态下编辑；
  * 附件为「编辑后期望保留的完整 id 列表」（全量语义）。
  */
 @Data

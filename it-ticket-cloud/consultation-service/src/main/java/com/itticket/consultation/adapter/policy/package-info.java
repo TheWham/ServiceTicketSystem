@@ -28,7 +28,7 @@
  *    │      PUBLISHED 复核 + 置信度门槛；工具意图作答按「无知识依据」通道放行
  *    │
  *    └─ ⑦ 落库与返回 ……………… 人机回环：建单只产草稿（ticketDraft 带外返回），
- *           员工在前端确认后才经 /ticket-draft/confirm 调 ticket-service 真正建单
+ *           前端跳转建单页确认后走正常建单；外部客户端可经 /ticket-draft/confirm 触发
  * </pre>
  *
  * <p><b>本包只负责第 ① 环</b>。三个实现要点：

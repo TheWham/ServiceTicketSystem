@@ -15,7 +15,7 @@ public record RouteOutcome(Kind kind, String engineerId, String draftId) {
 
     /** 路由结局。 */
     public enum Kind {
-        /** 已产出派单草案，工单保持 NEW 待人工确认 —— 正常路径。 */
+        /** 已产出派单草案，工单保持 PENDING_ASSIGNMENT 待人工确认 —— 正常路径。 */
         DRAFT_PENDING,
         /** 无候选工程师，已入异常队列并通知管理员 —— 失败。 */
         ROUTE_FAILED,

@@ -16,7 +16,7 @@
           <span class="section-title">派单待确认</span>
           <el-tag v-if="drafts.length" type="warning" effect="dark" size="small">{{ drafts.length }} 待处理</el-tag>
           <span class="draft-hint">
-            自动路由已算好建议人选并落了草案，<strong>工单仍停在「新建」</strong>——放行后才真正分派
+            自动路由已算好建议人选并落了草案，<strong>工单仍停在「待分配」</strong>——放行后才真正分派
           </span>
           <el-button :icon="Refresh" size="small" :loading="draftsLoading" @click="loadDrafts">刷新</el-button>
         </div>
@@ -191,7 +191,7 @@
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button
-              v-if="['NEW','ASSIGNED','IN_PROGRESS','PENDING_EXTERNAL'].includes(row.status)"
+              v-if="['PENDING_ASSIGNMENT','ASSIGNED','IN_PROGRESS','PENDING_EXTERNAL'].includes(row.status)"
               size="small"
               @click.stop="showReassign(row)"
             >改派</el-button>
@@ -352,13 +352,13 @@ const currentUserId = computed(() => userStore.userId)
 
 // 状态/优先级映射（PRD §9.2 九态 + HIGH/MEDIUM/LOW）
 const STATUS_LABEL = {
-  NEW: '新建', ASSIGNED: '已分配', IN_PROGRESS: '处理中',
+  PENDING_ASSIGNMENT: '待分配', ASSIGNED: '已分配', IN_PROGRESS: '处理中',
   PENDING_SUPPLEMENT: '待补充', PENDING_EXTERNAL: '外部等待',
   PENDING_ACCEPTANCE: '待验收', COMPLETED: '已完成',
   CANCELLED: '已撤回', CLOSED: '已关闭'
 }
 const STATUS_TYPE = {
-  NEW: 'warning', ASSIGNED: 'primary', IN_PROGRESS: 'primary',
+  PENDING_ASSIGNMENT: 'warning', ASSIGNED: 'primary', IN_PROGRESS: 'primary',
   PENDING_SUPPLEMENT: 'info', PENDING_EXTERNAL: 'info',
   PENDING_ACCEPTANCE: 'primary', COMPLETED: 'success',
   CANCELLED: 'info', CLOSED: 'info'
@@ -382,7 +382,7 @@ const filter = ref({ status: '', category: '', assignee: '' })
 const engineers = ref([])
 
 // ---- 派单待确认（HITL 写操作门禁）----
-// 自动路由只产出 PENDING 草案；认领→裁决之后工单才从 NEW 落到 ASSIGNED。
+// 自动路由只产出 PENDING 草案；认领→裁决之后工单才从 PENDING_ASSIGNMENT 落到 ASSIGNED。
 const drafts = ref([])
 const draftsLoading = ref(false)
 const draftActing = ref('')
@@ -459,7 +459,7 @@ async function rejectDraft(row) {
   // 驳回必须说明原因——服务端强校验，前端先拦一道，避免拿 40001 当交互
   let reason
   try {
-    const { value } = await ElMessageBox.prompt('驳回必须说明原因（工单保持「新建」，不做静默改派）', '驳回派单草案', {
+    const { value } = await ElMessageBox.prompt('驳回必须说明原因（工单保持「待分配」，不做静默改派）', '驳回派单草案', {
       inputPlaceholder: '例如：该工程师不熟悉此分类',
       inputValidator: v => (v && v.trim().length > 0) || '原因不能为空',
       confirmButtonText: '确认驳回',
@@ -510,7 +510,7 @@ function priorityTagType(p) { return PRIORITY_TYPE[p] || 'info' }
 function flowTimelineType(status) {
   const map = {
     COMPLETED: 'success', PENDING_ACCEPTANCE: 'primary', IN_PROGRESS: 'primary',
-    NEW: 'warning', ASSIGNED: 'primary', CANCELLED: 'info', CLOSED: 'info'
+    PENDING_ASSIGNMENT: 'warning', ASSIGNED: 'primary', CANCELLED: 'info', CLOSED: 'info'
   }
   return map[status] || 'primary'
 }
