@@ -21,36 +21,50 @@ COMMON_ENTITY_TERMS: List[str] = [
     "VPN错误691", "错误代码691", "691", "800", "806", "807", "809", "868",
     "SSL VPN", "L2TP", "IPSec", "PPTP", "IKEv2", "VPN",
     "AD域控制器", "AD域账号锁定", "AD域账号", "AD域", "域账号锁定", "域账号", "域控",
-    "连续多次输错密码", "输错密码", "密码错误", "被锁定",
+    "连续多次输错密码", "输错密码", "密码错误", "被锁定", "凭据失效", "密码失效", "密码过期",
     "密码重置", "账号锁定", "双因子MFA认证", "MFA", "双因素认证",
     "Outlook", "企业微信", "钉钉", "Teams", "OWA", "网页邮箱",
-    "移动端邮件客户端旧密码轮询", "邮件客户端", "邮件",
+    "移动端邮件客户端旧密码轮询", "手机企业邮箱", "企业邮箱", "手机邮箱", "邮箱凭据失效", "邮件客户端", "邮件",
     "蓝屏", "死机", "内存溢出", "0x0000007B",
     "财务报销系统", "财务系统", "报销系统", "ERP", "CRM", "OA",
     "网络打印机", "打印机", "DNS", "网关",
     "IT网络基础运维组", "IT系统组", "桌面运维支持组", "网络组", "系统组",
 ]
 
+GENERIC_COARSE_TERMS: Set[str] = {"VPN", "网络", "系统", "客户端", "服务", "服务器", "平台"}
+
 
 def extract_query_entities(
     query: str, known_entities: Optional[List[str]] = None
 ) -> List[str]:
-    """从自然语言查询中提取种子实体列表。"""
+    """从自然语言查询中提取种子实体列表。
+    
+    具备泛化去噪与特化优先机制：当识别到具体故障现象、错误码或明确系统时，
+    自动过滤掉过宽的泛化粗粒度实体（如单独的'VPN'、'网络'），避免图谱遍历被无意义背景组件淹没。
+    """
     found_entities: Set[str] = set()
 
     # 1. 提取 ITKB 卡片编号（如 ITKB-VPN-001）
     for cid in CARD_ID_PATTERN.findall(query):
         found_entities.add(cid)
 
-    # 2. 匹配业务词表
+    # 2. 匹配业务词表（按长度倒序，优先长词匹配）
     dict_pool = known_entities or COMMON_ENTITY_TERMS
-    # 按长度倒序，优先长词匹配
     for term in sorted(dict_pool, key=len, reverse=True):
         if term.lower() in query.lower():
             canon = canonicalize_entity(term)
             found_entities.add(canon)
 
-    return sorted(found_entities)
+    # 3. 泛化实体剪枝：若存在具体实体（如 VPN错误691），移除粗粒度泛化词（如 VPN）
+    specific_entities = {e for e in found_entities if e not in GENERIC_COARSE_TERMS}
+    active_entities = specific_entities if specific_entities else found_entities
+
+    # 4. 排序：特化故障与关键症状优先排在前面，长词优先
+    def entity_priority(e: str) -> tuple:
+        is_error = 0 if any(k in e for k in ["错误", "691", "锁定", "失败", "超时", "轮询"]) else 1
+        return (is_error, -len(e), e)
+
+    return sorted(active_entities, key=entity_priority)
 
 
 HYBRID_SYSTEM_PROMPT = """你是一个具备高级拓扑推理能力的智能 IT 客服专家。

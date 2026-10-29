@@ -98,7 +98,7 @@ FACT_RE = re.compile(r"^(?:【.+?】\s*)?(.+?)\s+──\((.+?)\)──>\s+(.+)$"
 def facts_to_graph_data(facts: List[str], max_edges: int = 35) -> Dict[str, Any]:
     """将拓扑事实文本列表转换为前端 Vis-Network 所需的 nodes 与 edges 数据结构。"""
     nodes_map: Dict[str, Dict[str, Any]] = {}
-    edges: List[Dict[str, Any]] = []
+    parsed_items = []
 
     for f in facts:
         if "【拓扑剪枝】" in f and "──(" not in f:
@@ -109,7 +109,25 @@ def facts_to_graph_data(facts: List[str], max_edges: int = 35) -> Dict[str, Any]
         src = m.group(1).strip()
         rel = m.group(2).strip()
         tgt = m.group(3).strip()
+        parsed_items.append((src, rel, tgt))
 
+    # 优先展示高价值因果链条（根因、排查、处置、废止）
+    def rel_priority(item):
+        r = item[1]
+        if "诱发根因" in r or "根因" in r:
+            return 0
+        if "废止" in r or "替代" in r:
+            return 1
+        if "处置" in r or "排查" in r or "等待" in r:
+            return 2
+        if "主责" in r or "通道" in r:
+            return 3
+        return 4
+
+    parsed_items.sort(key=rel_priority)
+
+    edges: List[Dict[str, Any]] = []
+    for src, rel, tgt in parsed_items[:max_edges]:
         src_dep = "LEG-" in src or "已废止" in src or "旧" in src
         tgt_dep = "LEG-" in tgt or "已废止" in tgt or "旧" in tgt
 
@@ -124,8 +142,6 @@ def facts_to_graph_data(facts: List[str], max_edges: int = 35) -> Dict[str, Any]
             "label": rel,
             "title": f"{src} ──({rel})──> {tgt}",
         })
-        if len(edges) >= max_edges:
-            break
 
     return {"nodes": list(nodes_map.values()), "edges": edges}
 
@@ -357,10 +373,14 @@ def compare_query(req: CompareRequest):
     graph_res = reasoner.answer_query(query, max_hops=req.max_hops)
     graph_ms = round((time.time() - t_g0) * 1000, 1)
 
-    # 构造当前问题专属的拓扑图谱数据（优先使用推理器抽取的显式因果链路，辅以 Neo4j 种子子图）
-    dynamic_graph = facts_to_graph_data(graph_res["context"]["graph_facts"])
-    if not dynamic_graph["nodes"] and graph_res["context"].get("seed_entities"):
-        dynamic_graph = kg.extract_subgraph_data(graph_res["context"]["seed_entities"])
+    # 优先针对识别到的具体业务/故障种子实体从 Neo4j 抽取精准子图；若为空则基于事实列表解析
+    seeds = graph_res["context"].get("seed_entities", [])
+    if seeds:
+        dynamic_graph = kg.extract_subgraph_data(seeds, max_hops=req.max_hops, limit=35)
+    else:
+        dynamic_graph = facts_to_graph_data(graph_res["context"]["graph_facts"])
+    if not dynamic_graph.get("nodes"):
+        dynamic_graph = facts_to_graph_data(graph_res["context"]["graph_facts"])
 
     return JSONResponse(content={
         "code": 0,
