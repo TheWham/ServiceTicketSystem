@@ -14,7 +14,7 @@ from .schema import GroundedTriple, ITRelationEnum, canonicalize_entity
 
 logger = logging.getLogger(__name__)
 
-CARD_ID_PATTERN = re.compile(r"ITKB-[A-Z0-9]+-[0-9A-Z]+")
+CARD_ID_PATTERN = re.compile(r"ITKB(?:-[A-Z0-9]+)+")
 
 
 class LightKnowledgeGraph:
