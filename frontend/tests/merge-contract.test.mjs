@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { parse, compileScript } from '@vue/compiler-sfc'
 import * as vue from 'vue'
+import * as ticketEditing from '../src/utils/ticketEditing.js'
 
 function employee(overrides = {}) {
   const source = readFileSync(new URL('../src/views/EmployeeView.vue', import.meta.url), 'utf8')
@@ -25,7 +26,9 @@ function employee(overrides = {}) {
     '../api/consultation.js': { consultationApi: overrides.consultationApi || {} },
     '../stores/user.js': { useUserStore: () => ({ userId: 'U1', currentUser: { role: 'EMPLOYEE' } }) },
     '../components/SlaBadge.vue': {},
-    '../components/SlaTimer.vue': {}
+    '../components/SlaTimer.vue': {},
+    '../utils/attachmentPhotos.js': { loadPhotoUrls: async () => [], revokePhotoUrls() {} },
+    '../utils/ticketEditing.js': ticketEditing
   }
   const code = compiled.content
     .replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g,

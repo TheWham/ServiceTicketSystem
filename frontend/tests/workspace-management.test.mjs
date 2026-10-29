@@ -22,7 +22,8 @@ function component(name, apis = {}, currentUser = { user_id: 'reviewer', role: '
     '@element-plus/icons-vue': {},
     '../api/index.js': apis,
     '../stores/user.js': { useUserStore: () => userStore },
-    '../components/SlaBadge.vue': {}
+    '../components/SlaBadge.vue': {},
+    '../utils/attachmentPhotos.js': { loadPhotoUrls: async () => [], revokePhotoUrls() {} }
   }
   const code = compileScript(descriptor, { id: name }).content
     .replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g, (_, names, path) => `const {${names}} = modules[${JSON.stringify(path)}]`)

@@ -4,6 +4,10 @@ import test from 'node:test'
 import { parse, compileScript, compileTemplate } from '@vue/compiler-sfc'
 import * as vue from 'vue'
 import { renderToString } from '@vue/server-renderer'
+import * as ticketEditing from '../src/utils/ticketEditing.js'
+import * as engineerViews from '../src/utils/engineerViews.js'
+
+globalThis.window = { innerWidth: 1024, addEventListener() {}, removeEventListener() {} }
 
 const deferred = () => {
   let resolve, reject
@@ -29,6 +33,9 @@ function component(name, api = {}, options = {}) {
     '../api/index.js': { ticketApi: { list: async () => ({ data: { list: [], total: 0 } }), ...api }, categoryApi: { leaf: async () => ({ data: [] }) }, draftApi: { get: async () => ({ data: null }), delete: async () => {}, ...options.draftApi } },
     '../api/consultation.js': { consultationApi: options.consultationApi || {} },
     '../stores/user.js': { useUserStore: () => user },
+    '../utils/attachmentPhotos.js': { loadPhotoUrls: async () => [], revokePhotoUrls() {} },
+    '../utils/ticketEditing.js': ticketEditing,
+    '../utils/engineerViews.js': engineerViews,
   }
   const code = compileScript(descriptor, { id: name }).content
     .replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g, (_, names, path) => `const {${names}} = modules[${JSON.stringify(path)}]`)
@@ -202,8 +209,9 @@ for (const name of ['EmployeeView', 'EngineerView']) {
     const a = deferred(), b = deferred()
     const c = component(name, { detail: id => id === 'A' ? a.promise : b.promise })
     try {
-      await c.state.openDetail({ ticket_id: 'A' })
-      await c.state.openDetail({ ticket_id: 'B' })
+      c.state.openDetail({ ticket_id: 'A' })
+      c.state.openDetail({ ticket_id: 'B' })
+      await vue.nextTick()
       a.reject(new Error('old failure'))
       await settle()
       assert.equal(c.state.detailError.value, '')

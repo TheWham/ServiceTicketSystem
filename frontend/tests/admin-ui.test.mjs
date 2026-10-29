@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { computed, reactive, ref } from 'vue'
 
 const knowledge = readFileSync(new URL('../src/views/KnowledgeAdminView.vue', import.meta.url), 'utf8')
-const supervisor = readFileSync(new URL('../src/views/SupervisorView.vue', import.meta.url), 'utf8')
+const dispatch = readFileSync(new URL('../src/views/DispatchView.vue', import.meta.url), 'utf8')
 
 // Evaluate the production setup blocks with Vue reactivity and controlled API/router boundaries.
 test('knowledge tab follows deep links and route history, retaining other query parameters', () => {
@@ -26,7 +26,7 @@ test('knowledge tab follows deep links and route history, retaining other query 
 })
 
 test('changing supervisor filters fetches page one', () => {
-  const block = supervisor.match(/function applyFilters\(\) \{[\s\S]*?\n\}/)?.[0]
+  const block = dispatch.match(/function applyFilters\(\) \{[\s\S]*?\n\}/)?.[0]
   assert.ok(block)
   const page = ref(7)
   const requestedPages = []
