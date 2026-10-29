@@ -67,12 +67,12 @@
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div class="space-y-1">
           <div class="flex items-center gap-2">
-            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span class="text-sm font-bold text-white tracking-wide">Neo4j 生产级图数据库交互画布 (Docker 7474 / 7687)</span>
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" id="canvasPulseDot"></span>
+            <span class="text-sm font-bold text-white tracking-wide" id="canvasTitle">Neo4j 生产级图数据库交互画布 (Docker 7474 / 7687)</span>
             <span class="px-2 py-0.5 text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded" id="neo4jRelPill">已持久化 604 关系</span>
           </div>
-          <p class="text-xs text-slate-300">
-            下方已直接连通 Neo4j 渲染实时拓扑图：节点自带中文标签、连线带有关系箭头与佐证，支持自由拖拽与滚轮缩放。也可点击右侧直通官方 Neo4j Browser 控制台。
+          <p class="text-xs text-slate-300" id="canvasSubtitle">
+            下方已直接连通 Neo4j 渲染实时拓扑图：执行提问或点击预设用例时，将自动聚焦呈现专属因果/依赖子图。支持自由拖拽与滚轮缩放。
           </p>
         </div>
         <div class="flex items-center gap-2 shrink-0">
@@ -86,7 +86,11 @@
       <!-- 快捷图谱切换选项卡 -->
       <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
         <div class="flex flex-wrap items-center gap-2" id="graphSceneBtns">
-          <button onclick="loadGraphScene('vpn')" id="sceneBtn_vpn" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-sm transition-all cursor-pointer">
+          <button onclick="showCurrentQuestionGraph()" id="sceneBtn_current" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white shadow-md shadow-emerald-600/30 transition-all cursor-pointer flex items-center gap-1.5 border border-emerald-400/30">
+            <span>🎯</span>
+            <span id="sceneBtnCurrentText">当前问题因果拓扑 (实时)</span>
+          </button>
+          <button onclick="loadGraphScene('vpn')" id="sceneBtn_vpn" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all cursor-pointer">
             🔍 VPN 691 故障因果网
           </button>
           <button onclick="loadGraphScene('cmdb')" id="sceneBtn_cmdb" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all cursor-pointer">
@@ -114,6 +118,11 @@
         <div id="graphLoadingOverlay" class="absolute inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center text-xs text-indigo-400 font-medium hidden">
           <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-indigo-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
           正在从 Neo4j 读取拓扑数据并进行力导向布局...
+        </div>
+        <!-- 动态更新提示浮层 -->
+        <div id="graphUpdateToast" class="absolute top-3 left-3 bg-emerald-950/90 border border-emerald-500/50 text-emerald-200 text-xs px-3 py-1.5 rounded-xl shadow-lg flex items-center gap-2 backdrop-blur-sm transition-all duration-300 opacity-0 pointer-events-none">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+          <span id="graphUpdateToastText">🎯 已更新为当前问题的专属因果图谱</span>
         </div>
         <div class="absolute bottom-2 right-3 text-[10px] text-slate-500 pointer-events-none">
           提示：滚轮缩放画布 / 鼠标按住拖拽节点 / 悬停查看关系原文佐证
@@ -452,30 +461,101 @@
     let currentPresetIdx = 0;
     const API_BASE = "http://127.0.0.1:8350";
     let isServerOnline = false;
+    let lastQuestionGraphData = null;
+    let toastTimer = null;
+
+    const FACT_RE = /^(?:【.+?】\s*)?(.+?)\s+──\((.+?)\)──>\s+(.+)$/;
+
+    function parseFactsToGraphData(facts) {
+      const nodesMap = {};
+      const edges = [];
+      (facts || []).forEach(f => {
+        if (f.includes("【拓扑剪枝】") && !f.includes("──(")) return;
+        const m = f.trim().match(FACT_RE);
+        if (!m) return;
+        const src = m[1].trim();
+        const rel = m[2].trim();
+        const tgt = m[3].trim();
+        const srcDep = src.includes("LEG-") || src.includes("已废止") || src.includes("旧");
+        const tgtDep = tgt.includes("LEG-") || tgt.includes("已废止") || tgt.includes("旧");
+        if (!nodesMap[src]) nodesMap[src] = { id: src, label: src, is_deprecated: srcDep };
+        if (!nodesMap[tgt]) nodesMap[tgt] = { id: tgt, label: tgt, is_deprecated: tgtDep };
+        edges.push({ from: src, to: tgt, label: rel, title: `${src} ──(${rel})──> ${tgt}` });
+      });
+      return { nodes: Object.values(nodesMap), edges };
+    }
 
     // 初始化加载
     window.addEventListener("DOMContentLoaded", async () => {
       await checkServerHealth();
       await loadPresets();
       selectPreset(0);
-      loadGraphScene('vpn');
     });
 
     let visNetworkInstance = null;
-    let currentScene = 'vpn';
+    let currentScene = 'current';
 
-    async function loadGraphScene(scene) {
-      currentScene = scene;
-      ['vpn', 'cmdb', 'replaces', 'overview'].forEach(s => {
+    function updateGraphHeader(title, pillText, isLive = true) {
+      const titleEl = document.getElementById("canvasTitle");
+      const pillEl = document.getElementById("neo4jRelPill");
+      if (titleEl) titleEl.innerText = title;
+      if (pillEl) {
+        pillEl.innerText = pillText;
+        if (isLive) {
+          pillEl.className = "px-2 py-0.5 text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded";
+        } else {
+          pillEl.className = "px-2 py-0.5 text-[11px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded";
+        }
+      }
+    }
+
+    function flashGraphUpdatedHint(nodeCount, edgeCount) {
+      const toast = document.getElementById("graphUpdateToast");
+      const toastText = document.getElementById("graphUpdateToastText");
+      if (!toast || !toastText) return;
+      toastText.innerText = `🎯 顶部知识图谱已更新为此问题专属链路 (${nodeCount} 节点 / ${edgeCount} 条边)`;
+      toast.classList.remove("opacity-0", "pointer-events-none");
+      toast.classList.add("opacity-100");
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove("opacity-100");
+        toast.classList.add("opacity-0", "pointer-events-none");
+      }, 4000);
+    }
+
+    function showCurrentQuestionGraph() {
+      if (lastQuestionGraphData && lastQuestionGraphData.nodes && lastQuestionGraphData.nodes.length > 0) {
+        currentScene = 'current';
+        highlightSceneButton('current');
+        renderVisNetwork(lastQuestionGraphData.nodes, lastQuestionGraphData.edges);
+        updateGraphHeader(lastQuestionGraphData.title, `${lastQuestionGraphData.nodes.length} 节点 / ${lastQuestionGraphData.edges.length} 关系`, true);
+      } else {
+        alert("暂无当前提问的因果拓扑数据，请点击「执行双轨对比推理」或选择预置用例。");
+      }
+    }
+
+    function highlightSceneButton(scene) {
+      ['current', 'vpn', 'cmdb', 'replaces', 'overview'].forEach(s => {
         const btn = document.getElementById(`sceneBtn_${s}`);
         if (btn) {
           if (s === scene) {
-            btn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-sm transition-all cursor-pointer";
+            btn.className = s === 'current'
+              ? "px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white shadow-md shadow-emerald-600/30 transition-all cursor-pointer flex items-center gap-1.5 border border-emerald-400/40"
+              : "px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-md shadow-indigo-600/30 transition-all cursor-pointer";
           } else {
             btn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all cursor-pointer";
           }
         }
       });
+    }
+
+    async function loadGraphScene(scene) {
+      if (scene === 'current') {
+        showCurrentQuestionGraph();
+        return;
+      }
+      currentScene = scene;
+      highlightSceneButton(scene);
 
       const overlay = document.getElementById("graphLoadingOverlay");
       if (overlay) overlay.classList.remove("hidden");
@@ -485,6 +565,13 @@
         const json = await res.json();
         if (json.code === 0 && json.data) {
           renderVisNetwork(json.data.nodes, json.data.edges);
+          const sceneTitles = {
+            'vpn': '🔍 VPN 691 故障因果拓扑子图 (抽取自 Neo4j)',
+            'cmdb': '🏢 财务报销系统 CMDB 依赖子图 (抽取自 Neo4j)',
+            'replaces': '✂️ 知识卡片版本替代与废止链 (抽取自 Neo4j)',
+            'overview': '🌐 全局拓扑随机采样视图 (Neo4j 实时读取)',
+          };
+          updateGraphHeader(sceneTitles[scene] || 'Neo4j 生产级图数据库交互画布', `${json.data.nodes.length} 节点 / ${json.data.edges.length} 关系`, false);
         }
       } catch (err) {
         console.error("加载图谱数据异常", err);
@@ -668,6 +755,12 @@
         ];
       }
 
+      PRESETS.forEach(p => {
+        if (!p.graph_data) {
+          p.graph_data = parseFactsToGraphData(p.graph_facts);
+        }
+      });
+
       renderPresetTabs();
     }
 
@@ -699,6 +792,19 @@
       renderPresetTabs();
       const p = PRESETS[idx];
       document.getElementById("queryInput").value = p.query;
+
+      // 联动顶部知识图谱画布：自动聚焦展示该问题的拓扑子图！
+      p.graph_data = p.graph_data || parseFactsToGraphData(p.graph_facts);
+      if (p.graph_data && p.graph_data.nodes && p.graph_data.nodes.length > 0) {
+        lastQuestionGraphData = {
+          title: `🎯 当前预置场景 [${p.id}: ${p.title}] 知识拓扑图`,
+          nodes: p.graph_data.nodes,
+          edges: p.graph_data.edges,
+        };
+        highlightSceneButton('current');
+        renderVisNetwork(p.graph_data.nodes, p.graph_data.edges);
+        updateGraphHeader(lastQuestionGraphData.title, `${p.graph_data.nodes.length} 实体 / ${p.graph_data.edges.length} 因果关系`, true);
+      }
 
       // 渲染左侧向量数据
       document.getElementById("vecTimeBadge").innerText = `耗时: ${p.vector_ms || '--'}ms`;
@@ -776,6 +882,23 @@
               `<span class="inline-block px-1.5 py-0.5 bg-cyan-950 border border-cyan-800 text-cyan-300 rounded mr-1">${c}</span>`
             ).join("") || "无";
             document.getElementById("graphAnswerBox").innerText = data.graph.answer;
+
+            // 🎯 联动顶部画布：自动聚焦渲染当前提问专属的知识图谱子图！
+            const dynamicGraph = (data.graph && data.graph.graph_data && data.graph.graph_data.nodes && data.graph.graph_data.nodes.length > 0)
+              ? data.graph.graph_data
+              : parseFactsToGraphData(data.graph.facts);
+
+            if (dynamicGraph && dynamicGraph.nodes && dynamicGraph.nodes.length > 0) {
+              lastQuestionGraphData = {
+                title: `🎯 当前提问专属因果拓扑图 (实时推导自 Neo4j)`,
+                nodes: dynamicGraph.nodes,
+                edges: dynamicGraph.edges,
+              };
+              highlightSceneButton('current');
+              renderVisNetwork(dynamicGraph.nodes, dynamicGraph.edges);
+              updateGraphHeader(lastQuestionGraphData.title, `实时推导 ${dynamicGraph.nodes.length} 实体 / ${dynamicGraph.edges.length} 关系`, true);
+              flashGraphUpdatedHint(dynamicGraph.nodes.length, dynamicGraph.edges.length);
+            }
           } else {
             alert("请求异常: " + json.msg);
           }

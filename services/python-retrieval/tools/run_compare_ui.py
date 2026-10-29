@@ -10,6 +10,7 @@
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -91,6 +92,44 @@ class CompareRequest(BaseModel):
     max_hops: int = 2
 
 
+FACT_RE = re.compile(r"^(?:【.+?】\s*)?(.+?)\s+──\((.+?)\)──>\s+(.+)$")
+
+
+def facts_to_graph_data(facts: List[str], max_edges: int = 35) -> Dict[str, Any]:
+    """将拓扑事实文本列表转换为前端 Vis-Network 所需的 nodes 与 edges 数据结构。"""
+    nodes_map: Dict[str, Dict[str, Any]] = {}
+    edges: List[Dict[str, Any]] = []
+
+    for f in facts:
+        if "【拓扑剪枝】" in f and "──(" not in f:
+            continue
+        m = FACT_RE.match(f.strip())
+        if not m:
+            continue
+        src = m.group(1).strip()
+        rel = m.group(2).strip()
+        tgt = m.group(3).strip()
+
+        src_dep = "LEG-" in src or "已废止" in src or "旧" in src
+        tgt_dep = "LEG-" in tgt or "已废止" in tgt or "旧" in tgt
+
+        if src not in nodes_map:
+            nodes_map[src] = {"id": src, "label": src, "is_deprecated": src_dep}
+        if tgt not in nodes_map:
+            nodes_map[tgt] = {"id": tgt, "label": tgt, "is_deprecated": tgt_dep}
+
+        edges.append({
+            "from": src,
+            "to": tgt,
+            "label": rel,
+            "title": f"{src} ──({rel})──> {tgt}",
+        })
+        if len(edges) >= max_edges:
+            break
+
+    return {"nodes": list(nodes_map.values()), "edges": edges}
+
+
 PRESET_CASES = [
     {
         "id": "MH-001",
@@ -147,6 +186,9 @@ PRESET_CASES = [
         "graph_summary": "基于 CMDB 拓扑明确推导：① 必经网络通道为 SSL VPN，提单前必须确认连通；② 终审主责运维团队为 IT系统组；③ 联动拉取 VPN-001 与 SYS-005 指导前置自查。"
     }
 ]
+
+for p in PRESET_CASES:
+    p["graph_data"] = facts_to_graph_data(p.get("graph_facts", []))
 
 
 @app.get("/api/neo4j/status")
@@ -315,6 +357,11 @@ def compare_query(req: CompareRequest):
     graph_res = reasoner.answer_query(query, max_hops=req.max_hops)
     graph_ms = round((time.time() - t_g0) * 1000, 1)
 
+    # 构造当前问题专属的拓扑图谱数据（优先使用推理器抽取的显式因果链路，辅以 Neo4j 种子子图）
+    dynamic_graph = facts_to_graph_data(graph_res["context"]["graph_facts"])
+    if not dynamic_graph["nodes"] and graph_res["context"].get("seed_entities"):
+        dynamic_graph = kg.extract_subgraph_data(graph_res["context"]["seed_entities"])
+
     return JSONResponse(content={
         "code": 0,
         "data": {
@@ -328,7 +375,8 @@ def compare_query(req: CompareRequest):
                 "latency_ms": graph_ms,
                 "facts": graph_res["context"]["graph_facts"],
                 "associated_cards": graph_res["context"]["associated_card_ids"],
-                "answer": graph_res["answer"]
+                "answer": graph_res["answer"],
+                "graph_data": dynamic_graph,
             }
         }
     })

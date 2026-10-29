@@ -260,3 +260,72 @@ class Neo4jKnowledgeGraph:
                         card_ids.add(cid)
 
         return sorted(card_ids)
+
+    def extract_subgraph_data(
+        self,
+        seed_entities: List[str],
+        max_hops: int = 2,
+        prune_deprecated: bool = True,
+        limit: int = 35,
+    ) -> Dict[str, Any]:
+        """从种子实体出发，提取结构化子图拓扑数据 (nodes & edges)，供前端画布高亮渲染。"""
+        canonical_seeds = [
+            canonicalize_entity(e)
+            for e in seed_entities
+            if self.has_node(e)
+        ]
+        if not canonical_seeds:
+            return {"nodes": [], "edges": []}
+
+        nodes_map: Dict[str, Dict[str, Any]] = {}
+        edges: List[Dict[str, Any]] = []
+        seen_edges: Set[Tuple[str, str, str]] = set()
+
+        cypher = f"""
+        MATCH path = (seed:Entity {{name: $seed}})-[r*1..{max_hops}]-(target:Entity)
+        WHERE NOT $prune OR (
+            length(path) = 1
+            OR NONE(n IN nodes(path)[1..-1] WHERE coalesce(n.is_deprecated, false) = true)
+        )
+        UNWIND range(0, length(path)-1) AS idx
+        WITH relationships(path)[idx] AS rel
+        RETURN DISTINCT
+            startNode(rel).name AS src,
+            coalesce(startNode(rel).is_deprecated, false) AS src_dep,
+            type(rel) AS rel,
+            endNode(rel).name AS dst,
+            coalesce(endNode(rel).is_deprecated, false) AS dst_dep,
+            coalesce(rel.quote, '') AS quote
+        LIMIT $limit
+        """
+
+        with self.driver.session(database=self.database) as session:
+            for seed in canonical_seeds:
+                result = session.run(cypher, seed=seed, prune=prune_deprecated, limit=limit)
+                for record in result:
+                    src = record["src"]
+                    rel = record["rel"]
+                    dst = record["dst"]
+                    src_dep = record["src_dep"]
+                    dst_dep = record["dst_dep"]
+                    quote = record["quote"]
+
+                    edge_sig = (src, dst, rel)
+                    if edge_sig not in seen_edges:
+                        seen_edges.add(edge_sig)
+                        if src not in nodes_map:
+                            nodes_map[src] = {"id": src, "label": src, "is_deprecated": src_dep}
+                        if dst not in nodes_map:
+                            nodes_map[dst] = {"id": dst, "label": dst, "is_deprecated": dst_dep}
+                        edges.append({
+                            "from": src,
+                            "to": dst,
+                            "label": rel,
+                            "title": quote or f"{src} ──({rel})──> {dst}",
+                        })
+                        if len(edges) >= limit:
+                            break
+                if len(edges) >= limit:
+                    break
+
+        return {"nodes": list(nodes_map.values()), "edges": edges}

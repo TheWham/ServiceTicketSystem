@@ -92,3 +92,14 @@ def test_get_associated_card_ids(sample_graph: Neo4jKnowledgeGraph):
     card_ids = sample_graph.get_associated_card_ids(["ITKB-ACC-001"], max_hops=2, prune_deprecated=True)
     assert "ITKB-ACC-001" in card_ids
     assert "ITKB-LEG-ACC-001" not in card_ids
+
+
+def test_extract_subgraph_data(sample_graph: Neo4jKnowledgeGraph):
+    # 测试提取前端可视化结构化数据 (nodes & edges)
+    data = sample_graph.extract_subgraph_data(["VPN错误691"], max_hops=2)
+    assert "nodes" in data and "edges" in data
+    assert len(data["nodes"]) >= 2
+    assert len(data["edges"]) >= 2
+    node_ids = {n["id"] for n in data["nodes"]}
+    assert "VPN错误691" in node_ids
+    assert "AD域控制器" in node_ids
