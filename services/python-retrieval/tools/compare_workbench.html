@@ -251,6 +251,114 @@
       </div>
     </div>
 
+    <!-- 深度技术原理：三元组抽取、双轨检索对比与 LLM 整合机制 -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+      <div class="flex items-center justify-between cursor-pointer" onclick="toggleTheorySection()">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <span>🔬 架构深度拆解：三元组提取、双轨检索对比与 LLM 整合机制</span>
+          <span class="text-xs px-2 py-0.5 bg-indigo-500/20 text-indigo-400 rounded-full border border-indigo-500/30">点击展开/收起详解</span>
+        </h3>
+        <span id="theoryToggleArrow" class="text-slate-400 text-lg transition-transform">▼</span>
+      </div>
+
+      <div id="theoryContent" class="mt-6 space-y-6 pt-5 border-t border-slate-800">
+        
+        <!-- 步骤1: 三元组提取过程 -->
+        <div class="p-5 bg-slate-950/70 border border-slate-800 rounded-xl">
+          <h4 class="text-sm font-bold text-indigo-400 flex items-center gap-2 mb-3">
+            <span class="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-300 flex items-center justify-center text-xs">1</span>
+            三元组提取的完整工业级流水线 (5 重安全防漂移防线)
+          </h4>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+            <div class="p-3 bg-slate-900/80 border border-slate-800 rounded-lg">
+              <div class="font-bold text-slate-200 mb-1">① 元数据治理注入</div>
+              <p class="text-slate-400 leading-relaxed">解析 Markdown Frontmatter 中的 <code class="text-indigo-300">replaces</code>、<code class="text-indigo-300">entities</code>，直接注入确定性治理三元组（废止并替代、生效状态、依赖分类），零幻觉。</p>
+            </div>
+            <div class="p-3 bg-slate-900/80 border border-slate-800 rounded-lg">
+              <div class="font-bold text-slate-200 mb-1">② 实体候选池约束</div>
+              <p class="text-slate-400 leading-relaxed">将卡片中标准名词注入 LLM Prompt 模具，强制大模型只能以候选池名词作为头尾实体，杜绝生成天马行空的自造词。</p>
+            </div>
+            <div class="p-3 bg-slate-900/80 border border-slate-800 rounded-lg">
+              <div class="font-bold text-slate-200 mb-1">③ Quote Grounding 逐字比对</div>
+              <p class="text-slate-400 leading-relaxed">每条三元组必须携带 <code class="text-amber-300">evidence_quote</code>，程序在卡片原文中执行逐字子串校验，只要原文没有该句直接拦截丢弃。</p>
+            </div>
+            <div class="p-3 bg-slate-900/80 border border-slate-800 rounded-lg">
+              <div class="font-bold text-slate-200 mb-1">④ 别名消歧与内存建图</div>
+              <p class="text-slate-400 leading-relaxed">通过 <code class="text-emerald-300">canonicalize_entity</code> 将“AD域/域控”等口语归一化为标准节点，批量写入 NetworkX 内存多重图，耗时仅 0.05 秒。</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 步骤2: 双轨检索出的是什么？ -->
+        <div class="p-5 bg-slate-950/70 border border-slate-800 rounded-xl">
+          <h4 class="text-sm font-bold text-cyan-400 flex items-center gap-2 mb-3">
+            <span class="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-xs">2</span>
+            传统向量检索 vs Graph 链路检索结果的根本区别
+          </h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div class="p-4 bg-rose-950/20 border border-rose-900/40 rounded-lg">
+              <div class="font-bold text-rose-300 text-sm mb-2 flex items-center gap-1.5">
+                <span>🔴 纯向量检索产出：孤立切片集合 (Unconnected Chunks)</span>
+              </div>
+              <p class="text-slate-300 leading-relaxed">
+                输入 Query 后计算 Embedding 向量余弦距离，召回 3~5 个 512 字符的小切片。切片之间<strong>互不连通、没有因果关系</strong>。面对“VPN 报错 691”，向量库仅因字面相似召回了 VPN 客户端重启与网络排查，而深藏在另一张《账号锁定处置》卡片中的“手机邮箱旧密码轮询锁定 AD 域”切片由于字面不包含 VPN，在相似度排序中彻底沉底无法被召回，形成<strong>信息孤岛</strong>。
+              </p>
+            </div>
+            <div class="p-4 bg-emerald-950/20 border border-emerald-900/40 rounded-lg">
+              <div class="font-bold text-emerald-300 text-sm mb-2 flex items-center gap-1.5">
+                <span>🟢 Graph 双轨融合产出：因果拓扑网 + 完整父卡正文</span>
+              </div>
+              <p class="text-slate-300 leading-relaxed">
+                输入 Query 后识别出种子实体，在 NetworkX 图中执行 2-Hop BFS 遍历，抽取出<strong>显式因果链路</strong>（<code class="text-emerald-300">VPN错误691 ──(根因)──> AD域锁定 ──(根因)──> 手机邮箱旧密码轮询</code>）；同时将指向已废止旧规的边在内存中物理剪枝；接着顺藤摸瓜找到涉及的两张核心卡片 ID，批量从 MySQL Docstore 中取出完整父卡。
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 步骤3: LLM 怎么整合这两条链路？ -->
+        <div class="p-5 bg-slate-950/70 border border-slate-800 rounded-xl">
+          <h4 class="text-sm font-bold text-emerald-400 flex items-center gap-2 mb-3">
+            <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-xs">3</span>
+            LLM 如何将拓扑事实与正文内容融合整合？(骨架 + 血肉架构)
+          </h4>
+          <div class="space-y-3 text-xs text-slate-300">
+            <p class="leading-relaxed">
+              推理器构造了<strong>双轨融合 Prompt</strong>，将图谱事实与知识库正文划分了严谨的责任分工与优先级：
+            </p>
+            <div class="p-3.5 bg-slate-900 border border-slate-800 rounded-lg font-mono text-[11px] text-slate-300 leading-relaxed overflow-x-auto">
+<span class="text-indigo-400 font-bold">【系统客观拓扑事实（最高优先级刚性骨架，不可违背）】</span>
+1. VPN错误691 ──(诱发根因)──> AD域账号锁定
+2. 移动端邮件客户端旧密码轮询 ──(诱发根因)──> AD域账号锁定
+3. 检查客户端旧密码 ──(前置排查动作)──> AD域账号锁定
+4. Active Directory用户和计算机 ──(处置动作)──> AD域账号锁定
+5. ITKB-VPN-001 ──(废止并替代)──> ITKB-LEG-VPN-001
+
+<span class="text-cyan-400 font-bold">【关联知识库参考正文（提供细节血肉与操作命令）】</span>
+### 【卡片 ITKB-VPN-001 参考正文】包含 VPN 客户端配置、预共享密钥检查...
+### 【卡片 ITKB-ACC-001 参考正文】包含手机邮箱退出登录步骤、事件ID 4740 安全日志排查...
+
+<span class="text-amber-400 font-bold">【用户问题】</span>在家连不上公司VPN，提示691，手机邮箱也提示凭据失效...
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+              <div class="p-2.5 bg-slate-900 border border-slate-800 rounded-lg">
+                <div class="font-bold text-indigo-300 mb-1">第一步：拓扑定锚 (定因果)</div>
+                <p class="text-slate-400 text-[11px]">LLM 首先读取拓扑事实，确立严格因果链条（手机邮箱轮询 -> AD账号锁定 -> VPN 691 认证失败），绝不把原因误判为本地路由器故障。</p>
+              </div>
+              <div class="p-2.5 bg-slate-900 border border-slate-800 rounded-lg">
+                <div class="font-bold text-indigo-300 mb-1">第二步：版本仲裁 (防旧规)</div>
+                <p class="text-slate-400 text-[11px]">发现拓扑中包含废止与替代关系，强制 LLM 只采信现行有效版本，彻底屏蔽已废止卡片中的失效条款。</p>
+              </div>
+              <div class="p-2.5 bg-slate-900 border border-slate-800 rounded-lg">
+                <div class="font-bold text-indigo-300 mb-1">第三步：正文填充 (补细节)</div>
+                <p class="text-slate-400 text-[11px]">沿着因果骨架，从 MySQL Docstore 父卡正文中摘录“事件ID 4740”、“先退手机邮箱登录”等操作细节，组织成带【证据链推导】与【处置步骤】的严密终答。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
   </div>
 
   <script>
@@ -500,6 +608,20 @@
       runBtn.disabled = false;
       runBtn.classList.remove("opacity-70");
       runSpinner.classList.add("hidden");
+    }
+
+    let isTheoryOpen = true;
+    function toggleTheorySection() {
+      isTheoryOpen = !isTheoryOpen;
+      const content = document.getElementById("theoryContent");
+      const arrow = document.getElementById("theoryToggleArrow");
+      if (isTheoryOpen) {
+        content.classList.remove("hidden");
+        arrow.innerText = "▼";
+      } else {
+        content.classList.add("hidden");
+        arrow.innerText = "▶";
+      }
     }
 
     function fallbackLocalMatch(query) {
