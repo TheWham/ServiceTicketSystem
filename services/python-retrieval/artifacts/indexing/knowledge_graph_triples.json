@@ -1,0 +1,3578 @@
+[
+  {
+    "head": "ITKB-APPENDIX-1",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-APPENDIX-1\""
+  },
+  {
+    "head": "ITKB-APPENDIX-1",
+    "relation": "依赖系统组件",
+    "tail": "附录：IT故障排查通用流程",
+    "evidence_quote": "category: \"附录：IT故障排查通用流程\""
+  },
+  {
+    "head": "服务端故障",
+    "relation": "前置排查动作",
+    "tail": "重启",
+    "evidence_quote": "第1步【重启大法】：重启出问题的设备和软件。"
+  },
+  {
+    "head": "网络故障",
+    "relation": "前置排查动作",
+    "tail": "重启",
+    "evidence_quote": "第1步【重启大法】：重启出问题的设备和软件。"
+  },
+  {
+    "head": "服务端故障",
+    "relation": "前置排查动作",
+    "tail": "错误提示截图",
+    "evidence_quote": "第3步【收集信息】：记录错误提示的完整文字（截图）、发生时间、做了什么操作后出现的。"
+  },
+  {
+    "head": "网络故障",
+    "relation": "前置排查动作",
+    "tail": "错误提示截图",
+    "evidence_quote": "第3步【收集信息】：记录错误提示的完整文字（截图）、发生时间、做了什么操作后出现的。"
+  },
+  {
+    "head": "服务端故障",
+    "relation": "前置排查动作",
+    "tail": "内部知识库(Wiki)",
+    "evidence_quote": "第4步【搜索内部知识库】：在本文档或公司Wiki中搜索错误关键词。"
+  },
+  {
+    "head": "网络故障",
+    "relation": "前置排查动作",
+    "tail": "内部知识库(Wiki)",
+    "evidence_quote": "第4步【搜索内部知识库】：在本文档或公司Wiki中搜索错误关键词。"
+  },
+  {
+    "head": "服务端故障",
+    "relation": "处置动作",
+    "tail": "IT工单",
+    "evidence_quote": "第5步【提交IT工单】：如果以上步骤无法解决，提交工单并附上截图和操作描述。"
+  },
+  {
+    "head": "网络故障",
+    "relation": "处置动作",
+    "tail": "IT工单",
+    "evidence_quote": "第5步【提交IT工单】：如果以上步骤无法解决，提交工单并附上截图和操作描述。"
+  },
+  {
+    "head": "ITKB-ACC-002",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-ACC-002\""
+  },
+  {
+    "head": "ITKB-ACC-002",
+    "relation": "依赖系统组件",
+    "tail": "账号与权限问题",
+    "evidence_quote": "category: \"账号与权限问题\""
+  },
+  {
+    "head": "密码复杂度",
+    "relation": "诱发根因",
+    "tail": "密码不符合要求",
+    "evidence_quote": "④ 密码复杂度要求（长度、大小写、数字、特殊字符）未被满足"
+  },
+  {
+    "head": "密码过期",
+    "relation": "前置排查动作",
+    "tail": "自助密码重置平台",
+    "evidence_quote": "步骤1：访问公司自助密码重置平台（如有），通过手机验证码或备用邮箱重置。"
+  },
+  {
+    "head": "忘记密码",
+    "relation": "前置排查动作",
+    "tail": "自助密码重置平台",
+    "evidence_quote": "步骤1：访问公司自助密码重置平台（如有），通过手机验证码或备用邮箱重置。"
+  },
+  {
+    "head": "初始密码",
+    "relation": "前置排查动作",
+    "tail": "HR",
+    "evidence_quote": "步骤3：新员工查收入职邮件或联系HR获取初始密码。"
+  },
+  {
+    "head": "忘记密码",
+    "relation": "处置动作",
+    "tail": "AD域控制器",
+    "evidence_quote": "1. AD域控制器：右键用户 → 重置密码 → 设置临时密码并勾选「用户下次登录时须更改密码」。"
+  },
+  {
+    "head": "密码过期",
+    "relation": "处置动作",
+    "tail": "AD域控制器",
+    "evidence_quote": "1. AD域控制器：右键用户 → 重置密码 → 设置临时密码并勾选「用户下次登录时须更改密码」。"
+  },
+  {
+    "head": "AD域控制器",
+    "relation": "依赖系统组件",
+    "tail": "组策略(GPO)",
+    "evidence_quote": "3. 检查密码策略GPO是否正确应用（最小长度、复杂度、历史密码数、最长使用期限）。"
+  },
+  {
+    "head": "密码重置与过期处理",
+    "relation": "主责运维组",
+    "tail": "IT 部",
+    "evidence_quote": "department: \"IT 部\""
+  },
+  {
+    "head": "ITKB-APPENDIX-2",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-APPENDIX-2\""
+  },
+  {
+    "head": "ITKB-APPENDIX-2",
+    "relation": "依赖系统组件",
+    "tail": "附录：IT故障排查通用流程",
+    "evidence_quote": "category: \"附录：IT故障排查通用流程\""
+  },
+  {
+    "head": "分层排查",
+    "relation": "依赖系统组件",
+    "tail": "OSI模型",
+    "evidence_quote": "按OSI模型由下而上排查——物理层（线缆/电源）→ 网络层（IP/路由）→ 传输层（端口/防火墙）→ 应用层（软件/配置）。"
+  },
+  {
+    "head": "日志分析",
+    "relation": "前置排查动作",
+    "tail": "事件查看器",
+    "evidence_quote": "查看系统事件查看器、应用日志、服务器日志，定位异常事件。"
+  },
+  {
+    "head": "日志分析",
+    "relation": "前置排查动作",
+    "tail": "应用日志",
+    "evidence_quote": "查看系统事件查看器、应用日志、服务器日志，定位异常事件。"
+  },
+  {
+    "head": "日志分析",
+    "relation": "前置排查动作",
+    "tail": "服务器日志",
+    "evidence_quote": "查看系统事件查看器、应用日志、服务器日志，定位异常事件。"
+  },
+  {
+    "head": "交叉验证",
+    "relation": "处置动作",
+    "tail": "排除法",
+    "evidence_quote": "排除法——更换设备/线缆/账号/网络环境，逐一排除变量。"
+  },
+  {
+    "head": "修复实施",
+    "relation": "处置动作",
+    "tail": "回归测试",
+    "evidence_quote": "根据定位的根因执行修复方案，修复后进行回归测试。"
+  },
+  {
+    "head": "知识沉淀",
+    "relation": "处置动作",
+    "tail": "知识库",
+    "evidence_quote": "将问题和解决方案更新到本知识库，供后续检索使用。"
+  },
+  {
+    "head": "ITKB-APPENDIX-3",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-APPENDIX-3\""
+  },
+  {
+    "head": "ITKB-APPENDIX-3",
+    "relation": "依赖系统组件",
+    "tail": "附录：IT故障排查通用流程",
+    "evidence_quote": "category: \"附录：IT故障排查通用流程\""
+  },
+  {
+    "head": "IT故障排查",
+    "relation": "依赖系统组件",
+    "tail": "排查命令",
+    "evidence_quote": "为IT故障排查提供常用命令速查，支撑按通用流程快速定位与处置。"
+  },
+  {
+    "head": "IT故障排查",
+    "relation": "依赖系统组件",
+    "tail": "速查表",
+    "evidence_quote": "为IT故障排查提供常用命令速查，支撑按通用流程快速定位与处置。"
+  },
+  {
+    "head": "知识库",
+    "relation": "依赖系统组件",
+    "tail": "工单系统",
+    "evidence_quote": "新增或修正条目请联系IT支持团队，将问题和解决方案提交至工单系统 → 知识库更新。"
+  },
+  {
+    "head": "ITKB-ACC-001",
+    "relation": "废止并替代",
+    "tail": "ITKB-LEG-ACC-001",
+    "evidence_quote": "replaces: [\"ITKB-LEG-ACC-001\"]"
+  },
+  {
+    "head": "ITKB-LEG-ACC-001",
+    "relation": "生效状态",
+    "tail": "已废止下线",
+    "evidence_quote": "replaces: [\"ITKB-LEG-ACC-001\"]"
+  },
+  {
+    "head": "ITKB-ACC-001",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-ACC-001\""
+  },
+  {
+    "head": "ITKB-ACC-001",
+    "relation": "依赖系统组件",
+    "tail": "账号与权限问题",
+    "evidence_quote": "category: \"账号与权限问题\""
+  },
+  {
+    "head": "连续多次输入错误密码",
+    "relation": "诱发根因",
+    "tail": "域账号锁定",
+    "evidence_quote": "① 连续多次输入错误密码触发安全策略"
+  },
+  {
+    "head": "其他设备尝试登录",
+    "relation": "诱发根因",
+    "tail": "域账号锁定",
+    "evidence_quote": "② 有人在其他设备上用此账号尝试登录（如共享电脑、远程桌面）"
+  },
+  {
+    "head": "邮箱客户端旧密码重试",
+    "relation": "诱发根因",
+    "tail": "域账号锁定",
+    "evidence_quote": "③ 手机/平板上的邮箱客户端保存了旧密码不停重试"
+  },
+  {
+    "head": "暴力破解",
+    "relation": "诱发根因",
+    "tail": "域账号锁定",
+    "evidence_quote": "④ 账号被盗用，攻击者在暴力破解"
+  },
+  {
+    "head": "管理员主动禁用",
+    "relation": "诱发根因",
+    "tail": "域账号锁定",
+    "evidence_quote": "⑤ 管理员主动禁用（离职、违规、审计需要）"
+  },
+  {
+    "head": "等待15-30分钟",
+    "relation": "前置排查动作",
+    "tail": "域账号锁定",
+    "evidence_quote": "步骤1：等待15-30分钟，部分策略会自动解锁。"
+  },
+  {
+    "head": "确认Caps Lock和Num Lock",
+    "relation": "前置排查动作",
+    "tail": "域账号锁定",
+    "evidence_quote": "步骤2：确认Caps Lock（大写锁定）和Num Lock没有误开启。"
+  },
+  {
+    "head": "检查客户端旧密码",
+    "relation": "前置排查动作",
+    "tail": "域账号锁定",
+    "evidence_quote": "步骤3：检查手机/平板上是否有邮箱、企业微信等客户端还在用旧密码——先退出登录。"
+  },
+  {
+    "head": "自助密码重置平台",
+    "relation": "处置动作",
+    "tail": "域账号锁定",
+    "evidence_quote": "步骤4：联系IT或通过自助密码重置平台重置密码后重试。"
+  },
+  {
+    "head": "Active Directory用户和计算机",
+    "relation": "处置动作",
+    "tail": "域账号锁定",
+    "evidence_quote": "1. AD域控制器 → Active Directory用户和计算机 → 找到用户 → 属性 → 账户 → 解锁账户。"
+  },
+  {
+    "head": "安全日志",
+    "relation": "前置排查动作",
+    "tail": "域账号锁定",
+    "evidence_quote": "2. 检查安全日志（事件ID 4740），确认锁定来源IP和设备名。"
+  },
+  {
+    "head": "事件ID 4740",
+    "relation": "前置排查动作",
+    "tail": "域账号锁定",
+    "evidence_quote": "2. 检查安全日志（事件ID 4740），确认锁定来源IP和设备名。"
+  },
+  {
+    "head": "重置密码",
+    "relation": "处置动作",
+    "tail": "域账号锁定",
+    "evidence_quote": "4. 重置密码并勾选「用户下次登录时须更改密码」。"
+  },
+  {
+    "head": "账户锁定策略",
+    "relation": "前置排查动作",
+    "tail": "域账号锁定",
+    "evidence_quote": "5. 检查账户锁定策略（组策略 → 计算机配置 → Windows设置 → 安全设置 → 账户策略）。"
+  },
+  {
+    "head": "组策略",
+    "relation": "依赖系统组件",
+    "tail": "账户锁定策略",
+    "evidence_quote": "5. 检查账户锁定策略（组策略 → 计算机配置 → Windows设置 → 安全设置 → 账户策略）。"
+  },
+  {
+    "head": "AD域(Active Directory)",
+    "relation": "依赖系统组件",
+    "tail": "Active Directory用户和计算机",
+    "evidence_quote": "1. AD域控制器 → Active Directory用户和计算机 → 找到用户 → 属性 → 账户 → 解锁账户。"
+  },
+  {
+    "head": "ITKB-ACC-003",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-ACC-003\""
+  },
+  {
+    "head": "ITKB-ACC-003",
+    "relation": "依赖系统组件",
+    "tail": "账号与权限问题",
+    "evidence_quote": "category: \"账号与权限问题\""
+  },
+  {
+    "head": "用户不属于有权限的安全组",
+    "relation": "诱发根因",
+    "tail": "共享文件夹访问被拒绝",
+    "evidence_quote": "① 用户不属于有权限的安全组"
+  },
+  {
+    "head": "共享权限与NTFS权限冲突",
+    "relation": "诱发根因",
+    "tail": "共享文件夹访问被拒绝",
+    "evidence_quote": "② 共享权限与NTFS权限冲突（取交集，更受限的生效）"
+  },
+  {
+    "head": "文件夹所有者变更导致权限继承中断",
+    "relation": "诱发根因",
+    "tail": "共享文件夹访问被拒绝",
+    "evidence_quote": "③ 文件夹所有者变更导致权限继承中断"
+  },
+  {
+    "head": "Deny权限优先于Allow",
+    "relation": "诱发根因",
+    "tail": "共享文件夹访问被拒绝",
+    "evidence_quote": "④ 用户账号在多组中，Deny权限优先于Allow"
+  },
+  {
+    "head": "文件服务器脱机或DFS命名空间故障",
+    "relation": "诱发根因",
+    "tail": "共享文件夹访问被拒绝",
+    "evidence_quote": "⑤ 文件服务器脱机或DFS命名空间故障"
+  },
+  {
+    "head": "确认自己是否在正确的部门安全组中",
+    "relation": "前置排查动作",
+    "tail": "共享文件夹访问被拒绝",
+    "evidence_quote": "步骤1：确认自己是否在正确的部门安全组中（联系部门主管确认）。"
+  },
+  {
+    "head": "尝试通过完整UNC路径访问",
+    "relation": "前置排查动作",
+    "tail": "共享文件夹访问被拒绝",
+    "evidence_quote": "步骤2：尝试通过完整UNC路径访问（如 \\\\fileserver\\sharename），而非映射的盘符。"
+  },
+  {
+    "head": "重启电脑",
+    "relation": "前置排查动作",
+    "tail": "共享文件夹访问被拒绝",
+    "evidence_quote": "步骤3：重启电脑（有时Kerberos票据过期导致权限异常）。"
+  },
+  {
+    "head": "检查文件夹有效访问权限",
+    "relation": "前置排查动作",
+    "tail": "共享文件夹访问被拒绝",
+    "evidence_quote": "1. 检查文件夹 → 属性 → 安全 → 高级 → 有效访问 → 输入用户名查看实际权限。"
+  },
+  {
+    "head": "确认共享权限与NTFS权限的叠加结果",
+    "relation": "前置排查动作",
+    "tail": "共享文件夹访问被拒绝",
+    "evidence_quote": "2. 确认共享权限（完全控制/更改/读取）与NTFS权限（完全控制/修改/读取和执行/列出/读取/写入）的叠加结果。"
+  },
+  {
+    "head": "将用户加入正确的AD安全组",
+    "relation": "处置动作",
+    "tail": "共享文件夹访问被拒绝",
+    "evidence_quote": "3. 将用户加入正确的AD安全组（推荐做法：不直接给用户加权限，通过组管理）。"
+  },
+  {
+    "head": "运行 gpupdate /force 刷新组策略",
+    "relation": "处置动作",
+    "tail": "共享文件夹访问被拒绝",
+    "evidence_quote": "4. 运行 gpupdate /force 刷新组策略。"
+  },
+  {
+    "head": "检查DFS命名空间状态",
+    "relation": "处置动作",
+    "tail": "共享文件夹访问被拒绝",
+    "evidence_quote": "5. 检查DFS命名空间状态（如有）。"
+  },
+  {
+    "head": "提交权限审批流程",
+    "relation": "处置动作",
+    "tail": "共享文件夹访问被拒绝",
+    "evidence_quote": "6. 审计：如涉及敏感数据，提交权限审批流程。"
+  },
+  {
+    "head": "共享文件夹访问被拒绝",
+    "relation": "依赖身份源",
+    "tail": "AD安全组",
+    "evidence_quote": "① 用户不属于有权限的安全组"
+  },
+  {
+    "head": "共享文件夹访问被拒绝",
+    "relation": "依赖系统组件",
+    "tail": "Kerberos",
+    "evidence_quote": "步骤3：重启电脑（有时Kerberos票据过期导致权限异常）。"
+  },
+  {
+    "head": "共享文件夹访问被拒绝",
+    "relation": "依赖系统组件",
+    "tail": "DFS命名空间",
+    "evidence_quote": "⑤ 文件服务器脱机或DFS命名空间故障"
+  },
+  {
+    "head": "共享文件夹访问被拒绝",
+    "relation": "依赖系统组件",
+    "tail": "组策略",
+    "evidence_quote": "4. 运行 gpupdate /force 刷新组策略。"
+  },
+  {
+    "head": "共享文件夹访问被拒绝",
+    "relation": "主责运维组",
+    "tail": "IT 部",
+    "evidence_quote": "department: \"IT 部\""
+  },
+  {
+    "head": "ITKB-ACC-004",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-ACC-004\""
+  },
+  {
+    "head": "ITKB-ACC-004",
+    "relation": "依赖系统组件",
+    "tail": "账号与权限问题",
+    "evidence_quote": "category: \"账号与权限问题\""
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "诱发根因",
+    "tail": "手机时间与服务器时间不同步",
+    "evidence_quote": "① 手机时间与服务器时间不同步（Authenticator时间偏差>30秒）"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "诱发根因",
+    "tail": "手机无信号或短信被拦截",
+    "evidence_quote": "② 手机无信号或短信被拦截"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "诱发根因",
+    "tail": "换手机后未重新绑定Authenticator",
+    "evidence_quote": "③ 换手机后未重新绑定Authenticator"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "诱发根因",
+    "tail": "绑定的手机号已变更",
+    "evidence_quote": "④ 绑定的手机号已变更"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "诱发根因",
+    "tail": "MFA服务器故障",
+    "evidence_quote": "⑤ MFA服务器故障"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "前置排查动作",
+    "tail": "检查手机时间",
+    "evidence_quote": "步骤1：检查手机时间 → 设置 → 日期和时间 → 确保「自动设置」已开启。"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "前置排查动作",
+    "tail": "手动同步时间",
+    "evidence_quote": "步骤2：在Authenticator App中手动同步时间（设置 → 时间校正）。"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "前置排查动作",
+    "tail": "尝试短信验证码",
+    "evidence_quote": "步骤3：尝试短信验证码替代Authenticator（如有该选项）。"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "前置排查动作",
+    "tail": "检查手机信号和短信收件箱",
+    "evidence_quote": "步骤4：检查手机信号和短信收件箱是否已满。"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "处置动作",
+    "tail": "清除用户现有令牌",
+    "evidence_quote": "1. 在MFA管理后台清除用户现有令牌，生成新的注册二维码。"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "处置动作",
+    "tail": "临时禁用MFA",
+    "evidence_quote": "2. 临时禁用MFA（需审批），让用户先登录，再重新绑定。"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "处置动作",
+    "tail": "更新用户绑定的手机号",
+    "evidence_quote": "3. 更新用户绑定的手机号。"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "处置动作",
+    "tail": "检查MFA服务器状态",
+    "evidence_quote": "4. 检查MFA服务器状态（如Azure AD MFA、Duo、RSA等）。"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "处置动作",
+    "tail": "提供备用验证码",
+    "evidence_quote": "5. 提供备用验证码作为短期解决方案。"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "依赖系统组件",
+    "tail": "Authenticator",
+    "evidence_quote": "登录时要求输入手机验证码或Authenticator验证码，但收不到验证码、验证码错误、或提示「验证失败请重试」。"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "依赖系统组件",
+    "tail": "短信验证码",
+    "evidence_quote": "登录时要求输入手机验证码或Authenticator验证码，但收不到验证码、验证码错误、或提示「验证失败请重试」。"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "依赖系统组件",
+    "tail": "SIM卡",
+    "evidence_quote": "常见于：换手机后、手机时间不同步、SIM卡故障。"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "依赖系统组件",
+    "tail": "MFA管理后台",
+    "evidence_quote": "1. 在MFA管理后台清除用户现有令牌，生成新的注册二维码。"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "依赖系统组件",
+    "tail": "Azure AD MFA",
+    "evidence_quote": "4. 检查MFA服务器状态（如Azure AD MFA、Duo、RSA等）。"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "依赖系统组件",
+    "tail": "DUO",
+    "evidence_quote": "4. 检查MFA服务器状态（如Azure AD MFA、Duo、RSA等）。"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "依赖系统组件",
+    "tail": "RSA",
+    "evidence_quote": "4. 检查MFA服务器状态（如Azure AD MFA、Duo、RSA等）。"
+  },
+  {
+    "head": "多因素认证(MFA)",
+    "relation": "主责运维组",
+    "tail": "IT 部",
+    "evidence_quote": "department: \"IT 部\""
+  },
+  {
+    "head": "ITKB-HW-001",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-HW-001\""
+  },
+  {
+    "head": "ITKB-HW-001",
+    "relation": "依赖系统组件",
+    "tail": "硬件与外设故障",
+    "evidence_quote": "category: \"硬件与外设故障\""
+  },
+  {
+    "head": "电源适配器",
+    "relation": "诱发根因",
+    "tail": "电脑无法开机黑屏故障",
+    "evidence_quote": "① 电源适配器故障或电源线松动（笔记本）"
+  },
+  {
+    "head": "电池",
+    "relation": "诱发根因",
+    "tail": "电脑无法开机黑屏故障",
+    "evidence_quote": "② 电池完全耗尽且适配器未供电（笔记本）"
+  },
+  {
+    "head": "内存条",
+    "relation": "诱发根因",
+    "tail": "电脑无法开机黑屏故障",
+    "evidence_quote": "③ 内存条松动（常见于台式机搬运后）"
+  },
+  {
+    "head": "主板",
+    "relation": "诱发根因",
+    "tail": "电脑无法开机黑屏故障",
+    "evidence_quote": "④ 主板故障或静电保护"
+  },
+  {
+    "head": "显示器",
+    "relation": "诱发根因",
+    "tail": "电脑无法开机黑屏故障",
+    "evidence_quote": "⑤ 显示器信号线松动或显示器故障（台式机）"
+  },
+  {
+    "head": "电脑无法开机黑屏故障",
+    "relation": "前置排查动作",
+    "tail": "电源适配器",
+    "evidence_quote": "步骤2：检查电源适配器指示灯是否亮起（笔记本），重新插拔两端接口。"
+  },
+  {
+    "head": "电脑无法开机黑屏故障",
+    "relation": "前置排查动作",
+    "tail": "显示器",
+    "evidence_quote": "步骤4：台式机：检查主机与显示器的视频线是否插紧，显示器是否选了正确输入源。"
+  },
+  {
+    "head": "电脑无法开机黑屏故障",
+    "relation": "前置排查动作",
+    "tail": "内存条",
+    "evidence_quote": "步骤5：台式机：断电后打开机箱，重新插拔内存条。"
+  },
+  {
+    "head": "电脑无法开机黑屏故障",
+    "relation": "处置动作",
+    "tail": "最小系统法",
+    "evidence_quote": "3. 最小系统法：只保留CPU+单根内存+主板+电源，看能否点亮。"
+  },
+  {
+    "head": "电脑无法开机黑屏故障",
+    "relation": "处置动作",
+    "tail": "内存条",
+    "evidence_quote": "4. 清理内存金手指（橡皮擦拭），更换内存插槽测试。"
+  },
+  {
+    "head": "电脑无法开机黑屏故障",
+    "relation": "处置动作",
+    "tail": "主板",
+    "evidence_quote": "6. 如确认为主板/CPU故障，纳入硬件报修流程。"
+  },
+  {
+    "head": "电脑无法开机黑屏故障",
+    "relation": "主责运维组",
+    "tail": "IT 部",
+    "evidence_quote": "department: \"IT 部\""
+  },
+  {
+    "head": "ITKB-HW-005",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-HW-005\""
+  },
+  {
+    "head": "ITKB-HW-005",
+    "relation": "依赖系统组件",
+    "tail": "硬件与外设故障",
+    "evidence_quote": "category: \"硬件与外设故障\""
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "诱发根因",
+    "tail": "电池耗尽",
+    "evidence_quote": "① 无线键鼠电池耗尽"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "诱发根因",
+    "tail": "USB接收器松动",
+    "evidence_quote": "② USB接收器松动或接触不良"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "诱发根因",
+    "tail": "蓝牙干扰",
+    "evidence_quote": "③ 蓝牙连接被干扰或距离过远"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "诱发根因",
+    "tail": "键盘进水",
+    "evidence_quote": "④ 键盘进水/进异物导致按键短路"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "诱发根因",
+    "tail": "触摸板误触",
+    "evidence_quote": "⑤ 触摸板误触（笔记本）"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "诱发根因",
+    "tail": "驱动程序异常",
+    "evidence_quote": "⑥ 驱动程序异常"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "前置排查动作",
+    "tail": "更换电池",
+    "evidence_quote": "步骤1：无线键鼠：更换电池，重新插拔USB接收器。"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "前置排查动作",
+    "tail": "重新插拔USB接收器",
+    "evidence_quote": "步骤1：无线键鼠：更换电池，重新插拔USB接收器。"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "前置排查动作",
+    "tail": "换USB口测试",
+    "evidence_quote": "步骤2：有线键鼠：换一个USB口测试。"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "前置排查动作",
+    "tail": "重新配对蓝牙",
+    "evidence_quote": "步骤3：蓝牙键鼠：Win+I → 蓝牙和其他设备 → 删除设备后重新配对。"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "前置排查动作",
+    "tail": "检查触摸板误触",
+    "evidence_quote": "步骤4：笔记本：检查触摸板是否误触（Fn+触摸板禁用快捷键）。"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "前置排查动作",
+    "tail": "另一台电脑测试",
+    "evidence_quote": "步骤5：用另一台电脑测试键鼠是否正常（区分设备问题还是电脑问题）。"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "前置排查动作",
+    "tail": "重启电脑",
+    "evidence_quote": "步骤6：重启电脑。"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "处置动作",
+    "tail": "卸载设备并扫描检测硬件改动",
+    "evidence_quote": "1. 设备管理器 → 键盘/鼠标 → 卸载设备 → 扫描检测硬件改动。"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "处置动作",
+    "tail": "检查BIOS中USB Legacy Support",
+    "evidence_quote": "2. 检查BIOS中USB Legacy Support是否开启（影响BIOS阶段键鼠可用性）。"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "处置动作",
+    "tail": "Keyboard Test Utility检测",
+    "evidence_quote": "3. 键盘：用 Keyboard Test Utility 检测所有按键响应。"
+  },
+  {
+    "head": "鼠标双击问题",
+    "relation": "处置动作",
+    "tail": "调整双击速度",
+    "evidence_quote": "4. 鼠标双击问题：调整双击速度（控制面板 → 鼠标 → 双击速度滑块）。"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "处置动作",
+    "tail": "检查键鼠管理软件冲突",
+    "evidence_quote": "5. 检查是否有键鼠管理软件冲突（如罗技Options/G HUB、雷云等）。"
+  },
+  {
+    "head": "键盘鼠标失灵",
+    "relation": "处置动作",
+    "tail": "更换硬件",
+    "evidence_quote": "6. 如为硬件故障，直接更换（键盘鼠标属低值易耗品）。"
+  },
+  {
+    "head": "ITKB-LEG-ACC-001",
+    "relation": "生效状态",
+    "tail": "已废止",
+    "evidence_quote": "id: \"ITKB-LEG-ACC-001\""
+  },
+  {
+    "head": "ITKB-LEG-ACC-001",
+    "relation": "依赖系统组件",
+    "tail": "账号与权限问题",
+    "evidence_quote": "category: \"账号与权限问题\""
+  },
+  {
+    "head": "密码错误",
+    "relation": "诱发根因",
+    "tail": "账号锁定",
+    "evidence_quote": "① 连续多次输入错误密码触发旧版安全策略"
+  },
+  {
+    "head": "账号锁定",
+    "relation": "前置排查动作",
+    "tail": "安全日志",
+    "evidence_quote": "1. 在安全日志中筛选旧版锁定事件进行溯源。"
+  },
+  {
+    "head": "账号锁定",
+    "relation": "处置动作",
+    "tail": "解锁账号",
+    "evidence_quote": "步骤2：锁定后不会自动解锁，必须人工联系IT解锁（现行标准已调整为等待 15-30 分钟自动解锁）。"
+  },
+  {
+    "head": "ITKB-LEG-VPN-001",
+    "relation": "生效状态",
+    "tail": "已废止",
+    "evidence_quote": "id: \"ITKB-LEG-VPN-001\""
+  },
+  {
+    "head": "ITKB-LEG-VPN-001",
+    "relation": "依赖系统组件",
+    "tail": "VPN与远程办公",
+    "evidence_quote": "category: \"VPN与远程办公\""
+  },
+  {
+    "head": "PPTP",
+    "relation": "诱发根因",
+    "tail": "VPN",
+    "evidence_quote": "① PPTP 协议未启用或被运营商封锁"
+  },
+  {
+    "head": "防火墙",
+    "relation": "诱发根因",
+    "tail": "VPN",
+    "evidence_quote": "② 防火墙未放行 TCP 1723 端口和 GRE 47 协议"
+  },
+  {
+    "head": "VPN",
+    "relation": "前置排查动作",
+    "tail": "PPTP",
+    "evidence_quote": "步骤1：推荐使用 PPTP 协议连接，配置最简单。"
+  },
+  {
+    "head": "VPN",
+    "relation": "前置排查动作",
+    "tail": "防火墙",
+    "evidence_quote": "步骤2：防火墙需放行 TCP 1723 端口和 GRE 47 协议。"
+  },
+  {
+    "head": "VPN",
+    "relation": "处置动作",
+    "tail": "PPTP",
+    "evidence_quote": "1. 排查 PPTP 服务器的 1723 端口监听状态与 GRE 协议转发。"
+  },
+  {
+    "head": "VPN",
+    "relation": "处置动作",
+    "tail": "NAT设备",
+    "evidence_quote": "2. 确认 NAT 设备支持 GRE 穿越。"
+  },
+  {
+    "head": "ITKB-HW-004",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-HW-004\""
+  },
+  {
+    "head": "ITKB-HW-004",
+    "relation": "依赖系统组件",
+    "tail": "硬件与外设故障",
+    "evidence_quote": "category: \"硬件与外设故障\""
+  },
+  {
+    "head": "USB接口供电不足",
+    "relation": "诱发根因",
+    "tail": "U盘与移动硬盘不识别",
+    "evidence_quote": "① USB接口供电不足（移动硬盘常见）"
+  },
+  {
+    "head": "USB驱动程序故障",
+    "relation": "诱发根因",
+    "tail": "U盘与移动硬盘不识别",
+    "evidence_quote": "② USB驱动程序故障"
+  },
+  {
+    "head": "文件系统不兼容",
+    "relation": "诱发根因",
+    "tail": "U盘与移动硬盘不识别",
+    "evidence_quote": "③ 文件系统不兼容（如APFS/Mac格式在Windows上无法读取）"
+  },
+  {
+    "head": "盘符冲突",
+    "relation": "诱发根因",
+    "tail": "U盘与移动硬盘不识别",
+    "evidence_quote": "④ 盘符冲突（分配的盘符已被占用）"
+  },
+  {
+    "head": "U盘物理损坏",
+    "relation": "诱发根因",
+    "tail": "U盘与移动硬盘不识别",
+    "evidence_quote": "⑤ U盘物理损坏或主控故障"
+  },
+  {
+    "head": "组策略",
+    "relation": "诱发根因",
+    "tail": "U盘与移动硬盘不识别",
+    "evidence_quote": "⑥ 组策略禁用了USB存储设备"
+  },
+  {
+    "head": "磁盘管理",
+    "relation": "前置排查动作",
+    "tail": "U盘与移动硬盘不识别",
+    "evidence_quote": "步骤3：Win+X → 磁盘管理 → 看是否能识别到磁盘（可能只是没有盘符）→ 右键更改驱动器号和路径。"
+  },
+  {
+    "head": "设备管理器",
+    "relation": "前置排查动作",
+    "tail": "U盘与移动硬盘不识别",
+    "evidence_quote": "步骤4：Win+X → 设备管理器 → 通用串行总线控制器 → 卸载所有USB根集线器 → 重启电脑。"
+  },
+  {
+    "head": "组策略",
+    "relation": "前置排查动作",
+    "tail": "U盘与移动硬盘不识别",
+    "evidence_quote": "2. 组策略：gpedit.msc → 计算机配置 → 管理模板 → 系统 → 可移动存储访问 → 检查是否启用禁止。"
+  },
+  {
+    "head": "盘符",
+    "relation": "处置动作",
+    "tail": "U盘与移动硬盘不识别",
+    "evidence_quote": "右键更改驱动器号和路径。"
+  },
+  {
+    "head": "USB",
+    "relation": "处置动作",
+    "tail": "U盘与移动硬盘不识别",
+    "evidence_quote": "卸载所有USB根集线器 → 重启电脑。"
+  },
+  {
+    "head": "组策略",
+    "relation": "处置动作",
+    "tail": "U盘与移动硬盘不识别",
+    "evidence_quote": "如为公司安全策略禁用了USB，走审批流程申请临时开放。"
+  },
+  {
+    "head": "ITKB-HW-003",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-HW-003\""
+  },
+  {
+    "head": "ITKB-HW-003",
+    "relation": "依赖系统组件",
+    "tail": "硬件与外设故障",
+    "evidence_quote": "category: \"硬件与外设故障\""
+  },
+  {
+    "head": "外接显示器",
+    "relation": "诱发根因",
+    "tail": "HDMI",
+    "evidence_quote": "① 视频线（HDMI/VGA/DP/Type-C）松动或损坏"
+  },
+  {
+    "head": "外接显示器",
+    "relation": "诱发根因",
+    "tail": "VGA",
+    "evidence_quote": "① 视频线（HDMI/VGA/DP/Type-C）松动或损坏"
+  },
+  {
+    "head": "外接显示器",
+    "relation": "诱发根因",
+    "tail": "显卡驱动",
+    "evidence_quote": "③ 显卡驱动问题，无法正确识别外接显示器"
+  },
+  {
+    "head": "外接显示器",
+    "relation": "诱发根因",
+    "tail": "分辨率",
+    "evidence_quote": "④ 分辨率/刷新率设置超出显示器支持范围"
+  },
+  {
+    "head": "外接显示器",
+    "relation": "诱发根因",
+    "tail": "扩展坞",
+    "evidence_quote": "⑤ 转接头/扩展坞兼容性问题"
+  },
+  {
+    "head": "外接显示器",
+    "relation": "前置排查动作",
+    "tail": "HDMI",
+    "evidence_quote": "步骤2：按显示器上的「输入源/Input/Source」按钮，切换到对应的接口（HDMI1/HDMI2/VGA/DP）。"
+  },
+  {
+    "head": "外接显示器",
+    "relation": "前置排查动作",
+    "tail": "VGA",
+    "evidence_quote": "步骤2：按显示器上的「输入源/Input/Source」按钮，切换到对应的接口（HDMI1/HDMI2/VGA/DP）。"
+  },
+  {
+    "head": "外接显示器",
+    "relation": "前置排查动作",
+    "tail": "分辨率",
+    "evidence_quote": "步骤5：右键桌面 → 显示设置 → 点击「检测」→ 如果检测到第二显示器，调整分辨率为推荐值。"
+  },
+  {
+    "head": "外接显示器",
+    "relation": "前置排查动作",
+    "tail": "显卡驱动",
+    "evidence_quote": "步骤6：更新显卡驱动（设备管理器 → 显示适配器 → 右键更新）。"
+  },
+  {
+    "head": "外接显示器",
+    "relation": "处置动作",
+    "tail": "显卡驱动",
+    "evidence_quote": "3. 更新显卡驱动为官方最新版（非Windows自动更新驱动）。"
+  },
+  {
+    "head": "外接显示器",
+    "relation": "处置动作",
+    "tail": "扩展坞",
+    "evidence_quote": "4. 测试扩展坞/转接头兼容性：绕过扩展坞直连测试。"
+  },
+  {
+    "head": "外接显示器",
+    "relation": "处置动作",
+    "tail": "EDID",
+    "evidence_quote": "2. 检查显示器EDID信息是否被正确读取。"
+  },
+  {
+    "head": "外接显示器",
+    "relation": "主责运维组",
+    "tail": "IT 部",
+    "evidence_quote": "department: \"IT 部\""
+  },
+  {
+    "head": "ITKB-HW-002",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-HW-002\""
+  },
+  {
+    "head": "ITKB-HW-002",
+    "relation": "依赖系统组件",
+    "tail": "硬件与外设故障",
+    "evidence_quote": "category: \"硬件与外设故障\""
+  },
+  {
+    "head": "脱机使用打印机",
+    "relation": "诱发根因",
+    "tail": "打印机",
+    "evidence_quote": "② 打印机设置为「脱机使用打印机」"
+  },
+  {
+    "head": "打印队列",
+    "relation": "诱发根因",
+    "tail": "打印机",
+    "evidence_quote": "③ 打印队列中有卡住的任务阻塞后续任务"
+  },
+  {
+    "head": "打印机驱动",
+    "relation": "诱发根因",
+    "tail": "打印机",
+    "evidence_quote": "④ 驱动程序损坏或版本不匹配"
+  },
+  {
+    "head": "打印服务(Print Spooler)",
+    "relation": "诱发根因",
+    "tail": "打印机",
+    "evidence_quote": "⑤ 打印服务（Print Spooler）停止"
+  },
+  {
+    "head": "卡纸",
+    "relation": "诱发根因",
+    "tail": "打印机",
+    "evidence_quote": "⑥ 纸张耗尽 / 墨粉耗尽 / 卡纸 / 废粉盒满"
+  },
+  {
+    "head": "打印机",
+    "relation": "前置排查动作",
+    "tail": "打印机",
+    "evidence_quote": "步骤1：检查打印机是否开机、是否连接到电脑（USB）或网络（网络打印）。"
+  },
+  {
+    "head": "打印队列",
+    "relation": "前置排查动作",
+    "tail": "打印机",
+    "evidence_quote": "步骤2：Win+R → control printers → 右键打印机 → 查看正在打印 → 取消所有文档。"
+  },
+  {
+    "head": "脱机使用打印机",
+    "relation": "前置排查动作",
+    "tail": "打印机",
+    "evidence_quote": "步骤3：确认打印机没有设为「脱机使用打印机」——右键打印机，取消勾选。"
+  },
+  {
+    "head": "打印服务(Print Spooler)",
+    "relation": "前置排查动作",
+    "tail": "打印机",
+    "evidence_quote": "步骤4：Win+R → services.msc → 找到 Print Spooler → 右键重启。"
+  },
+  {
+    "head": "卡纸",
+    "relation": "前置排查动作",
+    "tail": "打印机",
+    "evidence_quote": "步骤5：检查打印机面板是否有错误提示（缺纸、卡纸、缺墨粉）→ 添加纸张/更换墨粉。"
+  },
+  {
+    "head": "打印机",
+    "relation": "处置动作",
+    "tail": "打印机",
+    "evidence_quote": "步骤6：重启打印机和电脑。"
+  },
+  {
+    "head": "打印服务(Print Spooler)",
+    "relation": "处置动作",
+    "tail": "打印机",
+    "evidence_quote": "1. 停止 Print Spooler → 清空 C:\\Windows\\System32\\spool\\PRINTERS → 重启服务。"
+  },
+  {
+    "head": "打印机驱动",
+    "relation": "处置动作",
+    "tail": "打印机",
+    "evidence_quote": "2. 卸载打印机驱动 → 从官网下载最新驱动重新安装。"
+  },
+  {
+    "head": "网络打印机",
+    "relation": "处置动作",
+    "tail": "打印机",
+    "evidence_quote": "3. 网络打印机：打印配置页检查IP地址是否正确，确认打印机在线。"
+  },
+  {
+    "head": "卡纸",
+    "relation": "处置动作",
+    "tail": "打印机",
+    "evidence_quote": "4. 卡纸处理：按打印机手册指示取出卡纸（注意方向，避免碎片残留）。"
+  },
+  {
+    "head": "ITKB-LEG-NET-004",
+    "relation": "生效状态",
+    "tail": "已废止",
+    "evidence_quote": "id: \"ITKB-LEG-NET-004\""
+  },
+  {
+    "head": "ITKB-LEG-NET-004",
+    "relation": "依赖系统组件",
+    "tail": "网络连接",
+    "evidence_quote": "category: \"网络连接\""
+  },
+  {
+    "head": "DNS",
+    "relation": "诱发根因",
+    "tail": "DNS",
+    "evidence_quote": "① DNS 服务器故障或响应超时"
+  },
+  {
+    "head": "223.5.5.5",
+    "relation": "诱发根因",
+    "tail": "DNS",
+    "evidence_quote": "③ 用户私自改用公共 DNS 导致解析漂移"
+  },
+  {
+    "head": "DNS",
+    "relation": "前置排查动作",
+    "tail": "223.5.5.5",
+    "evidence_quote": "步骤1：严禁使用 223.5.5.5 等公共 DNS，必须改回公司统一分配的 10.0.0.1。"
+  },
+  {
+    "head": "DNS",
+    "relation": "处置动作",
+    "tail": "10.0.0.1",
+    "evidence_quote": "步骤2：网络适配器属性中手动将 DNS 固定为 10.0.0.1，禁用「自动获得 DNS」。"
+  },
+  {
+    "head": "DHCP",
+    "relation": "处置动作",
+    "tail": "10.0.0.1",
+    "evidence_quote": "1. 所有终端的 DHCP 作用域统一下发 10.0.0.1，禁止下发任何公共 DNS。"
+  },
+  {
+    "head": "223.5.5.5",
+    "relation": "处置动作",
+    "tail": "10.0.0.1",
+    "evidence_quote": "2. 发现私配公共 DNS 的终端，直接远程重命名为 10.0.0.1。"
+  },
+  {
+    "head": "ITKB-MAIL-003",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-MAIL-003\""
+  },
+  {
+    "head": "ITKB-MAIL-003",
+    "relation": "依赖系统组件",
+    "tail": "邮件与通讯问题",
+    "evidence_quote": "category: \"邮件与通讯问题\""
+  },
+  {
+    "head": "VPN",
+    "relation": "诱发根因",
+    "tail": "即时通讯(IM)",
+    "evidence_quote": "① 网络代理/VPN干扰了IM的连接"
+  },
+  {
+    "head": "代理服务器",
+    "relation": "诱发根因",
+    "tail": "即时通讯(IM)",
+    "evidence_quote": "① 网络代理/VPN干扰了IM的连接"
+  },
+  {
+    "head": "防火墙",
+    "relation": "诱发根因",
+    "tail": "即时通讯(IM)",
+    "evidence_quote": "② 公司防火墙拦截了IM的通信端口和域名"
+  },
+  {
+    "head": "即时通讯(IM)",
+    "relation": "前置排查动作",
+    "tail": "VPN",
+    "evidence_quote": "步骤2：关闭VPN/代理后重试。"
+  },
+  {
+    "head": "即时通讯(IM)",
+    "relation": "前置排查动作",
+    "tail": "代理服务器",
+    "evidence_quote": "步骤2：关闭VPN/代理后重试。"
+  },
+  {
+    "head": "即时通讯(IM)",
+    "relation": "前置排查动作",
+    "tail": "DNS",
+    "evidence_quote": "4. 检查DNS解析是否正常（nslookup解析IM服务器域名）。"
+  },
+  {
+    "head": "防火墙",
+    "relation": "处置动作",
+    "tail": "即时通讯(IM)",
+    "evidence_quote": "1. 检查防火墙策略，放行IM必需的域名和端口（如企业微信放行 *.work.weixin.qq.com 的 80/443）。"
+  },
+  {
+    "head": "代理服务器",
+    "relation": "处置动作",
+    "tail": "即时通讯(IM)",
+    "evidence_quote": "2. 检查代理服务器PAC文件中是否错误代理了IM流量。"
+  },
+  {
+    "head": "企业微信",
+    "relation": "依赖网络通道",
+    "tail": "VPN",
+    "evidence_quote": "① 网络代理/VPN干扰了IM的连接"
+  },
+  {
+    "head": "企业微信",
+    "relation": "依赖网络通道",
+    "tail": "代理服务器",
+    "evidence_quote": "① 网络代理/VPN干扰了IM的连接"
+  },
+  {
+    "head": "企业微信",
+    "relation": "依赖网络通道",
+    "tail": "防火墙",
+    "evidence_quote": "② 公司防火墙拦截了IM的通信端口和域名"
+  },
+  {
+    "head": "企业微信",
+    "relation": "依赖系统组件",
+    "tail": "DNS",
+    "evidence_quote": "4. 检查DNS解析是否正常（nslookup解析IM服务器域名）。"
+  },
+  {
+    "head": "即时通讯(IM)",
+    "relation": "主责运维组",
+    "tail": "IT 部",
+    "evidence_quote": "department: \"IT 部\""
+  },
+  {
+    "head": "ITKB-MAIL-001",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-MAIL-001\""
+  },
+  {
+    "head": "ITKB-MAIL-001",
+    "relation": "依赖系统组件",
+    "tail": "邮件与通讯问题",
+    "evidence_quote": "category: \"邮件与通讯问题\""
+  },
+  {
+    "head": "收件人邮箱地址写错",
+    "relation": "诱发根因",
+    "tail": "退信",
+    "evidence_quote": "① 收件人邮箱地址写错（拼写错误、用户不存在）"
+  },
+  {
+    "head": "附件超过大小限制",
+    "relation": "诱发根因",
+    "tail": "退信",
+    "evidence_quote": "② 附件超过大小限制（公司邮箱通常限制20-50MB）"
+  },
+  {
+    "head": "SMTP服务器无响应",
+    "relation": "诱发根因",
+    "tail": "退信",
+    "evidence_quote": "③ SMTP服务器无响应或被防火墙拦截"
+  },
+  {
+    "head": "邮箱已满",
+    "relation": "诱发根因",
+    "tail": "退信",
+    "evidence_quote": "④ 邮箱已满（达到存储配额上限）"
+  },
+  {
+    "head": "反垃圾邮件策略拦截",
+    "relation": "诱发根因",
+    "tail": "退信",
+    "evidence_quote": "⑤ 邮件被反垃圾邮件策略拦截（内容含敏感词或可疑链接）"
+  },
+  {
+    "head": "Outlook离线模式误开启",
+    "relation": "诱发根因",
+    "tail": "退信",
+    "evidence_quote": "⑥ Outlook离线模式误开启"
+  },
+  {
+    "head": "检查收件人地址拼写",
+    "relation": "前置排查动作",
+    "tail": "退信",
+    "evidence_quote": "步骤1：检查收件人地址拼写，确认无误后重发。"
+  },
+  {
+    "head": "检查附件大小",
+    "relation": "前置排查动作",
+    "tail": "退信",
+    "evidence_quote": "步骤2：检查附件大小，超过限制的用云盘链接替代（如 OneDrive / 公司内部云盘）。"
+  },
+  {
+    "head": "确认脱机工作未被选中",
+    "relation": "前置排查动作",
+    "tail": "Outlook",
+    "evidence_quote": "步骤3：Outlook → 发送/接收 → 确认「脱机工作」未被选中。"
+  },
+  {
+    "head": "登录网页邮箱测试发送",
+    "relation": "前置排查动作",
+    "tail": "Outlook",
+    "evidence_quote": "步骤4：登录网页版邮箱测试发送是否正常——如果网页版正常，说明是Outlook客户端问题。"
+  },
+  {
+    "head": "清理邮箱",
+    "relation": "前置排查动作",
+    "tail": "邮箱已满",
+    "evidence_quote": "步骤5：清理邮箱，删除不需要的旧邮件，清空已删除邮件和垃圾邮件文件夹。"
+  },
+  {
+    "head": "关闭杀毒软件邮件扫描功能",
+    "relation": "前置排查动作",
+    "tail": "退信",
+    "evidence_quote": "步骤6：暂时关闭杀毒软件邮件扫描功能测试。"
+  },
+  {
+    "head": "检查邮件服务器SMTP日志",
+    "relation": "前置排查动作",
+    "tail": "SMTP",
+    "evidence_quote": "1. 检查邮件服务器SMTP日志，定位拒绝原因。"
+  },
+  {
+    "head": "检查用户邮箱配额",
+    "relation": "前置排查动作",
+    "tail": "Exchange",
+    "evidence_quote": "2. 检查用户邮箱配额：Exchange管理后台 → 邮箱使用情况 → 提高配额或归档旧邮件。"
+  },
+  {
+    "head": "检查反垃圾邮件网关",
+    "relation": "前置排查动作",
+    "tail": "反垃圾邮件网关",
+    "evidence_quote": "3. 反垃圾邮件网关：检查该邮件是否被误判为垃圾邮件，添加到白名单。"
+  },
+  {
+    "head": "检查DNS的SPF/DKIM/DMARC记录配置",
+    "relation": "前置排查动作",
+    "tail": "退信",
+    "evidence_quote": "4. 检查DNS的SPF/DKIM/DMARC记录配置是否正确（影响外发邮件到达率）。"
+  },
+  {
+    "head": "重建Outlook配置文件",
+    "relation": "处置动作",
+    "tail": "Outlook",
+    "evidence_quote": "5. Outlook配置修复：控制面板 → 邮件 → 配置文件 → 重建Outlook配置文件。"
+  },
+  {
+    "head": "检查公网IP是否在黑名单中",
+    "relation": "前置排查动作",
+    "tail": "退信",
+    "evidence_quote": "6. 检查公网IP是否在黑名单中（MXToolbox查询），如被列入需申请移出。"
+  },
+  {
+    "head": "ITKB-NET-001",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-NET-001\""
+  },
+  {
+    "head": "ITKB-NET-001",
+    "relation": "依赖系统组件",
+    "tail": "网络连接问题",
+    "evidence_quote": "category: \"网络连接问题\""
+  },
+  {
+    "head": "无线网卡驱动",
+    "relation": "诱发根因",
+    "tail": "无线局域网(WiFi)",
+    "evidence_quote": "① 无线网卡驱动异常或被禁用"
+  },
+  {
+    "head": "DHCP",
+    "relation": "诱发根因",
+    "tail": "无线局域网(WiFi)",
+    "evidence_quote": "④ IP地址分配冲突或DHCP租约过期"
+  },
+  {
+    "head": "无线接入点(AP)",
+    "relation": "诱发根因",
+    "tail": "无线局域网(WiFi)",
+    "evidence_quote": "⑤ 公司AP设备故障或信道拥堵"
+  },
+  {
+    "head": "MAC地址",
+    "relation": "诱发根因",
+    "tail": "无线局域网(WiFi)",
+    "evidence_quote": "⑥ MAC地址绑定了旧设备，新设备未注册"
+  },
+  {
+    "head": "无线局域网(WiFi)",
+    "relation": "前置排查动作",
+    "tail": "无线接入点(AP)",
+    "evidence_quote": "步骤4：重启电脑和公司AP（如有权限），等待2分钟后重试。"
+  },
+  {
+    "head": "无线局域网(WiFi)",
+    "relation": "前置排查动作",
+    "tail": "无线网卡驱动",
+    "evidence_quote": "1. 检查无线网卡驱动：设备管理器 → 网络适配器 → 右键更新驱动。"
+  },
+  {
+    "head": "无线局域网(WiFi)",
+    "relation": "前置排查动作",
+    "tail": "ipconfig",
+    "evidence_quote": "2. 命令行排查：ipconfig /release → ipconfig /renew → ipconfig /flushdns。"
+  },
+  {
+    "head": "无线局域网(WiFi)",
+    "relation": "前置排查动作",
+    "tail": "DHCP",
+    "evidence_quote": "3. 登录路由器/AC控制器检查AP状态、信道利用率、DHCP地址池是否耗尽。"
+  },
+  {
+    "head": "无线局域网(WiFi)",
+    "relation": "前置排查动作",
+    "tail": "MAC地址",
+    "evidence_quote": "4. 查看MAC地址过滤列表，确认该设备MAC是否在白名单中。"
+  },
+  {
+    "head": "802.1X认证",
+    "relation": "依赖系统组件",
+    "tail": "NPS服务器",
+    "evidence_quote": "5. 如为RADIUS/802.1X认证，检查NPS服务器日志。"
+  },
+  {
+    "head": "无线局域网(WiFi)",
+    "relation": "处置动作",
+    "tail": "无线网卡驱动",
+    "evidence_quote": "1. 检查无线网卡驱动：设备管理器 → 网络适配器 → 右键更新驱动。"
+  },
+  {
+    "head": "无线局域网(WiFi)",
+    "relation": "处置动作",
+    "tail": "ipconfig",
+    "evidence_quote": "2. 命令行排查：ipconfig /release → ipconfig /renew → ipconfig /flushdns。"
+  },
+  {
+    "head": "无线局域网(WiFi)",
+    "relation": "主责运维组",
+    "tail": "IT 部",
+    "evidence_quote": "department: \"IT 部\""
+  },
+  {
+    "head": "ITKB-MAIL-002",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-MAIL-002\""
+  },
+  {
+    "head": "ITKB-MAIL-002",
+    "relation": "依赖系统组件",
+    "tail": "邮件与通讯问题",
+    "evidence_quote": "category: \"邮件与通讯问题\""
+  },
+  {
+    "head": "密码变更",
+    "relation": "诱发根因",
+    "tail": "Outlook",
+    "evidence_quote": "① 密码变更后Outlook未更新保存的密码"
+  },
+  {
+    "head": "邮箱存储配额",
+    "relation": "诱发根因",
+    "tail": "邮件接收失败",
+    "evidence_quote": "② 邮箱存储配额已满，无法接收新邮件"
+  },
+  {
+    "head": "垃圾邮件过滤器",
+    "relation": "诱发根因",
+    "tail": "邮件接收失败",
+    "evidence_quote": "③ 邮件被垃圾邮件过滤器误拦截"
+  },
+  {
+    "head": "邮箱规则",
+    "relation": "诱发根因",
+    "tail": "邮件接收失败",
+    "evidence_quote": "④ 邮箱规则错误地将邮件移到了其他文件夹"
+  },
+  {
+    "head": "POP3/IMAP",
+    "relation": "诱发根因",
+    "tail": "邮件接收失败",
+    "evidence_quote": "⑤ POP3/IMAP协议设置不正确"
+  },
+  {
+    "head": "阻止发件人列表",
+    "relation": "诱发根因",
+    "tail": "邮件接收失败",
+    "evidence_quote": "⑥ 发件人被加入了阻止发件人列表"
+  },
+  {
+    "head": "网页版邮箱(OWA)",
+    "relation": "前置排查动作",
+    "tail": "邮件接收失败",
+    "evidence_quote": "步骤1：登录网页版邮箱（OWA），检查是否能收到新邮件——能收到说明是客户端问题。"
+  },
+  {
+    "head": "垃圾邮件过滤器",
+    "relation": "前置排查动作",
+    "tail": "邮件接收失败",
+    "evidence_quote": "步骤2：检查垃圾邮件文件夹，是否有被误判的邮件。"
+  },
+  {
+    "head": "Outlook",
+    "relation": "前置排查动作",
+    "tail": "邮件接收失败",
+    "evidence_quote": "步骤3：Outlook → 文件 → 账户设置 → 修复账户。"
+  },
+  {
+    "head": "邮箱规则",
+    "relation": "前置排查动作",
+    "tail": "邮件接收失败",
+    "evidence_quote": "步骤4：检查Outlook规则（文件 → 管理规则和通知），删除可疑的移动规则。"
+  },
+  {
+    "head": "邮箱存储配额",
+    "relation": "前置排查动作",
+    "tail": "邮件接收失败",
+    "evidence_quote": "步骤5：检查邮箱存储使用率（网页版 → 设置 → 常规 → 存储），清理到80%以下。"
+  },
+  {
+    "head": "邮件追踪",
+    "relation": "前置排查动作",
+    "tail": "邮件接收失败",
+    "evidence_quote": "1. Exchange管理后台 → 邮件追踪（Message Trace），查询该邮件是否到达服务器。"
+  },
+  {
+    "head": "反垃圾邮件网关",
+    "relation": "前置排查动作",
+    "tail": "邮件接收失败",
+    "evidence_quote": "2. 检查反垃圾邮件网关的隔离区，查找被误拦截的邮件并放行。"
+  },
+  {
+    "head": "邮箱存储配额",
+    "relation": "处置动作",
+    "tail": "邮件接收失败",
+    "evidence_quote": "3. 提高用户邮箱配额。"
+  },
+  {
+    "head": "Outlook",
+    "relation": "处置动作",
+    "tail": "邮件接收失败",
+    "evidence_quote": "4. 重建Outlook配置文件，或重新创建邮件账户。"
+  },
+  {
+    "head": "Exchange",
+    "relation": "处置动作",
+    "tail": "邮件接收失败",
+    "evidence_quote": "6. 升级到Exchange Online或更新Exchange Server补丁。"
+  },
+  {
+    "head": "ITKB-NET-005",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-NET-005\""
+  },
+  {
+    "head": "ITKB-NET-005",
+    "relation": "依赖系统组件",
+    "tail": "网络连接问题",
+    "evidence_quote": "category: \"网络连接问题\""
+  },
+  {
+    "head": "静态IP",
+    "relation": "诱发根因",
+    "tail": "IP地址",
+    "evidence_quote": "① 手动设置了与DHCP池重叠的静态IP"
+  },
+  {
+    "head": "DHCP",
+    "relation": "诱发根因",
+    "tail": "IP地址",
+    "evidence_quote": "② DHCP服务器故障，重复分配同一IP"
+  },
+  {
+    "head": "路由器",
+    "relation": "诱发根因",
+    "tail": "IP地址",
+    "evidence_quote": "③ 有员工私自接入路由器并开启了DHCP服务"
+  },
+  {
+    "head": "IP地址",
+    "relation": "前置排查动作",
+    "tail": "ipconfig /release",
+    "evidence_quote": "步骤1：Win+R → cmd → ipconfig /release 然后 ipconfig /renew，重新获取IP。"
+  },
+  {
+    "head": "IP地址",
+    "relation": "前置排查动作",
+    "tail": "ipconfig /renew",
+    "evidence_quote": "步骤1：Win+R → cmd → ipconfig /release 然后 ipconfig /renew，重新获取IP。"
+  },
+  {
+    "head": "IP地址",
+    "relation": "前置排查动作",
+    "tail": "静态IP",
+    "evidence_quote": "步骤2：如果公司要求自动获取IP，检查是否手工设置了静态IP——改为「自动获得IP地址」。"
+  },
+  {
+    "head": "IP地址",
+    "relation": "前置排查动作",
+    "tail": "ARP",
+    "evidence_quote": "1. 在交换机上查看ARP表，定位冲突IP对应的两个MAC地址。"
+  },
+  {
+    "head": "IP地址",
+    "relation": "前置排查动作",
+    "tail": "MAC地址",
+    "evidence_quote": "1. 在交换机上查看ARP表，定位冲突IP对应的两个MAC地址。"
+  },
+  {
+    "head": "IP地址",
+    "relation": "前置排查动作",
+    "tail": "交换机",
+    "evidence_quote": "2. 通过MAC地址表追踪到冲突设备所在的交换机端口。"
+  },
+  {
+    "head": "IP地址",
+    "relation": "前置排查动作",
+    "tail": "DHCP",
+    "evidence_quote": "3. 扫描局域网内是否有人私接路由器（检测DHCP Server）。"
+  },
+  {
+    "head": "IP地址",
+    "relation": "处置动作",
+    "tail": "DHCP",
+    "evidence_quote": "4. 规范IP分配策略：DHCP保留区与静态IP区严格分开。"
+  },
+  {
+    "head": "IP地址",
+    "relation": "处置动作",
+    "tail": "DHCP Snooping",
+    "evidence_quote": "5. 在核心交换机启用DHCP Snooping，防止私接DHCP服务器。"
+  },
+  {
+    "head": "IP地址",
+    "relation": "主责运维组",
+    "tail": "IT 部",
+    "evidence_quote": "department: \"IT 部\""
+  },
+  {
+    "head": "ITKB-OFF-001",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-OFF-001\""
+  },
+  {
+    "head": "ITKB-OFF-001",
+    "relation": "依赖系统组件",
+    "tail": "办公软件问题（WPS/Office）",
+    "evidence_quote": "category: \"办公软件问题（WPS/Office）\""
+  },
+  {
+    "head": "文件传输过程中损坏",
+    "relation": "诱发根因",
+    "tail": "文档打不开",
+    "evidence_quote": "① 文件传输过程中损坏（下载不完整、U盘不正常拔出）"
+  },
+  {
+    "head": "文件扩展名与实际格式不符",
+    "relation": "诱发根因",
+    "tail": "文档打不开",
+    "evidence_quote": "② 文件扩展名与实际格式不符"
+  },
+  {
+    "head": "旧版Office兼容性问题",
+    "relation": "诱发根因",
+    "tail": "文档打不开",
+    "evidence_quote": "③ 文件来自旧版Office（.doc），在当前版本兼容性问题"
+  },
+  {
+    "head": "文件被加密或设置了权限保护",
+    "relation": "诱发根因",
+    "tail": "文档打不开",
+    "evidence_quote": "④ 文件被加密或设置了权限保护"
+  },
+  {
+    "head": "Office/WPS安装损坏或激活失效",
+    "relation": "诱发根因",
+    "tail": "文档打不开",
+    "evidence_quote": "⑤ Office/WPS 安装损坏或激活失效"
+  },
+  {
+    "head": "文件正在被另一个程序占用",
+    "relation": "诱发根因",
+    "tail": "文档打不开",
+    "evidence_quote": "⑥ 文件正在被另一个程序占用（如正在上传中）"
+  },
+  {
+    "head": "复制文件到本地桌面后再打开",
+    "relation": "前置排查动作",
+    "tail": "文档打不开",
+    "evidence_quote": "步骤1：复制文件到本地桌面后再打开（不要直接打开邮件附件或U盘上的文件）。"
+  },
+  {
+    "head": "尝试用另一种软件打开",
+    "relation": "前置排查动作",
+    "tail": "文档打不开",
+    "evidence_quote": "步骤2：尝试用另一种软件打开：WPS打不开用Office打开，反之亦然。"
+  },
+  {
+    "head": "打开并修复",
+    "relation": "处置动作",
+    "tail": "文档打不开",
+    "evidence_quote": "步骤3：WPS/Office 内置修复功能：打开软件 → 文件 → 打开 → 选择文件时点「打开并修复」。"
+  },
+  {
+    "head": "另存为不同格式",
+    "relation": "处置动作",
+    "tail": "文档打不开",
+    "evidence_quote": "步骤4：尝试另存为不同格式（如.docx另存为.doc后重新打开）。"
+  },
+  {
+    "head": "解除锁定",
+    "relation": "处置动作",
+    "tail": "文档打不开",
+    "evidence_quote": "步骤5：右键文件 → 属性 → 常规 → 解除锁定（如有）。"
+  },
+  {
+    "head": "从邮件/原始来源重新下载文件",
+    "relation": "处置动作",
+    "tail": "文档打不开",
+    "evidence_quote": "步骤6：从邮件/原始来源重新下载文件。"
+  },
+  {
+    "head": "使用专业修复工具",
+    "relation": "处置动作",
+    "tail": "文档打不开",
+    "evidence_quote": "1. 使用专业修复工具（如 Stellar Repair、Kernel for Office）尝试修复文件。"
+  },
+  {
+    "head": "将文件扩展名改为 .zip 后解压",
+    "relation": "处置动作",
+    "tail": "文档打不开",
+    "evidence_quote": "2. 将文件扩展名改为 .zip 后解压，检查内部XML结构是否完整。"
+  },
+  {
+    "head": "检查文件数字签名和IRM/权限管理",
+    "relation": "处置动作",
+    "tail": "文档打不开",
+    "evidence_quote": "3. 检查文件数字签名和IRM/权限管理是否阻止打开。"
+  },
+  {
+    "head": "修复Office/WPS安装",
+    "relation": "处置动作",
+    "tail": "文档打不开",
+    "evidence_quote": "4. 修复Office/WPS安装：控制面板 → 程序和功能 → 右键Office → 更改 → 快速修复/在线修复。"
+  },
+  {
+    "head": "使用 LibreOffice 作为备选打开工具",
+    "relation": "处置动作",
+    "tail": "文档打不开",
+    "evidence_quote": "5. 使用 LibreOffice 作为备选打开工具（对损坏文件兼容性有时更好）。"
+  },
+  {
+    "head": "联系数据恢复专业服务",
+    "relation": "处置动作",
+    "tail": "文档打不开",
+    "evidence_quote": "6. 如文件为业务关键数据，联系数据恢复专业服务。"
+  },
+  {
+    "head": "ITKB-OFF-002",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-OFF-002\""
+  },
+  {
+    "head": "ITKB-OFF-002",
+    "relation": "依赖系统组件",
+    "tail": "办公软件问题（WPS/Office）",
+    "evidence_quote": "category: \"办公软件问题（WPS/Office）\""
+  },
+  {
+    "head": "COM加载项",
+    "relation": "诱发根因",
+    "tail": "WPS",
+    "evidence_quote": "① 第三方插件/加载项冲突（如PDF转换插件、翻译插件）"
+  },
+  {
+    "head": "COM加载项",
+    "relation": "诱发根因",
+    "tail": "Microsoft Office",
+    "evidence_quote": "① 第三方插件/加载项冲突（如PDF转换插件、翻译插件）"
+  },
+  {
+    "head": "默认打印机",
+    "relation": "诱发根因",
+    "tail": "Microsoft Office",
+    "evidence_quote": "③ 打印机默认驱动异常（Office渲染依赖默认打印机）"
+  },
+  {
+    "head": "硬件图形加速",
+    "relation": "诱发根因",
+    "tail": "WPS",
+    "evidence_quote": "④ 显卡驱动与硬件加速不兼容"
+  },
+  {
+    "head": "硬件图形加速",
+    "relation": "诱发根因",
+    "tail": "Microsoft Office",
+    "evidence_quote": "④ 显卡驱动与硬件加速不兼容"
+  },
+  {
+    "head": "WPS",
+    "relation": "诱发根因",
+    "tail": "Microsoft Office",
+    "evidence_quote": "⑥ WPS与Office同时安装导致冲突"
+  },
+  {
+    "head": "Microsoft Office",
+    "relation": "诱发根因",
+    "tail": "WPS",
+    "evidence_quote": "⑥ WPS与Office同时安装导致冲突"
+  },
+  {
+    "head": "安全模式",
+    "relation": "前置排查动作",
+    "tail": "WPS",
+    "evidence_quote": "步骤2：以安全模式启动：Win+R → winword /safe 或 excel /safe → 测试是否仍崩溃。"
+  },
+  {
+    "head": "安全模式",
+    "relation": "前置排查动作",
+    "tail": "Microsoft Office",
+    "evidence_quote": "步骤2：以安全模式启动：Win+R → winword /safe 或 excel /safe → 测试是否仍崩溃。"
+  },
+  {
+    "head": "COM加载项",
+    "relation": "前置排查动作",
+    "tail": "WPS",
+    "evidence_quote": "步骤3：文件 → 选项 → 加载项 → 管理COM加载项 → 全部禁用后逐一启用定位问题插件。"
+  },
+  {
+    "head": "COM加载项",
+    "relation": "前置排查动作",
+    "tail": "Microsoft Office",
+    "evidence_quote": "步骤3：文件 → 选项 → 加载项 → 管理COM加载项 → 全部禁用后逐一启用定位问题插件。"
+  },
+  {
+    "head": "硬件图形加速",
+    "relation": "前置排查动作",
+    "tail": "WPS",
+    "evidence_quote": "步骤4：文件 → 选项 → 高级 → 显示 → 禁用硬件图形加速。"
+  },
+  {
+    "head": "硬件图形加速",
+    "relation": "前置排查动作",
+    "tail": "Microsoft Office",
+    "evidence_quote": "步骤4：文件 → 选项 → 高级 → 显示 → 禁用硬件图形加速。"
+  },
+  {
+    "head": "默认打印机",
+    "relation": "前置排查动作",
+    "tail": "WPS",
+    "evidence_quote": "步骤6：设置默认打印机为虚拟打印机（如Microsoft Print to PDF）。"
+  },
+  {
+    "head": "默认打印机",
+    "relation": "前置排查动作",
+    "tail": "Microsoft Office",
+    "evidence_quote": "步骤6：设置默认打印机为虚拟打印机（如Microsoft Print to PDF）。"
+  },
+  {
+    "head": "事件查看器",
+    "relation": "前置排查动作",
+    "tail": "WPS",
+    "evidence_quote": "1. 事件查看器查看崩溃日志（应用程序事件ID 1000）。"
+  },
+  {
+    "head": "事件查看器",
+    "relation": "前置排查动作",
+    "tail": "Microsoft Office",
+    "evidence_quote": "1. 事件查看器查看崩溃日志（应用程序事件ID 1000）。"
+  },
+  {
+    "head": "DEP（数据执行保护）",
+    "relation": "处置动作",
+    "tail": "WPS",
+    "evidence_quote": "5. 禁用DEP（数据执行保护）对WPS/Office的限制（需评估安全风险）。"
+  },
+  {
+    "head": "DEP（数据执行保护）",
+    "relation": "处置动作",
+    "tail": "Microsoft Office",
+    "evidence_quote": "5. 禁用DEP（数据执行保护）对WPS/Office的限制（需评估安全风险）。"
+  },
+  {
+    "head": "ITKB-OFF-003",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-OFF-003\""
+  },
+  {
+    "head": "ITKB-OFF-003",
+    "relation": "依赖系统组件",
+    "tail": "办公软件问题（WPS/Office）",
+    "evidence_quote": "category: \"办公软件问题（WPS/Office）\""
+  },
+  {
+    "head": "多人同时编辑",
+    "relation": "诱发根因",
+    "tail": "同步冲突",
+    "evidence_quote": "① 多人同时编辑同一文档（非协作模式）"
+  },
+  {
+    "head": "网络断开期间编辑",
+    "relation": "诱发根因",
+    "tail": "同步冲突",
+    "evidence_quote": "② 网络断开期间编辑，恢复后同步冲突"
+  },
+  {
+    "head": "多设备离线编辑后同时上线",
+    "relation": "诱发根因",
+    "tail": "同步冲突",
+    "evidence_quote": "③ 在不同设备上离线编辑后同时上线"
+  },
+  {
+    "head": "云盘空间满",
+    "relation": "诱发根因",
+    "tail": "同步冲突",
+    "evidence_quote": "④ 云盘空间满导致同步失败"
+  },
+  {
+    "head": "WPS云服务后台异常",
+    "relation": "诱发根因",
+    "tail": "同步冲突",
+    "evidence_quote": "⑤ WPS云服务后台异常"
+  },
+  {
+    "head": "同步冲突",
+    "relation": "衍生次生故障",
+    "tail": "冲突副本",
+    "evidence_quote": "WPS云文档出现「同步冲突」，生成多个冲突副本。"
+  },
+  {
+    "head": "同步冲突",
+    "relation": "衍生次生故障",
+    "tail": "历史版本",
+    "evidence_quote": "或关闭文档后发现最新编辑内容丢失，回退到了旧版本。"
+  },
+  {
+    "head": "同步冲突",
+    "relation": "前置排查动作",
+    "tail": "冲突副本",
+    "evidence_quote": "步骤1：打开冲突副本（文件名含「冲突的副本」），比对内容后手动合并。"
+  },
+  {
+    "head": "同步冲突",
+    "relation": "前置排查动作",
+    "tail": "历史版本",
+    "evidence_quote": "步骤2：WPS → 文件 → 备份与恢复 → 历史版本 → 找到需要的版本 → 还原。"
+  },
+  {
+    "head": "同步冲突",
+    "relation": "处置动作",
+    "tail": "WPS协作",
+    "evidence_quote": "步骤3：正式协作场景建议使用「WPS协作」模式（多人实时编辑），避免各自编辑后冲突。"
+  },
+  {
+    "head": "同步冲突",
+    "relation": "处置动作",
+    "tail": "备份与恢复",
+    "evidence_quote": "步骤2：WPS → 文件 → 备份与恢复 → 历史版本 → 找到需要的版本 → 还原。"
+  },
+  {
+    "head": "同步冲突",
+    "relation": "处置动作",
+    "tail": "云盘",
+    "evidence_quote": "步骤5：清理云盘空间，预留至少1GB余量。"
+  },
+  {
+    "head": "同步冲突",
+    "relation": "主责运维组",
+    "tail": "IT 部",
+    "evidence_quote": "department: \"IT 部\""
+  },
+  {
+    "head": "ITKB-NET-002",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-NET-002\""
+  },
+  {
+    "head": "ITKB-NET-002",
+    "relation": "依赖系统组件",
+    "tail": "网络连接问题",
+    "evidence_quote": "category: \"网络连接问题\""
+  },
+  {
+    "head": "网线",
+    "relation": "诱发根因",
+    "tail": "以太网(Ethernet)",
+    "evidence_quote": "① 网线物理损坏（折断、接口松动、水晶头氧化）"
+  },
+  {
+    "head": "水晶头",
+    "relation": "诱发根因",
+    "tail": "以太网(Ethernet)",
+    "evidence_quote": "① 网线物理损坏（折断、接口松动、水晶头氧化）"
+  },
+  {
+    "head": "配线架",
+    "relation": "诱发根因",
+    "tail": "以太网(Ethernet)",
+    "evidence_quote": "② 工位网口模块故障或配线架端口松动"
+  },
+  {
+    "head": "交换机端口",
+    "relation": "诱发根因",
+    "tail": "以太网(Ethernet)",
+    "evidence_quote": "③ 交换机端口故障或端口被管理员shutdown"
+  },
+  {
+    "head": "VLAN",
+    "relation": "诱发根因",
+    "tail": "以太网(Ethernet)",
+    "evidence_quote": "⑥ VLAN配置错误，端口VLAN与用户VLAN不一致"
+  },
+  {
+    "head": "MAC地址",
+    "relation": "诱发根因",
+    "tail": "DHCP",
+    "evidence_quote": "⑤ IP/MAC绑定导致新位置无法获取IP"
+  },
+  {
+    "head": "网线",
+    "relation": "前置排查动作",
+    "tail": "以太网(Ethernet)",
+    "evidence_quote": "步骤1：重新插拔网线两端（电脑端 + 墙上面板端），听「咔嗒」声确认插紧。"
+  },
+  {
+    "head": "交换机端口",
+    "relation": "前置排查动作",
+    "tail": "以太网(Ethernet)",
+    "evidence_quote": "2. 登录交换机查看端口状态（show interface status），检查是否err-disabled或admin down。"
+  },
+  {
+    "head": "VLAN",
+    "relation": "前置排查动作",
+    "tail": "以太网(Ethernet)",
+    "evidence_quote": "3. 查看端口MAC地址表、VLAN配置是否正确。"
+  },
+  {
+    "head": "DHCP",
+    "relation": "前置排查动作",
+    "tail": "以太网(Ethernet)",
+    "evidence_quote": "5. 检查DHCP服务器日志，确认是否有该MAC的租约记录。"
+  },
+  {
+    "head": "配线架",
+    "relation": "处置动作",
+    "tail": "以太网(Ethernet)",
+    "evidence_quote": "4. 用打线刀重新压接配线架对应端口。"
+  },
+  {
+    "head": "交换机端口",
+    "relation": "处置动作",
+    "tail": "以太网(Ethernet)",
+    "evidence_quote": "6. 如怀疑交换机端口硬件故障，更换端口并更新配线架标签。"
+  },
+  {
+    "head": "ITKB-NET-004",
+    "relation": "废止并替代",
+    "tail": "ITKB-LEG-NET-004",
+    "evidence_quote": "replaces: [\"ITKB-LEG-NET-004\"]"
+  },
+  {
+    "head": "ITKB-LEG-NET-004",
+    "relation": "生效状态",
+    "tail": "已废止下线",
+    "evidence_quote": "replaces: [\"ITKB-LEG-NET-004\"]"
+  },
+  {
+    "head": "ITKB-NET-004",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-NET-004\""
+  },
+  {
+    "head": "ITKB-NET-004",
+    "relation": "依赖系统组件",
+    "tail": "网络连接问题",
+    "evidence_quote": "category: \"网络连接问题\""
+  },
+  {
+    "head": "DNS服务器地址配置错误或被篡改",
+    "relation": "诱发根因",
+    "tail": "DNS_PROBE_FINISHED_NXDOMAIN",
+    "evidence_quote": "浏览器访问任何网页均提示「无法访问此网站」「DNS_PROBE_FINISHED_NXDOMAIN」或「ERR_NAME_NOT_RESOLVED」。"
+  },
+  {
+    "head": "公司DNS服务器故障或过载",
+    "relation": "诱发根因",
+    "tail": "DNS_PROBE_FINISHED_NXDOMAIN",
+    "evidence_quote": "② 公司DNS服务器故障或过载"
+  },
+  {
+    "head": "DNS缓存污染",
+    "relation": "诱发根因",
+    "tail": "DNS_PROBE_FINISHED_NXDOMAIN",
+    "evidence_quote": "③ DNS缓存污染"
+  },
+  {
+    "head": "hosts文件被恶意修改",
+    "relation": "诱发根因",
+    "tail": "DNS_PROBE_FINISHED_NXDOMAIN",
+    "evidence_quote": "④ hosts文件被恶意修改"
+  },
+  {
+    "head": "代理/VPN软件残留的DNS配置",
+    "relation": "诱发根因",
+    "tail": "DNS_PROBE_FINISHED_NXDOMAIN",
+    "evidence_quote": "⑤ 代理/VPN软件残留的DNS配置"
+  },
+  {
+    "head": "nslookup",
+    "relation": "前置排查动作",
+    "tail": "DNS",
+    "evidence_quote": "步骤1：Win+R → cmd → 输入 nslookup www.baidu.com，观察能否返回IP地址。"
+  },
+  {
+    "head": "ipconfig /flushdns",
+    "relation": "处置动作",
+    "tail": "DNS缓存污染",
+    "evidence_quote": "步骤2：ipconfig /flushdns 清除DNS缓存。"
+  },
+  {
+    "head": "阿里DNS(223.5.5.5)",
+    "relation": "处置动作",
+    "tail": "DNS服务器地址配置错误或被篡改",
+    "evidence_quote": "步骤3：Win+R → ncpa.cpl → 右键网卡 → 属性 → Internet协议版本4 → DNS改为223.5.5.5（阿里DNS）或公司内部DNS。"
+  },
+  {
+    "head": "hosts文件",
+    "relation": "前置排查动作",
+    "tail": "DNS",
+    "evidence_quote": "步骤4：检查 C:\\Windows\\System32\\drivers\\etc\\hosts 文件，删除可疑条目。"
+  },
+  {
+    "head": "DHCP",
+    "relation": "前置排查动作",
+    "tail": "DNS",
+    "evidence_quote": "2. 检查DHCP下发的DNS地址是否正确。"
+  },
+  {
+    "head": "UDP 53端口",
+    "relation": "前置排查动作",
+    "tail": "DNS",
+    "evidence_quote": "3. 查防火墙是否拦截了DNS（UDP 53端口）。"
+  },
+  {
+    "head": "ITKB-NET-003",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-NET-003\""
+  },
+  {
+    "head": "ITKB-NET-003",
+    "relation": "依赖系统组件",
+    "tail": "网络连接问题",
+    "evidence_quote": "category: \"网络连接问题\""
+  },
+  {
+    "head": "带宽被占用",
+    "relation": "诱发根因",
+    "tail": "网速慢",
+    "evidence_quote": "① 带宽被占用（大文件下载、视频流、Windows更新后台下载）"
+  },
+  {
+    "head": "ARP攻击",
+    "relation": "诱发根因",
+    "tail": "网络断连",
+    "evidence_quote": "② ARP攻击或广播风暴导致局域网拥堵"
+  },
+  {
+    "head": "广播风暴",
+    "relation": "诱发根因",
+    "tail": "网络断连",
+    "evidence_quote": "② ARP攻击或广播风暴导致局域网拥堵"
+  },
+  {
+    "head": "网线质量问题",
+    "relation": "诱发根因",
+    "tail": "网络断连",
+    "evidence_quote": "③ 网线质量问题（五类线跑千兆、网线过长>100米）"
+  },
+  {
+    "head": "DNS",
+    "relation": "诱发根因",
+    "tail": "网速慢",
+    "evidence_quote": "④ DNS服务器响应慢"
+  },
+  {
+    "head": "交换机端口协商",
+    "relation": "诱发根因",
+    "tail": "网络断连",
+    "evidence_quote": "⑤ 交换机端口协商异常（半双工/10Mbps）"
+  },
+  {
+    "head": "无线2.4G频段信道干扰严重",
+    "relation": "诱发根因",
+    "tail": "网速慢",
+    "evidence_quote": "⑥ 无线2.4G频段信道干扰严重"
+  },
+  {
+    "head": "ping",
+    "relation": "前置排查动作",
+    "tail": "网络断连",
+    "evidence_quote": "步骤3：Win+R → cmd → ping 114.114.114.114 -t，观察是否稳定（正常应<50ms且不丢包）。"
+  },
+  {
+    "head": "Wireshark",
+    "relation": "前置排查动作",
+    "tail": "ARP攻击",
+    "evidence_quote": "2. Wireshark抓包分析是否存在ARP攻击、环路或广播风暴。"
+  },
+  {
+    "head": "Wireshark",
+    "relation": "前置排查动作",
+    "tail": "广播风暴",
+    "evidence_quote": "2. Wireshark抓包分析是否存在ARP攻击、环路或广播风暴。"
+  },
+  {
+    "head": "WiFi Analyzer",
+    "relation": "前置排查动作",
+    "tail": "无线2.4G频段信道干扰严重",
+    "evidence_quote": "6. 无线环境：用WiFi Analyzer扫描信道占用，调整AP信道。"
+  },
+  {
+    "head": "上网行为管理",
+    "relation": "前置排查动作",
+    "tail": "网速慢",
+    "evidence_quote": "5. 防火墙/上网行为管理检查：是否对该IP做了限速策略。"
+  },
+  {
+    "head": "DNS",
+    "relation": "处置动作",
+    "tail": "网速慢",
+    "evidence_quote": "4. 更换DNS为内部DNS服务器或公共DNS（223.5.5.5 / 114.114.114.114）。"
+  },
+  {
+    "head": "交换机端口协商",
+    "relation": "处置动作",
+    "tail": "网络断连",
+    "evidence_quote": "3. 检查交换机端口协商速率与双工模式（show interface）。"
+  },
+  {
+    "head": "WiFi Analyzer",
+    "relation": "处置动作",
+    "tail": "无线2.4G频段信道干扰严重",
+    "evidence_quote": "6. 无线环境：用WiFi Analyzer扫描信道占用，调整AP信道。"
+  },
+  {
+    "head": "ITKB-OFF-004",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-OFF-004\""
+  },
+  {
+    "head": "ITKB-OFF-004",
+    "relation": "依赖系统组件",
+    "tail": "办公软件问题（WPS/Office）",
+    "evidence_quote": "category: \"办公软件问题（WPS/Office）\""
+  },
+  {
+    "head": "公式计算选项",
+    "relation": "诱发根因",
+    "tail": "Excel",
+    "evidence_quote": "① 计算选项设为「手动」而非「自动」"
+  },
+  {
+    "head": "显示公式模式",
+    "relation": "诱发根因",
+    "tail": "Excel",
+    "evidence_quote": "③ 显示公式模式被误开启（Ctrl+`）"
+  },
+  {
+    "head": "循环引用",
+    "relation": "诱发根因",
+    "tail": "Excel",
+    "evidence_quote": "④ 存在循环引用"
+  },
+  {
+    "head": "外部链接",
+    "relation": "诱发根因",
+    "tail": "Excel",
+    "evidence_quote": "⑤ 公式引用了外部工作簿但链接断开"
+  },
+  {
+    "head": "VBA宏",
+    "relation": "诱发根因",
+    "tail": "Excel",
+    "evidence_quote": "⑥ VBA宏禁用了自动计算"
+  },
+  {
+    "head": "受保护的视图(Protected View)",
+    "relation": "诱发根因",
+    "tail": "Excel",
+    "evidence_quote": "检查工作簿是否处于受保护的视图中（Protected View会禁用公式计算）"
+  },
+  {
+    "head": "公式计算选项",
+    "relation": "前置排查动作",
+    "tail": "Excel",
+    "evidence_quote": "步骤1：公式 → 计算选项 → 选择「自动」（而非「手动」）。"
+  },
+  {
+    "head": "显示公式模式",
+    "relation": "前置排查动作",
+    "tail": "Excel",
+    "evidence_quote": "步骤2：按 Ctrl+`（反引号，Tab上方）切换显示公式模式。"
+  },
+  {
+    "head": "循环引用",
+    "relation": "前置排查动作",
+    "tail": "Excel",
+    "evidence_quote": "步骤4：公式 → 错误检查 → 循环引用 → 定位并修正。"
+  },
+  {
+    "head": "外部链接",
+    "relation": "前置排查动作",
+    "tail": "Excel",
+    "evidence_quote": "步骤5：数据 → 编辑链接 → 断开已失效的外部链接。"
+  },
+  {
+    "head": "公式计算选项",
+    "relation": "处置动作",
+    "tail": "Excel",
+    "evidence_quote": "步骤1：公式 → 计算选项 → 选择「自动」（而非「手动」）。"
+  },
+  {
+    "head": "显示公式模式",
+    "relation": "处置动作",
+    "tail": "Excel",
+    "evidence_quote": "步骤2：按 Ctrl+`（反引号，Tab上方）切换显示公式模式。"
+  },
+  {
+    "head": "循环引用",
+    "relation": "处置动作",
+    "tail": "Excel",
+    "evidence_quote": "步骤4：公式 → 错误检查 → 循环引用 → 定位并修正。"
+  },
+  {
+    "head": "外部链接",
+    "relation": "处置动作",
+    "tail": "Excel",
+    "evidence_quote": "步骤5：数据 → 编辑链接 → 断开已失效的外部链接。"
+  },
+  {
+    "head": "VBA宏",
+    "relation": "处置动作",
+    "tail": "Excel",
+    "evidence_quote": "1. 检查Application.Calculation属性是否被VBA设为xlCalculationManual。"
+  },
+  {
+    "head": "Power Query",
+    "relation": "处置动作",
+    "tail": "Excel",
+    "evidence_quote": "5. 对于大型工作簿，考虑优化公式（减少SUMPRODUCT/数组公式，使用Power Query预处理）。"
+  },
+  {
+    "head": "Excel",
+    "relation": "主责运维组",
+    "tail": "IT 部",
+    "evidence_quote": "department: \"IT 部\""
+  },
+  {
+    "head": "ITKB-SYS-002",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-SYS-002\""
+  },
+  {
+    "head": "ITKB-SYS-002",
+    "relation": "依赖系统组件",
+    "tail": "系统与软件故障",
+    "evidence_quote": "category: \"系统与软件故障\""
+  },
+  {
+    "head": "软件闪退(APPCRASH)",
+    "relation": "诱发根因",
+    "tail": "兼容模式",
+    "evidence_quote": "① 软件版本与系统不兼容（旧版软件在新系统上运行）"
+  },
+  {
+    "head": "软件闪退(APPCRASH)",
+    "relation": "诱发根因",
+    "tail": "VC++运行库(Visual C++ Redistributable)",
+    "evidence_quote": "② 依赖组件缺失或损坏（如 .NET Framework、VC++ 运行库、DirectX）"
+  },
+  {
+    "head": "软件闪退(APPCRASH)",
+    "relation": "诱发根因",
+    "tail": ".NET Framework",
+    "evidence_quote": "② 依赖组件缺失或损坏（如 .NET Framework、VC++ 运行库、DirectX）"
+  },
+  {
+    "head": "软件闪退(APPCRASH)",
+    "relation": "前置排查动作",
+    "tail": "事件查看器(eventvwr.msc)",
+    "evidence_quote": "1. 事件查看器（eventvwr.msc）→ Windows 日志 → 应用程序，查找崩溃事件（事件 ID 1000）。"
+  },
+  {
+    "head": "软件闪退(APPCRASH)",
+    "relation": "前置排查动作",
+    "tail": "事件ID 1000",
+    "evidence_quote": "1. 事件查看器（eventvwr.msc）→ Windows 日志 → 应用程序，查找崩溃事件（事件 ID 1000）。"
+  },
+  {
+    "head": "软件闪退(APPCRASH)",
+    "relation": "处置动作",
+    "tail": "兼容模式",
+    "evidence_quote": "步骤2：右键软件图标 → 属性 → 兼容性 → 勾选「以兼容模式运行」并选择一个较早的 Windows 版本。"
+  },
+  {
+    "head": "软件闪退(APPCRASH)",
+    "relation": "处置动作",
+    "tail": "VC++运行库(Visual C++ Redistributable)",
+    "evidence_quote": "2. 安装/修复 VC++ 运行库合集（Visual C++ Redistributable All-in-One）。"
+  },
+  {
+    "head": "软件闪退(APPCRASH)",
+    "relation": "处置动作",
+    "tail": "Dependency Walker",
+    "evidence_quote": "3. 使用 Dependency Walker 或 Process Monitor 分析缺失的 DLL/依赖。"
+  },
+  {
+    "head": "软件闪退(APPCRASH)",
+    "relation": "处置动作",
+    "tail": "Process Monitor",
+    "evidence_quote": "3. 使用 Dependency Walker 或 Process Monitor 分析缺失的 DLL/依赖。"
+  },
+  {
+    "head": "ITKB-STO-001",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-STO-001\""
+  },
+  {
+    "head": "ITKB-STO-001",
+    "relation": "依赖系统组件",
+    "tail": "数据存储与备份",
+    "evidence_quote": "category: \"数据存储与备份\""
+  },
+  {
+    "head": "文件误删除",
+    "relation": "诱发根因",
+    "tail": "用户误操作删除",
+    "evidence_quote": "① 用户误操作删除"
+  },
+  {
+    "head": "文件误删除",
+    "relation": "诱发根因",
+    "tail": "磁盘空间不足时清理工具误删",
+    "evidence_quote": "② 磁盘空间不足时清理工具误删"
+  },
+  {
+    "head": "文件误删除",
+    "relation": "诱发根因",
+    "tail": "恶意软件/勒索软件删除",
+    "evidence_quote": "③ 恶意软件/勒索软件删除"
+  },
+  {
+    "head": "文件误删除",
+    "relation": "诱发根因",
+    "tail": "共享文件夹权限过宽导致他人误删",
+    "evidence_quote": "④ 共享文件夹权限过宽导致他人误删"
+  },
+  {
+    "head": "文件误删除",
+    "relation": "诱发根因",
+    "tail": "同步冲突导致文件被覆盖",
+    "evidence_quote": "⑤ 同步冲突导致文件被覆盖"
+  },
+  {
+    "head": "文件误删除",
+    "relation": "前置排查动作",
+    "tail": "回收站",
+    "evidence_quote": "步骤1：先检查回收站——桌面回收站、共享文件夹的回收站（如有）。"
+  },
+  {
+    "head": "文件误删除",
+    "relation": "前置排查动作",
+    "tail": "云盘版本历史",
+    "evidence_quote": "步骤2：如果文件在云盘（OneDrive/WPS云文档/公司NAS），登录网页版检查回收站和版本历史。"
+  },
+  {
+    "head": "文件误删除",
+    "relation": "前置排查动作",
+    "tail": "停止使用该磁盘/分区",
+    "evidence_quote": "步骤3：立即停止使用该磁盘/分区，避免新数据覆盖被删除文件。"
+  },
+  {
+    "head": "文件误删除",
+    "relation": "前置排查动作",
+    "tail": "卷影副本",
+    "evidence_quote": "步骤4：如果文件在共享文件夹，联系IT检查文件服务器的卷影副本（右键文件夹 → 属性 → 以前的版本）。"
+  },
+  {
+    "head": "文件误删除",
+    "relation": "处置动作",
+    "tail": "快照(Snapshot)",
+    "evidence_quote": "1. 检查文件服务器/NAS的快照（Snapshot/卷影副本）——恢复最近一个版本。"
+  },
+  {
+    "head": "文件误删除",
+    "relation": "处置动作",
+    "tail": "备份系统",
+    "evidence_quote": "2. 检查备份系统（Veeam/Acronis/Windows Backup）的最近备份点。"
+  },
+  {
+    "head": "文件误删除",
+    "relation": "处置动作",
+    "tail": "数据恢复软件",
+    "evidence_quote": "3. 使用数据恢复软件（Recuva/R-Studio/DiskGenius等）扫描恢复——注意：在恢复前先做磁盘镜像。"
+  },
+  {
+    "head": "数据恢复软件",
+    "relation": "依赖系统组件",
+    "tail": "磁盘镜像",
+    "evidence_quote": "3. 使用数据恢复软件（Recuva/R-Studio/DiskGenius等）扫描恢复——注意：在恢复前先做磁盘镜像。"
+  },
+  {
+    "head": "文件误删除",
+    "relation": "处置动作",
+    "tail": "启用审核策略",
+    "evidence_quote": "4. 共享文件夹：启用审核策略，追踪删除者身份。"
+  },
+  {
+    "head": "文件误删除",
+    "relation": "处置动作",
+    "tail": "开启文件服务器的回收站功能和定期快照策略",
+    "evidence_quote": "5. 评估后建议开启文件服务器的回收站功能和定期快照策略。"
+  },
+  {
+    "head": "文件误删除",
+    "relation": "主责运维组",
+    "tail": "IT 部",
+    "evidence_quote": "department: \"IT 部\""
+  },
+  {
+    "head": "ITKB-STO-002",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-STO-002\""
+  },
+  {
+    "head": "ITKB-STO-002",
+    "relation": "依赖系统组件",
+    "tail": "数据存储与备份",
+    "evidence_quote": "category: \"数据存储与备份\""
+  },
+  {
+    "head": "共享盘",
+    "relation": "依赖网络通道",
+    "tail": "VPN",
+    "evidence_quote": "网络驱动器映射使用持久连接但VPN/网络未就绪"
+  },
+  {
+    "head": "共享盘",
+    "relation": "依赖系统组件",
+    "tail": "SMB",
+    "evidence_quote": "SMB协议版本不兼容（如服务器SMBv1已禁用但客户端仅支持v1）"
+  },
+  {
+    "head": "共享盘",
+    "relation": "依赖系统组件",
+    "tail": "DNS",
+    "evidence_quote": "DNS解析文件服务器主机名失败"
+  },
+  {
+    "head": "共享盘",
+    "relation": "依赖系统组件",
+    "tail": "文件服务器",
+    "evidence_quote": "文件服务器脱机或文件共享服务停止"
+  },
+  {
+    "head": "共享盘",
+    "relation": "前置排查动作",
+    "tail": "网络驱动器",
+    "evidence_quote": "如果能打开但盘符断开 → 断开旧盘符（右键 → 断开）→ 重新映射。"
+  },
+  {
+    "head": "共享盘",
+    "relation": "前置排查动作",
+    "tail": "DNS",
+    "evidence_quote": "ping文件服务器IP和主机名，检查DNS解析是否正常。"
+  },
+  {
+    "head": "共享盘",
+    "relation": "处置动作",
+    "tail": "网络驱动器",
+    "evidence_quote": "重新映射并输入密码。"
+  },
+  {
+    "head": "共享盘",
+    "relation": "主责运维组",
+    "tail": "IT部",
+    "evidence_quote": "department: \"IT 部\""
+  },
+  {
+    "head": "ITKB-SYS-003",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-SYS-003\""
+  },
+  {
+    "head": "ITKB-SYS-003",
+    "relation": "依赖系统组件",
+    "tail": "系统与软件故障",
+    "evidence_quote": "category: \"系统与软件故障\""
+  },
+  {
+    "head": "C盘空间不足",
+    "relation": "诱发根因",
+    "tail": "Windows更新",
+    "evidence_quote": "① C盘空间不足（更新需要至少10-20GB临时空间）"
+  },
+  {
+    "head": "Windows Update 服务故障",
+    "relation": "诱发根因",
+    "tail": "Windows更新",
+    "evidence_quote": "② Windows Update 服务故障或组件损坏"
+  },
+  {
+    "head": "第三方安全软件",
+    "relation": "诱发根因",
+    "tail": "Windows更新",
+    "evidence_quote": "③ 第三方安全软件阻止更新"
+  },
+  {
+    "head": "网络不稳定",
+    "relation": "诱发根因",
+    "tail": "Windows更新",
+    "evidence_quote": "④ 网络不稳定导致更新包下载损坏"
+  },
+  {
+    "head": "KB补丁",
+    "relation": "诱发根因",
+    "tail": "Windows更新",
+    "evidence_quote": "⑤ 更新包本身存在问题（微软已知问题）"
+  },
+  {
+    "head": "Windows更新",
+    "relation": "前置排查动作",
+    "tail": "检查C盘剩余空间",
+    "evidence_quote": "步骤1：检查C盘剩余空间，清理磁盘（Win+R → cleanmgr → 清理系统文件 → 勾选Windows更新清理）。"
+  },
+  {
+    "head": "Windows更新",
+    "relation": "前置排查动作",
+    "tail": "重启电脑",
+    "evidence_quote": "步骤2：重启电脑，重新检查更新。"
+  },
+  {
+    "head": "Windows更新",
+    "relation": "前置排查动作",
+    "tail": "重启 Windows Update 服务",
+    "evidence_quote": "步骤3：Win+R → services.msc → 找到 Windows Update 服务 → 右键重启。"
+  },
+  {
+    "head": "Windows更新",
+    "relation": "前置排查动作",
+    "tail": "Windows 更新疑难解答",
+    "evidence_quote": "步骤4：使用 Windows 更新疑难解答：Win+I → 更新和安全 → 疑难解答 → Windows更新。"
+  },
+  {
+    "head": "Windows更新",
+    "relation": "前置排查动作",
+    "tail": "关闭第三方杀毒软件",
+    "evidence_quote": "步骤5：暂时关闭第三方杀毒软件后重试更新。"
+  },
+  {
+    "head": "Windows更新",
+    "relation": "处置动作",
+    "tail": "手动重置 Windows Update 组件",
+    "evidence_quote": "1. 手动重置 Windows Update 组件（停止 wuauserv、bits、cryptsvc → 重命名 SoftwareDistribution 和 Catroot2 文件夹 → 重启服务）。"
+  },
+  {
+    "head": "Windows更新",
+    "relation": "处置动作",
+    "tail": "DISM",
+    "evidence_quote": "2. 使用 DISM 命令修复系统映像：DISM /Online /Cleanup-Image /RestoreHealth。"
+  },
+  {
+    "head": "Windows更新",
+    "relation": "处置动作",
+    "tail": "手动下载KB补丁",
+    "evidence_quote": "3. 从微软更新目录（catalog.update.microsoft.com）手动下载对应KB补丁安装。"
+  },
+  {
+    "head": "Windows更新",
+    "relation": "处置动作",
+    "tail": "Windows Update Assistant",
+    "evidence_quote": "4. 使用 Windows Update Assistant 或 Media Creation Tool 进行就地升级修复。"
+  },
+  {
+    "head": "Windows更新",
+    "relation": "处置动作",
+    "tail": "WSUS",
+    "evidence_quote": "5. 如仍失败，考虑从WSUS/SCCM推送更新（企业环境）。"
+  },
+  {
+    "head": "Windows更新",
+    "relation": "处置动作",
+    "tail": "SCCM",
+    "evidence_quote": "5. 如仍失败，考虑从WSUS/SCCM推送更新（企业环境）。"
+  },
+  {
+    "head": "ITKB-SYS-001",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-SYS-001\""
+  },
+  {
+    "head": "ITKB-SYS-001",
+    "relation": "依赖系统组件",
+    "tail": "系统与软件故障",
+    "evidence_quote": "category: \"系统与软件故障\""
+  },
+  {
+    "head": "内存故障",
+    "relation": "诱发根因",
+    "tail": "蓝屏(BSOD)",
+    "evidence_quote": "① 内存故障（接触不良、金手指氧化、内存条损坏）"
+  },
+  {
+    "head": "驱动程序",
+    "relation": "诱发根因",
+    "tail": "蓝屏(BSOD)",
+    "evidence_quote": "② 驱动程序不兼容（特别是显卡驱动、网卡驱动）"
+  },
+  {
+    "head": "系统文件损坏",
+    "relation": "诱发根因",
+    "tail": "蓝屏(BSOD)",
+    "evidence_quote": "③ 系统文件损坏（非正常关机导致）"
+  },
+  {
+    "head": "散热不良",
+    "relation": "诱发根因",
+    "tail": "蓝屏(BSOD)",
+    "evidence_quote": "④ 散热不良导致CPU/显卡过热保护"
+  },
+  {
+    "head": "硬盘坏道",
+    "relation": "诱发根因",
+    "tail": "蓝屏(BSOD)",
+    "evidence_quote": "⑤ 硬盘坏道或SSD固件问题"
+  },
+  {
+    "head": "软件冲突",
+    "relation": "诱发根因",
+    "tail": "蓝屏(BSOD)",
+    "evidence_quote": "⑥ 软件冲突（杀毒软件、系统优化工具）"
+  },
+  {
+    "head": "sfc /scannow",
+    "relation": "处置动作",
+    "tail": "蓝屏(BSOD)",
+    "evidence_quote": "步骤6：Win+R → cmd（管理员） → sfc /scannow 扫描修复系统文件。"
+  },
+  {
+    "head": "BlueScreenView",
+    "relation": "前置排查动作",
+    "tail": "蓝屏(BSOD)",
+    "evidence_quote": "1. 使用 BlueScreenView 工具分析 dump 文件（C:\\Windows\\Minidump），定位导致蓝屏的驱动/模块。"
+  },
+  {
+    "head": "MemTest86",
+    "relation": "前置排查动作",
+    "tail": "蓝屏(BSOD)",
+    "evidence_quote": "2. 使用 MemTest86 进行深度内存检测（需制作启动U盘）。"
+  },
+  {
+    "head": "CrystalDiskInfo",
+    "relation": "前置排查动作",
+    "tail": "蓝屏(BSOD)",
+    "evidence_quote": "3. 使用 CrystalDiskInfo 检查硬盘健康状态（SMART数据）。"
+  },
+  {
+    "head": "ITKB-SYS-004",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-SYS-004\""
+  },
+  {
+    "head": "ITKB-SYS-004",
+    "relation": "依赖系统组件",
+    "tail": "系统与软件故障",
+    "evidence_quote": "category: \"系统与软件故障\""
+  },
+  {
+    "head": "机械硬盘(HDD)",
+    "relation": "诱发根因",
+    "tail": "电脑运行缓慢",
+    "evidence_quote": "① 机械硬盘老化或坏道（HDD随机读写性能下降）"
+  },
+  {
+    "head": "Windows Search",
+    "relation": "诱发根因",
+    "tail": "电脑运行缓慢",
+    "evidence_quote": "⑤ Windows索引服务或Search服务消耗磁盘 I/O"
+  },
+  {
+    "head": "Superfetch",
+    "relation": "诱发根因",
+    "tail": "电脑运行缓慢",
+    "evidence_quote": "⑤ Windows索引服务或Search服务消耗磁盘 I/O"
+  },
+  {
+    "head": "任务管理器",
+    "relation": "前置排查动作",
+    "tail": "电脑运行缓慢",
+    "evidence_quote": "步骤2：任务管理器 → 进程 → 按CPU/内存/磁盘排序，结束高占用且非系统进程。"
+  },
+  {
+    "head": "cleanmgr",
+    "relation": "处置动作",
+    "tail": "电脑运行缓慢",
+    "evidence_quote": "步骤3：Win+R → cleanmgr → 清理C盘临时文件和回收站。"
+  },
+  {
+    "head": "CrystalDiskInfo",
+    "relation": "前置排查动作",
+    "tail": "机械硬盘(HDD)",
+    "evidence_quote": "1. 用 CrystalDiskInfo 检测硬盘健康度（SMART数据、坏道数、通电时间）。"
+  },
+  {
+    "head": "固态硬盘(SSD)",
+    "relation": "处置动作",
+    "tail": "电脑运行缓慢",
+    "evidence_quote": "3. 机械硬盘升级为SSD（系统迁移或重装）。"
+  },
+  {
+    "head": "Windows Defender",
+    "relation": "处置动作",
+    "tail": "电脑运行缓慢",
+    "evidence_quote": "4. 杀毒扫描（Windows Defender全盘扫描 + 火绒/Malwarebytes）。"
+  },
+  {
+    "head": "Windows Search",
+    "relation": "处置动作",
+    "tail": "电脑运行缓慢",
+    "evidence_quote": "5. 关闭 Windows Search 和 Superfetch（如有SSD）。"
+  },
+  {
+    "head": "Superfetch",
+    "relation": "处置动作",
+    "tail": "电脑运行缓慢",
+    "evidence_quote": "5. 关闭 Windows Search 和 Superfetch（如有SSD）。"
+  },
+  {
+    "head": "ITKB-SYS-005",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-SYS-005\""
+  },
+  {
+    "head": "ITKB-SYS-005",
+    "relation": "依赖系统组件",
+    "tail": "系统与软件故障",
+    "evidence_quote": "category: \"系统与软件故障\""
+  },
+  {
+    "head": "缓存",
+    "relation": "诱发根因",
+    "tail": "浏览器",
+    "evidence_quote": "① 浏览器缓存和Cookie过期或损坏"
+  },
+  {
+    "head": "Cookie",
+    "relation": "诱发根因",
+    "tail": "浏览器",
+    "evidence_quote": "① 浏览器缓存和Cookie过期或损坏"
+  },
+  {
+    "head": "浏览器扩展",
+    "relation": "诱发根因",
+    "tail": "浏览器",
+    "evidence_quote": "② 浏览器扩展/插件冲突（广告拦截、脚本拦截）"
+  },
+  {
+    "head": "SSL证书",
+    "relation": "诱发根因",
+    "tail": "浏览器",
+    "evidence_quote": "③ 系统时间不正确导致SSL证书验证失败"
+  },
+  {
+    "head": "代理",
+    "relation": "诱发根因",
+    "tail": "浏览器",
+    "evidence_quote": "④ 代理/VPN设置残留"
+  },
+  {
+    "head": "HTTPS扫描",
+    "relation": "诱发根因",
+    "tail": "浏览器",
+    "evidence_quote": "⑥ 杀毒软件的HTTPS扫描功能干扰"
+  },
+  {
+    "head": "浏览器",
+    "relation": "前置排查动作",
+    "tail": "缓存",
+    "evidence_quote": "步骤1：按 Ctrl+F5 强制刷新页面（跳过缓存）。"
+  },
+  {
+    "head": "浏览器",
+    "relation": "前置排查动作",
+    "tail": "Cookie",
+    "evidence_quote": "步骤2：浏览器设置 → 清除浏览数据 → 全选（缓存+Cookie+历史）→ 时间范围选「全部」→ 清除。"
+  },
+  {
+    "head": "浏览器",
+    "relation": "前置排查动作",
+    "tail": "浏览器扩展",
+    "evidence_quote": "步骤4：禁用所有浏览器扩展后重试。"
+  },
+  {
+    "head": "浏览器",
+    "relation": "前置排查动作",
+    "tail": "代理",
+    "evidence_quote": "步骤7：Win+R → inetcpl.cpl → 连接 → 局域网设置 → 取消所有代理勾选。"
+  },
+  {
+    "head": "浏览器",
+    "relation": "处置动作",
+    "tail": "浏览器",
+    "evidence_quote": "1. 重置浏览器设置（恢复默认，会清除扩展和搜索引擎）。"
+  },
+  {
+    "head": "浏览器",
+    "relation": "处置动作",
+    "tail": "HTTPS扫描",
+    "evidence_quote": "2. 检查杀毒软件HTTPS扫描功能：卡巴斯基/ESET等 → 关闭「扫描加密连接」后测试。"
+  },
+  {
+    "head": "浏览器",
+    "relation": "处置动作",
+    "tail": "代理",
+    "evidence_quote": "5. 检查公司代理服务器配置和PAC文件。"
+  },
+  {
+    "head": "ITKB-VPN-003",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-VPN-003\""
+  },
+  {
+    "head": "ITKB-VPN-003",
+    "relation": "依赖系统组件",
+    "tail": "VPN与远程办公",
+    "evidence_quote": "category: \"VPN与远程办公\""
+  },
+  {
+    "head": "目标电脑未开机或休眠",
+    "relation": "诱发根因",
+    "tail": "远程桌面(RDP)",
+    "evidence_quote": "① 目标电脑未开机或处于休眠/睡眠状态"
+  },
+  {
+    "head": "远程桌面功能未开启",
+    "relation": "诱发根因",
+    "tail": "远程桌面(RDP)",
+    "evidence_quote": "② 目标电脑远程桌面功能未开启"
+  },
+  {
+    "head": "VPN未连接",
+    "relation": "诱发根因",
+    "tail": "远程桌面(RDP)",
+    "evidence_quote": "③ 网络层面：VPN未连接或未授权访问3389端口"
+  },
+  {
+    "head": "未授权访问3389端口",
+    "relation": "诱发根因",
+    "tail": "远程桌面(RDP)",
+    "evidence_quote": "③ 网络层面：VPN未连接或未授权访问3389端口"
+  },
+  {
+    "head": "Windows防火墙",
+    "relation": "诱发根因",
+    "tail": "远程桌面(RDP)",
+    "evidence_quote": "④ 防火墙（Windows防火墙/公司防火墙）拦截"
+  },
+  {
+    "head": "NLA(网络级身份验证)",
+    "relation": "诱发根因",
+    "tail": "远程桌面(RDP)",
+    "evidence_quote": "⑤ NLA（网络级身份验证）导致凭据传递失败"
+  },
+  {
+    "head": "目标电脑IP地址变更",
+    "relation": "诱发根因",
+    "tail": "远程桌面(RDP)",
+    "evidence_quote": "⑥ 目标电脑IP地址变更（DHCP分配变化）"
+  },
+  {
+    "head": "远程桌面(RDP)",
+    "relation": "依赖网络通道",
+    "tail": "VPN",
+    "evidence_quote": "步骤3：确认VPN已连接并能ping通目标电脑IP。"
+  },
+  {
+    "head": "远程桌面(RDP)",
+    "relation": "依赖系统组件",
+    "tail": "Windows防火墙",
+    "evidence_quote": "步骤4：检查Windows防火墙：允许应用通过防火墙 → 确保「远程桌面」已勾选。"
+  },
+  {
+    "head": "远程桌面(RDP)",
+    "relation": "依赖系统组件",
+    "tail": "组策略",
+    "evidence_quote": "2. 组策略：计算机配置 → 管理模板 → Windows组件 → 远程桌面服务 → 启用远程桌面。"
+  },
+  {
+    "head": "远程桌面(RDP)",
+    "relation": "依赖系统组件",
+    "tail": "TCP 3389端口",
+    "evidence_quote": "3. 防火墙规则：开放TCP 3389，如改端口则需要查当前端口。"
+  },
+  {
+    "head": "远程桌面(RDP)",
+    "relation": "依赖身份源",
+    "tail": "Remote Desktop Users组",
+    "evidence_quote": "6. 检查AD账号是否在目标电脑的 Remote Desktop Users 组中。"
+  },
+  {
+    "head": "远程桌面(RDP)",
+    "relation": "前置排查动作",
+    "tail": "目标电脑已开机且未休眠",
+    "evidence_quote": "步骤1：确认目标电脑已开机且未休眠（可请同事帮忙查看）。"
+  },
+  {
+    "head": "远程桌面(RDP)",
+    "relation": "前置排查动作",
+    "tail": "远程桌面开关为开",
+    "evidence_quote": "步骤2：Win+I → 系统 → 远程桌面 → 确保远程桌面开关为「开」。"
+  },
+  {
+    "head": "远程桌面(RDP)",
+    "relation": "前置排查动作",
+    "tail": "VPN已连接",
+    "evidence_quote": "步骤3：确认VPN已连接并能ping通目标电脑IP。"
+  },
+  {
+    "head": "远程桌面(RDP)",
+    "relation": "前置排查动作",
+    "tail": "Windows防火墙",
+    "evidence_quote": "步骤4：检查Windows防火墙：允许应用通过防火墙 → 确保「远程桌面」已勾选。"
+  },
+  {
+    "head": "远程桌面(RDP)",
+    "relation": "前置排查动作",
+    "tail": "IP地址没有变化",
+    "evidence_quote": "步骤6：如果使用IP连接，确认IP地址没有变化（目标电脑 ipconfig 查看）。"
+  },
+  {
+    "head": "远程桌面(RDP)",
+    "relation": "处置动作",
+    "tail": "关闭睡眠和休眠",
+    "evidence_quote": "1. 检查目标电脑电源管理设置：关闭睡眠和休眠，关闭网卡节能模式。"
+  },
+  {
+    "head": "远程桌面(RDP)",
+    "relation": "处置动作",
+    "tail": "组策略",
+    "evidence_quote": "2. 组策略：计算机配置 → 管理模板 → Windows组件 → 远程桌面服务 → 启用远程桌面。"
+  },
+  {
+    "head": "远程桌面(RDP)",
+    "relation": "处置动作",
+    "tail": "TCP 3389端口",
+    "evidence_quote": "3. 防火墙规则：开放TCP 3389，如改端口则需要查当前端口。"
+  },
+  {
+    "head": "远程桌面(RDP)",
+    "relation": "处置动作",
+    "tail": "NLA(网络级身份验证)",
+    "evidence_quote": "4. 检查NLA设置：系统属性 → 远程 → 取消勾选「仅允许运行使用网络级别身份验证…」。"
+  },
+  {
+    "head": "远程桌面(RDP)",
+    "relation": "处置动作",
+    "tail": "Remote Desktop Users组",
+    "evidence_quote": "6. 检查AD账号是否在目标电脑的 Remote Desktop Users 组中。"
+  },
+  {
+    "head": "远程桌面(RDP)",
+    "relation": "主责运维组",
+    "tail": "IT 部",
+    "evidence_quote": "department: \"IT 部\""
+  },
+  {
+    "head": "ITKB-VPN-002",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-VPN-002\""
+  },
+  {
+    "head": "ITKB-VPN-002",
+    "relation": "依赖系统组件",
+    "tail": "VPN与远程办公",
+    "evidence_quote": "category: \"VPN与远程办公\""
+  },
+  {
+    "head": "Split Tunnel（分离隧道）",
+    "relation": "诱发根因",
+    "tail": "VPN",
+    "evidence_quote": "① VPN路由未正确推送到客户端（split tunnel配置问题）"
+  },
+  {
+    "head": "IP网段冲突",
+    "relation": "诱发根因",
+    "tail": "VPN",
+    "evidence_quote": "② 本地网络与公司内网IP段冲突（如家里也是192.168.1.x）"
+  },
+  {
+    "head": "DNS",
+    "relation": "诱发根因",
+    "tail": "VPN",
+    "evidence_quote": "③ DNS未自动切换为公司内部DNS"
+  },
+  {
+    "head": "Windows防火墙",
+    "relation": "诱发根因",
+    "tail": "VPN",
+    "evidence_quote": "④ Windows防火墙阻断了VPN接口的流量"
+  },
+  {
+    "head": "VPN客户端",
+    "relation": "诱发根因",
+    "tail": "VPN",
+    "evidence_quote": "⑤ VPN客户端没有管理员权限，无法添加路由"
+  },
+  {
+    "head": "VPN",
+    "relation": "前置排查动作",
+    "tail": "路由推送",
+    "evidence_quote": "步骤1：VPN连接后，Win+R → cmd → ipconfig → 检查是否获取到了VPN分配的IP和DNS。"
+  },
+  {
+    "head": "VPN",
+    "relation": "前置排查动作",
+    "tail": "DNS",
+    "evidence_quote": "步骤2：ping内网服务器IP测试（如 ping 10.x.x.x），如果能通IP但打不开网页，说明是DNS问题。"
+  },
+  {
+    "head": "VPN",
+    "relation": "前置排查动作",
+    "tail": "IP网段冲突",
+    "evidence_quote": "步骤5：检查家里路由器的IP段（如192.168.1.x）是否与公司内网IP段冲突，如冲突则改家庭路由器IP段。"
+  },
+  {
+    "head": "VPN",
+    "relation": "处置动作",
+    "tail": "VPN客户端",
+    "evidence_quote": "步骤4：以管理员身份运行VPN客户端。"
+  },
+  {
+    "head": "VPN",
+    "relation": "处置动作",
+    "tail": "路由推送",
+    "evidence_quote": "1. 检查VPN服务器推送的路由表（route print），确认内网网段是否在路由表中。"
+  },
+  {
+    "head": "VPN",
+    "relation": "处置动作",
+    "tail": "DNS",
+    "evidence_quote": "2. 检查DNS后缀推送配置：确保VPN连接后自动添加公司域名后缀。"
+  },
+  {
+    "head": "IP网段冲突",
+    "relation": "处置动作",
+    "tail": "路由推送",
+    "evidence_quote": "3. 如果家庭IP段与公司冲突，指导用户更改家庭路由器LAN网段（如改为192.168.99.x）。"
+  },
+  {
+    "head": "VPN",
+    "relation": "处置动作",
+    "tail": "Always-On VPN",
+    "evidence_quote": "5. 考虑实施Always-On VPN或零信任方案，减少传统VPN的配置复杂度。"
+  },
+  {
+    "head": "ITKB-STO-003",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-STO-003\""
+  },
+  {
+    "head": "ITKB-STO-003",
+    "relation": "依赖系统组件",
+    "tail": "数据存储与备份",
+    "evidence_quote": "category: \"数据存储与备份\""
+  },
+  {
+    "head": "文件路径过长",
+    "relation": "诱发根因",
+    "tail": "OneDrive",
+    "evidence_quote": "① 文件路径过长（超过256字符限制）"
+  },
+  {
+    "head": "文件名包含不支持的字符",
+    "relation": "诱发根因",
+    "tail": "OneDrive",
+    "evidence_quote": "② 文件名包含不支持的字符（如 / : * ? \" < > |）"
+  },
+  {
+    "head": "磁盘空间不足",
+    "relation": "诱发根因",
+    "tail": "OneDrive",
+    "evidence_quote": "③ 磁盘空间不足"
+  },
+  {
+    "head": "同步客户端未登录或登录状态过期",
+    "relation": "诱发根因",
+    "tail": "OneDrive",
+    "evidence_quote": "④ 同步客户端未登录或登录状态过期"
+  },
+  {
+    "head": "文件被其他程序锁定",
+    "relation": "诱发根因",
+    "tail": "OneDrive",
+    "evidence_quote": "⑤ 文件被其他程序锁定（正在编辑中）"
+  },
+  {
+    "head": "网络问题",
+    "relation": "诱发根因",
+    "tail": "OneDrive",
+    "evidence_quote": "⑥ 网络问题（代理/VPN干扰）"
+  },
+  {
+    "head": "文件路径过长",
+    "relation": "诱发根因",
+    "tail": "WPS云盘",
+    "evidence_quote": "① 文件路径过长（超过256字符限制）"
+  },
+  {
+    "head": "文件名包含不支持的字符",
+    "relation": "诱发根因",
+    "tail": "WPS云盘",
+    "evidence_quote": "② 文件名包含不支持的字符（如 / : * ? \" < > |）"
+  },
+  {
+    "head": "磁盘空间不足",
+    "relation": "诱发根因",
+    "tail": "WPS云盘",
+    "evidence_quote": "③ 磁盘空间不足"
+  },
+  {
+    "head": "同步客户端未登录或登录状态过期",
+    "relation": "诱发根因",
+    "tail": "WPS云盘",
+    "evidence_quote": "④ 同步客户端未登录或登录状态过期"
+  },
+  {
+    "head": "文件被其他程序锁定",
+    "relation": "诱发根因",
+    "tail": "WPS云盘",
+    "evidence_quote": "⑤ 文件被其他程序锁定（正在编辑中）"
+  },
+  {
+    "head": "网络问题",
+    "relation": "诱发根因",
+    "tail": "WPS云盘",
+    "evidence_quote": "⑥ 网络问题（代理/VPN干扰）"
+  },
+  {
+    "head": "OneDrive",
+    "relation": "前置排查动作",
+    "tail": "查看同步问题",
+    "evidence_quote": "步骤1：右键任务栏的云盘图标 → 查看同步问题 → 根据提示处理。"
+  },
+  {
+    "head": "OneDrive",
+    "relation": "前置排查动作",
+    "tail": "暂停同步",
+    "evidence_quote": "步骤2：OneDrive → 暂停同步 → 恢复同步。"
+  },
+  {
+    "head": "OneDrive",
+    "relation": "前置排查动作",
+    "tail": "检查文件名和路径长度",
+    "evidence_quote": "步骤3：检查文件名和路径长度，超长的缩短或移到浅层目录。"
+  },
+  {
+    "head": "OneDrive",
+    "relation": "前置排查动作",
+    "tail": "关闭所有Office文档",
+    "evidence_quote": "步骤4：关闭所有Office文档后再同步。"
+  },
+  {
+    "head": "OneDrive",
+    "relation": "前置排查动作",
+    "tail": "检查C盘剩余空间",
+    "evidence_quote": "步骤5：检查C盘剩余空间（需至少1GB）。"
+  },
+  {
+    "head": "OneDrive",
+    "relation": "前置排查动作",
+    "tail": "退出登录重新登录",
+    "evidence_quote": "步骤6：退出登录 → 重新登录同步客户端。"
+  },
+  {
+    "head": "WPS云盘",
+    "relation": "前置排查动作",
+    "tail": "查看同步问题",
+    "evidence_quote": "步骤1：右键任务栏的云盘图标 → 查看同步问题 → 根据提示处理。"
+  },
+  {
+    "head": "WPS云盘",
+    "relation": "前置排查动作",
+    "tail": "暂停同步",
+    "evidence_quote": "步骤2：OneDrive → 暂停同步 → 恢复同步。"
+  },
+  {
+    "head": "WPS云盘",
+    "relation": "前置排查动作",
+    "tail": "检查文件名和路径长度",
+    "evidence_quote": "步骤3：检查文件名和路径长度，超长的缩短或移到浅层目录。"
+  },
+  {
+    "head": "WPS云盘",
+    "relation": "前置排查动作",
+    "tail": "关闭所有Office文档",
+    "evidence_quote": "步骤4：关闭所有Office文档后再同步。"
+  },
+  {
+    "head": "WPS云盘",
+    "relation": "前置排查动作",
+    "tail": "检查C盘剩余空间",
+    "evidence_quote": "步骤5：检查C盘剩余空间（需至少1GB）。"
+  },
+  {
+    "head": "WPS云盘",
+    "relation": "前置排查动作",
+    "tail": "退出登录重新登录",
+    "evidence_quote": "步骤6：退出登录 → 重新登录同步客户端。"
+  },
+  {
+    "head": "OneDrive",
+    "relation": "处置动作",
+    "tail": "onedrive.exe /reset",
+    "evidence_quote": "2. OneDrive：重置客户端（onedrive.exe /reset）。"
+  },
+  {
+    "head": "OneDrive",
+    "relation": "处置动作",
+    "tail": "检查文件服务器配额",
+    "evidence_quote": "3. 检查文件服务器配额。"
+  },
+  {
+    "head": "OneDrive",
+    "relation": "处置动作",
+    "tail": "排查GPO中OneDrive同步策略",
+    "evidence_quote": "4. 排查GPO中OneDrive同步策略：是否限制了特定文件类型或大小。"
+  },
+  {
+    "head": "OneDrive",
+    "relation": "依赖网络通道",
+    "tail": "*.sharepoint.com",
+    "evidence_quote": "5. 网络层面：确保同步域名（如 *.sharepoint.com、*.wps.cn）在防火墙白名单。"
+  },
+  {
+    "head": "WPS云盘",
+    "relation": "依赖网络通道",
+    "tail": "*.wps.cn",
+    "evidence_quote": "5. 网络层面：确保同步域名（如 *.sharepoint.com、*.wps.cn）在防火墙白名单。"
+  },
+  {
+    "head": "ITKB-VPN-001",
+    "relation": "废止并替代",
+    "tail": "ITKB-LEG-VPN-001",
+    "evidence_quote": "replaces: [\"ITKB-LEG-VPN-001\"]"
+  },
+  {
+    "head": "ITKB-LEG-VPN-001",
+    "relation": "生效状态",
+    "tail": "已废止下线",
+    "evidence_quote": "replaces: [\"ITKB-LEG-VPN-001\"]"
+  },
+  {
+    "head": "ITKB-VPN-001",
+    "relation": "生效状态",
+    "tail": "现行有效",
+    "evidence_quote": "id: \"ITKB-VPN-001\""
+  },
+  {
+    "head": "ITKB-VPN-001",
+    "relation": "依赖系统组件",
+    "tail": "VPN与远程办公",
+    "evidence_quote": "category: \"VPN与远程办公\""
+  },
+  {
+    "head": "家庭网络/酒店网络防火墙",
+    "relation": "诱发根因",
+    "tail": "VPN连接失败",
+    "evidence_quote": "① 家庭网络/酒店网络防火墙阻断了VPN协议（PPTP/L2TP/IPSec）"
+  },
+  {
+    "head": "VPN客户端配置错误",
+    "relation": "诱发根因",
+    "tail": "VPN连接失败",
+    "evidence_quote": "② VPN客户端配置错误（服务器地址、预共享密钥）"
+  },
+  {
+    "head": "AD账号被锁定",
+    "relation": "诱发根因",
+    "tail": "VPN连接失败",
+    "evidence_quote": "③ 用户名密码错误或AD账号被锁定"
+  },
+  {
+    "head": "运营商网络NAT穿透问题",
+    "relation": "诱发根因",
+    "tail": "VPN连接失败",
+    "evidence_quote": "④ 运营商网络NAT穿透问题"
+  },
+  {
+    "head": "VPN服务器端故障",
+    "relation": "诱发根因",
+    "tail": "VPN连接失败",
+    "evidence_quote": "⑤ VPN服务器端故障或并发连接数已满"
+  },
+  {
+    "head": "证书过期",
+    "relation": "诱发根因",
+    "tail": "SSL VPN连接失败",
+    "evidence_quote": "⑥ 证书过期（SSL VPN）"
+  },
+  {
+    "head": "检查本地网络是否能正常上网",
+    "relation": "前置排查动作",
+    "tail": "VPN连接失败",
+    "evidence_quote": "步骤1：检查本地网络是否能正常上网（浏览器打开百度测试）。"
+  },
+  {
+    "head": "尝试手机热点连接",
+    "relation": "前置排查动作",
+    "tail": "VPN连接失败",
+    "evidence_quote": "步骤2：尝试手机热点连接——如果热点可以但家庭宽带不行，说明是家庭路由器/宽带问题。"
+  },
+  {
+    "head": "重启家用路由器和电脑",
+    "relation": "前置排查动作",
+    "tail": "VPN连接失败",
+    "evidence_quote": "步骤3：重启家用路由器和电脑。"
+  },
+  {
+    "head": "确认VPN服务器地址和密钥配置正确",
+    "relation": "前置排查动作",
+    "tail": "VPN连接失败",
+    "evidence_quote": "步骤4：确认VPN服务器地址和密钥配置正确（对照公司VPN配置文档）。"
+  },
+  {
+    "head": "尝试切换VPN协议",
+    "relation": "前置排查动作",
+    "tail": "VPN连接失败",
+    "evidence_quote": "步骤5：尝试切换VPN协议（如从L2TP切换到SSL VPN，或从SSL VPN切换到IKEv2）。"
+  },
+  {
+    "head": "关闭Windows防火墙和第三方杀毒软件临时测试",
+    "relation": "前置排查动作",
+    "tail": "VPN连接失败",
+    "evidence_quote": "步骤6：关闭Windows防火墙和第三方杀毒软件临时测试。"
+  },
+  {
+    "head": "检查VPN服务器状态",
+    "relation": "前置排查动作",
+    "tail": "VPN连接失败",
+    "evidence_quote": "1. 检查VPN服务器状态：CPU、内存、并发连接数、带宽占用。"
+  },
+  {
+    "head": "检查防火墙策略",
+    "relation": "前置排查动作",
+    "tail": "VPN连接失败",
+    "evidence_quote": "2. 检查防火墙策略：确保VPN协议端口（UDP 500/4500、TCP 443等）在边界防火墙上放行。"
+  },
+  {
+    "head": "检查用户AD账号状态",
+    "relation": "前置排查动作",
+    "tail": "VPN连接失败",
+    "evidence_quote": "3. 检查用户AD账号状态（是否锁定、密码是否过期）。"
+  },
+  {
+    "head": "查看VPN服务器日志",
+    "relation": "前置排查动作",
+    "tail": "VPN连接失败",
+    "evidence_quote": "4. 查看VPN服务器日志，定位具体拒绝原因。"
+  },
+  {
+    "head": "为用户切换VPN协议或更新客户端配置",
+    "relation": "处置动作",
+    "tail": "VPN连接失败",
+    "evidence_quote": "5. 为用户切换VPN协议或更新客户端配置。"
+  },
+  {
+    "head": "推荐使用SSL VPN",
+    "relation": "处置动作",
+    "tail": "VPN连接失败",
+    "evidence_quote": "6. 推荐使用SSL VPN（基于HTTPS，穿透性最好，不易被酒店/咖啡厅WiFi阻断）。"
+  },
+  {
+    "head": "VPN",
+    "relation": "依赖身份源",
+    "tail": "AD账号",
+    "evidence_quote": "③ 用户名密码错误或AD账号被锁定"
+  },
+  {
+    "head": "VPN",
+    "relation": "主责运维组",
+    "tail": "IT 部",
+    "evidence_quote": "department: \"IT 部\""
+  }
+]
