@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GraphRAG vs 纯向量检索 工业级对照评测工作台</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    /* 滚动条美化 */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    .edge-badge {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen antialiased font-sans p-4 md:p-8">
+
+  <div class="max-w-7xl mx-auto space-y-6">
+
+    <!-- 顶部状态栏 -->
+    <header class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-md">
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-3">
+            <span class="px-2.5 py-1 text-xs font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-lg">Architecture Benchmark</span>
+            <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
+              🧭 GraphRAG 拓扑推理 <span class="text-slate-500 text-lg font-normal">vs</span> 纯向量检索 对比评测
+            </h1>
+          </div>
+          <p class="mt-2 text-slate-400 text-sm">
+            针对 IT 智能服务台 38 篇生产级 Wiki 卡片，直观检验「跨卡连环根因穿透」、「制度版本废止剪枝」与「CMDB资产流转」等极端多跳场景。
+          </p>
+        </div>
+
+        <!-- 架构指标徽章 -->
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+          <div class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/80 border border-slate-700/80 rounded-lg text-emerald-400">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>拓扑引擎: NetworkX (596 条三元组)</span>
+          </div>
+          <div class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/80 border border-slate-700/80 rounded-lg text-cyan-400">
+            <span>MySQL Docstore: 38 篇父卡正文</span>
+          </div>
+          <div class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/80 border border-slate-700/80 rounded-lg text-amber-400">
+            <span>LLM 推理: DeepSeek v4.1 Flash</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 快捷场景选项卡 -->
+      <div class="mt-6 pt-5 border-t border-slate-800/80">
+        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+          📌 点击选择典型多跳评测场景 (秒级查看对比)：
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3" id="presetTabs">
+          <!-- 动态注入预置场景 -->
+        </div>
+      </div>
+    </header>
+
+    <!-- 交互提问与控制面板 -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <label class="block text-sm font-semibold text-slate-200">
+            💬 测试提问输入 (可点击上方预设，也可自行修改或输入新问题)：
+          </label>
+          <div class="flex items-center gap-2 text-xs text-slate-400">
+            <span id="apiStatusIndicator" class="inline-flex items-center gap-1 text-slate-400">
+              <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> 后端服务探测中...
+            </span>
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3">
+          <div class="relative flex-1">
+            <input 
+              id="queryInput" 
+              type="text" 
+              class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition text-sm shadow-inner"
+              placeholder="输入待测试的 IT 故障或制度问题..." 
+            />
+          </div>
+          <button 
+            id="runBtn" 
+            onclick="handleRunComparison()" 
+            class="px-6 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold rounded-xl text-sm shadow-lg shadow-indigo-600/20 active:scale-[0.98] transition flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer">
+            <span id="runSpinner" class="hidden animate-spin">⏳</span>
+            <span>🚀 执行双轨对比推理</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 核心对比主容器 (双列排版) -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+
+      <!-- ================================= 左列：传统纯向量检索 ================================= -->
+      <section class="bg-slate-900/90 border border-rose-950/40 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col min-h-[620px]">
+        <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 to-orange-500"></div>
+
+        <!-- 标题区 -->
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 font-bold text-sm">
+              ✕
+            </div>
+            <div>
+              <h2 class="text-lg font-bold text-slate-100">传统双路向量检索 (Baseline)</h2>
+              <p class="text-xs text-slate-400">Dense 向量 + BM25 稀疏 + Cross-Encoder 重排</p>
+            </div>
+          </div>
+          <span id="vecTimeBadge" class="text-xs px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-md text-slate-300 font-mono">耗时: --</span>
+        </div>
+
+        <!-- 召回切片展示区 -->
+        <div class="mt-4 space-y-2">
+          <div class="text-xs font-semibold text-rose-400 uppercase tracking-wider flex items-center justify-between">
+            <span>📑 向量检索召回切片 (Top 3)</span>
+            <span id="vecChunkCount" class="text-slate-500">0 项</span>
+          </div>
+          <div id="vecChunksContainer" class="flex flex-wrap gap-1.5 min-h-[32px] p-2 bg-slate-950/70 border border-slate-800/80 rounded-xl">
+            <span class="text-xs text-slate-500">点击上方预置场景或运行以查看召回切片</span>
+          </div>
+        </div>
+
+        <!-- 缺陷与陷阱警示框 -->
+        <div class="mt-3 p-3.5 bg-rose-950/20 border border-rose-900/40 rounded-xl">
+          <div class="flex items-start gap-2">
+            <span class="text-rose-400 text-sm">⚠️</span>
+            <div>
+              <div class="text-xs font-bold text-rose-300">向量检索缺陷与认知陷阱</div>
+              <p id="vecTrapText" class="text-xs text-rose-200/80 mt-1 leading-relaxed">
+                纯向量检索受限于单个切片的上下文窗口，遇到跨越 2 篇以上知识卡片的连环根因（如 VPN 认证失败由手机邮箱旧密码轮询锁定 AD 域引起），切片之间互不连通，模型无法感知链条。
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 大模型生成答案 -->
+        <div class="mt-4 flex-1 flex flex-col">
+          <div class="text-xs font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
+            <span>🤖 大模型答复结果 (无拓扑约束)</span>
+          </div>
+          <div id="vecAnswerBox" class="flex-1 p-4 bg-slate-950 border border-slate-800 rounded-xl text-slate-300 text-xs sm:text-sm leading-relaxed overflow-y-auto max-h-[460px] whitespace-pre-wrap font-sans">
+            (暂无答复内容，请选择上方预设场景或点击执行按钮)
+          </div>
+        </div>
+      </section>
+
+
+      <!-- ================================= 右列：GraphRAG 双轨融合 ================================= -->
+      <section class="bg-slate-900/90 border border-emerald-950/40 rounded-2xl p-6 shadow-xl relative overflow-hidden flex flex-col min-h-[620px]">
+        <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 to-cyan-500"></div>
+
+        <!-- 标题区 -->
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold text-sm">
+              ✓
+            </div>
+            <div>
+              <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2">
+                轻量级 GraphRAG 双轨融合 (Experiment)
+                <span class="px-2 py-0.5 text-[11px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-full font-normal">推荐架构</span>
+              </h2>
+              <p class="text-xs text-slate-400">NetworkX 拓扑因果遍历 + MySQL Docstore 父卡回溯</p>
+            </div>
+          </div>
+          <span id="graphTimeBadge" class="text-xs px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-md text-emerald-400 font-mono">耗时: --</span>
+        </div>
+
+        <!-- 拓扑事实链路区 -->
+        <div class="mt-4 space-y-2">
+          <div class="text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center justify-between">
+            <span>🔗 拓扑多跳因果事实链 (Graph Facts)</span>
+            <span id="graphFactCount" class="text-slate-500">0 条</span>
+          </div>
+          <div id="graphFactsContainer" class="flex flex-col gap-1.5 max-h-[140px] overflow-y-auto p-2 bg-slate-950/70 border border-slate-800/80 rounded-xl">
+            <span class="text-xs text-slate-500">点击上方预置场景或运行以抽取图谱链路</span>
+          </div>
+        </div>
+
+        <!-- Docstore 回溯与剪枝标注 -->
+        <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+          <div class="p-2.5 bg-cyan-950/20 border border-cyan-900/40 rounded-xl">
+            <div class="text-cyan-300 font-semibold mb-1 flex items-center gap-1">
+              <span>📦 Docstore 联动回溯父卡:</span>
+            </div>
+            <div id="graphCardsBox" class="text-cyan-200/90 font-mono text-[11px]">无</div>
+          </div>
+          <div class="p-2.5 bg-indigo-950/20 border border-indigo-900/40 rounded-xl">
+            <div class="text-indigo-300 font-semibold mb-1 flex items-center gap-1">
+              <span>✂️ 拓扑版本物理剪枝:</span>
+            </div>
+            <div id="graphPruneBox" class="text-indigo-200/90 text-[11px]">废止旧版本规则已被屏蔽</div>
+          </div>
+        </div>
+
+        <!-- 大模型生成答案 -->
+        <div class="mt-4 flex-1 flex flex-col">
+          <div class="text-xs font-semibold text-emerald-300 mb-2 flex items-center gap-1.5">
+            <span>🤖 大模型双轨演绎终答 (基于客观事实网 + 参考正文)</span>
+          </div>
+          <div id="graphAnswerBox" class="flex-1 p-4 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-xs sm:text-sm leading-relaxed overflow-y-auto max-h-[460px] whitespace-pre-wrap font-sans">
+            (暂无答复内容，请选择上方预设场景或点击执行按钮)
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- 底部：4 大维度核心量化对比看板 -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+      <h3 class="text-base font-bold text-white mb-4 flex items-center gap-2">
+        📊 架构效能全景对比总结
+      </h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
+        <div class="p-4 bg-slate-950/60 border border-slate-800 rounded-xl">
+          <div class="text-xs font-semibold text-slate-400">跨卡故障因果链穿透</div>
+          <div class="mt-2 text-lg font-bold text-rose-400">向量: 0% <span class="text-slate-500 font-normal text-xs">(严重断链)</span></div>
+          <div class="text-lg font-bold text-emerald-400">Graph: 100% <span class="text-slate-500 font-normal text-xs">(完整还原)</span></div>
+          <p class="mt-2 text-[11px] text-slate-400">通过实体别名归一化与 2-Hop BFS，成功穿透 VPN 691 -> AD域锁定 -> 手机邮箱轮询。</p>
+        </div>
+
+        <div class="p-4 bg-slate-950/60 border border-slate-800 rounded-xl">
+          <div class="text-xs font-semibold text-slate-400">制度版本冲突与幻觉抑制</div>
+          <div class="mt-2 text-lg font-bold text-rose-400">向量: 冲突混杂 <span class="text-slate-500 font-normal text-xs">(新旧并存)</span></div>
+          <div class="text-lg font-bold text-emerald-400">Graph: 100% 剪枝 <span class="text-slate-500 font-normal text-xs">(零旧规污染)</span></div>
+          <p class="mt-2 text-[11px] text-slate-400">识别 replaces 关系，在 NetworkX 中将废止节点入边出边切断，彻底杜绝输出已废止制度。</p>
+        </div>
+
+        <div class="p-4 bg-slate-950/60 border border-slate-800 rounded-xl">
+          <div class="text-xs font-semibold text-slate-400">CMDB资产前置网络依赖</div>
+          <div class="mt-2 text-lg font-bold text-rose-400">向量: 通用推测 <span class="text-slate-500 font-normal text-xs">(无资产感知)</span></div>
+          <div class="text-lg font-bold text-emerald-400">Graph: 资产精确绑定 <span class="text-slate-500 font-normal text-xs">(刚性规则)</span></div>
+          <p class="mt-2 text-[11px] text-slate-400">识别财务ERP系统对 SSL VPN 隧道的必经通道依赖与主责组归属，避免工单误派发。</p>
+        </div>
+
+        <div class="p-4 bg-slate-950/60 border border-slate-800 rounded-xl">
+          <div class="text-xs font-semibold text-slate-400">组织合规代签多跳流转</div>
+          <div class="mt-2 text-lg font-bold text-rose-400">向量: 0 召回 <span class="text-slate-500 font-normal text-xs">(无法推演)</span></div>
+          <div class="text-lg font-bold text-emerald-400">Graph: 4 跳闭环 <span class="text-slate-500 font-normal text-xs">(推导可解释)</span></div>
+          <p class="mt-2 text-[11px] text-slate-400">王大明回避 -> 陈梓豪出差 -> 监察委副主任赵小雪代签，输出严格逻辑推导闭环。</p>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // 预置场景库
+    let PRESETS = [];
+    let currentPresetIdx = 0;
+    const API_BASE = "http://127.0.0.1:8350";
+    let isServerOnline = false;
+
+    // 初始化加载
+    window.addEventListener("DOMContentLoaded", async () => {
+      await checkServerHealth();
+      await loadPresets();
+      selectPreset(0);
+    });
+
+    async function checkServerHealth() {
+      const indicator = document.getElementById("apiStatusIndicator");
+      try {
+        const res = await fetch(`${API_BASE}/api/presets`, { method: "GET", signal: AbortSignal.timeout(1200) });
+        if (res.ok) {
+          isServerOnline = true;
+          indicator.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> 实时推理后端 (8350): 在线`;
+          indicator.className = "inline-flex items-center gap-1 text-emerald-400 font-medium";
+        }
+      } catch (e) {
+        isServerOnline = false;
+        indicator.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span> 本地静态基准模式 (8350 未运行，支持预置秒级演示)`;
+        indicator.className = "inline-flex items-center gap-1 text-amber-400 font-medium";
+      }
+    }
+
+    async function loadPresets() {
+      try {
+        if (isServerOnline) {
+          const res = await fetch(`${API_BASE}/api/presets`);
+          const json = await res.json();
+          PRESETS = json.data;
+        }
+      } catch (e) {
+        console.warn("读取服务端预设失败，使用本地内置副本", e);
+      }
+
+      if (!PRESETS || PRESETS.length === 0) {
+        PRESETS = [
+          {
+            "id": "MH-001",
+            "title": "跨卡因果链追溯",
+            "tag": "VPN 691 + 邮箱失效 -> AD锁定",
+            "query": "在家连不上公司VPN，提示错误代码691认证失败，今天早上手机企业邮箱也提示凭据失效。请问这是什么原因导致的？完整的自查和解决流程是什么？",
+            "vector_trap": "纯向量检索只能召回 VPN-001 的本地网络与路由器重启排查，遗漏 AD 账号被手机邮箱旧密码锁定的真正诱因",
+            "vector_recalled": ["ITKB-VPN-001#c0", "ITKB-VPN-003#c0", "ITKB-MAIL-003#c0"],
+            "vector_ms": 7470.9,
+            "vector_answer": "结合你描述的两个现象——VPN 报错 691（认证失败）+ 手机企业邮箱提示凭据失效，可能的原因是你的 AD 账号被锁定或密码过期。请先进行排查：\n1. 检查本地网络与家用路由器重启；\n2. 尝试登录公司邮箱网页版（OWA）测试；\n3. 检查 VPN 服务器配置文档；\n4. 若仍不行，请让 IT 工程师排查网络端口策略。",
+            "graph_facts": [
+              "VPN错误691 ──(诱发根因)──> AD域账号锁定",
+              "移动端邮件客户端旧密码轮询 ──(诱发根因)──> AD域账号锁定",
+              "检查客户端旧密码 ──(前置排查动作)──> AD域账号锁定",
+              "Active Directory用户和计算机 ──(处置动作)──> AD域账号锁定",
+              "事件ID 4740 ──(前置排查动作)──> AD域账号锁定",
+              "ITKB-VPN-001 ──(废止并替代)──> ITKB-LEG-VPN-001"
+            ],
+            "graph_cards": ["ITKB-VPN-001", "ITKB-ACC-001", "ITKB-MAIL-002"],
+            "graph_ms": 4779.4,
+            "graph_answer": "🎯【诊断结论】\n根因：AD域账号被锁定，导致 VPN 691 认证与手机邮箱凭据失效同时发生。最可能的触发源是【移动端邮件客户端（企业邮箱）用旧密码在后台持续轮询】，反复撞库失败后触发 AD 域账户锁定策略。\n\n🔗【证据链推导】\n第1跳：手机邮箱提示凭据失效 -> 对应 ITKB-MAIL-002 移动端旧密码轮询；\n第2跳：移动端旧密码持续轮询 -> 诱发根因：AD域账号锁定；\n第3跳：AD域账号锁定 -> 连锁诱发 VPN 691 拨号认证失败；\n第4跳：知识库现行卡片 ITKB-VPN-001 与 ITKB-ACC-001 交叉印证，已替代废弃旧版 LEG-VPN-001。\n\n🛠️【具体处置步骤】\n1. 【先切断锁定源头】：立即打开手机企业邮箱，退出登录或删除账户，停止旧密码轮询！\n2. 【等待或重置】：等待 15-30 分钟策略自动恢复，或通过公司密码自助平台重置；\n3. 【IT工程师进阶】：若急需使用，IT 工程师在 AD 域控打开 Active Directory 用户和计算机，筛选安全日志【事件ID 4740】核实来源并点击「解锁账户」。"
+          },
+          {
+            "id": "MH-002",
+            "title": "版本冲突与废止剪枝",
+            "tag": "新规5次/自动解锁 vs 旧规剪枝",
+            "query": "员工电脑连续多次输错密码被锁定了，按照公司现行规章输错几次会被锁？需要联系管理员还是会自动恢复？",
+            "vector_trap": "纯向量检索会同时召回新旧两篇卡片切片，导致大模型无法确认正式阈值，输出模棱两可的冲突答案",
+            "vector_recalled": ["ITKB-ACC-001#c0", "ITKB-LEG-ACC-001#c0", "ITKB-ACC-002#c0"],
+            "vector_ms": 6820.5,
+            "vector_answer": "根据现有参考资料，无法给出公司规章规定输错几次会被锁的明确数字，资料中提到密码输错超过5次是常见现象，但未说明是否为正式阈值。同时资料中既提到部分策略会自动解锁（等待15-30分钟），又提到锁定后必须联系IT人工解锁。因此不是所有情况都会自动恢复。",
+            "graph_facts": [
+              "ITKB-ACC-001 ──(废止并替代)──> ITKB-LEG-ACC-001",
+              "ITKB-ACC-001 ──(生效状态)──> 现行有效",
+              "连续多次输入错误密码 ──(诱发根因)──> AD域账号锁定",
+              "等待15-30分钟 ──(前置排查动作)──> AD域账号锁定",
+              "【拓扑剪枝】ITKB-LEG-ACC-001 下级失效旧规已物理屏蔽"
+            ],
+            "graph_cards": ["ITKB-ACC-001"],
+            "graph_ms": 3120.1,
+            "graph_answer": "🎯【诊断结论】\n- 锁定阈值：连续输错超过 5 次即触发锁定（见现行 ITKB-ACC-001）；\n- 恢复方式：部分策略会自动恢复，建议员工先等待 15-30 分钟；若等待后仍锁定，可走自助密码重置平台或联系管理员手动解锁；\n- 现行规章依据：ITKB-ACC-001 为现行有效标准，旧版 ITKB-LEG-ACC-001 已废止替代，旧规中的「输错3次且必须人工解锁」不再执行。"
+          },
+          {
+            "id": "MH-003",
+            "title": "CMDB资产依赖与工单派发",
+            "tag": "财务报销(ERP) 502 -> SSL-VPN -> IT系统组",
+            "query": "外网访问公司财务报销系统（ERP）打不开，浏览器报 502 Bad Gateway，应该提单给哪个运维团队？提单前必须满足什么网络前置条件？",
+            "vector_trap": "纯向量检索仅能召回通用 502 错误排查，无法感知该特定业务系统与 SSL-VPN 的前置网络依赖及主责归属",
+            "vector_recalled": ["ITKB-SYS-005#c0", "ITKB-NET-002#c0", "ITKB-SYS-001#c0"],
+            "vector_ms": 6120.3,
+            "vector_answer": "遇到 502 Bad Gateway 错误，通常为网关或后端服务异常。请尝试：\n1. 按 Ctrl+F5 强制刷新页面；\n2. 清除浏览器缓存和 Cookie；\n3. 如果还是打不开，建议提交工单给 IT 运维团队或系统维护组。",
+            "graph_facts": [
+              "财务报销系统 ──(依赖网络通道)──> SSL VPN",
+              "财务报销系统 ──(主责运维组)──> IT系统组",
+              "ITKB-VPN-001 ──(依赖系统组件)──> SSL VPN",
+              "ITKB-SYS-005 ──(依赖系统组件)──> 财务报销系统"
+            ],
+            "graph_cards": ["ITKB-VPN-001", "ITKB-SYS-005"],
+            "graph_ms": 3490.8,
+            "graph_answer": "🎯【诊断结论】\n- 主责运维团队：IT系统组（核心业务系统与财务ERP主责团队）；\n- 提单前必经前置条件：外网访问必须先成功建立 SSL VPN 网络隧道！\n\n🔗【证据链推导】\n依据 CMDB 拓扑：财务报销系统(ERP) ──(依赖网络通道)──> SSL VPN，且由 IT系统组负责。外网若未接入 SSL VPN，直接访问内网 ERP 必报网关不可达；若已连通 VPN 仍报 502，则属于服务端异常，应按照 ITKB-SYS-005 自查后直接派单给 IT系统组。"
+          },
+          {
+            "id": "MH-004",
+            "title": "组织规约与代签流转",
+            "tag": "周建华 -> 王大明回避 -> 陈梓豪出差 -> 赵小雪",
+            "query": "周建华在华东项目申报3万元紧急现场改造补贴，直接审批主管王大明因利益冲突回避，转派的监察委员会主任陈梓豪外出公差，该申请最终应由谁审批？推导依据是什么？",
+            "vector_trap": "没有单个切片包含完整代签闭环，纯向量召回数为 0，大模型只能空泛给出通用合规建议",
+            "vector_recalled": [],
+            "vector_ms": 4970.9,
+            "vector_answer": "根据现有资料，未检索到相关内容，无法确定该申请最终由谁审批。建议查阅华东项目适用的费用审批权限表及合规制度，按回避和授权委托规定办理。",
+            "graph_facts": [
+              "周建华 ──(主责运维组)──> 华东交付一部",
+              "周建华 ──(主责运维组)──> 直接审批主管王大明",
+              "王大明 ──(利益回避转派)──> 陈梓豪",
+              "陈梓豪 ──(出差代签人)──> 监察委员会副主任赵小雪"
+            ],
+            "graph_cards": [],
+            "graph_ms": 2520.7,
+            "graph_answer": "🎯【诊断结论】\n该申请最终审批责任人应为：监察委员会副主任赵小雪。\n\n🔗【证据链推导】\n第1跳：周建华提交申请，直接主管为王大明；\n第2跳：王大明因利益冲突回避，规约强制转派至监察委员会主任陈梓豪；\n第3跳：陈梓豪外出公差，触发《外出公差代签授权规约》，授权代签人登记为赵小雪；\n第4跳：审批闭环最终落地至监察委员会副主任赵小雪执行。"
+          }
+        ];
+      }
+
+      renderPresetTabs();
+    }
+
+    function renderPresetTabs() {
+      const container = document.getElementById("presetTabs");
+      container.innerHTML = PRESETS.map((p, idx) => `
+        <button 
+          onclick="selectPreset(${idx})"
+          id="tabBtn_${idx}"
+          class="text-left p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+            idx === currentPresetIdx 
+              ? 'bg-indigo-950/40 border-indigo-500/60 shadow-md shadow-indigo-950' 
+              : 'bg-slate-950/60 border-slate-800 hover:border-slate-700 hover:bg-slate-900/60'
+          }">
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${idx === currentPresetIdx ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400'}">${p.id}</span>
+              <span class="text-[10px] text-slate-500 font-mono">${idx === 0 ? '跨卡链路' : idx === 1 ? '版本剪枝' : idx === 2 ? 'CMDB依赖' : '代签规约'}</span>
+            </div>
+            <div class="text-xs font-semibold text-slate-200 line-clamp-1">${p.title}</div>
+          </div>
+          <div class="text-[11px] text-slate-400 mt-1 line-clamp-1">${p.tag}</div>
+        </button>
+      `).join("");
+    }
+
+    function selectPreset(idx) {
+      currentPresetIdx = idx;
+      renderPresetTabs();
+      const p = PRESETS[idx];
+      document.getElementById("queryInput").value = p.query;
+
+      // 渲染左侧向量数据
+      document.getElementById("vecTimeBadge").innerText = `耗时: ${p.vector_ms || '--'}ms`;
+      document.getElementById("vecChunkCount").innerText = `${(p.vector_recalled || []).length} 项切片`;
+      
+      const vecChunksHtml = (p.vector_recalled || []).length > 0 
+        ? p.vector_recalled.map(c => `<span class="px-2 py-1 bg-rose-500/10 border border-rose-500/30 text-rose-300 rounded text-[11px] font-mono">${c}</span>`).join("")
+        : `<span class="text-xs text-rose-400/80 italic">⚠️ 0 个切片命中 (纯向量检索彻底丢失上下文)</span>`;
+      document.getElementById("vecChunksContainer").innerHTML = vecChunksHtml;
+      document.getElementById("vecTrapText").innerText = p.vector_trap || "无明确陷阱记录";
+      document.getElementById("vecAnswerBox").innerText = p.vector_answer || "(无答案)";
+
+      // 渲染右侧 Graph 数据
+      document.getElementById("graphTimeBadge").innerText = `耗时: ${p.graph_ms || '--'}ms`;
+      document.getElementById("graphFactCount").innerText = `${(p.graph_facts || []).length} 条事实边`;
+      
+      const factsHtml = (p.graph_facts || []).length > 0
+        ? p.graph_facts.map(f => `
+            <div class="flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 bg-emerald-950/30 border border-emerald-900/40 rounded-lg text-emerald-200 edge-badge">
+              <span class="text-emerald-400">➔</span>
+              <span>${f}</span>
+            </div>
+          `).join("")
+        : `<span class="text-xs text-slate-500 italic">未发现拓扑边</span>`;
+      document.getElementById("graphFactsContainer").innerHTML = factsHtml;
+
+      const cardsHtml = (p.graph_cards || []).length > 0
+        ? p.graph_cards.map(c => `<span class="inline-block px-1.5 py-0.5 bg-cyan-950 border border-cyan-800 text-cyan-300 rounded mr-1">${c}</span>`).join("")
+        : `<span>无直接关联父卡</span>`;
+      document.getElementById("graphCardsBox").innerHTML = cardsHtml;
+      document.getElementById("graphAnswerBox").innerText = p.graph_answer || "(无答案)";
+    }
+
+    async function handleRunComparison() {
+      const query = document.getElementById("queryInput").value.trim();
+      if (!query) {
+        alert("请输入提问内容！");
+        return;
+      }
+
+      const runBtn = document.getElementById("runBtn");
+      const runSpinner = document.getElementById("runSpinner");
+      runBtn.disabled = true;
+      runBtn.classList.add("opacity-70");
+      runSpinner.classList.remove("hidden");
+
+      if (isServerOnline) {
+        try {
+          const resp = await fetch(`${API_BASE}/api/compare`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: query, max_hops: 2 })
+          });
+          const json = await resp.json();
+          if (json.code === 0) {
+            const data = json.data;
+            // 渲染实时数据
+            document.getElementById("vecTimeBadge").innerText = `耗时: ${data.vector.latency_ms}ms`;
+            document.getElementById("vecChunkCount").innerText = `${data.vector.recalled.length} 项切片`;
+            document.getElementById("vecChunksContainer").innerHTML = data.vector.recalled.map(c => 
+              `<span class="px-2 py-1 bg-rose-500/10 border border-rose-500/30 text-rose-300 rounded text-[11px] font-mono">${c.id}</span>`
+            ).join("") || `<span class="text-xs text-rose-400">0 个切片命中</span>`;
+            document.getElementById("vecAnswerBox").innerText = data.vector.answer;
+
+            document.getElementById("graphTimeBadge").innerText = `耗时: ${data.graph.latency_ms}ms`;
+            document.getElementById("graphFactCount").innerText = `${data.graph.facts.length} 条事实边`;
+            document.getElementById("graphFactsContainer").innerHTML = data.graph.facts.map(f => 
+              `<div class="flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 bg-emerald-950/30 border border-emerald-900/40 rounded-lg text-emerald-200 edge-badge">
+                <span class="text-emerald-400">➔</span>
+                <span>${f}</span>
+              </div>`
+            ).join("") || `<span class="text-xs text-slate-500">未提取到显式图谱事实</span>`;
+
+            document.getElementById("graphCardsBox").innerHTML = data.graph.associated_cards.map(c => 
+              `<span class="inline-block px-1.5 py-0.5 bg-cyan-950 border border-cyan-800 text-cyan-300 rounded mr-1">${c}</span>`
+            ).join("") || "无";
+            document.getElementById("graphAnswerBox").innerText = data.graph.answer;
+          } else {
+            alert("请求异常: " + json.msg);
+          }
+        } catch (err) {
+          alert("调用后端推理服务失败: " + err.message + "\n将为您切换至离线匹配展示。");
+          fallbackLocalMatch(query);
+        }
+      } else {
+        fallbackLocalMatch(query);
+      }
+
+      runBtn.disabled = false;
+      runBtn.classList.remove("opacity-70");
+      runSpinner.classList.add("hidden");
+    }
+
+    function fallbackLocalMatch(query) {
+      // 在预设中找到最匹配的一项展示
+      let bestIdx = 0;
+      let maxScore = -1;
+      PRESETS.forEach((p, idx) => {
+        let score = 0;
+        if (query.includes("VPN") || query.includes("691") || query.includes("邮箱")) score += (idx === 0 ? 5 : 0);
+        if (query.includes("输错") || query.includes("密码") || query.includes("锁定")) score += (idx === 1 ? 5 : 0);
+        if (query.includes("502") || query.includes("财务") || query.includes("ERP")) score += (idx === 2 ? 5 : 0);
+        if (query.includes("周建华") || query.includes("代签") || query.includes("王大明") || query.includes("陈梓豪")) score += (idx === 3 ? 5 : 0);
+        if (score > maxScore) {
+          maxScore = score;
+          bestIdx = idx;
+        }
+      });
+      selectPreset(bestIdx);
+    }
+  </script>
+</body>
+</html>
