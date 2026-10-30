@@ -8,9 +8,10 @@
 - REPLACES 边永不在扩展候选(Task 8 加载期拒绝其进白名单;本模块运行期
   对返回行仍做一次白名单复核,防线独立于查询文本);
 - parents_by_id 缺该邻居(或父块内容为空)→ 跳过并计数,不崩;
-- 非现行邻居(已废止/已下线)不入:Cypher 服务端过滤 + python 侧按父块
-  metadata 的 wiki_status 复核(双防线);PUBLISHED 逐条生成前复核归
-  Java 准入谓词(Task 12),本模块不做生成侧复核;
+- 已废止/已下线邻居不入;缺省(无 status 键或 status="")视为现行(裁决 20,
+  真实图 frontmatter 无该键导致 status 为空串,正向等值会误杀):Cypher
+  服务端否定式过滤 + python 侧按父块 metadata 的 wiki_status 复核(双防线);
+  PUBLISHED 逐条生成前复核归 Java 准入谓词(Task 12),本模块不做生成侧复核;
 - **没有静默回退**:图库不可达/图查询超时 → GraphUnavailable 硬失败,
   由 app.py 映射 HTTP 503 / code 5032,绝不把空结果假扮成"无邻居"。
 """
@@ -52,17 +53,23 @@ GRAPH_UNAVAILABLE_MSG: str = "图库不可用或图查询超时"    # 单一事�
 # 邻居批查询(commit f5e0231e 校验脚本的 UNWIND 版,单批而非逐源 N 查):
 #   - 无向匹配 (c)-[r]-(n):graph_builder 的 RELATED/PROCESS_APPLIES 指向方向
 #     只反映声明顺序,扩展按"关系存在"理解,双向都算;
-#   - 白名单 + 现行状态在服务端过滤;按 n.wiki_id 排序保证截断确定性
+#   - 白名单 + 否定式现行过滤(NOT status IN ['已废止','已下线'],缺省
+#     status="" 放行——LinuxSpoitBI 真实图 35/38 卡无 frontmatter status 键,
+#     正向等值 n.status='现行' 会使扩展恒空,裁决 20 定为否定式)在服务端
+#     过滤;按 n.wiki_id 排序保证截断确定性
 #     (REPLACES 永不在白名单,Task 8 已拒绝其进 edge_whitelist);
 #   - 返回列键名 = RETURN 表达式原文("id" / "n.wiki_id" / "type(r)"),逐字消费。
 _CYPHER = (
     "UNWIND $ids AS id "
     "MATCH (c:Card {wiki_id: id})-[r]-(n:Card) "
-    "WHERE type(r) IN $whitelist AND n.status = '现行' "
+    "WHERE type(r) IN $whitelist AND NOT n.status IN ['已废止','已下线'] "
     "RETURN id, n.wiki_id, type(r) "
     "ORDER BY n.wiki_id "
     "LIMIT $cap"
 )
+
+# 非现行状态的封闭集(裁决 20):不在此列的一律视为现行(含 status="" 缺省)。
+_RETIRED_STATUSES = ("已废止", "已下线")
 
 # 父块代表 metadata 里没有的字段一律不加;扩展键(Task 11 契约映射的内
 # 部形态):graph_expanded / graph_expanded_from / graph_relation。
@@ -174,8 +181,8 @@ class GraphExpander:
                 if not parent or not str(parent.get("parent_content") or "").strip():
                     stats["missing_parent"] += 1        # 缺父块/空正文 → 跳过并计数
                     continue
-                if str(parent.get("wiki_status", "现行")) != "现行":
-                    stats["non_current"] += 1            # 已废止/已下线:python 侧现行限制
+                if str(parent.get("wiki_status") or "现行") in _RETIRED_STATUSES:
+                    stats["non_current"] += 1            # 已废止/已下线:python 侧复核;缺省=现行
                     continue
                 seen_neighbors.add(nb_id)
                 new_entries.append({

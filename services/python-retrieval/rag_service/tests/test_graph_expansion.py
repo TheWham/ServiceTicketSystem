@@ -297,6 +297,33 @@ def test_non_current_neighbor_not_expanded():
     assert exp2.last_stats["non_current"] == 1
 
 
+def test_blank_status_neighbor_passes_as_current():
+    """裁决 20:status=""(frontmatter 无键,真图 35/38 卡)视为现行,照常扩展;
+    显式退役状态同样只拒已废止/已下线两档。"""
+    driver = FakeDriver([row("S", "NB", "RELATED"),
+                         row("S", "N1", "RELATED"),
+                         row("S", "N2", "RELATED")])
+    exp = expander_with(driver, graph_cfg(max_neighbors=3))
+    entries = exp.expand([base_item("S", 0.8)],
+                          {"NB": parent_md("NB", status=""),
+                           "N1": parent_md("N1"),
+                           "N2": parent_md("N2", status="已废止")})
+    assert [e["metadata"]["parent_id"] for e in entries] == ["NB", "N1"]  # 按 FakeDriver 行序,N2 被拒
+    assert exp.last_stats["non_current"] == 1          # 仅 N2 被拒
+
+
+def test_default_status_absent_key_passes_as_current():
+    """裁决 20:父块 metadata 完全缺 wiki_status 键 → 缺省=现行,照常扩展。"""
+    md = parent_md("NG")
+    del md["wiki_status"]                              # 连键都没有
+    driver = FakeDriver([row("S", "NG", "RELATED")])
+    exp = expander_with(driver)
+    entries = exp.expand([base_item("S", 0.8)], {"NG": md})
+    assert [e["metadata"]["parent_id"] for e in entries] == ["NG"]
+    assert exp.last_stats["non_current"] == 0
+    assert exp.last_stats["entries"] == 1
+
+
 # ---------------------------------------------------------------- ⑥ 缺父块
 
 def test_missing_parent_metadata_skips_without_crash():
@@ -375,7 +402,8 @@ def test_single_batch_unwind_query_shape():
     assert getattr(query, "timeout", None) == 0.3
     assert "UNWIND $ids AS id" in query.text
     assert "type(r) IN $whitelist" in query.text
-    assert "n.status = '现行'" in query.text
+    assert "NOT n.status IN ['已废止','已下线']" in query.text
+    assert "n.status = '现行'" not in query.text    # 裁决 20:迷信正向等值会误杀缺省 status=""
     assert "ORDER BY n.wiki_id" in query.text
     assert "LIMIT $cap" in query.text
     assert params["ids"] == ["S1", "S2"]                      # 去重、保序
