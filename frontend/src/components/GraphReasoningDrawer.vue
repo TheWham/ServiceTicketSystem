@@ -234,7 +234,7 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import {
   Connection, Aim, Share, Opportunity, CircleCheck,
   Document, FullScreen, Warning, Key, Monitor, Setting,
