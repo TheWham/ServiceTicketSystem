@@ -40,11 +40,11 @@ ROUTER_SYSTEM_PROMPT = """你是一个企业级 IT 智能客服的意图识别�
 请分析用户的自然语言提问：
 
 【判定任务 1：意图类型与是否需要图谱推理 (needs_graph)】
-- SINGLE_DIMENSION (needs_graph=false)：单维事实、功能使用指南、标准操作SOP、密码查询（如WiFi密码、打印机驱动下载、Outlook邮件签名设置）。无需复杂拓扑因果推断。
-- MULTI_HOP_RELATIONAL (needs_graph=true)：多症状并发、跨系统联动故障、复合错误码排查、认证链受阻（如连不上VPN且邮箱凭据失效、修改密码后多端频繁弹窗、远程桌面连不上且提示网络与凭证冲突）。需要多跳拓扑因果关系推导。
+- SINGLE_DIMENSION (needs_graph=false)：单维事实、简单功能指南、单一孤立操作SOP、静态配置查询（如WiFi密码、打印机驱动安装步骤、邮件签名设置）。无需跨节点拓扑因果推断。
+- MULTI_HOP_RELATIONAL (needs_graph=true)：多症状并发、反常现象分层（如即时通讯正常但所有网页报DNS解析失败NXDOMAIN）、跨系统联动故障（如共享文件夹拒绝访问且组策略刷新失败）、组件依赖与级联报错（如软件闪退报错APPCRASH事件ID 1000且指向VC++/.NET运行库缺失）、蓝屏Minidump转储软硬件多根因排查、认证链受阻（如连不上VPN且邮箱凭据失效）。需要多跳拓扑因果关系推导。
 
 【抽取任务 2：业务实体与故障症状提取 (extracted_entities)】
-- 从用户提问中提取具体的业务系统、软件名、错误代码、异常现象短语（例如："VPN错误691", "手机企业邮箱", "AD域账号锁定", "Outlook", "共享文件夹", "0x0000007B"）。
+- 从用户提问中提取具体的业务系统、软件名、错误代码、异常现象短语（例如："软件闪退(APPCRASH)", "VC++运行库", "事件ID 1000", "DNS_PROBE_FINISHED_NXDOMAIN", "DNS缓存污染", "共享文件夹", "组策略", "蓝屏(BSOD)", "VPN错误691", "AD域账号锁定"）。
 - 不要抽取泛化无关的虚词（如“请问”、“怎么办”、“如何”）。
 
 【输出格式】
@@ -172,8 +172,68 @@ class AdaptiveQueryRouter:
             return IntentAnalysisResult(
                 intent=QueryIntent.MULTI_HOP_RELATIONAL,
                 needs_graph=True,
-                extracted_entities=["VPN", "错误代码691", "企业邮箱", "凭据失效"],
+                extracted_entities=["VPN错误691", "移动端邮件客户端旧密码轮询", "AD域账号锁定"],
                 reason=f"fallback_rule: 命中VPN 691与凭据并发故障特征 (LLM异常: {err_msg})",
+            )
+
+        has_cmdb_dependency = bool(re.search(r"(财务|报销|erp|crm|502|bad gateway)", q)) and bool(re.search(r"(运维|团队|组|网络|通道|vpn|前置|提单)", q))
+        if has_cmdb_dependency:
+            logger.info("AdaptiveQueryRouter 降级触发 CMDB 资产依赖流转规则兜底")
+            return IntentAnalysisResult(
+                intent=QueryIntent.MULTI_HOP_RELATIONAL,
+                needs_graph=True,
+                extracted_entities=["财务报销系统", "SSL VPN", "IT系统组"],
+                reason=f"fallback_rule: 命中CMDB资产与网络通道依赖特征 (LLM异常: {err_msg})",
+            )
+
+        has_policy_conflict = bool(re.search(r"(连续.*输错|输错.*次|几次.*锁|现行.*规章|最新.*规章|新规|旧规|自动解锁|自动恢复)", q))
+        if has_policy_conflict:
+            logger.info("AdaptiveQueryRouter 降级触发制度废止版本剪枝规则兜底")
+            return IntentAnalysisResult(
+                intent=QueryIntent.MULTI_HOP_RELATIONAL,
+                needs_graph=True,
+                extracted_entities=["连续多次输入错误密码", "AD域账号锁定", "ITKB-ACC-001"],
+                reason=f"fallback_rule: 命中制度新旧版本消歧与废止剪枝特征 (LLM异常: {err_msg})",
+            )
+
+        has_multi_cred = bool(re.search(r"(修改.*密码|新密码|换了密码)", q)) and bool(re.search(r"(outlook|邮箱|弹窗|不断提示|又连不上|vpn)", q))
+        if has_multi_cred:
+            logger.info("AdaptiveQueryRouter 降级触发修改密码多端凭据冲突规则兜底")
+            return IntentAnalysisResult(
+                intent=QueryIntent.MULTI_HOP_RELATIONAL,
+                needs_graph=True,
+                extracted_entities=["移动端邮件客户端旧密码轮询", "VPN错误691", "AD域账号锁定"],
+                reason=f"fallback_rule: 命中修改密码后多端凭据冲突特征 (LLM异常: {err_msg})",
+            )
+
+        has_crash_runtime = bool(re.search(r"(appcrash|闪退|崩溃|事件.*1000|eventvwr|事件查看器)", q)) and bool(re.search(r"(vc\+\+|运行库|redistributable|\.net|framework)", q))
+        if has_crash_runtime:
+            logger.info("AdaptiveQueryRouter 降级触发软件闪退与运行库缺失规则兜底")
+            return IntentAnalysisResult(
+                intent=QueryIntent.MULTI_HOP_RELATIONAL,
+                needs_graph=True,
+                extracted_entities=["软件闪退(APPCRASH)", "VC++运行库(Visual C++ Redistributable)", "事件ID 1000", ".NET Framework"],
+                reason=f"fallback_rule: 命中软件闪退与VC++/.NET运行库级联故障特征 (LLM异常: {err_msg})",
+            )
+
+        has_dns_nxdomain = bool(re.search(r"(dns_probe_finished_nxdomain|nxdomain|dns.*污染|dns.*缓存|dns.*解析)", q)) and bool(re.search(r"(flushdns|ipconfig|223\.5\.5\.5|阿里dns|网页.*打不开|微信.*网页|无法访问此网站)", q))
+        if has_dns_nxdomain:
+            logger.info("AdaptiveQueryRouter 降级触发DNS缓存污染与解析故障规则兜底")
+            return IntentAnalysisResult(
+                intent=QueryIntent.MULTI_HOP_RELATIONAL,
+                needs_graph=True,
+                extracted_entities=["DNS_PROBE_FINISHED_NXDOMAIN", "DNS缓存污染", "DNS服务器地址配置错误或被篡改", "ipconfig /flushdns"],
+                reason=f"fallback_rule: 命中DNS解析失败与缓存污染级联故障特征 (LLM异常: {err_msg})",
+            )
+
+        has_bsod_dump = bool(re.search(r"(蓝屏|bsod|minidump|dump|dmp|bluescreen)", q)) and bool(re.search(r"(驱动|内存|sfc|scannow|bluescreenview|系统文件)", q))
+        if has_bsod_dump:
+            logger.info("AdaptiveQueryRouter 降级触发蓝屏死机与Minidump驱动分析规则兜底")
+            return IntentAnalysisResult(
+                intent=QueryIntent.MULTI_HOP_RELATIONAL,
+                needs_graph=True,
+                extracted_entities=["蓝屏(BSOD)", "驱动程序", "内存故障", "BlueScreenView", "sfc /scannow"],
+                reason=f"fallback_rule: 命中蓝屏死机与驱动/硬件/系统文件损坏级联分析特征 (LLM异常: {err_msg})",
             )
 
         return IntentAnalysisResult(
