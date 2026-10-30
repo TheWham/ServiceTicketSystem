@@ -9,6 +9,7 @@
       class="graph-reasoning-drawer"
       :before-close="handleClose"
       @opened="onDrawerOpened"
+      @closed="onDrawerClosed"
     >
       <template #header>
         <div class="drawer-header-custom">
@@ -193,6 +194,7 @@
       class="topology-fullscreen-dialog"
       :show-close="false"
       @opened="onFullscreenOpened"
+      @closed="onFullscreenClosed"
     >
       <div class="fullscreen-container">
         <!-- 大屏顶部操作栏 -->
@@ -538,6 +540,8 @@ async function initDrawerNetwork() {
   }
 
   const { nodes, edges } = await buildGraphData()
+  if (!drawerNetworkRef.value) return
+
   const options = {
     physics: {
       barnesHut: {
@@ -574,31 +578,21 @@ function onDrawerOpened() {
   })
 }
 
+function onDrawerClosed() {
+  if (drawerNetwork) {
+    drawerNetwork.destroy()
+    drawerNetwork = null
+  }
+}
+
 // 监听当前推导上下文变更，保证每次打开不同问题卡片时画布拓扑实时更新
 watch(() => props.reasoning, () => {
-  if (visible.value) {
+  if (visible.value && drawerNetworkRef.value) {
     nextTick(() => {
-      setTimeout(() => {
-        initDrawerNetwork()
-      }, 50)
+      initDrawerNetwork()
     })
   }
 }, { deep: true })
-
-watch(visible, (val) => {
-  if (val) {
-    nextTick(() => {
-      setTimeout(() => {
-        initDrawerNetwork()
-      }, 100)
-    })
-  } else {
-    if (drawerNetwork) {
-      drawerNetwork.destroy()
-      drawerNetwork = null
-    }
-  }
-})
 
 // 大屏全屏显示
 function openFullscreen() {
@@ -613,6 +607,13 @@ function onFullscreenOpened() {
   })
 }
 
+function onFullscreenClosed() {
+  if (fullscreenNetwork) {
+    fullscreenNetwork.destroy()
+    fullscreenNetwork = null
+  }
+}
+
 async function initFullscreenNetwork() {
   if (!fullscreenNetworkRef.value) return
   if (fullscreenNetwork) {
@@ -621,6 +622,7 @@ async function initFullscreenNetwork() {
   }
 
   const { nodes, edges } = await buildGraphData()
+  if (!fullscreenNetworkRef.value) return
   const options = {
     physics: {
       barnesHut: {
