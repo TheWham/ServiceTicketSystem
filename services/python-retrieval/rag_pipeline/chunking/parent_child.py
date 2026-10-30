@@ -113,7 +113,8 @@ class ParentChildChunker:
 
         # ---- 上下文头：把卡片身份与 04 萃取的检索增强词注入子块 ----
         kw_txt = "、".join(frontmatter_meta.get("keywords") or [])
-        ent_txt = "、".join(frontmatter_meta.get("entities") or [])
+        # entities 单一形态 {name, type}：拼入检索增强行取 name，无 isinstance 兼容分支
+        ent_txt = "、".join(e["name"] for e in (frontmatter_meta.get("entities") or []))
         boost = f"【检索增强：关键词 {kw_txt}｜实体 {ent_txt}】\n" if (kw_txt or ent_txt) else ""
         if self.cfg.boost_injection == "none":
             boost = ""
