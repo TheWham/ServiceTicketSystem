@@ -1,169 +1,246 @@
 <template>
-  <el-drawer
-    v-model="visible"
-    title="🧠 知识图谱多跳思维推导链路 (GraphRAG)"
-    direction="rtl"
-    size="560px"
-    class="graph-reasoning-drawer"
-    :before-close="handleClose"
-  >
-    <template #header>
-      <div class="drawer-header-custom">
-        <div class="header-icon-box">
-          <el-icon><Connection /></el-icon>
-        </div>
-        <div>
-          <div class="drawer-title">知识图谱多跳思维推导链路</div>
-          <div class="drawer-subtitle">Neo4j 刚性拓扑因果演绎 · 跨卡穿透溯源</div>
-        </div>
-      </div>
-    </template>
-
-    <div v-if="reasoning" class="drawer-body-wrap">
-      <!-- 场景提示横幅 -->
-      <div class="summary-banner">
-        <div class="summary-title">
-          <span class="pulse-dot"></span>
-          <span>已激活 GraphRAG 双轨拓扑演绎</span>
-        </div>
-        <p class="summary-desc">
-          本轮问答不仅检索了文本相似度切片，更通过企业知识图谱（Neo4j）穿透了深层因果关系与资产依赖，成功排除了表面现象干扰。
-        </p>
-      </div>
-
-      <!-- 1. 核心种子实体 -->
-      <section class="section-block">
-        <div class="section-title">
-          <el-icon><Aim /></el-icon>
-          <span>识别核心关联实体 (Seed Entities)</span>
-          <span class="count-tag">{{ reasoning.entities.length }} 个节点</span>
-        </div>
-        <div class="entities-wrap">
-          <el-tag
-            v-for="(entity, idx) in reasoning.entities"
-            :key="idx"
-            :type="entityTagType(entity)"
-            effect="light"
-            class="entity-pill"
-          >
-            <el-icon class="entity-icon"><component :is="entityIcon(entity)" /></el-icon>
-            {{ entity }}
-          </el-tag>
-        </div>
-      </section>
-
-      <!-- 2. 拓扑演绎推导链 -->
-      <section class="section-block">
-        <div class="section-title">
-          <el-icon><Share /></el-icon>
-          <span>拓扑因果演绎链路 (Causal Chain)</span>
-          <span class="count-tag">{{ reasoning.chains.length }} 跳推导</span>
-        </div>
-        <div class="chains-flow">
-          <div
-            v-for="(ch, idx) in reasoning.chains"
-            :key="idx"
-            class="chain-card"
-            :class="{ 'causal-highlight': ch.isCausal }"
-          >
-            <div class="chain-header">
-              <span class="step-badge">第 {{ ch.step }} 跳</span>
-              <el-tag size="small" :type="ch.isCausal ? 'danger' : 'warning'" effect="plain">
-                {{ ch.tag }}
-              </el-tag>
-            </div>
-
-            <!-- 结构化节点关系流转图 -->
-            <div v-if="ch.src && ch.tgt" class="chain-relation-visual">
-              <div class="chain-node node-src">{{ ch.src }}</div>
-              <div class="chain-arrow">
-                <span class="arrow-label">{{ ch.rel }}</span>
-                <span class="arrow-line">──────▶</span>
-              </div>
-              <div class="chain-node node-tgt" :class="{ 'node-root-cause': ch.isCausal }">
-                {{ ch.tgt }}
-                <span v-if="ch.isCausal && ch.tgt.includes('根因')" class="root-badge">根因</span>
-              </div>
-            </div>
-            <!-- 兜底纯文本事实 -->
-            <div v-else class="chain-raw-text">
-              {{ ch.raw }}
-            </div>
+  <div>
+    <!-- 主抽屉：思维推导链路 -->
+    <el-drawer
+      v-model="visible"
+      title="🧠 知识图谱多跳思维推导链路 (GraphRAG)"
+      direction="rtl"
+      size="620px"
+      class="graph-reasoning-drawer"
+      :before-close="handleClose"
+      @opened="onDrawerOpened"
+    >
+      <template #header>
+        <div class="drawer-header-custom">
+          <div class="header-icon-box">
+            <el-icon><Connection /></el-icon>
+          </div>
+          <div class="header-title-box">
+            <div class="drawer-title">知识图谱多跳思维推导链路</div>
+            <div class="drawer-subtitle">Neo4j 刚性拓扑因果演绎 · 动态子图与根因穿透</div>
           </div>
         </div>
-      </section>
+      </template>
 
-      <!-- 3. 处置策略与排查建议 -->
-      <section class="section-block">
-        <div class="section-title">
-          <el-icon><Opportunity /></el-icon>
-          <span>图谱指导处置建议 (Action Strategy)</span>
-        </div>
-        <div class="suggestion-card">
-          <el-icon class="sug-icon"><CircleCheck /></el-icon>
-          <div class="sug-content">
-            <div class="sug-title">根因处置优先级</div>
-            <div class="sug-desc">{{ reasoning.suggestion }}</div>
+      <div v-if="reasoning" class="drawer-body-wrap">
+        <!-- 场景提示横幅 -->
+        <div class="summary-banner">
+          <div class="summary-title">
+            <span class="pulse-dot"></span>
+            <span>已激活 GraphRAG 双轨拓扑演绎</span>
           </div>
+          <p class="summary-desc">
+            本轮问答不仅基于文本向量检索，更直接调取企业知识图谱（Neo4j）的刚性因果链与资产依赖进行多跳演绎，直接穿透表面现象锁定真实根因。
+          </p>
         </div>
-      </section>
 
-      <!-- 4. 穿透关联知识库父卡 -->
-      <section class="section-block">
-        <div class="section-title">
-          <el-icon><Document /></el-icon>
-          <span>穿透关联知识库卡片 (Associated Cards)</span>
-          <span class="count-tag">{{ reasoning.cards.length }} 篇</span>
-        </div>
-        <div class="cards-list">
-          <div
-            v-for="card in reasoning.cards"
-            :key="card.versionId"
-            class="card-item"
-            :class="{ 'card-graph-source': card.hasGraph }"
-          >
-            <div class="card-item-main">
-              <div class="card-item-title">
-                <span v-if="card.hasGraph" class="graph-source-badge">图谱推导源</span>
-                {{ card.title }}
-              </div>
-              <div class="card-item-meta">
-                <span>版本: {{ card.versionId }}</span>
-                <span v-if="card.articleId">卡号: {{ card.articleId }}</span>
-              </div>
-            </div>
-            <div class="card-item-score">
-              <el-tag size="small" type="info">匹配度 {{ card.score }}</el-tag>
+        <!-- 1. 交互式因果拓扑图（内置画布） -->
+        <section class="section-block">
+          <div class="section-title">
+            <el-icon><Share /></el-icon>
+            <span>因果网络全景拓扑图 (Topology Graph)</span>
+            <div class="section-actions">
+              <el-button
+                size="small"
+                type="primary"
+                plain
+                :icon="FullScreen"
+                @click="openFullscreen"
+              >
+                大屏全屏显示
+              </el-button>
             </div>
           </div>
-        </div>
-      </section>
 
-      <!-- 5. 全景拓扑工作台联动入口 -->
-      <div class="workbench-action-box">
-        <div class="workbench-info">
-          <div class="wb-title">想在交互式画布中自由探索该因果网络？</div>
-          <div class="wb-desc">可直接调出 GraphRAG 全景评测工作台，支持物理力导向图、关系拖拽与新旧制度剪枝演示。</div>
-        </div>
-        <el-button
-          type="primary"
-          :icon="FullScreen"
-          class="wb-launch-btn"
-          @click="openWorkbench"
-        >
-          在 Neo4j 全景拓扑工作台打开 (8350) ↗
-        </el-button>
+          <!-- 画布卡片 -->
+          <div class="topology-canvas-card">
+            <!-- 顶部工具小栏 -->
+            <div class="canvas-toolbar">
+              <span class="canvas-tip">可拖拽节点 · 滚轮缩放画布</span>
+              <div class="canvas-btn-group">
+                <el-button size="small" circle :icon="RefreshRight" title="复位视角" @click="resetDrawerNetwork" />
+              </div>
+            </div>
+
+            <!-- Vis.js 容器 -->
+            <div ref="drawerNetworkRef" class="network-container"></div>
+
+            <!-- 图例栏 -->
+            <div class="legend-bar">
+              <span class="legend-item"><span class="dot dot-root"></span>根因节点</span>
+              <span class="legend-item"><span class="dot dot-fault"></span>故障表象</span>
+              <span class="legend-item"><span class="dot dot-action"></span>排查/处置动作</span>
+              <span class="legend-item"><span class="dot dot-sys"></span>系统/通道资产</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. 核心种子实体 -->
+        <section class="section-block">
+          <div class="section-title">
+            <el-icon><Aim /></el-icon>
+            <span>识别核心关联实体 (Seed Entities)</span>
+            <span class="count-tag">{{ reasoning.entities.length }} 个节点</span>
+          </div>
+          <div class="entities-wrap">
+            <el-tag
+              v-for="(entity, idx) in reasoning.entities"
+              :key="idx"
+              :type="entityTagType(entity)"
+              effect="light"
+              class="entity-pill"
+            >
+              <el-icon class="entity-icon"><component :is="entityIcon(entity)" /></el-icon>
+              {{ entity }}
+            </el-tag>
+          </div>
+        </section>
+
+        <!-- 3. 拓扑演绎推导链 -->
+        <section class="section-block">
+          <div class="section-title">
+            <el-icon><Share /></el-icon>
+            <span>分步推导逻辑链 (Deduction Steps)</span>
+            <span class="count-tag">{{ reasoning.chains.length }} 跳推导</span>
+          </div>
+          <div class="chains-flow">
+            <div
+              v-for="(ch, idx) in reasoning.chains"
+              :key="idx"
+              class="chain-card"
+              :class="{ 'causal-highlight': ch.isCausal }"
+            >
+              <div class="chain-header">
+                <span class="step-badge">第 {{ ch.step }} 跳</span>
+                <el-tag size="small" :type="ch.isCausal ? 'danger' : 'warning'" effect="plain">
+                  {{ ch.tag }}
+                </el-tag>
+              </div>
+
+              <!-- 结构化节点关系流转图 -->
+              <div v-if="ch.src && ch.tgt" class="chain-relation-visual">
+                <div class="chain-node node-src">{{ ch.src }}</div>
+                <div class="chain-arrow">
+                  <span class="arrow-label">{{ ch.rel }}</span>
+                  <span class="arrow-line">──────▶</span>
+                </div>
+                <div class="chain-node node-tgt" :class="{ 'node-root-cause': ch.isCausal }">
+                  {{ ch.tgt }}
+                  <span v-if="ch.isCausal && ch.tgt.includes('根因')" class="root-badge">根因</span>
+                </div>
+              </div>
+              <!-- 兜底纯文本事实 -->
+              <div v-else class="chain-raw-text">
+                {{ ch.raw }}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. 处置策略与排查建议 -->
+        <section class="section-block">
+          <div class="section-title">
+            <el-icon><Opportunity /></el-icon>
+            <span>图谱指导处置建议 (Action Strategy)</span>
+          </div>
+          <div class="suggestion-card">
+            <el-icon class="sug-icon"><CircleCheck /></el-icon>
+            <div class="sug-content">
+              <div class="sug-title">根因处置优先级</div>
+              <div class="sug-desc">{{ reasoning.suggestion }}</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 5. 穿透关联知识库父卡 -->
+        <section class="section-block">
+          <div class="section-title">
+            <el-icon><Document /></el-icon>
+            <span>穿透关联知识库卡片 (Associated Cards)</span>
+            <span class="count-tag">{{ reasoning.cards.length }} 篇</span>
+          </div>
+          <div class="cards-list">
+            <div
+              v-for="card in reasoning.cards"
+              :key="card.versionId"
+              class="card-item"
+              :class="{ 'card-graph-source': card.hasGraph }"
+            >
+              <div class="card-item-main">
+                <div class="card-item-title">
+                  <span v-if="card.hasGraph" class="graph-source-badge">图谱推导源</span>
+                  {{ card.title }}
+                </div>
+                <div class="card-item-meta">
+                  <span>版本: {{ card.versionId }}</span>
+                  <span v-if="card.articleId">卡号: {{ card.articleId }}</span>
+                </div>
+              </div>
+              <div class="card-item-score">
+                <el-tag size="small" type="info">匹配度 {{ card.score }}</el-tag>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
-    </div>
-  </el-drawer>
+    </el-drawer>
+
+    <!-- 大屏全屏显示弹窗 -->
+    <el-dialog
+      v-model="fullscreenVisible"
+      fullscreen
+      destroy-on-close
+      class="topology-fullscreen-dialog"
+      :show-close="false"
+      @opened="onFullscreenOpened"
+    >
+      <div class="fullscreen-container">
+        <!-- 大屏顶部操作栏 -->
+        <div class="fullscreen-header">
+          <div class="fs-title-box">
+            <div class="fs-title">
+              <el-icon class="fs-icon"><Connection /></el-icon>
+              <span>知识图谱多跳因果全景拓扑 (大屏模式)</span>
+            </div>
+            <div class="fs-sub">
+              当前展示：{{ reasoning?.entities?.length || 0 }} 个核心实体 · {{ reasoning?.chains?.length || 0 }} 跳因果关系
+            </div>
+          </div>
+
+          <!-- 右侧操作按钮群 -->
+          <div class="fs-actions">
+            <div class="legend-bar fs-legend">
+              <span class="legend-item"><span class="dot dot-root"></span>根因节点</span>
+              <span class="legend-item"><span class="dot dot-fault"></span>故障表象</span>
+              <span class="legend-item"><span class="dot dot-action"></span>排查/处置动作</span>
+              <span class="legend-item"><span class="dot dot-sys"></span>系统/通道资产</span>
+            </div>
+            <el-button type="info" plain :icon="RefreshRight" @click="resetFullscreenNetwork">复位视角</el-button>
+            <el-button type="primary" :icon="Close" @click="fullscreenVisible = false">退出大屏</el-button>
+          </div>
+        </div>
+
+        <!-- 大屏主画布容器 -->
+        <div class="fullscreen-canvas-wrap">
+          <div ref="fullscreenNetworkRef" class="fullscreen-network-container"></div>
+          <!-- 悬浮提示 -->
+          <div class="fullscreen-floating-hint">
+            💡 支持任意拖动节点 · 滚轮自由平移缩放 · 物理力导向实时动态推演
+          </div>
+        </div>
+      </div>
+    </el-dialog>
+  </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed, nextTick, onBeforeUnmount } from 'vue'
 import {
   Connection, Aim, Share, Opportunity, CircleCheck,
-  Document, FullScreen, Warning, Key, Monitor, Setting
+  Document, FullScreen, Warning, Key, Monitor, Setting,
+  RefreshRight, Close
 } from '@element-plus/icons-vue'
+import { Network, DataSet } from 'vis-network/standalone/esm/vis-network.js'
 
 const props = defineProps({
   modelValue: {
@@ -182,6 +259,14 @@ const visible = computed({
   get: () => props.modelValue,
   set: (val) => emit('update:modelValue', val)
 })
+
+const fullscreenVisible = ref(false)
+const drawerNetworkRef = ref(null)
+const fullscreenNetworkRef = ref(null)
+
+// 保持为非响应式变量，避免 Vue Proxy 破坏 Vis.js 内部循环引用
+let drawerNetwork = null
+let fullscreenNetwork = null
 
 function handleClose() {
   visible.value = false
@@ -210,11 +295,219 @@ function entityIcon(entity) {
   return Setting
 }
 
-function openWorkbench() {
-  const scene = props.reasoning?.scene || 'vpn'
-  const url = `http://127.0.0.1:8350/?scene=${encodeURIComponent(scene)}`
-  window.open(url, '_blank')
+// 节点与连线色彩配置
+function getNodeColor(label) {
+  if (/锁定|根因/.test(label)) {
+    return { background: '#e11d48', border: '#f43f5e' } // 玫瑰红 / 根因
+  }
+  if (/错误|故障|失败|超时|异常|691|502/.test(label)) {
+    return { background: '#d97706', border: '#f59e0b' } // 琥珀橙 / 故障表象
+  }
+  if (/处置|排查|重置|等待|平台|控制器|服务台/.test(label)) {
+    return { background: '#059669', border: '#10b981' } // 翡翠绿 / 处置排查
+  }
+  if (/系统|网络|VPN|邮箱|客户端|ERP/.test(label)) {
+    return { background: '#0284c7', border: '#38bdf8' } // 科技天蓝 / 系统与通道
+  }
+  return { background: '#6366f1', border: '#818cf8' } // 经典紫色 / 其他关联
 }
+
+function getEdgeColor(rel) {
+  if (/根因|诱发/.test(rel)) return { color: '#f43f5e', highlight: '#fda4af', hover: '#fb7185' }
+  if (/排查|处置/.test(rel)) return { color: '#10b981', highlight: '#6ee7b7', hover: '#34d399' }
+  if (/废止|替代/.test(rel)) return { color: '#ef4444', highlight: '#fca5a5', hover: '#f87171' }
+  return { color: '#818cf8', highlight: '#c7d2fe', hover: '#a5b4fc' }
+}
+
+// 构建拓扑图数据
+function buildGraphData() {
+  if (!props.reasoning) return { nodes: new DataSet([]), edges: new DataSet([]) }
+
+  const nodesMap = new Map()
+  const edgesList = []
+
+  // 1. 先加入核心种子实体
+  for (const ent of props.reasoning.entities || []) {
+    if (!nodesMap.has(ent)) {
+      const col = getNodeColor(ent)
+      nodesMap.set(ent, {
+        id: ent,
+        label: ent,
+        shape: 'dot',
+        size: /根因|锁定/.test(ent) ? 24 : 18,
+        color: {
+          background: col.background,
+          border: col.border,
+          highlight: { background: '#818cf8', border: '#c7d2fe' },
+          hover: { background: '#6366f1', border: '#a5b4fc' }
+        },
+        font: { color: '#ffffff', size: 12, strokeWidth: 2, strokeColor: '#020617' },
+        title: `实体节点: ${ent}`
+      })
+    }
+  }
+
+  // 2. 加入因果链条中的 source 与 target 以及 edges
+  for (const ch of props.reasoning.chains || []) {
+    if (ch.src && ch.tgt) {
+      if (!nodesMap.has(ch.src)) {
+        const col = getNodeColor(ch.src)
+        nodesMap.set(ch.src, {
+          id: ch.src,
+          label: ch.src,
+          shape: 'dot',
+          size: 18,
+          color: {
+            background: col.background,
+            border: col.border,
+            highlight: { background: '#818cf8', border: '#c7d2fe' },
+            hover: { background: '#6366f1', border: '#a5b4fc' }
+          },
+          font: { color: '#ffffff', size: 12, strokeWidth: 2, strokeColor: '#020617' },
+          title: `实体节点: ${ch.src}`
+        })
+      }
+      if (!nodesMap.has(ch.tgt)) {
+        const col = getNodeColor(ch.tgt)
+        nodesMap.set(ch.tgt, {
+          id: ch.tgt,
+          label: ch.tgt,
+          shape: 'dot',
+          size: /根因|锁定/.test(ch.tgt) ? 24 : 18,
+          color: {
+            background: col.background,
+            border: col.border,
+            highlight: { background: '#818cf8', border: '#c7d2fe' },
+            hover: { background: '#6366f1', border: '#a5b4fc' }
+          },
+          font: { color: '#ffffff', size: 12, strokeWidth: 2, strokeColor: '#020617' },
+          title: `实体节点: ${ch.tgt}`
+        })
+      }
+
+      const ec = getEdgeColor(ch.rel)
+      edgesList.push({
+        from: ch.src,
+        to: ch.tgt,
+        label: ch.rel,
+        arrows: 'to',
+        color: ec,
+        font: { size: 10, color: '#cbd5e1', background: '#0f172a', strokeWidth: 0 },
+        title: `${ch.src} ──(${ch.rel})──> ${ch.tgt}`
+      })
+    }
+  }
+
+  return {
+    nodes: new DataSet(Array.from(nodesMap.values())),
+    edges: new DataSet(edgesList)
+  }
+}
+
+// 初始化抽屉内部 Vis-Network 画布
+function initDrawerNetwork() {
+  if (!drawerNetworkRef.value) return
+  if (drawerNetwork) {
+    drawerNetwork.destroy()
+    drawerNetwork = null
+  }
+
+  const { nodes, edges } = buildGraphData()
+  const options = {
+    physics: {
+      barnesHut: {
+        gravitationalConstant: -2800,
+        centralGravity: 0.28,
+        springLength: 95,
+        springConstant: 0.05,
+        damping: 0.09
+      },
+      stabilization: { iterations: 100 }
+    },
+    interaction: {
+      hover: true,
+      zoomView: true,
+      dragView: true,
+      tooltipDelay: 100
+    }
+  }
+
+  drawerNetwork = new Network(drawerNetworkRef.value, { nodes, edges }, options)
+}
+
+function resetDrawerNetwork() {
+  if (drawerNetwork) {
+    drawerNetwork.fit({ animation: { duration: 600, easingFunction: 'easeInOutQuad' } })
+  }
+}
+
+function onDrawerOpened() {
+  nextTick(() => {
+    setTimeout(() => {
+      initDrawerNetwork()
+    }, 100)
+  })
+}
+
+// 大屏全屏显示
+function openFullscreen() {
+  fullscreenVisible.value = true
+}
+
+function onFullscreenOpened() {
+  nextTick(() => {
+    setTimeout(() => {
+      initFullscreenNetwork()
+    }, 100)
+  })
+}
+
+function initFullscreenNetwork() {
+  if (!fullscreenNetworkRef.value) return
+  if (fullscreenNetwork) {
+    fullscreenNetwork.destroy()
+    fullscreenNetwork = null
+  }
+
+  const { nodes, edges } = buildGraphData()
+  const options = {
+    physics: {
+      barnesHut: {
+        gravitationalConstant: -4500,
+        centralGravity: 0.22,
+        springLength: 130,
+        springConstant: 0.04,
+        damping: 0.09
+      },
+      stabilization: { iterations: 120 }
+    },
+    interaction: {
+      hover: true,
+      zoomView: true,
+      dragView: true,
+      tooltipDelay: 100
+    }
+  }
+
+  fullscreenNetwork = new Network(fullscreenNetworkRef.value, { nodes, edges }, options)
+}
+
+function resetFullscreenNetwork() {
+  if (fullscreenNetwork) {
+    fullscreenNetwork.fit({ animation: { duration: 600, easingFunction: 'easeInOutQuad' } })
+  }
+}
+
+onBeforeUnmount(() => {
+  if (drawerNetwork) {
+    drawerNetwork.destroy()
+    drawerNetwork = null
+  }
+  if (fullscreenNetwork) {
+    fullscreenNetwork.destroy()
+    fullscreenNetwork = null
+  }
+})
 </script>
 
 <style scoped>
@@ -225,8 +518,8 @@ function openWorkbench() {
 }
 
 .header-icon-box {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 10px;
   background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
   display: flex;
@@ -312,6 +605,10 @@ function openWorkbench() {
   color: var(--el-text-color-primary);
 }
 
+.section-actions {
+  margin-left: auto;
+}
+
 .count-tag {
   font-size: 11px;
   font-weight: 500;
@@ -321,6 +618,81 @@ function openWorkbench() {
   border-radius: 10px;
   margin-left: auto;
 }
+
+/* 拓扑画布卡片 */
+.topology-canvas-card {
+  position: relative;
+  background: #090d16;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.canvas-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.canvas-tip {
+  font-size: 11px;
+  color: #94a3b8;
+  background: rgba(15, 23, 42, 0.75);
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(51, 65, 85, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.canvas-btn-group {
+  pointer-events: auto;
+}
+
+.network-container {
+  width: 100%;
+  height: 280px;
+  cursor: grab;
+}
+
+.network-container:active {
+  cursor: grabbing;
+}
+
+/* 图例 */
+.legend-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  background: rgba(15, 23, 42, 0.9);
+  padding: 8px 14px;
+  border-top: 1px solid rgba(51, 65, 85, 0.5);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.dot-root { background: #e11d48; box-shadow: 0 0 6px #f43f5e; }
+.dot-fault { background: #d97706; }
+.dot-action { background: #059669; }
+.dot-sys { background: #0284c7; }
 
 /* 实体池 */
 .entities-wrap {
@@ -527,41 +899,84 @@ function openWorkbench() {
   gap: 12px;
 }
 
-/* 底部全景画布入口 */
-.workbench-action-box {
-  background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
-  border-radius: 12px;
-  padding: 16px;
-  color: #fff;
+/* ================= 大屏全屏弹窗样式 ================= */
+.fullscreen-container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  box-shadow: 0 4px 16px rgba(49, 46, 129, 0.25);
-  margin-top: 10px;
+  height: 100vh;
+  background: #020617;
+  color: #f8fafc;
 }
 
-.wb-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #e0e7ff;
+.fullscreen-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  background: #0f172a;
+  border-bottom: 1px solid #1e293b;
 }
 
-.wb-desc {
+.fs-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.fs-icon {
+  font-size: 22px;
+  color: #818cf8;
+}
+
+.fs-sub {
   font-size: 12px;
-  color: #a5b4fc;
-  line-height: 1.4;
+  color: #94a3b8;
   margin-top: 4px;
 }
 
-.wb-launch-btn {
-  background: #6366f1;
-  border-color: #818cf8;
-  font-weight: 700;
-  width: 100%;
+.fs-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
-.wb-launch-btn:hover {
-  background: #4f46e5;
-  border-color: #6366f1;
+.fs-legend {
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 6px 14px;
+}
+
+.fullscreen-canvas-wrap {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  overflow: hidden;
+}
+
+.fullscreen-network-container {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.fullscreen-network-container:active {
+  cursor: grabbing;
+}
+
+.fullscreen-floating-hint {
+  position: absolute;
+  bottom: 18px;
+  left: 24px;
+  font-size: 12px;
+  color: #94a3b8;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(51, 65, 85, 0.7);
+  padding: 6px 14px;
+  border-radius: 20px;
+  backdrop-filter: blur(6px);
+  pointer-events: none;
 }
 </style>
