@@ -10,12 +10,16 @@ load_glossary/save_glossary):
 - merge_new_entities: 幂等合并(词表已含则跳过,重复 merge 计数不变,入参不被改动);
 - build_graph_data: 节点 id 稳定可复算(card:/entity:/concept: 编码)、
   边型映射(小写→大写、kind→概念边型)、REPLACES 对方向规约
-  (两卡双向产出时只保 target 为 LEG 卡的那条)、fingerprint 透传、
-  边幂等去重(完全相同边只留一条)、Task 1 校验器拒收的输入显式抛错。
+  (两卡双向产出时只保 target 为 LEG 卡的那条;status 与措辞均不可判定时
+  显式 ValueError——controller Ruling 12/13,消息含两卡 id 与原因清单),
+  fingerprint 透传、边幂等去重(完全相同边只留一条)、词表实体类型越界
+  在产出侧二次校验硬拒、Task 1 校验器拒收的输入显式抛错;
+- load_glossary: 键名归一(strip、空键/归一冲突显式 ValueError);
+- 替换边措辞分型 _classify_replaces_wording 的直接单测(Ruling 13)。
 """
 
 import copy
-import logging
+import json
 import sys
 from pathlib import Path
 
@@ -24,6 +28,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from rag_pipeline.ingestion.graph_builder import (  # noqa: E402
+    _classify_replaces_wording,
     build_graph_data,
     load_glossary,
     merge_new_entities,
@@ -236,8 +241,8 @@ class TestBuildGraphDataEdges:
         assert replaces[0]["dst"] == "card:ITKB-HB-LEG-003"
 
     def test_replaces_no_status_decided_by_evidence_note(self):
-        # frontmatter 两卡都无 status:按 relations 条目 evidence/note 判定方向
-        # (note/evidence 自述「废止/为准」的那条 = 源为 LEG 卡的那条 → 丢弃)。
+        # frontmatter 两卡都无 status:按 relations 条目 note/evidence 判定方向
+        # (Ruling 13 措辞分型:该条含「本卡已废止」→ 源卡即 LEG 卡 → 丢弃之)。
         cur = dict(CARDS[2][1]); cur.pop("status")
         leg = dict(CARDS[3][1]); leg.pop("status")
         cards = [("ITKB-HB-003", cur), ("ITKB-HB-LEG-003", leg)]
@@ -246,9 +251,31 @@ class TestBuildGraphDataEdges:
         assert len(replaces) == 1
         assert replaces[0]["dst"] == "card:ITKB-HB-LEG-003"
 
-    def test_replaces_undecidable_keeps_first_in_input_order(self):
-        # 两卡同现行、note/evidence 无差异信号:保持确定性——
-        # 保留输入卡序列中先出现者为源的那条,并告警。
+    def test_replaces_cur_authoritative_note_keeps_cur_to_leg(self):
+        # 反选措辞回归(Ruling 13 探针场景):替换 LEG 卡的那条边 note 为
+        # 「旧版已废止,以本卡为准」——确指现行卡自身为标准 → src=现行,
+        # 保留的必须是 card:CUR → card:LEG(dst 为 LEG)。
+        # 旧实现靠裸 marker 词「废止/为准」会把现行卡误判为 LEG 并反转方向,
+        # 在该输入下必失败。
+        cur = dict(CARDS[2][1]); cur.pop("status"); cur["relations"] = [
+            {"target": "ITKB-HB-LEG-003", "type": "replaces",
+             "note": "旧版已废止,以本卡为准", "evidence": "frontmatter:replaces"}
+        ]
+        leg = dict(CARDS[3][1]); leg.pop("status"); leg["relations"] = [
+            {"target": "ITKB-HB-003", "type": "replaces",
+             "note": "旧版叙述", "evidence": "正文:向新卡迁移"}
+        ]
+        cards = [("ITKB-HB-003", cur), ("ITKB-HB-LEG-003", leg)]
+        data = build_graph_data(cards, GLOSSARY, FP)
+        replaces = [e for e in data["edges"] if e["type"] == "REPLACES"]
+        assert len(replaces) == 1
+        assert replaces[0]["src"] == "card:ITKB-HB-003"
+        assert replaces[0]["dst"] == "card:ITKB-HB-LEG-003"
+
+    def test_replaces_undecidable_raises_with_both_card_ids(self):
+        # Ruling 12(REPLACES 第三级 = 硬失败):双 REPLACES 且 status/note/
+        # evidence 都判不出方向 → 显式 ValueError,消息必须给出两卡 id 与
+        # 不可判定原因清单(含 Level-2 措辞命名),不再保输入序猜测。
         a = dict(CARDS[2][1]); a["relations"] = [
             {"target": "ITKB-HB-004", "type": "replaces", "note": "spec", "evidence": "e1"}
         ]
@@ -256,12 +283,41 @@ class TestBuildGraphDataEdges:
             {"target": "ITKB-HB-003", "type": "replaces", "note": "spec", "evidence": "e2"}
         ]
         cards = [("ITKB-HB-003", a), ("ITKB-HB-004", b)]
-        with caplog_context("rag_pipeline.ingestion.graph_builder") as records:
-            data = build_graph_data(cards, GLOSSARY, FP)
-        replaces = [e for e in data["edges"] if e["type"] == "REPLACES"]
-        assert len(replaces) == 1
-        assert replaces[0]["src"] == "card:ITKB-HB-003"
-        assert any("replaces" in r.getMessage().lower() for r in records)
+        with pytest.raises(ValueError) as ei:
+            build_graph_data(cards, GLOSSARY, FP)
+        msg = str(ei.value)
+        assert "ITKB-HB-003" in msg, msg
+        assert "ITKB-HB-004" in msg, msg
+        assert "不可判定" in msg, msg
+        assert "level-2 措辞不可判定" in msg, msg
+
+    def test_replaces_conflicting_wording_raises(self):
+        # Ruling 13 c:两侧条目各自自述「本卡已废止」→ 方向信号互相矛盾
+        # → 走 Ruling 12 的 ValueError(消息指明 level-2 措辞不可判定)。
+        cur = dict(CARDS[2][1]); cur.pop("status"); cur["relations"] = [
+            {"target": "ITKB-HB-LEG-003", "type": "replaces",
+             "note": "本卡已废止", "evidence": "e1"}
+        ]
+        leg = dict(CARDS[3][1]); leg.pop("status"); leg["relations"] = [
+            {"target": "ITKB-HB-003", "type": "replaces",
+             "note": "本卡已废止", "evidence": "e2"}
+        ]
+        cards = [("ITKB-HB-003", cur), ("ITKB-HB-LEG-003", leg)]
+        with pytest.raises(ValueError) as ei:
+            build_graph_data(cards, GLOSSARY, FP)
+        msg = str(ei.value)
+        assert "ITKB-HB-003" in msg and "ITKB-HB-LEG-003" in msg, msg
+        assert "level-2 措辞不可判定" in msg, msg
+
+    def test_replaces_self_replace_pair_raises(self):
+        # M6:同一卡双向自替换(src == dst,同卡两条不同 evidence 去重后仍成对)
+        # → 显式 ValueError(消息含两卡 id=同一编码+自替换冲突说明),不再 assert。
+        card = dict(CARDS[2][1]); card["relations"] = [
+            {"target": "ITKB-HB-003", "type": "replaces", "note": "a", "evidence": "e1"},
+            {"target": "ITKB-HB-003", "type": "replaces", "note": "b", "evidence": "e2"},
+        ]
+        with pytest.raises(ValueError, match=r"自替换.*ITKB-HB-003"):
+            build_graph_data([("ITKB-HB-003", card)], GLOSSARY, FP)
 
     def test_identical_edges_deduplicated(self):
         # 完全相同的边(src/dst/type/evidence 全等)幂等去重,只留一条。
@@ -322,6 +378,44 @@ class TestBuildGraphDataValidation:
         with pytest.raises(ValueError, match="重复"):
             build_graph_data([CARDS[0], CARDS[0]], GLOSSARY, FP)
 
+    def test_glossary_entity_bad_type_raises(self):
+        # M3:词表侧坏类型——卡上实体类型合法,但 glossary 里同名实体类型越界
+        # → 实体类型汇总的二次 validate_entities 在产出侧硬拒(不静默落盘)。
+        bad_glossary = {"entities": {"AD域": {"type": "不存在类型", "aliases": []}}}
+        card = dict(CARDS[0][1], relations=[])
+        with pytest.raises(ValueError, match="不存在类型"):
+            build_graph_data([("ITKB-HB-001", card)], bad_glossary, FP)
+
+
+# ---------- ③b 替换边措辞分型(Ruling 13 两入口共用)----------
+
+
+class TestClassifyReplacesWording:
+    """_classify_replaces_wording 直测:note/evidence 相对源卡的方向分型。"""
+
+    def test_self_deprecated_phrases(self):
+        # a 类:note/evidence 直指源卡自身已废止/下线(「本卡/该卡」+「已废止/已下线」)。
+        assert _classify_replaces_wording("本卡已废止", "") == "self-deprecated"
+        assert _classify_replaces_wording("该卡已下线", "") == "self-deprecated"
+        # 自述在 evidence 侧同样计入。
+        assert _classify_replaces_wording("迁移说明", "该卡已废止") == "self-deprecated"
+
+    def test_self_authoritative_note(self):
+        # b 类:note 含「以本卡为准」,确指源卡自身为标准 → 方向取反。
+        assert _classify_replaces_wording("旧版已废止,以本卡为准", "e") == "self-authoritative"
+        # 「以现行卡为准」不确指源卡自身 → 不认 b。
+        assert _classify_replaces_wording("以现行卡为准", "") == "ambiguous"
+
+    def test_bare_marker_words_not_direction_signal(self):
+        # 裸 marker 词(废止/下线/为准)不构成方向信号——旧实现的误判根因。
+        assert _classify_replaces_wording("旧版已废止", "") == "ambiguous"
+        assert _classify_replaces_wording("", "前言:下线流程章节") == "ambiguous"
+        assert _classify_replaces_wording("", "") == "ambiguous"
+
+    def test_contradictory_wording_is_ambiguous(self):
+        # c 类:自述废止与「以本卡为准」同时命中(矛盾措辞)→ 不可判定。
+        assert _classify_replaces_wording("本卡已废止,但仍以本卡为准", "") == "ambiguous"
+
 
 # ---------- ④ glossary:load/save/merge ----------
 
@@ -349,6 +443,42 @@ class TestGlossary:
         with pytest.raises(ValueError, match="顶层"):
             load_glossary(path)
 
+    def test_load_glossary_strips_keys(self, tmp_path):
+        # M5:load 时词表键归一——首尾空白剥除,产出键为 strip 后形态。
+        path = tmp_path / "g.json"
+        path.write_text(json.dumps(
+            {"entities": {"  AD域 ": {"type": "系统", "aliases": []}}},
+            ensure_ascii=False,
+        ), encoding="utf-8")
+        g = load_glossary(path)
+        assert list(g["entities"]) == ["AD域"]
+
+    def test_load_glossary_blank_key_raises(self, tmp_path):
+        # M5:空串/纯空白键属数据异常 → 显式 ValueError(不静默丢、不静默保)。
+        path = tmp_path / "g.json"
+        for bad_key in ("", "   "):
+            path.write_text(json.dumps(
+                {"entities": {bad_key: {"type": "系统", "aliases": []}}},
+                ensure_ascii=False,
+            ), encoding="utf-8")
+            with pytest.raises(ValueError, match="空"):
+                load_glossary(path)
+
+    def test_load_glossary_strip_collision_raises(self, tmp_path):
+        # M5:「AD域 」与「AD域」在同一词表文件:strip 后相撞 → 显式冲突报错,
+        # 禁止两键并存歧义(消息给出两个原始键)。
+        path = tmp_path / "g.json"
+        path.write_text(json.dumps(
+            {"entities": {
+                "AD域 ": {"type": "系统", "aliases": []},
+                "AD域": {"type": "软件", "aliases": []},
+            }},
+            ensure_ascii=False,
+        ), encoding="utf-8")
+        with pytest.raises(ValueError, match="AD域") as ei:
+            load_glossary(path)
+        assert "'AD域'" in str(ei.value) and "'AD域 '" in str(ei.value)
+
     def test_merge_adds_new_entities(self):
         glo = copy.deepcopy(GLOSSARY)
         out = merge_new_entities(glo, [EntityDef(name="堡垒机", type="软件")])
@@ -374,32 +504,6 @@ class TestGlossary:
         ])
         assert list(out["entities"].keys()) == ["堡垒机"]
         assert out["entities"]["堡垒机"]["type"] == "软件"
-
-
-class caplog_context:
-    """捕获指定 logger 的记录(纯标准库,不依赖 pytest caplog fixture 包装方式)。"""
-
-    def __init__(self, logger_name):
-        self.logger = logging.getLogger(logger_name)
-        self.records = []
-        self.handler = None
-
-    def __enter__(self):
-        self.handler = _ListHandler(self.records)
-        self.logger.addHandler(self.handler)
-        return self.records
-
-    def __exit__(self, *args):
-        self.logger.removeHandler(self.handler)
-
-
-class _ListHandler(logging.Handler):
-    def __init__(self, records):
-        super().__init__()
-        self.records = records
-
-    def emit(self, record):
-        self.records.append(record)
 
 
 if __name__ == "__main__":

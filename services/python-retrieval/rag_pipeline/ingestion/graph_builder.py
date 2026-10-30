@@ -14,26 +14,32 @@ Neo4j 同步工具的唯一输入:`{wiki_fingerprint, glossary, nodes, edges}`�
 - `(concept)-[:SYMPTOM_OF|ROOT_CAUSE_OF|USED_IN]->(card)`:kind→边型映射
   symptom→SYMPTOM_OF / root_cause→ROOT_CAUSE_OF / tool→USED_IN。
 
-REPLACES 对方向规约(controller 裁决,测试锁定):同一对卡双向产出 replaces 时,
+REPLACES 对方向规约(controller 裁决 12/13,测试锁定):同一对卡双向产出 replaces 时,
 只保 target 为 LEG 卡(源为现行卡)的那条——判定不靠猜测:
 1. frontmatter status(status ∈ 已废止/已下线 → LEG;与流水线惯例一致,
    缺失视作现行)能唯一判定哪张是 LEG 卡 → 保留指向它的那条;
-2. status 不可判定(两张同现行或同废止)→ 按 relations 条目的 evidence/note
-   判定方向:note/evidence 自述「废止/下线/为准」的那条,其源卡即 LEG 卡,
-   丢弃之,保留另一条;
-3. 两者都无法判定(矛盾输入)→ 保留卡入参序列中先出现者为源的那条,并告警
-   (矛盾不静默吞掉,但也不让整批因单对歧义硬失败——runner 批次可在人工
-   门 Task 7 复核告警)。
+2. status 不可判定(0 或 2 张 LEG)→ 对每条替换边按 note/evidence
+   相对源卡自身的结构化措辞分型(_classify_replaces_wording):
+   「本卡/该卡已废止/已下线」→ 源卡为 LEG;note 含「以本卡为准」→
+   源卡为现行(对侧为 LEG);分型结果唯一指向某张 LEG 卡 → 保留指向它的那条;
+3. 上述任何一层都无法唯一判定(措辞信号缺失或互相矛盾)→ 显式 ValueError,
+   消息含两卡 id 与不可判定原因清单(措辞层不可定时指明「level-2 措辞
+   不可判定」)——拒绝猜测,数据异常由维护者修卡(计划 Task 6 任何异常 =
+   非零退出),不再像旧版保输入序猜测+告警;
+另:同一卡自替换(replaces 边 src == dst 且去重后仍成对)→ 同样显式
+ValueError(自替换冲突,消息给两卡 id——同一编码)。
 
 边幂等去重:src/dst/type/evidence 四元组全等的重复边只保留一条(Task 1
 裁决:重复项不去重属 Task 1 范围外;本构建器负责产出侧去重)。
 
 先验后写:build_graph_data 内部先经 Task 1 validate_* 校验器(实体类型、关系
-类型/target/证据、节点 kind),拒收即 ValueError,校验通过的数据才进产物。
+类型/target/证据、节点 kind),拒收即 ValueError,校验通过的数据才进产物;
+词表实体类型若越界,在实体类型汇总的二次校验处硬拒。
+词表键规一:load_glossary 对键名 strip,空/纯空白键与 strip 后相撞的两键
+显式 ValueError(不静默保留歧义双键)。
 """
 
 import json
-import logging
 import os
 import tempfile
 from pathlib import Path
@@ -41,18 +47,21 @@ from typing import Any, Dict, List, Set, Tuple
 
 from .graph_schema import (
     EntityDef,
+    GraphNodeDef,
     validate_entities,
     validate_graph_nodes,
     validate_relations,
 )
 
-logger = logging.getLogger(__name__)
-
 # 废止卡状态(与 configs/pipeline.yaml default_exclude、pipeline 里
 # setdefault("wiki_status", "现行") 的既定约定一致)
 LEG_STATUS = ("已废止", "已下线")
-# status 无法判定时的 note/evidence 方向信号:自述「废止/下线/以…为准」
-_NOTE_DEPRECATION_MARKERS = ("废止", "下线", "为准")
+# REPLACES level-2 措辞信号(Ruling 13:结构化短语,非裸 marker 词——
+# 「废止/下线/为准」单出现不构成方向信号,防止现行卡 note
+# 「旧版已废止,以本卡为准」被误判为源卡 LEG 而反转方向):
+# 直指源卡自身已废止/已下线 → 源卡为 LEG;「以本卡为准」确指源卡为现行标准。
+_SELF_DEPRECATED_PHRASES = ("本卡已废止", "本卡已下线", "该卡已废止", "该卡已下线")
+_SELF_AUTHORITATIVE_PHRASE = "以本卡为准"
 
 # relations.type(小写)→ 图边型(大写)
 RELATION_EDGE_TYPES = {
@@ -96,6 +105,32 @@ def _is_leg_card(meta: Dict[str, Any]) -> bool:
     return isinstance(status, str) and status in LEG_STATUS
 
 
+def _classify_replaces_wording(note: str, evidence: str) -> str:
+    """单条 REPLACES 条目措辞分型(controller Ruling 13,级二判定共用)。
+
+    按 note/evidence 中相对其源卡自身的结构化措辞判方向语义,
+    不靠裸 marker 词(「废止/下线/为准」单独出现不构成信号——
+    现行卡 note「旧版已废止,以本卡为准」说的是对侧旧版,不能反转成
+    源卡为 LEG):
+
+    - ``"self-deprecated"``:note/evidence 直指源卡自身已废止/已下线
+      (「本卡/该卡」+「已废止/已下线」连用)⇒ 源卡即 LEG 卡;
+    - "self-authoritative":note 含「以本卡为准」(确指源卡自身为现行标准)
+      ⇒ 源卡为现行卡,方向取反(另一侧为 LEG);
+    - "ambiguous":都不命中(无信号)或同时命中(矛盾措辞)⇒ 不可判定,
+      上层走 Ruling 12 的 ValueError。
+    """
+    self_deprecated = any(p in f"{note}{evidence}" for p in _SELF_DEPRECATED_PHRASES)
+    self_authoritative = _SELF_AUTHORITATIVE_PHRASE in note
+    if self_deprecated and self_authoritative:
+        return "ambiguous"
+    if self_deprecated:
+        return "self-deprecated"
+    if self_authoritative:
+        return "self-authoritative"
+    return "ambiguous"
+
+
 # ---------- glossary:load / save / merge ----------
 
 
@@ -104,6 +139,8 @@ def load_glossary(path: Path) -> Dict[str, Any]:
 
     文件存在但结构损坏 → ValueError(不静默重建,保住真实原因);
     词表是全局权威,重建等于把批次间对齐抹平。
+    键名归一(裁穴 M5):键 strip 后作为规范键;空/纯空白键、strip 后
+    相撞的两键 → ValueError(不静默丢、不静默并存歧义)。
     """
     if not Path(path).exists():
         return {"entities": {}}
@@ -114,6 +151,8 @@ def load_glossary(path: Path) -> Dict[str, Any]:
     entities = raw.get("entities")
     if not isinstance(entities, dict):
         raise ValueError(f"glossary.entities 必须是对象(名→{{type, aliases}}), 实得: {path}")
+    normalized: Dict[str, Dict[str, Any]] = {}
+    raw_of: Dict[str, str] = {}
     for name, entry in entities.items():
         if (
             not isinstance(entry, dict)
@@ -124,7 +163,19 @@ def load_glossary(path: Path) -> Dict[str, Any]:
             raise ValueError(
                 f"glossary.entities[{name!r}] 损坏, 期望 {{type, aliases}}: {path}"
             )
-    return {"entities": {name: dict(entry) for name, entry in entities.items()}}
+        key = name.strip()
+        if not key:
+            raise ValueError(
+                f"glossary.entities 键 {name!r} 为空或纯空白(键归一后无实体名): {path}"
+            )
+        if key in normalized:
+            raise ValueError(
+                f"glossary.entities 键归一后冲突: {raw_of[key]!r} 与 {name!r} "
+                f"strip 后均为 {key!r}, 禁止两键并存歧义: {path}"
+            )
+        normalized[key] = dict(entry)
+        raw_of[key] = name
+    return {"entities": normalized}
 
 
 def save_glossary(path: Path, glossary: Dict[str, Any]) -> None:
@@ -200,10 +251,12 @@ def _dedupe_replaces_pairs(
     metas: Dict[str, Dict[str, Any]],
     card_order: List[str],
 ) -> List[Dict[str, Any]]:
-    """REPLACES 对方向规约(见模块 docstring 三级判定)。
+    """REPLACES 对方向规约(见模块 docstring 三级判定,Ruling 12/13)。
 
     edges 内 REPLACES 边各带内部键 `_note`(relations 条目的 note),
     出口时剥离——产物边只含 src/dst/type/evidence 四键。
+    一/二级无法唯一判定方向,或同卡自替换 → 显式 ValueError(消息含
+    两卡 id 与不可判定原因清单;数据异常由维护者修卡,不猜方向)。
     """
     replacements: List[int] = [
         i for i, e in enumerate(edges) if e["type"] == "REPLACES"
@@ -216,7 +269,14 @@ def _dedupe_replaces_pairs(
     for pair, idxs in pair_indices.items():
         if len(idxs) < 2:
             continue
-        assert len(pair) == 2, f"REPLACES 边端点不是卡节点: {sorted(pair)}"
+        if len(pair) != 2:
+            # M6:自替换(src == dst)成对 → 无法判定方向,显式失败不再 assert。
+            bad_id = edges[idxs[0]]["src"][len("card:"):]
+            raise ValueError(
+                f"REPLACES 对 {bad_id} ↔ {bad_id} 自替换冲突: 两卡 id 为同一编码 "
+                f"{bad_id!r}(replaces 边 src == dst), 同卡的替换边无方向可判; "
+                f"涉及 evidence: {sorted({edges[i]['evidence'] for i in idxs})}"
+            )
         first_id, second_id = _ordered_by_input(
             *(w[len("card:"):] for w in pair), order=card_order
         )
@@ -226,25 +286,53 @@ def _dedupe_replaces_pairs(
         if len(legs) == 1:
             keep_target = card_node_id(legs[0])
         else:
-            # status 不可判定 → 按条目 note/evidence 判方向:
-            # 自述「废止/下线/为准」的那条,源卡即 LEG 卡。
-            carriers = {
-                edges[i]["src"]
-                for i in idxs
-                if any(m in f"{edges[i].get('_note', '')}{edges[i]['evidence']}" for m in _NOTE_DEPRECATION_MARKERS)
-            }
-            if len(carriers) == 1:
-                # carriers 中唯一源卡即 note/evidence 自述废止的 LEG 卡 → 保留指向它的那条
-                keep_target = carriers.pop()
-            else:
-                # status 与 note/evidence 都无法判定(矛盾输入):
-                # 保留输入序列中先出现者为源的那条,并告警供人工门复核。
-                logger.warning(
-                    "graph_builder: replaces 对 %s ↔ %s 双向产出且无法判定现行方向"
-                    "(status 与前述 note/evidence 均无差异信号), 按卡输入顺序保留 %s → %s",
-                    first_id, second_id, first_id, second_id,
+            reasons: List[str] = []
+            if legs:
+                reasons.append(
+                    "status 层不可判定: 两卡 status 同为废止/下线, 无法唯一指向 LEG 卡"
                 )
-                keep_target = card_node_id(second_id)
+            else:
+                reasons.append(
+                    "status 层不可判定: 两卡均无废止/下线状态(缺失视作现行)"
+                )
+            # 级二(Ruling 13):按各条 note/evidence 相对源卡自身的结构化措辞
+            # 分型投票;无信号或信号互相矛盾 → 走 Ruling 12 的 ValueError
+            # (同一异常由 status+措辞入口与矛盾措辞入口共用)。
+            leg_votes: Dict[str, List[str]] = {}
+            for i in idxs:
+                src_id = edges[i]["src"][len("card:"):]
+                dst_id = edges[i]["dst"][len("card:"):]
+                wording = _classify_replaces_wording(
+                    edges[i].get("_note", ""), edges[i]["evidence"]
+                )
+                if wording == "self-deprecated":
+                    leg_votes.setdefault(src_id, []).append(
+                        f"边 {src_id}→{dst_id} note/evidence 自述源卡已废止/下线"
+                    )
+                elif wording == "self-authoritative":
+                    leg_votes.setdefault(dst_id, []).append(
+                        f"边 {src_id}→{dst_id} note 含「以本卡为准」(源卡自证现行)"
+                    )
+            if len(leg_votes) == 1:
+                keep_target = card_node_id(next(iter(leg_votes)))
+            else:
+                if not leg_votes:
+                    reasons.append(
+                        "level-2 措辞不可判定: 各条目 note/evidence 均无「本卡/该卡+"
+                        "已废止/已下线」或「以本卡为准」结构化方向信号"
+                    )
+                else:
+                    votes = "; ".join(
+                        f"{card} ← {'; '.join(why)}" for card, why in leg_votes.items()
+                    )
+                    reasons.append(
+                        f"level-2 措辞不可判定: 方向信号互相矛盾({votes})"
+                    )
+                raise ValueError(
+                    f"REPLACES 对 {first_id} ↔ {second_id} 双向产出且方向不可判定, "
+                    f"拒绝猜测(Ruling 12: 数据异常由维护者修卡, 计划 Task 6 任何"
+                    f"异常=非零退出); 不可判定原因: {'; '.join(reasons)}"
+                )
 
         for i in idxs:
             if edges[i]["dst"] != keep_target:
@@ -282,6 +370,8 @@ def build_graph_data(
 
     nodes: List[Dict[str, Any]] = []
     edges: List[Dict[str, Any]] = []
+    # 每卡 graph_nodes 校验结果(首循环产出,概念节点汇总复用——M4 去重)
+    card_graph_nodes: Dict[str, List[GraphNodeDef]] = {}
     # 实体名 → 类型(首次提及顺序;词表类型优先,兜底卡上已验类型)
     entity_types: Dict[str, str] = {}
 
@@ -290,6 +380,8 @@ def build_graph_data(
         typed_entities = validate_entities(meta.get("entities"))
         relations = validate_relations(meta.get("relations"), valid_targets)
         graph_nodes = validate_graph_nodes(meta.get("graph_nodes"))
+        # M4:校验结果留用,概念节点汇总不再重复跑 validate_graph_nodes。
+        card_graph_nodes[wiki_id] = graph_nodes
 
         nodes.append(_card_node(wiki_id, meta))
         src = card_node_id(wiki_id)
@@ -318,8 +410,8 @@ def build_graph_data(
         nodes.append({"id": entity_node_id(name), "label": "entity",
                       "name": name, "type": type_})
     seen_concepts: Set[Tuple[str, str]] = set()
-    for _, meta in cards:
-        for g in validate_graph_nodes(meta.get("graph_nodes")):
+    for wiki_id in card_order:
+        for g in card_graph_nodes[wiki_id]:
             if (g.kind, g.name) in seen_concepts:
                 continue
             seen_concepts.add((g.kind, g.name))
