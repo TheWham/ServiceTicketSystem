@@ -53,7 +53,6 @@
 | rag_service（Python） | 8310 | 检索内核：自适应意图路由 + 向量/BM25 双路召回 + RRF + Cross-Encoder 精排 + GraphRAG (Neo4j 多跳因果推导 + Docstore 回溯) + 版本消歧 `/api/v1/policy/resolve` |
 | agent_service（Python） | 8320 | 生成侧：Function Calling（ReAct 循环 + 白名单工具：查本人工单/产建单草稿/补搜知识），带 Trace→Span→Generation 链路追踪；`AI_AGENT_ENABLED=true` 时由 consultation-service 调用 |
 | Neo4j 图数据库 | 7687 / 7474 | 知识图谱：全量 38 篇 IT 卡片实体三元组拓扑存储、2-Hop 关联推导与废止剪枝（Bolt: 7687，控制台: 7474） |
-| compare-ui（Python） | 8350 | GraphRAG vs 纯向量检索 对比评测 Web 工作台（Vis.js 物理力导向拓扑交互、因果子图导出） |
 | common / common-web | — | 统一 Result/错误码/JWT 工具；全局异常、`UserContext` 透传头解析、时间格式 |
 
 > 职责边界：consultation-service 不做检索与模型托管（检索在 rag-service/Python，对话状态在本服务）；rag-service 不做大模型生成（生成在 consultation-service/agent_service）；Python 侧不落业务库（工单是 ticket-service 事实源，知识以 MySQL PUBLISHED 为准，Java 侧复核后才可信）。模型端点统一走 OpenAI 兼容网关（对话 + embedding + rerank）。

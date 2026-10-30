@@ -12,8 +12,10 @@
 """
 
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -30,6 +32,13 @@ def create_app(assembly: ServiceAssembly = None) -> FastAPI:
         yield
 
     app = FastAPI(title="rag-service (python retrieval kernel)", version="0.1.0", lifespan=lifespan)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     if assembly is not None:
         app.state.assembly = assembly
 
@@ -70,5 +79,105 @@ def create_app(assembly: ServiceAssembly = None) -> FastAPI:
         asm: ServiceAssembly = app.state.assembly
         return ResultEnvelope.ok(asm.resolve_policy(req.query, at=req.at, top_k=req.top_k).to_dict()) \
             .model_dump(by_alias=True, exclude_none=True)
+
+    @app.get("/api/neo4j/graph_data")
+    def get_neo4j_graph_data(scene: str = "vpn", entities: str = ""):
+        """从 Neo4j 动态读取特定场景或指定实体列表的子图拓扑数据用于前端可视化。"""
+        asm: ServiceAssembly = app.state.assembly
+        kg = asm.kg
+        if not kg:
+            return JSONResponse(content={"code": 0, "data": {"nodes": [], "edges": []}})
+
+        try:
+            entity_list = [e.strip() for e in entities.split(",") if e.strip()] if entities else []
+            params = {}
+            if entity_list:
+                cypher = """
+                MATCH (e)
+                WHERE e.name IN $entity_list OR any(ent IN $entity_list WHERE e.name CONTAINS ent)
+                WITH collect(e) AS seeds
+                UNWIND seeds AS s
+                MATCH path = (s)-[r*1..2]-(m)
+                UNWIND relationships(path) AS rel
+                RETURN DISTINCT startNode(rel).name AS source, type(rel) AS rel, endNode(rel).name AS target,
+                       coalesce(startNode(rel).is_deprecated, false) AS src_dep,
+                       coalesce(endNode(rel).is_deprecated, false) AS tgt_dep,
+                       coalesce(rel.quote, '') AS quote
+                LIMIT 60
+                """
+                params["entity_list"] = entity_list
+            elif scene == "vpn":
+                cypher = """
+                MATCH path = (e {name: 'VPN错误691'})-[r*1..2]-(m)
+                UNWIND relationships(path) AS rel
+                RETURN DISTINCT startNode(rel).name AS source, type(rel) AS rel, endNode(rel).name AS target,
+                       coalesce(startNode(rel).is_deprecated, false) AS src_dep,
+                       coalesce(endNode(rel).is_deprecated, false) AS tgt_dep,
+                       coalesce(rel.quote, '') AS quote
+                LIMIT 50
+                """
+            elif scene == "replaces":
+                cypher = """
+                MATCH (e)-[r:废止并替代|REPLACES]->(m)
+                RETURN e.name AS source, type(r) AS rel, m.name AS target,
+                       coalesce(e.is_deprecated, false) AS src_dep,
+                       coalesce(m.is_deprecated, false) AS tgt_dep,
+                       coalesce(r.quote, '') AS quote
+                LIMIT 50
+                """
+            elif scene == "cmdb":
+                cypher = """
+                MATCH path = (e {name: '财务报销系统'})-[*1..2]-(m)
+                UNWIND relationships(path) AS rel
+                RETURN DISTINCT startNode(rel).name AS source, type(rel) AS rel, endNode(rel).name AS target,
+                       coalesce(startNode(rel).is_deprecated, false) AS src_dep,
+                       coalesce(endNode(rel).is_deprecated, false) AS tgt_dep,
+                       coalesce(rel.quote, '') AS quote
+                LIMIT 50
+                """
+            else:
+                cypher = """
+                MATCH (n)-[r]->(m)
+                RETURN n.name AS source, type(r) AS rel, m.name AS target,
+                       coalesce(n.is_deprecated, false) AS src_dep,
+                       coalesce(m.is_deprecated, false) AS tgt_dep,
+                       coalesce(r.quote, '') AS quote
+                LIMIT 60
+                """
+
+            nodes_map = {}
+            edges = []
+
+            with kg.driver.session() as s:
+                records = list(s.run(cypher, **params) if params else s.run(cypher))
+                for rec in records:
+                    src = rec["source"]
+                    tgt = rec["target"]
+                    rel = rec["rel"]
+                    src_dep = rec["src_dep"]
+                    tgt_dep = rec["tgt_dep"]
+                    quote = rec["quote"]
+
+                    if src not in nodes_map:
+                        nodes_map[src] = {"id": src, "label": src, "is_deprecated": src_dep}
+                    if tgt not in nodes_map:
+                        nodes_map[tgt] = {"id": tgt, "label": tgt, "is_deprecated": tgt_dep}
+
+                    edges.append({
+                        "from": src,
+                        "to": tgt,
+                        "label": rel,
+                        "title": quote or rel,
+                    })
+
+            return JSONResponse(content={
+                "code": 0,
+                "data": {
+                    "nodes": list(nodes_map.values()),
+                    "edges": edges,
+                }
+            })
+        except Exception as e:
+            return JSONResponse(status_code=500, content={"code": 1, "error": str(e)})
 
     return app

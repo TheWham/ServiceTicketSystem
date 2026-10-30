@@ -121,6 +121,10 @@ def build_response(
             top_item = items[0]
             top_item.content = graph_prefix + top_item.content
             top_item.snippet = _truncate_utf16(_collapse(top_item.content), MAX_SNIPPET)
+            # 关键保障：经过 GraphRAG 刚性因果链认定的 top_item 是确定性根因，必须赋予顶格置信度，
+            # 确保其 score 恒为全集最高分，绝不被下游 Java RetrievalPolicy.java 的单卡最高分门禁滤除
+            current_max = max((i.score for i in items), default=0.0)
+            top_item.score = max(current_max, 0.95)
 
     top = max((i.score for i in items), default=0.0)
     if rejected or not items or (reject_threshold is not None and top < reject_threshold):

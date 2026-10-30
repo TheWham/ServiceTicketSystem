@@ -113,9 +113,9 @@ python tools/sync_wiki_to_rag_service.py
 python tools/sync_triples_to_neo4j.py
 ```
 
-### 2. 启动 GraphRAG vs 纯向量检索 对比评测工作台（:8350）
+### 2. 开发者离线评测工具（Benchmark Workbench，可选）
 
-提供基于 FastAPI + Vis.js 的同屏对比评测工作台：
+提供仅供开发者本地对照算法效果的独立对比工作台（客服前台页面直接通过 8310 端口调用 Neo4j，不依赖此工具）：
 
 ```bash
 python tools/run_compare_ui.py

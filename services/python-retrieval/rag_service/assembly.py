@@ -151,7 +151,7 @@ class ServiceAssembly:
 
         # ---- 6) 检索锁（可配置安全开关）----
         self.serialize_search = _env_bool("RAG_SERIALIZE_SEARCH", True)
-        self.lock_wait_seconds = float(os.environ.get("RAG_LOCK_WAIT_SECONDS", "1.0"))
+        self.lock_wait_seconds = float(os.environ.get("RAG_LOCK_WAIT_SECONDS", "5.0"))
         self._lock = threading.Lock()
         self.rerank_degraded_count = 0
         # 版本消歧解析器（懒构造，与检索器共用同一份语料与向量库）
@@ -215,16 +215,19 @@ class ServiceAssembly:
             except Exception as e:
                 print(f"⚠️ 自适应图谱推导执行异常（安全跳过）: {e}")
 
+        # 提前执行查询改写（在获取检索锁之外，避免 LLM 上游耗时阻塞检索锁导致并发 503）
+        rewrite = self.rewriter.rewrite(req.question) if self.rewriter else None
+
         # 步骤 4: 竞争锁保护下的主路双路混合检索（向量 + BM25 + Cross-Encoder 重排）
         if self.serialize_search:
             if not self._lock.acquire(timeout=self.lock_wait_seconds):
                 raise LockBusy(f"检索锁等待超过 {self.lock_wait_seconds}s")
             try:
-                res = self._run_search(req)
+                res = self._run_search(req, rewrite_query=rewrite)
             finally:
                 self._lock.release()
         else:
-            res = self._run_search(req)
+            res = self._run_search(req, rewrite_query=rewrite)
 
         if res.get("rerank_remote") is False:
             # 网关限流 → 启发式降级：内核拒答门会被跳过，服务层阈值判定仍生效（见 mapping.build_response）
@@ -239,9 +242,8 @@ class ServiceAssembly:
                               docstore=self.docstore,
                               reasoning_res=reasoning_res)
 
-    def _run_search(self, req: RetrievalRequest) -> Dict[str, Any]:
+    def _run_search(self, req: RetrievalRequest, rewrite_query: Optional[str] = None) -> Dict[str, Any]:
         rc = self.cfg.retrieval
-        rewrite = self.rewriter.rewrite(req.question) if self.rewriter else None
         return self.retriever.hybrid_rerank_search(
             query=req.question,
             final_top_k=req.top_k,
@@ -254,7 +256,7 @@ class ServiceAssembly:
             reject_threshold=rc.reject_threshold,
             heuristic_reject_threshold=rc.heuristic_reject_threshold,
             rerank_granularity=rc.rerank_granularity,
-            rewrite_query=rewrite,
+            rewrite_query=rewrite_query,
             gate=build_gate(rc),
         )
 

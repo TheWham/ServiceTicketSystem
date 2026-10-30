@@ -325,7 +325,7 @@ function getEdgeColor(rel) {
 async function fetchNeo4jSubgraph(entities = [], scene = 'custom') {
   try {
     const entParam = Array.isArray(entities) ? entities.join(',') : ''
-    const url = `http://127.0.0.1:8350/api/neo4j/graph_data?entities=${encodeURIComponent(entParam)}&scene=${encodeURIComponent(scene)}`
+    const url = `http://127.0.0.1:8310/api/neo4j/graph_data?entities=${encodeURIComponent(entParam)}&scene=${encodeURIComponent(scene)}`
     const res = await fetch(url, {
       signal: AbortSignal.timeout(1800)
     })
