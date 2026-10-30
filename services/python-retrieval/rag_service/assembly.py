@@ -22,6 +22,9 @@ from rag_pipeline.chunking.fingerprint import compute_wiki_fingerprint
 from rag_pipeline.config import REPO_ROOT, build_gate, config_fingerprint, load_config
 from rag_pipeline.docstore import build_docstore
 from rag_pipeline.embedding import KspEmbeddingProvider
+from rag_pipeline.graph.engine import Neo4jKnowledgeGraph
+from rag_pipeline.graph.reasoner import GraphEnhancedReasoner, extract_query_entities
+from rag_pipeline.graph.router import AdaptiveQueryRouter, IntentAnalysisResult
 from rag_pipeline.retrieval.hybrid import IndustrialHybridRetriever
 from rag_pipeline.retrieval.query_rewriter import QueryRewriter
 
@@ -119,6 +122,33 @@ class ServiceAssembly:
             except Exception as e:      # noqa: BLE001 —— 映射损坏按 DEGRADED 处理，不阻断检索
                 print(f"⚠️ 映射文件解析失败（{self.mapping_path}）：{e}，按未加载处理")
 
+        # ---- 5.5) 自适应意图与实体分析器（单维走双召回，多维走 GraphRAG）----
+        router_cache_dir = os.environ.get("RAG_ROUTER_CACHE_DIR") or str(
+            REPO_ROOT / "artifacts/evaluation/.llm_cache/router")
+        self.router = AdaptiveQueryRouter(
+            cache_dir=router_cache_dir,
+            timeout=float(os.environ.get("RAG_ROUTER_TIMEOUT", "3.0")),
+        )
+
+        # ---- 5.6) Neo4j 知识图谱与双轨推理器（可选依赖，故障优雅降级）----
+        self.kg: Optional[Neo4jKnowledgeGraph] = None
+        self.reasoner: Optional[GraphEnhancedReasoner] = None
+        try:
+            self.kg = Neo4jKnowledgeGraph()
+            node_cnt = self.kg.count_nodes()
+            if node_cnt == 0:
+                print("⚠️ Neo4j 节点数为 0，自动全量同步三元组构建知识图谱...")
+                try:
+                    from tools.sync_triples_to_neo4j import main as sync_neo4j_main
+                    sync_neo4j_main()
+                    node_cnt = self.kg.count_nodes()
+                except Exception as sync_err:
+                    print(f"⚠️ 自动同步知识图谱失败: {sync_err}")
+            self.reasoner = GraphEnhancedReasoner(kg=self.kg, docstore=self.docstore)
+            print(f"✅ Neo4j 知识图谱挂载就绪（节点数={node_cnt}）")
+        except Exception as e:
+            print(f"⚠️ Neo4j 图数据库未就绪或连接失败: {e}，图谱推理能力暂不可用")
+
         # ---- 6) 检索锁（可配置安全开关）----
         self.serialize_search = _env_bool("RAG_SERIALIZE_SEARCH", True)
         self.lock_wait_seconds = float(os.environ.get("RAG_LOCK_WAIT_SECONDS", "1.0"))
@@ -150,10 +180,42 @@ class ServiceAssembly:
         # 环境未安装 chromadb 时直读 chroma.sqlite3 中的真实向量
         return SimpleVectorStore.from_chroma_sqlite(str(self.chroma_dir), embed_provider)
 
-    # ------------------------------------------------------------------ 检索
+    # ------------------------------------------------------------------ 检索 
 
     def search(self, req: RetrievalRequest) -> RagRetrievalResponse:
-        """串行（可关）执行一次检索并装配契约响应。"""
+        """【链路二 · 在线主链路入口】Assembly.search(req)
+        
+        输入：RetrievalRequest 对象（包含 question, category_id, top_k 等）。
+        动作：
+          1. 步骤 1 (意图分流)：router.analyze(req.question)，单维事实跳过图谱（0ms开销），复合故障触发图谱；
+          2. 步骤 2 (实体去噪)：extract_query_entities 提取故障关键实体并执行泛化去噪；
+          3. 步骤 3 (双轨检索)：reasoner.retrieve_multihop_context 执行 Neo4j 2-Hop 剪枝遍历与 MySQL Docstore 全文回溯；
+          4. 步骤 4 (主路混合)：_run_search 执行向量库 + BM25 双路召回与 Cross-Encoder Rerank 精排；
+          5. 步骤 5 (契约装配)：build_response 将图谱推导因果链前置注入到 Top-1 切片正文并组装契约响应。
+        返回：RagRetrievalResponse 工业级对外标准检索响应体。
+        """
+        # 步骤 1: 自适应意图判别与实体抽取（单维走双路召回，多维走 GraphRAG）
+        intent_res = self.router.analyze(req.question)
+        reasoning_res = None
+
+        # 步骤 2 & 3: 仅在识别为复合故障且图谱组件就绪时，执行图谱多跳因果推导
+        if intent_res.needs_graph and self.kg and self.reasoner:
+            try:
+                # 动态获取图谱实体全集，杜绝静态死词表
+                candidate_nodes = self.kg.get_all_node_names()
+                extracted_terms = " ".join(intent_res.extracted_entities)
+                combined_query = f"{req.question} {extracted_terms}".strip()
+                # 步骤 2: 提取种子实体并泛化去噪
+                seed_entities = extract_query_entities(combined_query, candidate_nodes=candidate_nodes)
+                if seed_entities:
+                    # 步骤 3: 双轨检索（轨A图谱BFS事实抽取 + 轨B MySQL Docstore 全文回溯）
+                    reasoning_res = self.reasoner.retrieve_multihop_context(
+                        req.question, seed_entities=seed_entities, max_hops=2
+                    )
+            except Exception as e:
+                print(f"⚠️ 自适应图谱推导执行异常（安全跳过）: {e}")
+
+        # 步骤 4: 竞争锁保护下的主路双路混合检索（向量 + BM25 + Cross-Encoder 重排）
         if self.serialize_search:
             if not self._lock.acquire(timeout=self.lock_wait_seconds):
                 raise LockBusy(f"检索锁等待超过 {self.lock_wait_seconds}s")
@@ -170,10 +232,12 @@ class ServiceAssembly:
             print(f"⚠️ rerank 降级为启发式打分（累计 {self.rerank_degraded_count} 次）："
                   f"max={res.get('max_rerank_score')} 「{req.question[:40]}」")
 
+        # 步骤 5: 组装对外标准契约响应（并在 Top-1 片段前置注入图谱因果推导链）
         return build_response(res, wiki_mapping=self.mapping,
                               request_category_id=req.category_id,
                               reject_threshold=self.cfg.retrieval.reject_threshold,
-                              docstore=self.docstore)
+                              docstore=self.docstore,
+                              reasoning_res=reasoning_res)
 
     def _run_search(self, req: RetrievalRequest) -> Dict[str, Any]:
         rc = self.cfg.retrieval

@@ -6,6 +6,13 @@ from rag_pipeline.graph.schema import ITRelationEnum, GroundedTriple
 from rag_pipeline.graph.engine import Neo4jKnowledgeGraph
 
 
+@pytest.fixture(scope="module", autouse=True)
+def restore_graph_after_engine_tests():
+    yield
+    from tools.sync_triples_to_neo4j import main as sync_neo4j_main
+    sync_neo4j_main()
+
+
 @pytest.fixture
 def sample_graph():
     kg = Neo4jKnowledgeGraph()

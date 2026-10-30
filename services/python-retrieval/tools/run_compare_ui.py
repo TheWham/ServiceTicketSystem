@@ -242,7 +242,7 @@ def get_neo4j_graph_data(scene: str = "vpn"):
         kg, _, _, _ = get_components()
         if scene == "vpn":
             cypher = """
-            MATCH path = (e:Entity {name: 'VPN错误691'})-[r*1..2]-(m)
+            MATCH path = (e {name: 'VPN错误691'})-[r*1..2]-(m)
             UNWIND relationships(path) AS rel
             RETURN DISTINCT startNode(rel).name AS source, type(rel) AS rel, endNode(rel).name AS target,
                    coalesce(startNode(rel).is_deprecated, false) AS src_dep,
@@ -252,7 +252,7 @@ def get_neo4j_graph_data(scene: str = "vpn"):
             """
         elif scene == "replaces":
             cypher = """
-            MATCH (e:Entity)-[r:REPLACES]->(m:Entity)
+            MATCH (e)-[r:废止并替代|REPLACES]->(m)
             RETURN e.name AS source, type(r) AS rel, m.name AS target,
                    coalesce(e.is_deprecated, false) AS src_dep,
                    coalesce(m.is_deprecated, false) AS tgt_dep,
@@ -261,7 +261,7 @@ def get_neo4j_graph_data(scene: str = "vpn"):
             """
         elif scene == "cmdb":
             cypher = """
-            MATCH path = (e:Entity {name: '财务报销系统'})-[*1..2]-(m)
+            MATCH path = (e {name: '财务报销系统'})-[*1..2]-(m)
             UNWIND relationships(path) AS rel
             RETURN DISTINCT startNode(rel).name AS source, type(rel) AS rel, endNode(rel).name AS target,
                    coalesce(startNode(rel).is_deprecated, false) AS src_dep,
@@ -271,7 +271,7 @@ def get_neo4j_graph_data(scene: str = "vpn"):
             """
         else:
             cypher = """
-            MATCH (n:Entity)-[r]->(m:Entity)
+            MATCH (n)-[r]->(m)
             RETURN n.name AS source, type(r) AS rel, m.name AS target,
                    coalesce(n.is_deprecated, false) AS src_dep,
                    coalesce(m.is_deprecated, false) AS tgt_dep,

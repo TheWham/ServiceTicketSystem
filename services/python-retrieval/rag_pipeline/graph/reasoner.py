@@ -16,53 +16,59 @@ from .schema import canonicalize_entity
 
 logger = logging.getLogger(__name__)
 
-# 预设高频业务名词库（用于从 Query 快速捕获种子实体）
-COMMON_ENTITY_TERMS: List[str] = [
-    "VPN错误691", "错误代码691", "691", "800", "806", "807", "809", "868",
-    "SSL VPN", "L2TP", "IPSec", "PPTP", "IKEv2", "VPN",
-    "AD域控制器", "AD域账号锁定", "AD域账号", "AD域", "域账号锁定", "域账号", "域控",
-    "连续多次输错密码", "输错密码", "密码错误", "被锁定", "凭据失效", "密码失效", "密码过期",
-    "密码重置", "账号锁定", "双因子MFA认证", "MFA", "双因素认证",
-    "Outlook", "企业微信", "钉钉", "Teams", "OWA", "网页邮箱",
-    "移动端邮件客户端旧密码轮询", "手机企业邮箱", "企业邮箱", "手机邮箱", "邮箱凭据失效", "邮件客户端", "邮件",
-    "蓝屏", "死机", "内存溢出", "0x0000007B",
-    "财务报销系统", "财务系统", "报销系统", "ERP", "CRM", "OA",
-    "远程桌面(RDP)", "远程桌面", "RDP",
-    "共享文件夹访问被拒绝", "共享文件夹", "共享盘",
-    "多因素认证(MFA)", "多因素认证", "动态验证码", "Authenticator",
-    "网络打印机", "打印机", "打印队列", "脱机使用打印机", "Print Spooler", "DNS", "网关", "223.5.5.5", "10.0.0.1",
-    "IT网络基础运维组", "IT系统组", "桌面运维支持组", "网络组", "系统组",
-]
-
 GENERIC_COARSE_TERMS: Set[str] = {"VPN", "网络", "系统", "客户端", "服务", "服务器", "平台"}
 
 
 def extract_query_entities(
-    query: str, known_entities: Optional[List[str]] = None
+    query: str,
+    candidate_nodes: Optional[Any] = None,
+    kg: Optional[Any] = None,
+    known_entities: Optional[Any] = None,
 ) -> List[str]:
-    """从自然语言查询中提取种子实体列表。
+    """【链路二 · 步骤 2 种子实体提取与泛化去噪】extract_query_entities(query, candidate_nodes, kg)
     
-    具备泛化去噪与特化优先机制：当识别到具体故障现象、错误码或明确系统时，
-    自动过滤掉过宽的泛化粗粒度实体（如单独的'VPN'、'网络'），避免图谱遍历被无意义背景组件淹没。
+    输入：自然语言查询 query，以及动态实体候选池 candidate_nodes（源自 Neo4j 数据库）。
+    动作：
+      1. 正则匹配：抓取提问中的知识卡片编号（如 ITKB-VPN-001）；
+      2. 倒序长词匹配：基于 Neo4j 动态实体词池进行最大前向长词扫描；
+      3. 别名消歧归一：反查 ENTITY_ALIAS_MAP 映射为规范实体（如 '691' -> 'VPN错误691'）；
+      4. 泛化实体去噪剪枝：识别到具体故障（如 'VPN错误691'）时，自动剥离无意义粗粒度词（如 'VPN'、'网络'）；
+      5. 优先级排序：特化故障与关键症状排在前面。
+    返回：精准、去噪后的种子实体列表（如 ['VPN错误691']）。
     """
     found_entities: Set[str] = set()
 
-    # 1. 提取 ITKB 卡片编号（如 ITKB-VPN-001）
+    # 步骤 2.1: 提取 ITKB 卡片编号（如 ITKB-VPN-001）
     for cid in CARD_ID_PATTERN.findall(query):
         found_entities.add(cid)
 
-    # 2. 匹配业务词表（按长度倒序，优先长词匹配）
-    dict_pool = known_entities or COMMON_ENTITY_TERMS
+    # 步骤 2.2: 动态候选池解析：优先使用传入的 candidate_nodes，其次尝试从 kg 实例动态获取
+    pool_source = candidate_nodes if candidate_nodes is not None else known_entities
+    if pool_source is None and kg is not None and hasattr(kg, "get_all_node_names"):
+        pool_source = kg.get_all_node_names()
+
+    dict_pool = set(pool_source or [])
+
+    # 步骤 2.3: 匹配业务动态节点池（按长度倒序，长词优先匹配）
     for term in sorted(dict_pool, key=len, reverse=True):
+        if not term:
+            continue
         if term.lower() in query.lower():
             canon = canonicalize_entity(term)
             found_entities.add(canon)
 
-    # 3. 泛化实体剪枝：若存在具体实体（如 VPN错误691），移除粗粒度泛化词（如 VPN）
+    # 步骤 2.4: 别名消歧反查：若口语别名出现在提问中，映射至标准规范实体
+    from .schema import ENTITY_ALIAS_MAP
+    for alias, target in sorted(ENTITY_ALIAS_MAP.items(), key=lambda x: len(x[0]), reverse=True):
+        if alias.lower() in query.lower():
+            if not dict_pool or target in dict_pool:
+                found_entities.add(target)
+
+    # 步骤 2.5: 泛化实体剪枝去噪：若存在具体故障（如 VPN错误691），移除粗粒度泛化词（如 VPN、网络）
     specific_entities = {e for e in found_entities if e not in GENERIC_COARSE_TERMS}
     active_entities = specific_entities if specific_entities else found_entities
 
-    # 4. 排序：特化故障与关键症状优先排在前面，长词优先
+    # 步骤 2.6: 优先级排序：特化故障与关键症状优先排在前面
     def entity_priority(e: str) -> tuple:
         is_error = 0 if any(k in e for k in ["错误", "691", "锁定", "失败", "超时", "轮询"]) else 1
         return (is_error, -len(e), e)
@@ -104,21 +110,30 @@ class GraphEnhancedReasoner:
         seed_entities: Optional[List[str]] = None,
         max_hops: int = 2,
     ) -> Dict[str, Any]:
-        """执行双轨检索：图谱 BFS 事实抽取 + 关联卡片联动 MySQL Docstore 批量回溯。"""
-        # 1. 确定种子实体
-        seeds = seed_entities or extract_query_entities(query)
+        """【链路二 · 步骤 3 双轨检索器】retrieve_multihop_context(query, seed_entities, max_hops)
+        
+        输入：用户提问 query，种子实体列表 seed_entities，最大跳数 max_hops（默认2）。
+        动作：
+          1. 确定种子：调用 extract_query_entities 获取精准种子实体；
+          2. 轨 A（图谱拓扑事实）：调用 kg.extract_subgraph_facts 执行 Cypher 2-Hop 遍历与 is_deprecated 剪枝；
+          3. 轨 B（顺藤摸瓜回溯父卡）：调用 kg.get_associated_card_ids 获取子图涉及的 ITKB 卡号；
+          4. 联动拉取正文：调用 docstore.mget 批量从 MySQL Docstore 中取出完整父卡未切片正文。
+        返回：包含 graph_facts, associated_card_ids, docstore_cards 的综合上下文字典。
+        """
+        # 步骤 3.1: 确定查询种子实体
+        seeds = seed_entities or extract_query_entities(query, kg=self.kg)
 
-        # 2. 轨 A: 图谱子图 BFS 遍历
+        # 步骤 3.2【轨 A】: Neo4j Cypher 原生 1~2 Hop 拓扑遍历与废弃版本剪枝
         graph_facts = self.kg.extract_subgraph_facts(
             seeds, max_hops=max_hops, prune_deprecated=True
         )
 
-        # 3. 轨 B: 从子图中发现所有关联卡片 ID
+        # 步骤 3.3【轨 B】: 从子图命中的节点中反查关联的知识卡片编号 (ITKB-xxx)
         associated_card_ids = self.kg.get_associated_card_ids(
             seeds, max_hops=max_hops, prune_deprecated=True
         )
 
-        # 4. 联动 MySQL Docstore 批量拉取父卡全文
+        # 步骤 3.4: 联动 MySQL Docstore 批量拉取完整父卡未切片正文 (解决 Chunk 碎片问题)
         docstore_cards: Dict[str, str] = {}
         if self.docstore and associated_card_ids:
             docstore_cards = self.docstore.mget(associated_card_ids)

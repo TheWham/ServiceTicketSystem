@@ -34,6 +34,7 @@ class Neo4jKnowledgeGraph:
         self.user = user or os.environ.get("NEO4J_USER", "neo4j")
         self.password = password or os.environ.get("NEO4J_PASSWORD", "neo4j123456")
         self.database = database
+        self._cached_node_names: Optional[Set[str]] = None
 
         try:
             self.driver = neo4j.GraphDatabase.driver(
@@ -51,13 +52,13 @@ class Neo4jKnowledgeGraph:
         self._init_schema()
 
     def _init_schema(self) -> None:
-        """初始化图数据库唯一约束与核心索引。"""
+        """初始化图数据库唯一约束与核心索引（采用标准中文标签体系 :实体）。"""
         with self.driver.session(database=self.database) as session:
             session.run(
-                "CREATE CONSTRAINT IF NOT EXISTS FOR (e:Entity) REQUIRE e.name IS UNIQUE"
+                "CREATE CONSTRAINT IF NOT EXISTS FOR (e:实体) REQUIRE e.name IS UNIQUE"
             )
             session.run(
-                "CREATE INDEX IF NOT EXISTS FOR (e:Entity) ON (e.is_deprecated)"
+                "CREATE INDEX IF NOT EXISTS FOR (e:实体) ON (e.is_deprecated)"
             )
 
     def close(self) -> None:
@@ -67,13 +68,24 @@ class Neo4jKnowledgeGraph:
 
     def clear(self) -> None:
         """清空图谱全量数据（主要用于测试隔离与全量重建）。"""
+        self._cached_node_names = None
         with self.driver.session(database=self.database) as session:
             session.run("MATCH (n) DETACH DELETE n")
+
+    def get_all_node_names(self, refresh: bool = False) -> Set[str]:
+        """获取图谱中所有实体的唯一名称集合（带进程内缓存，彻底杜绝硬编码静态词库）。"""
+        if self._cached_node_names is not None and not refresh:
+            return self._cached_node_names
+
+        with self.driver.session(database=self.database) as session:
+            result = session.run("MATCH (e:实体) RETURN e.name AS name")
+            self._cached_node_names = {record["name"] for record in result if record.get("name")}
+            return self._cached_node_names
 
     def count_nodes(self) -> int:
         """统计实体节点总数。"""
         with self.driver.session(database=self.database) as session:
-            result = session.run("MATCH (e:Entity) RETURN count(e) AS cnt")
+            result = session.run("MATCH (e:实体) RETURN count(e) AS cnt")
             record = result.single()
             return int(record["cnt"]) if record else 0
 
@@ -87,7 +99,7 @@ class Neo4jKnowledgeGraph:
     def count_deprecated_nodes(self) -> int:
         """统计标记废弃的节点总数。"""
         with self.driver.session(database=self.database) as session:
-            result = session.run("MATCH (e:Entity {is_deprecated: true}) RETURN count(e) AS cnt")
+            result = session.run("MATCH (e:实体 {is_deprecated: true}) RETURN count(e) AS cnt")
             record = result.single()
             return int(record["cnt"]) if record else 0
 
@@ -95,7 +107,7 @@ class Neo4jKnowledgeGraph:
         """精确检查指定字面名称的实体节点是否存在。"""
         with self.driver.session(database=self.database) as session:
             result = session.run(
-                "MATCH (e:Entity {name: $name}) RETURN count(e) > 0 AS exists",
+                "MATCH (e:实体 {name: $name}) RETURN count(e) > 0 AS exists",
                 name=name,
             )
             record = result.single()
@@ -107,7 +119,17 @@ class Neo4jKnowledgeGraph:
         return self.has_exact_node(canon)
 
     def add_triple(self, triple: GroundedTriple) -> None:
-        """向 Neo4j 添加单条三元组，自动执行消歧与废止识别。"""
+        """【链路一 · 步骤 4.4 幂等写入】add_triple(triple)
+        
+        输入：GroundedTriple 单条三元组对象（包含 head, relation, tail, evidence_quote）。
+        动作：
+          1. 实体消歧：利用 canonicalize_entity 对 head 和 tail 执行规范化别名统一；
+          2. 废止打标：若 relation 为 REPLACES 或包含废止关键字，设置 is_deprecated=true 标记位；
+          3. 原生 Cypher MERGE：
+             MERGE (h:实体 {name: $head}) ... MERGE (t:实体 {name: $tail}) ... MERGE (h)-[r]->(t)
+             保证节点与边写入时具备幂等性，重复灌库不产生多余节点与重边。
+        返回：None。
+        """
         head = canonicalize_entity(triple.head)
         tail = canonicalize_entity(triple.tail)
         rel_val = (
@@ -128,10 +150,10 @@ class Neo4jKnowledgeGraph:
             dep_head = True
 
         cypher = f"""
-        MERGE (h:Entity {{name: $head}})
+        MERGE (h:实体 {{name: $head}})
         ON CREATE SET h.is_deprecated = $dep_head
         ON MATCH SET h.is_deprecated = coalesce(h.is_deprecated, false) OR $dep_head
-        MERGE (t:Entity {{name: $tail}})
+        MERGE (t:实体 {{name: $tail}})
         ON CREATE SET t.is_deprecated = $dep_tail
         ON MATCH SET t.is_deprecated = coalesce(t.is_deprecated, false) OR $dep_tail
         MERGE (h)-[r:{safe_rel}]->(t)
@@ -167,7 +189,19 @@ class Neo4jKnowledgeGraph:
         max_hops: int = 2,
         prune_deprecated: bool = True,
     ) -> List[str]:
-        """从种子实体出发，执行 1~2 Hop Cypher 原生子图遍历，输出格式化事实。"""
+        """【链路二 · 步骤 3.2 轨 A：图谱拓扑遍历与剪枝】extract_subgraph_facts(seed_entities, max_hops, prune_deprecated)
+        
+        输入：seed_entities（自然语言查询中提取的种子实体列表），max_hops（最大跳数，默认2）。
+        动作：
+          1. 种子归一化：通过 canonicalize_entity 标准化种子实体名并核验存在性；
+          2. 执行 Neo4j 原生 Cypher 变长路径遍历：
+             MATCH path = (seed:实体 {name: $seed})-[r*1..2]-(target:实体)
+          3. 执行废弃版本物理剪枝：
+             WHERE NONE(n IN nodes(path)[1..-1] WHERE coalesce(n.is_deprecated, false) = true)
+             路径中只要途经已被废弃的旧制度/老卡片节点，整条后续路径立即截断！
+          4. 格式化提取出的前向/反向关系及 evidence_quote 原文佐证。
+        返回：格式化的事实字符串列表（如：'【因果事实】VPN错误691 ──(诱发根因)──> AD域账号锁定'）。
+        """
         canonical_seeds = [
             canonicalize_entity(e)
             for e in seed_entities
@@ -180,7 +214,7 @@ class Neo4jKnowledgeGraph:
         seen_edges: Set[Tuple[str, str, str]] = set()
 
         cypher = f"""
-        MATCH path = (seed:Entity {{name: $seed}})-[r*1..{max_hops}]-(target:Entity)
+        MATCH path = (seed:实体 {{name: $seed}})-[r*1..{max_hops}]-(target:实体)
         WHERE NOT $prune OR (
             length(path) = 1
             OR NONE(n IN nodes(path)[1..-1] WHERE coalesce(n.is_deprecated, false) = true)
@@ -223,7 +257,15 @@ class Neo4jKnowledgeGraph:
         max_hops: int = 2,
         prune_deprecated: bool = True,
     ) -> List[str]:
-        """从种子实体的子图中提取所有关联的有效 Wiki 卡片 ID（用于 MySQL Docstore 联动）。"""
+        """【链路二 · 步骤 3.3 轨 B：顺藤摸瓜找父卡】get_associated_card_ids(seed_entities, max_hops, prune_deprecated)
+        
+        输入：seed_entities（种子实体列表）。
+        动作：
+          1. 沿种子实体执行 1~2 Hop Cypher 遍历并排除废弃节点；
+          2. 使用正则 CARD_ID_PATTERN 匹配出路径中包含的所有知识卡片 ID（如 ITKB-VPN-001）；
+          3. 去重排序，交由下游 MySQL Docstore 批量回溯拉取完整未切片父卡正文。
+        返回：去重后的知识卡片编号列表（如 ['ITKB-ACC-001', 'ITKB-VPN-001']）。
+        """
         canonical_seeds = [
             canonicalize_entity(e)
             for e in seed_entities
@@ -235,7 +277,7 @@ class Neo4jKnowledgeGraph:
         card_ids: Set[str] = set()
 
         cypher = f"""
-        MATCH path = (seed:Entity {{name: $seed}})-[r*1..{max_hops}]-(target:Entity)
+        MATCH path = (seed:实体 {{name: $seed}})-[r*1..{max_hops}]-(target:实体)
         WHERE NOT $prune OR (
             length(path) = 1
             OR NONE(n IN nodes(path)[1..-1] WHERE coalesce(n.is_deprecated, false) = true)
@@ -282,7 +324,7 @@ class Neo4jKnowledgeGraph:
         seen_edges: Set[Tuple[str, str, str]] = set()
 
         cypher = f"""
-        MATCH path = (seed:Entity {{name: $seed}})-[r*1..{max_hops}]-(target:Entity)
+        MATCH path = (seed:实体 {{name: $seed}})-[r*1..{max_hops}]-(target:实体)
         WHERE NOT $prune OR (
             length(path) = 1
             OR NONE(n IN nodes(path)[1..-1] WHERE coalesce(n.is_deprecated, false) = true)

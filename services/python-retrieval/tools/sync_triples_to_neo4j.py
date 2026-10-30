@@ -84,7 +84,7 @@ BENCHMARK_SCENARIO_TRIPLES = [
 ]
 
 
-def parse_args():
+def parse_args(args=None):
     parser = argparse.ArgumentParser(description="同步知识图谱三元组至 Neo4j")
     parser.add_argument(
         "--input",
@@ -98,16 +98,33 @@ def parse_args():
         default=True,
         help="导入前清空现有图谱（默认开启）",
     )
-    return parser.parse_args()
+    if args is None:
+        # 当由 pytest 或其它宿主进程调用时，避免解析未识别的宿主命令行参数
+        if any("pytest" in arg for arg in sys.argv):
+            return parser.parse_args([])
+        return parser.parse_args()
+    return parser.parse_args(args)
 
 
-def main():
-    args = parse_args()
+def main(args=None):
+    """【链路一 · 步骤 4 全量同步至 Neo4j 图数据库】
+    
+    输入：knowledge_graph_triples.json 离线三元组缓存文件
+    动作：
+      1. 读取并校验离线生成的 JSON 三元组（校验 relation 是否属于 10 种枚举）；
+      2. 注入基准场景特定拓扑事实（CMDB 资产网络依赖、主责运维组与新旧卡替代废止链）；
+      3. 初始化 Neo4jKnowledgeGraph 驱动连接池并自动执行 Schema 初始化（创建 :实体 唯一约束与索引）；
+      4. 批量调用 kg.load_from_triples(triples, batch_size=100) 幂等 MERGE 写入节点、边及 is_deprecated 标记；
+      5. 自动执行 enrich_labels 注入纯中文语义标签体系（:知识卡片 / :核心根因 / :故障症状 / :业务系统 / :处置动作 / :运维团队）。
+    返回：导入节点数、关系数、标记废弃节点数及总耗时报告。
+    """
+    args = parse_args(args)
     input_path = Path(args.input)
     if not input_path.exists():
         logger.error("未找到三元组文件: %s", input_path)
         sys.exit(1)
 
+    # 4.1 读取并校验离线生成的 JSON 三元组缓存
     logger.info("读取三元组缓存: %s", input_path)
     with open(input_path, "r", encoding="utf-8") as f:
         raw_list = json.load(f)
@@ -126,20 +143,26 @@ def main():
         except Exception as e:
             logger.warning("跳过非法三元组 %s: %s", item, e)
 
-    # 注入基准评测场景特定拓扑事实
+    # 4.2 注入跨卡多跳基准评测拓扑事实（CMDB网络依赖、主责运维组与废止链）
     triples.extend(BENCHMARK_SCENARIO_TRIPLES)
 
     logger.info("成功解析有效三元组共 %d 条", len(triples))
 
     start_time = time.time()
+    # 4.3 初始化 Neo4j 驱动连接池并自动创建 Schema 唯一约束与索引
     kg = Neo4jKnowledgeGraph()
 
     if args.clear:
         logger.info("清空 Neo4j 现有数据...")
         kg.clear()
 
+    # 4.4 批量 MERGE 写入节点、边及废弃标志位 (is_deprecated)
     logger.info("开始批量写入 Neo4j...")
     kg.load_from_triples(triples, batch_size=100)
+
+    # 4.5 自动执行精细化纯中文语义标签注入 (:知识卡片 / :核心根因 / :故障症状 / :业务系统 / :处置动作 / :运维团队)
+    from enrich_neo4j_labels import enrich_labels
+    enrich_labels(uri=kg.uri, user=kg.user, password=kg.password)
 
     elapsed = time.time() - start_time
     nodes_cnt = kg.count_nodes()

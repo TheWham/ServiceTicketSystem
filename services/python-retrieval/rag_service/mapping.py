@@ -33,6 +33,23 @@ def _collapse(text: Any) -> str:
     return " ".join(str(text or "").split())
 
 
+def _truncate_utf16(text: str, max_code_units: int) -> str:
+    """按 UTF-16 编码单元长度截断（严密对齐 Java String.length() 限制与生僻字符/Emoji 场景）。"""
+    if not text:
+        return ""
+    if len(text) <= max_code_units and all(ord(c) <= 0xFFFF for c in text):
+        return text[:max_code_units]
+    code_units = 0
+    chars = []
+    for c in text:
+        cu = 2 if ord(c) > 0xFFFF else 1
+        if code_units + cu > max_code_units:
+            break
+        code_units += cu
+        chars.append(c)
+    return "".join(chars)
+
+
 def build_response(
     search_res: Dict[str, Any],
     *,
@@ -40,20 +57,21 @@ def build_response(
     request_category_id: Optional[str] = None,
     reject_threshold: Optional[float] = None,
     docstore: Optional[Any] = None,
+    reasoning_res: Optional[Dict[str, Any]] = None,
 ) -> RagRetrievalResponse:
-    """把 hybrid_rerank_search 的返回装配为 RagRetrievalResponse。
-
-    拒答判定（服务层裁定，见 tests/test_refusal_policy.py）：
-        refuse ⇔ 内核已拒答 ∨ 无候选 ∨ max(score) < reject_threshold
-    刻意不以 "是否走了远程 rerank" 为条件——网关 429 限流打满在线收紧后的预算时，
-    rerank 会降级为启发式打分，内核的拒答门（依赖 last_used_remote）随之被跳过，
-    "知识库未记载"的对抗题就会被误作答。远程成功时本判定与内核一致（复现 Day14 基线）。
-
-    Args:
-        search_res: IndustrialHybridRetriever.hybrid_rerank_search 的返回字典。
-        wiki_mapping: {wiki_id: {articleId, versionId, categoryId, wiki_version, ...}}。
-        request_category_id: 调用方（Java）传入的类目编码；仅回填，不据此做元数据硬过滤。
-        reject_threshold: 低置信拒答阈值（pipeline.yaml retrieval.reject_threshold）。
+    """【链路二 · 步骤 5 契约响应装配与图谱注入】build_response(...)
+    
+    输入：
+      - search_res: 主路混合检索精排结果字典；
+      - wiki_mapping: 卡片 ID 与文章版本映射；
+      - docstore: MySQL Docstore 实例；
+      - reasoning_res: 图谱多跳推导上下文字典（包含 graph_facts 与 seed_entities）。
+    动作：
+      1. 组装标准化 RetrievedChunk 列表，补充 parent_content、版本号与归一化分值；
+      2. 检查 reasoning_res：若存在图谱因果事实，格式化拓扑因果推导链为 graph_prefix，
+         前置注入拼接至 Top-1 切片正文（top_item.content = graph_prefix + top_item.content）；
+      3. 低置信度拒答门裁决（若 top_score < reject_threshold 则安全拒答）。
+    返回：RagRetrievalResponse 对外标准检索契约响应。
     """
     final_results = search_res.get("final_results") or []
     rejected = bool(search_res.get("rejected", False))
@@ -79,11 +97,30 @@ def build_response(
             version_id=version_id,
             index_version=version_id,                     # 契约：indexVersion 恒等于 versionId
             title=title[:MAX_TITLE],
-            snippet=_collapse(content)[:MAX_SNIPPET] or title,
+            snippet=_truncate_utf16(_collapse(content), MAX_SNIPPET) or title,
             content=content if content.strip() else title,   # 原样保留 Markdown 结构供下游拼 grounding
             category_id=request_category_id or entry.get("categoryId") or None,
             score=_clamp_score(it.get("rerank_score")),
         ))
+
+    # 【链路二 · 步骤 5 图谱因果推导结论注入】
+    # 当识别为复合多维故障且存在图谱事实时，将不可违背的刚性拓扑因果链前置注入至首条切片正文
+    if reasoning_res and items:
+        facts = reasoning_res.get("graph_facts") or []
+        seeds = reasoning_res.get("seed_entities") or []
+        if facts:
+            top_facts_str = "\n".join(f"- {f}" for f in facts[:4])
+            seeds_str = "、".join(seeds[:5])
+            graph_prefix = (
+                f"【知识图谱因果推导】\n"
+                f"• 识别关联实体：{seeds_str}\n"
+                f"• 拓扑因果推导链：\n{top_facts_str}\n"
+                f"• 排查处置建议：建议优先顺延上述因果链处置根因节点。\n"
+                f"---\n\n"
+            )
+            top_item = items[0]
+            top_item.content = graph_prefix + top_item.content
+            top_item.snippet = _truncate_utf16(_collapse(top_item.content), MAX_SNIPPET)
 
     top = max((i.score for i in items), default=0.0)
     if rejected or not items or (reject_threshold is not None and top < reject_threshold):

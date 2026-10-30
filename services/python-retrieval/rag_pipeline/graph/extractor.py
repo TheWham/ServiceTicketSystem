@@ -19,7 +19,12 @@ logger = logging.getLogger(__name__)
 
 
 def parse_card_markdown(text: str) -> Tuple[Dict[str, Any], str]:
-    """解析 Markdown 卡片，分离 YAML frontmatter 与正文。"""
+    """【链路一 · 步骤 2.1】parse_card_markdown(raw_text)
+    
+    输入：卡片原始 Markdown 文本。
+    动作：通过 --- 分隔符将文本切分为两部分：顶部的 YAML Frontmatter（元数据）与正文 Body。
+    返回：(meta, body) 字典与字符串。
+    """
     meta: Dict[str, Any] = {}
     body = text.strip()
 
@@ -37,13 +42,23 @@ def parse_card_markdown(text: str) -> Tuple[Dict[str, Any], str]:
 
 
 def inject_frontmatter_governance_triples(meta: Dict[str, Any]) -> List[GroundedTriple]:
-    """从卡片元数据中提取确定性制度治理与版本关系三元组。"""
+    """【链路一 · 步骤 2.2 规则轨：100% 确定性】inject_frontmatter_governance_triples(meta)
+    
+    输入：元数据字典 meta。
+    动作：
+      1. 读取 replaces 字段（如果有废止旧卡），直接实例化 GroundedTriple：
+         head=新卡ID, relation=废止并替代, tail=旧卡ID；
+         同时生成 head=旧卡ID, relation=生效状态, tail=已废止下线。
+      2. 读取 status 字段，生成 生效状态 三元组（现行有效 / 已废止）。
+      3. 读取 category 字段，生成 依赖系统组件 关联三元组。
+    返回：确定性的治理类三元组列表（不经大模型，零幻觉）。
+    """
     triples: List[GroundedTriple] = []
     card_id = meta.get("id")
     if not card_id:
         return triples
 
-    # 1. 废止与替代关系 (replaces)
+    # 1. 废止与替代关系 (replaces): A 废止并替代 B，同时打标 B 为“已废止下线”
     replaces = meta.get("replaces") or []
     if isinstance(replaces, str):
         try:
@@ -71,7 +86,7 @@ def inject_frontmatter_governance_triples(meta: Dict[str, Any]) -> List[Grounded
                 )
             )
 
-    # 2. 现行卡片生效状态
+    # 2. 现行卡片生效状态 (STATUS_IS)
     status = meta.get("status", "现行有效")
     triples.append(
         GroundedTriple(
@@ -82,7 +97,7 @@ def inject_frontmatter_governance_triples(meta: Dict[str, Any]) -> List[Grounded
         )
     )
 
-    # 3. 关联服务分类
+    # 3. 关联服务分类 (DEPENDS_ON)
     category = meta.get("category")
     if category:
         triples.append(
@@ -100,7 +115,12 @@ def inject_frontmatter_governance_triples(meta: Dict[str, Any]) -> List[Grounded
 def validate_triples_against_source(
     triples: List[GroundedTriple], source_text: str
 ) -> List[GroundedTriple]:
-    """严格原文佐证比对 (Quote Grounding)：原句在原文中无法逐字匹配时拦截丢弃。"""
+    """【链路一 · 步骤 2.4 防幻觉拦截门】validate_triples_against_source(llm_triples, raw_text)
+    
+    输入：LLM 提取的三元组列表及原始正文。
+    动作：循环遍历三元组，检查 t.evidence_quote 是否能在正文中逐字全文匹配。如果大模型凭空捏造原句，该三元组在此处被直接拦截抛弃。
+    返回：通过严格佐证检验的高信度三元组。
+    """
     validated: List[GroundedTriple] = []
     # 预处理空白便于容错比对
     normalized_source = re.sub(r"\s+", " ", source_text)
@@ -177,7 +197,13 @@ def extract_card_triples_with_llm(
     client: Any = None,
     model: str = "deepseek-v4.1-flash",
 ) -> List[GroundedTriple]:
-    """使用 LLM 对单张卡片进行严格模式三元组提取（带重试）。"""
+    """【链路一 · 步骤 2.3 LLM 轨：因果排查】extract_card_triples_with_llm(card_id, meta, raw_text, client, model)
+    
+    输入：卡片编号、候选实体池、正文文本。
+    动作：组装受控 Prompt，调用 client.chat.completions.create(response_format={"type": "json_object"})，
+          大模型根据 10 种枚举提取因果排查三元组，并严格输出每个三元组在原文中的原句摘录 evidence_quote。
+    返回：大模型提取的三元组对象列表。
+    """
     candidate_entities = card_meta.get("entities", [])
     user_prompt = f"""【卡片编号】：{card_id}
 【卡片标题】：{card_meta.get('title', '')}
@@ -228,7 +254,20 @@ def extract_all_wiki_cards(
     use_cache: bool = True,
     max_workers: int = 5,
 ) -> List[GroundedTriple]:
-    """批量抽取 Wiki 目录下全部卡片，支持并发与本地缓存。"""
+    """【链路一 · 第一步 & 第三步】卡片批量读取与多线程分发、去重与缓存
+    
+    执行入口：extractor.py 的 extract_all_wiki_cards(wiki_dir, cache_path, client, model)
+    1. 扫描 artifacts/output/wiki/ 目录下的所有 *.md 知识卡片文件；
+    2. 创建多线程池 ThreadPoolExecutor(max_workers=5)；
+    3. 对每个卡片文件并发调用子任务函数：process_one_card(card_file)。
+       在 process_one_card(card_file) 内部，依次完成以下 4 个连续函数调用：
+         - parse_card_markdown(raw_text)
+         - inject_frontmatter_governance_triples(meta)
+         - extract_card_triples_with_llm(...)
+         - validate_triples_against_source(...)
+    4. 回收多线程抽取结果，执行全局唯一哈希去重；
+    5. 调用 save_triples_cache 持久化到 knowledge_graph_triples.json 本地缓存。
+    """
     if use_cache and cache_path.exists():
         cached = load_triples_cache(cache_path)
         if cached:
@@ -242,16 +281,20 @@ def extract_all_wiki_cards(
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     def process_one_card(card_file: Path) -> List[GroundedTriple]:
+        # 【第二步：单卡片解析与双轨抽取（规则轨 + LLM 轨）】
         raw_text = card_file.read_text(encoding="utf-8")
+        
+        # 1. parse_card_markdown(raw_text): 切分元数据与正文
         meta, body = parse_card_markdown(raw_text)
         card_id = meta.get("id") or card_file.stem
 
         card_triples: List[GroundedTriple] = []
-        # 1. 注入元数据确定性治理关系
+        # 2. inject_frontmatter_governance_triples(meta): 规则轨，提取确定性治理关系
         gov_triples = inject_frontmatter_governance_triples(meta)
         card_triples.extend(gov_triples)
 
-        # 2. 驱动 LLM 抽取正文因果排查关系
+        # 3. extract_card_triples_with_llm: LLM 轨，提取因果排查关系
+        # 4. validate_triples_against_source: 防幻觉拦截门，原文逐字比对
         llm_count = 0
         if client:
             llm_triples = extract_card_triples_with_llm(card_id, meta, raw_text, client=client, model=model)

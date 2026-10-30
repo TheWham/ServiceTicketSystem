@@ -11,6 +11,13 @@ from rag_pipeline.graph.reasoner import (
 )
 
 
+@pytest.fixture(scope="module", autouse=True)
+def restore_graph_after_reasoner_tests():
+    yield
+    from tools.sync_triples_to_neo4j import main as sync_neo4j_main
+    sync_neo4j_main()
+
+
 @pytest.fixture
 def mock_reasoner() -> GraphEnhancedReasoner:
     kg = Neo4jKnowledgeGraph()

@@ -560,17 +560,17 @@
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
             <div class="p-3 bg-slate-900 border border-slate-800 rounded-lg space-y-1.5">
               <div class="font-bold text-slate-200">🔍 探索 1：VPN 691 因果拓扑网</div>
-              <code class="block p-2 bg-slate-950 text-emerald-300 font-mono text-[11px] rounded border border-slate-800 overflow-x-auto select-all">MATCH path = (e:Entity {name: 'VPN错误691'})-[r*1..2]-(m) RETURN path</code>
+              <code class="block p-2 bg-slate-950 text-emerald-300 font-mono text-[11px] rounded border border-slate-800 overflow-x-auto select-all">MATCH path = (e {name: 'VPN错误691'})-[r*1..2]-(m) RETURN path</code>
               <p class="text-[11px] text-slate-400">直观查看 VPN 691 关联的 AD 账号锁定、手机邮箱密码轮询因果链。</p>
             </div>
             <div class="p-3 bg-slate-900 border border-slate-800 rounded-lg space-y-1.5">
               <div class="font-bold text-slate-200">✂️ 探索 2：知识卡片废止与替代网络</div>
-              <code class="block p-2 bg-slate-950 text-cyan-300 font-mono text-[11px] rounded border border-slate-800 overflow-x-auto select-all">MATCH (e:Entity)-[r:REPLACES]->(m:Entity) RETURN e, r, m</code>
+              <code class="block p-2 bg-slate-950 text-cyan-300 font-mono text-[11px] rounded border border-slate-800 overflow-x-auto select-all">MATCH (e)-[r:废止并替代]->(m) RETURN e, r, m</code>
               <p class="text-[11px] text-slate-400">查看现行 Wiki 卡片如何替代废止旧规，以及被标记 is_deprecated 的节点。</p>
             </div>
             <div class="p-3 bg-slate-900 border border-slate-800 rounded-lg space-y-1.5">
               <div class="font-bold text-slate-200">🏢 探索 3：CMDB 财务报销系统依赖拓扑</div>
-              <code class="block p-2 bg-slate-950 text-amber-300 font-mono text-[11px] rounded border border-slate-800 overflow-x-auto select-all">MATCH path = (e:Entity {name: '财务报销系统'})-[*1..2]-(m) RETURN path</code>
+              <code class="block p-2 bg-slate-950 text-amber-300 font-mono text-[11px] rounded border border-slate-800 overflow-x-auto select-all">MATCH path = (e {name: '财务报销系统'})-[*1..2]-(m) RETURN path</code>
               <p class="text-[11px] text-slate-400">查看报销系统、SSL VPN、主责 IT系统组之间的网络与责任依赖关系。</p>
             </div>
           </div>
