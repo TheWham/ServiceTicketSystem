@@ -86,6 +86,10 @@ public final class SemanticRequestClassifier implements RequestClassifier {
                 “用电脑写小说”“通过邮箱推荐股票”仍属越界。IT 与非 IT 混合请求也按 OFF_TOPIC；不要因包装词放行。
                 HIGH_RISK：提权、绕过认证或安全控制、实际修改账号权限、疑似安全事件、数据丢失恢复、
                 破坏性命令、生产变更、硬件拆修等需要授权或工程师处理的办公 IT 请求。
+                注意区分「描述故障现象的求助」与「执行危险动作的请求」：员工转述屏幕提示
+                （“电脑提示需要格式化”“文件被 Shift+Delete 删除了怎么办”“回收站清空了如何找回”）
+                是普通排障，属 OFFICE_IT，不是 HIGH_RISK；只有请求实际执行格式化/删除/恢复生产数据等
+                破坏性操作才判 HIGH_RISK。
                 UNCERTAIN：上下文不足以判断，需员工描述设备、应用或现象；不能把清楚的自然语言技术问题判成越界。
 
                 toolIntent —— 该请求是否要调用工具，以及调哪个；否则 NONE。

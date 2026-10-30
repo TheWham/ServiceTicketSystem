@@ -58,35 +58,50 @@ public class DomainClassifier {
         }
         String lower = message.toLowerCase(Locale.ROOT);
 
+        // 0. 排障语境豁免（AI-001：合法自助排障不得仅因词面被拒）：
+        // 「提示需要格式化/提示格式化」是描述故障现象，不是「执行格式化」的动作请求；
+        // 「出差在酒店/在家连公司VPN/酒店VPN」中的「酒店」是连网场景，不是差旅话题。
+        boolean describingFormatPrompt = Pattern.compile(
+                "(提示|显示|弹出|出现).{0,6}格式化|格式化.{0,6}(提示|弹窗)").matcher(message).find();
+        boolean hotelAsVpnScene = Pattern.compile(
+                "(酒店|出差|外出|在家).{0,12}(vpn|远程|连|网络)|(vpn|远程|网络).{0,12}(酒店|出差|在家)")
+                .matcher(lower).find();
+
         // 1. 领域外：非办公 IT 问题（周报/翻译/订餐/股票等）
         for (String keyword : nullSafe(properties.getOffTopicKeywords())) {
             if (hasText(keyword) && lower.contains(keyword.toLowerCase(Locale.ROOT))) {
+                if ("酒店".equals(keyword) && hotelAsVpnScene) {
+                    continue; // 连网场景下的「酒店」不构成领域外
+                }
                 log.info("Domain verdict OFF_TOPIC by keyword [{}]", keyword);
                 return Verdict.of(OfficeDomain.OFF_TOPIC, keyword);
             }
         }
 
         // 2. 高风险正则（命令注入 / 提权复合表述）
-        for (String regex : nullSafe(properties.getHighRiskPatterns())) {
-            if (!hasText(regex)) {
-                continue;
-            }
-            try {
-                if (Pattern.compile(regex, Pattern.CASE_INSENSITIVE).matcher(message).find()) {
-                    log.info("Domain verdict HIGH_RISK by pattern [{}]", regex);
-                    return Verdict.of(OfficeDomain.HIGH_RISK, regex);
+        // 「提示需要格式化」属故障现象描述，不是格式化动作请求，跳过格式化类高风险判定
+        if (!describingFormatPrompt) {
+            for (String regex : nullSafe(properties.getHighRiskPatterns())) {
+                if (!hasText(regex)) {
+                    continue;
                 }
-            } catch (PatternSyntaxException e) {
-                log.warn("高风险正则非法，已跳过: {}", regex);
+                try {
+                    if (Pattern.compile(regex, Pattern.CASE_INSENSITIVE).matcher(message).find()) {
+                        log.info("Domain verdict HIGH_RISK by pattern [{}]", regex);
+                        return Verdict.of(OfficeDomain.HIGH_RISK, regex);
+                    }
+                } catch (PatternSyntaxException e) {
+                    log.warn("高风险正则非法，已跳过: {}", regex);
+                }
             }
-        }
 
-        // 3. 动作 × 敏感对象（如「重置+密码」「删除+数据库」「恢复+数据」）
-        boolean hasAction = containsAny(lower, properties.getHighRiskActions());
-        boolean hasObject = containsAny(lower, properties.getHighRiskObjects());
-        if (hasAction && hasObject) {
-            log.info("Domain verdict HIGH_RISK by action+object");
-            return Verdict.of(OfficeDomain.HIGH_RISK, "action+object");
+            // 3. 动作 × 敏感对象（如「重置+密码」「删除+数据库」「恢复+数据」）
+            boolean hasAction = containsAny(lower, properties.getHighRiskActions());
+            boolean hasObject = containsAny(lower, properties.getHighRiskObjects());
+            if (hasAction && hasObject) {
+                log.info("Domain verdict HIGH_RISK by action+object");
+                return Verdict.of(OfficeDomain.HIGH_RISK, "action+object");
+            }
         }
 
         // 4. 办公 IT 范围

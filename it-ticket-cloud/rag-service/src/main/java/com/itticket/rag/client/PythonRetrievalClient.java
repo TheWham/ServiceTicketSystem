@@ -126,7 +126,7 @@ public class PythonRetrievalClient {
     }
 
     private int timeoutMs() {
-        return properties.getPythonTimeoutMs() == null ? 4200 : properties.getPythonTimeoutMs();
+        return properties.getPythonTimeoutMs() == null ? 5000 : properties.getPythonTimeoutMs();
     }
 
     private int connectTimeoutMs() {

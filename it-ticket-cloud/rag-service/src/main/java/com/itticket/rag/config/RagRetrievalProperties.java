@@ -62,8 +62,8 @@ public class RagRetrievalProperties {
     /** Python 检索内核服务地址（不带路径；检索端点为其下 /api/v1/rag/retrievals） */
     private String pythonBaseUrl = "http://127.0.0.1:8310";
 
-    /** Python 检索调用整体超时（毫秒）：覆盖 Python 侧改写命中缓存态 + 余量 */
-    private Integer pythonTimeoutMs = 4200;
+    /** Python 检索调用整体超时（毫秒）：测试放宽到 5s（改写 ≤3.5s + 向量/BM25 ~0.7s + 精排 ≤1.5s） */
+    private Integer pythonTimeoutMs = 5000;
 
     /** Python 检索连接建立超时（毫秒） */
     private Integer pythonConnectTimeoutMs = 500;

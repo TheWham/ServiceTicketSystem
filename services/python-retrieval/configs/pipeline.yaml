@@ -40,7 +40,7 @@ retrieval:
   rewrite_model: ""             # 改写模型，空=取 .env 的 LLM_CLEAN_MODEL（deepseek-v4-flash）
   reject_threshold: 0.40        # 低置信拒答：候选原始 rerank 最高分低于此值返回空（null=不启用）
   heuristic_reject_threshold: 0.25  # rerank 降级为启发式打分时的拒答阈值（启发式分数上限 0.99、无关题实测 ≤0.2；null=关闭降级拒答）
-  heuristic_reject_threshold: 0.25  # rerank 降级为启发式打分时的拒答阈值（null=降级时不拒答）
+  # rerank 降级为启发式打分时的拒答阈值（null=降级时不拒答）
                                 # 为什么单列：远程 rerank 与启发式的分数尺度不同（启发式正样本 ≥0.47、
                                 # 无关问题 0.05~0.25），沿用远程标定的 0.40 会漏拒——网关 429 降级时
                                 # 无关问题最高分仅 ~0.13 却因降级跳过拒答门，被误当命中。
@@ -56,4 +56,4 @@ retrieval:
 
 reranker:
   model: qwen3-reranker-8b      # 可被环境变量 RERANK_MODEL 或 CLI --reranker 覆盖
-  backend: dashscope            # 仅走 KSP 网关时生效（.env 配了 RERANK_* 直连时忽略）
+  backend: any                 # KSP 网关会分流 Jina/DashScope，接受任一响应格式

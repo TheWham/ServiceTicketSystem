@@ -87,18 +87,27 @@ class KspReranker:
         return list(dict.fromkeys(cands))
 
     def _resolve_endpoint(self) -> str:
+        # KSP 网关按请求随机分流到 Jina/DashScope 两种后端（约 7:3，2026-10-14 实测），
+        # 两种后端接受的请求体不同：单发自检有概率命中不认本格式的后端而误判端点不可用
+        # （表现为启动即降级启发式，整进程不再恢复）。因此自检最多探 PROBE_ATTEMPTS 次，
+        # 任一次成功即判定端点可用；运行期 _parse_results 本就按响应格式自适应双后端。
         errors = []
         for url in self._candidate_endpoints():
             self.endpoint = url
-            try:
-                self._call_api("rerank 自检", ["a", "b"])
-                return url
-            except Exception as e:
-                errors.append(f"{url} -> {e}")
+            for attempt in range(1, self.PROBE_ATTEMPTS + 1):
+                try:
+                    self._call_api("rerank 自检", ["a", "b"])
+                    if attempt > 1:
+                        print(f"       -> 自检第 {attempt} 次成功（前 {attempt - 1} 次命中异构后端，已重试越过）")
+                    return url
+                except Exception as e:
+                    errors.append(f"{url} -> {e}")
         self.endpoint = None
         raise RuntimeError("；".join(errors))
 
     MAX_CHARS_PER_REQUEST = 10000  # 单次 /rerank 请求的文档总字符上限，超出自动分批（网关对超长请求易超时/截断）
+    PROBE_ATTEMPTS = 8  # 启动自检重试次数：坏窗口期异构后端占比会时段性升高（实测连续 5 次同侧），加大冗余
+    PROTOCOL_ATTEMPTS = 4  # 扁平/嵌套格式交替重试次数：两种后端协议互斥且分流随时段漂移
     RATE_LIMIT_WAIT_BUDGET = 90.0  # 单次打分因 429 最多累计等待的秒数
     REQUEST_TIMEOUT_SECONDS = 120.0  # 单次 HTTP 请求读超时；在线服务化时应收紧（否则一次挂起占满串行锁）
 
@@ -133,6 +142,27 @@ class KspReranker:
         with urllib.request.urlopen(req, timeout=self.REQUEST_TIMEOUT_SECONDS) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
+    def _flat_payload(self, query: str, documents: List[str], top_n: Optional[int]) -> Dict[str, Any]:
+        """Jina 风格扁平请求体（query/documents 顶层）。"""
+        payload: Dict[str, Any] = {
+            "model": self.model_name,
+            "query": query,
+            "documents": documents,
+        }
+        if top_n:
+            payload["top_n"] = top_n
+        return payload
+
+    def _nested_payload(self, query: str, documents: List[str], top_n: Optional[int]) -> Dict[str, Any]:
+        """DashScope 风格嵌套请求体（input.query/input.documents）。"""
+        payload: Dict[str, Any] = {
+            "model": self.model_name,
+            "input": {"query": query, "documents": documents},
+        }
+        if top_n:
+            payload["input"]["top_n"] = top_n
+        return payload
+
     def _call_api(self, query: str, documents: List[str], top_n: Optional[int] = None) -> List[float]:
         if len(documents) > 1 and sum(len(d) for d in documents) > self.MAX_CHARS_PER_REQUEST:
             scores: List[float] = []
@@ -143,14 +173,31 @@ class KspReranker:
                     batch = []
                 batch.append(doc)
             return scores + self._call_api(query, batch)
-        payload: Dict[str, Any] = {
-            "model": self.model_name,
-            "query": query,
-            "documents": documents,
-        }
-        if top_n:
-            payload["top_n"] = top_n
-        fmt, items = self._hedged_request(payload)
+        # KSP 网关按请求随机分流两种后端，请求体协议互斥：
+        #   - Jina 后端：只认扁平体 {query, documents}；见嵌套体 → 422 "missing field `query`"
+        #   - DashScope 后端：只认嵌套体 {input: {query, documents}}；见扁平体 → 400 "Field required: input"
+        # 每次请求独立分流，且分流比例随时段漂移（实测曾 7:3，也出现连续多次同侧），
+        # 因此按报错特征交替换格式重试，任一次命中兼容后端即成功。
+        last_err: Optional[Exception] = None
+        fmt, items = None, None
+        for attempt in range(self.PROTOCOL_ATTEMPTS):
+            flat = attempt % 2 == 0
+            payload = self._flat_payload(query, documents, top_n) if flat \
+                else self._nested_payload(query, documents, top_n)
+            try:
+                fmt, items = self._hedged_request(payload)
+                if attempt > 0:
+                    print(f"       -> /rerank 第 {attempt + 1} 次尝试成功（{'扁平' if flat else '嵌套'}格式，"
+                          f"此前命中异构后端已交替重试）")
+                break
+            except RuntimeError as e:
+                err = str(e)
+                recoverable = "Field required: input" in err or "missing field" in err
+                last_err = e
+                if not recoverable:
+                    raise
+        if fmt is None:
+            raise last_err
         if not items:
             raise RuntimeError(f"/rerank 响应无可解析的 results（格式 {fmt}）")
         self.backend_stats["calls"] += 1

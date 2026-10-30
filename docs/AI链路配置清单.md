@@ -25,7 +25,7 @@
                             │
                             └─ 生成：AI_AGENT_ENABLED=true → agent_service:8320 → LLM + tools
                                       AI_AGENT_ENABLED=false → consultation 自己调 LLM（单轮强制 JSON）
-                                      
+
                                工具回跳：agent_service → ticket-service:8201（查本人工单 / 产建单草稿）
                                                      → consultation:8301（补搜知识）
 ```

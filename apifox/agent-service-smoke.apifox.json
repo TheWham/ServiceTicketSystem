@@ -1,0 +1,144 @@
+{
+  "info": {
+    "_postman_id": "0e1f5c9a-7f8d-4f2c-8f4a-3c6b8f4e2f3a",
+    "name": "IT 工单系统 Agent 服务（Langfuse APM）冒烟测试",
+    "description": "导入后先在 Apifox 环境变量中设置 baseUrl=http://127.0.0.1:8321",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8320",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "GET /api/health",
+      "request": {
+        "method": "GET",
+        "url": "http://127.0.0.1:8321/api/health",
+        "header": [],
+        "body": null
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('health 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('langfuse 状态可读', () => pm.expect(j.langfuse).to.be.an('object'));",
+              "pm.test('model configured', () => pm.expect(j.model_configured).to.equal(true));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "POST /api/v1/agent/chat - 简单问答",
+      "request": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8321/api/v1/agent/chat",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "X-User-Id",
+            "value": "U_EMP01"
+          },
+          {
+            "key": "X-User-Role",
+            "value": "EMPLOYEE"
+          },
+          {
+            "key": "X-Request-Id",
+            "value": "{{$guid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"question\": \"你好，请确认你能回答IT服务台问题\", \"history\": [], \"material\": []}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('code 0', () => pm.expect(j.code).to.equal(0));",
+              "pm.test('traceId 为32位hex', () => pm.expect(j.data.traceId).to.match(/^[0-9a-f]{32}$/));",
+              "pm.test('trace 指标存在', () => pm.expect(j.data.trace.totalTokens).to.be.gt(0));",
+              "pm.test('有总时延', () => pm.expect(j.data.trace.totalLatencyMs).to.be.gte(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "POST /api/v1/agent/chat - 查询我的工单(触发工具)",
+      "request": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8321/api/v1/agent/chat",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json; charset=utf-8"
+          },
+          {
+            "key": "X-User-Id",
+            "value": "U_EMP01"
+          },
+          {
+            "key": "X-User-Role",
+            "value": "EMPLOYEE"
+          },
+          {
+            "key": "X-Request-Id",
+            "value": "{{$guid}}"
+          },
+          {
+            "key": "X-Session-Id",
+            "value": "session-langfuse-apifox"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"question\": \"帮我查一下我最近提交的工单状态\", \"history\": [], \"material\": []}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('code 0', () => pm.expect(j.code).to.equal(0));",
+              "pm.test('traceId 为32位hex', () => pm.expect(j.data.traceId).to.match(/^[0-9a-f]{32}$/));",
+              "pm.test('有最慢节点', () => pm.expect(j.data.trace.slowestSpanName).to.not.be.empty);",
+              "pm.test('成本可读', () => pm.expect(j.data.trace.totalCostUsd).to.be.gte(0));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

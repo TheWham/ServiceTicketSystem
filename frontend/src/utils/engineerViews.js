@@ -1,5 +1,5 @@
 const groups = {
-  pool: ['ASSIGNED'],
+  pool: ['NEW', 'ASSIGNED'],
   tasks: ['IN_PROGRESS', 'PENDING_SUPPLEMENT', 'PENDING_EXTERNAL', 'PENDING_ACCEPTANCE'],
   completed: ['COMPLETED', 'CANCELLED', 'CLOSED'],
   consultations: []

@@ -6,7 +6,6 @@
   knowledgeConflict/offTopic）——Java 侧 `OpenAiCompatibleAnswerGenerator` 会校验键数；
 - 建单草稿走**带外字段** `ticketDraft`（由 prepare_ticket 工具产出），不混进模型 JSON。
 """
-
 from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -41,6 +40,7 @@ class AgentChatRequest(BaseModel):
     material: List[AgentMaterial] = Field(default_factory=list)
     category_id: Optional[str] = Field(default=None, alias="categoryId", max_length=64)
     asset_id: Optional[str] = Field(default=None, alias="assetId", max_length=64)
+    session_id: Optional[str] = Field(default=None, alias="sessionId", max_length=64)
 
 
 class TicketDraft(BaseModel):
@@ -52,8 +52,19 @@ class TicketDraft(BaseModel):
     priority: str = "MEDIUM"
 
 
+class TraceSummary(BaseModel):
+    """对外只暴露 APM 摘要，不暴露完整 prompt / 知识正文 / 推理链。"""
+    total_latency_ms: float = Field(alias="totalLatencyMs")
+    total_input_tokens: int = Field(alias="totalInputTokens")
+    total_output_tokens: int = Field(alias="totalOutputTokens")
+    total_tokens: int = Field(alias="totalTokens")
+    total_cost_usd: float = Field(alias="totalCostUsd")
+    slowest_span_name: Optional[str] = Field(default=None, alias="slowestSpanName")
+    slowest_span_duration_ms: float = Field(default=0.0, alias="slowestSpanDurationMs")
+
+
 class AgentChatResponse(BaseModel):
-    """ReAct 生成结果：模型 6 键 + 带外草稿。"""
+    """ReAct 生成结果：模型 6 键 + 带外草稿 + APM 摘要。"""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -64,6 +75,7 @@ class AgentChatResponse(BaseModel):
     knowledge_conflict: bool = Field(default=False, alias="knowledgeConflict")
     off_topic: bool = Field(default=False, alias="offTopic")
     ticket_draft: Optional[TicketDraft] = Field(default=None, alias="ticketDraft")
-    # 链路追踪 ID（= 请求的 X-Request-Id）。Java 侧不读它也不受影响；汇报/排查时用它
+    # 链路追踪 ID（= 请求的 X-Request-Id 派生）。Java 侧不读它也不受影响；汇报/排查时用它
     # 在 agent 日志里把这轮 ReAct 的 generation / 工具 span 全部串起来。
     trace_id: str = Field(default="", alias="traceId")
+    trace: Optional[TraceSummary] = Field(default=None, alias="trace")

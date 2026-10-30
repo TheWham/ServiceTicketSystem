@@ -85,7 +85,30 @@ tag 与其余服务一致（`latest` + 短 sha）；上面的命令只用于本�
 ## 设计要点
 
 - **不跨库读工单**：工单是 ticket-service 的事实源（架构 8.1），一律走其内部接口；
-- **人机回环**：AI 无法自行建单——`prepare_ticket` 只产草稿，建单必须由员工在 Java 侧
-  `POST /api/v1/consultations/{id}/ticket-draft/confirm` 显式确认触发；
+- **人机回环**：AI 无法自行建单——`prepare_ticket` 只产草稿，员工在前端建单页确认后才通过正常建单接口提交；
 - **失败即对象**：工具失败返回 `{success:false,error:...}`（不抛），以 `role="tool"` 回传模型触发反思自愈；
 - **轮次熔断**：最后一轮以 `tool_choice=none` 强制出最终答案，防工具调用死循环（RD-007）。
+## Langfuse APM
+
+生成链路已接入 Langfuse。业务代码只生成 `Tracer.summary()`，上报由 `observability/langfuse_exporter.py` 完成。
+
+环境变量：
+
+| 变量 | 说明 |
+|---|---|
+| `LANGFUSE_ENABLED` | 是否上报，默认 `false` |
+| `LANGFUSE_HOST` | Langfuse 地址，云端或自建 |
+| `LANGFUSE_PUBLIC_KEY` | 公钥 |
+| `LANGFUSE_SECRET_KEY` | 私钥 |
+| `LANGFUSE_ENV` | 环境，如 `dev` / `prod` |
+| `LANGFUSE_INCLUDE_CONTENT` | 是否上报输入/输出正文，默认 `false` |
+
+默认只上报 Trace / Generation / Span、耗时、Token、成本和错误分类，不上传 prompt、回答、知识正文、认证头或模型推理过程。
+
+`/api/health` 会返回 `langfuse.enabled/configured/includeContent`，用于确认真实上报开关。
+
+### 链路追踪约定
+
+- Trace ID 由 `X-Request-Id` 派生为 Langfuse 可用的确定性 32-hex ID，同一个外部请求 ID 始终对应同一条 trace。
+- 会话 ID 支持请求体 `sessionId` 或请求头 `X-Session-Id`，用于 Langfuse Sessions 视图按对话聚合。
+- Agent 观察类型：`agent.chat`（agent）→ `ReAct轮N`（generation）→ `tool.*`（tool/retriever）。

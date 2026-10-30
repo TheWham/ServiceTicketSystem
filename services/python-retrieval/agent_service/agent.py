@@ -5,7 +5,7 @@
 模型据此反思/纠错/补参数 → 直到产出最终答复（约定为结构化 JSON）。
 最后一轮以 tool_choice=none 强制模型出最终答案，防工具调用死循环（RD-007）。
 """
-
+import hashlib
 import json
 import logging
 import uuid
@@ -14,8 +14,9 @@ from typing import Any, Dict, List, Optional
 from rag_pipeline.observability.tracer import Tracer
 
 from . import config as acfg
-from .contract import AgentChatRequest, AgentChatResponse, TicketDraft
+from .contract import AgentChatRequest, AgentChatResponse, TicketDraft, TraceSummary
 from .model_client import ModelClient, ModelError
+from .observability.langfuse_exporter import LangfuseExporter
 from .tools import ToolContext, dispatch, tool_specs
 
 log = logging.getLogger(__name__)
@@ -35,6 +36,9 @@ def _system_prompt() -> str:
    - search_knowledge：检索已发布知识库；
    - query_my_tickets：查询员工本人名下工单及状态；
    - prepare_ticket：把故障整理成工单草稿（只产草稿，不会真正建单，需员工确认）。
+     调用 prepare_ticket 时，标题和描述只能取自员工本轮消息；
+     不得引用历史对话、知识资料、排查步骤或任何补充建议。
+     若员工明确写了“标题为… 内容为…”，只填字段值，不要把整句指令或上下文写入草稿。
    除这三个工具外不得调用任何系统；不得替员工执行高危操作或做决定。
 5. 实际提权、绕过安全控制、安全事件、数据丢失恢复、高风险命令、硬件拆修必须 REFUSE。
    普通登录故障可给低风险排查步骤，不索取密码、验证码，不代执行或声称已操作系统。
@@ -76,21 +80,41 @@ def _build_user_input(req: AgentChatRequest) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
+def _sha(text: str) -> str:
+    return hashlib.sha256((text or "").encode("utf-8")).hexdigest()[:16]
+
+
+def _trace_summary(summary: Dict[str, Any]) -> TraceSummary:
+    slowest = summary.get("slowestSpan") or {}
+    return TraceSummary(
+        totalLatencyMs=float(summary.get("totalLatencyMs") or 0.0),
+        totalInputTokens=int(summary.get("totalInputTokens") or 0),
+        totalOutputTokens=int(summary.get("totalOutputTokens") or 0),
+        totalTokens=int(summary.get("totalTokens") or 0),
+        totalCostUsd=float(summary.get("totalCostUsd") or 0.0),
+        slowestSpanName=slowest.get("spanName"),
+        slowestSpanDurationMs=float(slowest.get("durationMs") or 0.0),
+    )
+
+
 class AgentRunner:
     """无状态运行器（模型客户端进程级复用）。"""
 
-    def __init__(self, model_client: Optional[ModelClient] = None, max_steps: Optional[int] = None):
+    def __init__(self, model_client: Optional[ModelClient] = None, max_steps: Optional[int] = None,
+                 langfuse_exporter: Optional[LangfuseExporter] = None):
         self.model = model_client or ModelClient()
         self.max_steps = max(1, max_steps or acfg.MAX_STEPS)
+        self.langfuse = langfuse_exporter or LangfuseExporter()
 
     def run(self, req: AgentChatRequest, user_id: str, role: str,
-            request_id: str = "") -> AgentChatResponse:
+            request_id: str = "", session_id: str = "") -> AgentChatResponse:
         # 一轮 ReAct 一棵 Trace：generation span 记每轮模型调用，span 记每次工具调用。
-        # trace_id 复用请求的 X-Request-Id —— Java 侧日志本就带它，全链由此可串。
-        tracer = Tracer(trace_id=f"trace-{request_id or uuid.uuid4().hex[:12]}",
+        # trace_id 由外部 X-Request-Id 派生为 Langfuse 可用的确定性 32-hex ID。
+        trace_id = self.langfuse.trace_id(request_id or uuid.uuid4().hex[:12])
+        tracer = Tracer(trace_id=trace_id,
                         name="agent.chat", workflow="Function Calling 智能体",
-                        user_id=user_id or "")
-        ctx = ToolContext(user_id, role, request_id)
+                        user_id=user_id or "", session_id=session_id or "")
+        ctx = ToolContext(user_id, role, request_id, question=req.question)
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": _system_prompt()},
             {"role": "user", "content": _build_user_input(req)},
@@ -103,7 +127,10 @@ class AgentRunner:
             with tracer.generation(f"ReAct轮{step + 1}", model=acfg.LLM_MODEL) as gen_span:
                 turn = self.model.complete_with_tools(messages, specs, "none" if last_step else "auto")
                 gen_span.record(output={"toolCalls": [c.name for c in turn.tool_calls],
-                                        "hasToolCalls": turn.has_tool_calls})
+                                        "hasToolCalls": turn.has_tool_calls},
+                                tokens_in=turn.usage.tokens_in,
+                                tokens_out=turn.usage.tokens_out,
+                                tokens_source=turn.usage.tokens_source)
             if not turn.has_tool_calls:
                 final_content = turn.content or ""
                 break
@@ -126,16 +153,40 @@ class AgentRunner:
         if final_content is None:
             raise ModelError("ReAct 步数超限")
         tracer.finish()   # 打上 Trace 结束时间：端到端总时延 = 起点到这一刻
+        summary = tracer.summary()
+        summary["requestId"] = ctx.request_id
+        summary["inputSha256"] = _sha(_build_user_input(req))
+        summary["materialCount"] = len(req.material)
+        summary["historyTurns"] = len(req.history)
+        summary["assetIdPresent"] = bool(req.asset_id)
+        include_content = getattr(self.langfuse, "include_content", False)
+        summary["input"] = {"question": req.question[:200] if include_content else None,
+                            "material": [{"versionId": m.version_id, "title": m.title} for m in req.material]
+                            if include_content else None}
         # 最终 JSON 落日志：拒答/答非所问时，能回放「模型当时到底输出了什么」——
         # 这是 Day17 那句「坏例当时的 prompt」的最小实现。
         log.info("[生成] 最终 JSON requestId=%s: %s", ctx.request_id, (final_content or "")[:600])
-        log.info("[链路] %s", json.dumps(tracer.summary(), ensure_ascii=False)[:400])
+        log.info("[链路] %s", json.dumps(summary, ensure_ascii=False)[:400])
         try:
             payload = json.loads(final_content)
         except ValueError as e:
+            summary["outputSha256"] = _sha(final_content or "")
+            self.langfuse.export(summary)
             raise ModelError(f"模型输出不是合法 JSON: {e}") from e
         response = _to_response(payload, ctx.draft)
         response.trace_id = tracer.trace_id
+        response.trace = _trace_summary(summary)
+        # 只在业务成功完成后带上安全的输出摘要再上报；失败也不影响回答链路。
+        summary["outputSha256"] = _sha(response.answer_text or "")
+        summary["replyType"] = response.reply_type
+        summary["usedVersionIds"] = list(response.used_version_ids)
+        summary["confidence"] = response.confidence
+        summary["output"] = {
+            "replyType": response.reply_type,
+            "answerText": response.answer_text if include_content else None,
+            "usedVersionIds": list(response.used_version_ids),
+        }
+        self.langfuse.export(summary)
         return response
 
 

@@ -5,6 +5,7 @@ import { parse, compileScript } from '@vue/compiler-sfc'
 import * as vue from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { useUserStore } from '../src/stores/user.js'
+import * as navigation from '../src/utils/navigation.js'
 
 function storage(seed = {}) {
   const values = new Map(Object.entries(seed))
@@ -97,10 +98,16 @@ function accountComponent(path, userApi = {}) {
     'element-plus': { ElMessage: { success() {}, warning() {}, error() {} } },
     '@element-plus/icons-vue': {},
     '../api/index.js': { userApi },
-    '../stores/user.js': { useUserStore: () => ({ setLogin() {}, currentUser: { name: 'Current', role: 'EMPLOYEE' } }) }
+    '../stores/user.js': { useUserStore: () => ({ setLogin() {}, currentUser: { name: 'Current', role: 'EMPLOYEE' } }) },
+    '../components/OrbitalCore.vue': {},
+    '../utils/navigation.js': navigation
   }
-  const code = compiled.content.replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g,
-    (_, names, path) => `const {${names}} = modules[${JSON.stringify(path)}]`).replace('export default', 'return')
+  const code = compiled.content
+    .replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g,
+      (_, names, path) => `const {${names}} = modules[${JSON.stringify(path)}]`)
+    .replace(/import\s+(\w+)\s+from\s*['"]([^'"]+)['"]/g,
+      (_, name, path) => `const ${name} = modules[${JSON.stringify(path)}]`)
+    .replace('export default', 'return')
   return new Function('modules', code)(modules).setup({}, { expose() {}, emit() {} })
 }
 

@@ -24,7 +24,7 @@
       <router-link v-for="item in views" :key="item.key" :to="{ path: '/engineer', query: { view: item.key } }" :class="{ active: activeView === item.key }" :aria-current="activeView === item.key ? 'page' : undefined">{{ item.label }}</router-link>
     </nav>
     <template v-if="activeView !== 'consultations'">
-    <p class="scope-note">统计范围：已加载的 {{ allTickets.length }} 条本人及待领取工单（最多 100 条） · 每 15 秒刷新</p>
+    <p class="scope-note">统计范围：已加载的 {{ allTickets.length }} 条本人及待分配工单（最多 100 条） · 每 15 秒刷新</p>
     <!-- 统计卡片条 -->
     <div class="stat-row">
       <div v-for="s in stats" :key="s.label" class="stat-card">
@@ -312,7 +312,7 @@ const router = useRouter()
 const activeView = computed(() => engineerView(route.query.view))
 const views = [{ key: 'pool', label: '工单池' }, { key: 'tasks', label: '我的任务' }, { key: 'completed', label: '已完成' }, { key: 'consultations', label: '人工咨询' }]
 const viewTitle = computed(() => views.find(v => v.key === activeView.value)?.label || '工程师工作台')
-const viewDescription = computed(() => ({ pool: '确认影响与紧急程度，领取待处理工单', tasks: '跟进处理进度、补充材料与员工验收', completed: '检索已完成、已取消和已关闭的工单', consultations: '保留对话上下文，协助员工解决问题', all: '查看本人任务与待领取工单' }[activeView.value]))
+const viewDescription = computed(() => ({ pool: '确认影响与紧急程度，领取待分配工单', tasks: '跟进处理进度、补充材料与员工验收', completed: '检索已完成、已取消和已关闭的工单', consultations: '保留对话上下文，协助员工解决问题', all: '查看本人任务与待分配工单' }[activeView.value]))
 const ticketsLoading = ref(false)
 const ticketsError = ref('')
 const consultationVisible = computed({ get: () => activeView.value === 'consultations', set: open => { if (!open && activeView.value === 'consultations') router.push({ path: '/engineer', query: { ...route.query, view: 'tasks' } }) } })
@@ -320,6 +320,7 @@ const filteredTickets = computed(() => filterEngineerTickets(allTickets.value, a
 
 const columns = computed(() => {
   const statusMap = {
+    'NEW':                { label: '待分配', dotColor: '#f56c6c' },
     'ASSIGNED':           { label: '已分配 / 待接单', dotColor: '#e6a23c' },
     'IN_PROGRESS':        { label: '处理中', dotColor: '#409eff' },
     'PENDING_SUPPLEMENT': { label: '待补充', dotColor: '#909399' },
@@ -343,6 +344,7 @@ const stats = computed(() => {
   const count = (s) => t.filter(x => x.status === s).length
   const active = t.filter(x => ['ASSIGNED','IN_PROGRESS','PENDING_SUPPLEMENT','PENDING_EXTERNAL','PENDING_ACCEPTANCE'].includes(x.status)).length
   return [
+    { label: '待分配', value: count('NEW'), icon: Tickets },
     { label: '待接单', value: count('ASSIGNED'), icon: Pointer },
     { label: '处理中', value: count('IN_PROGRESS'), icon: Loading },
     { label: '待验收', value: count('PENDING_ACCEPTANCE'), icon: CircleCheck },
@@ -352,7 +354,7 @@ const stats = computed(() => {
 
 // 状态/优先级映射（PRD §9.2 九态 + HIGH/MEDIUM/LOW）
 const STATUS_LABEL = {
-  NEW: '新建', ASSIGNED: '已分配', IN_PROGRESS: '处理中',
+  NEW: '待分配', ASSIGNED: '已分配', IN_PROGRESS: '处理中',
   PENDING_SUPPLEMENT: '待补充', PENDING_EXTERNAL: '外部等待',
   PENDING_ACCEPTANCE: '待验收', COMPLETED: '已完成',
   CANCELLED: '已撤回', CLOSED: '已关闭'
@@ -691,6 +693,7 @@ watch(() => userStore.userId, (id) => {
 .scope-note { font-size: 12px; color: var(--el-text-color-secondary); margin: 0 0 12px; }
 .stat-icon { color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
 .col-dot { background: var(--el-color-primary); }
+.dot-new { background: var(--el-color-danger); }
 .dot-assigned, .dot-pending_external { background: var(--el-color-warning); }
 .dot-completed { background: var(--el-color-success); }
 .load-error, .loading-state { margin-bottom: 20px; }

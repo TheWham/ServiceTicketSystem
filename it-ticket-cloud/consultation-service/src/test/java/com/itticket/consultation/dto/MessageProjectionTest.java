@@ -69,6 +69,31 @@ class MessageProjectionTest {
         assertFalse(result.hasNonNull("interaction_id"));
     }
 
+    /** 建单草稿随 AI 消息元数据回放：预填接口据此读取，避免再从完整时间线拼接上下文 */
+    @Test
+    void ticket_draft_is_replayed_from_ai_message_metadata() {
+        JsonNode result = json(message("""
+                {"schemaVersion":1,"citations":[],"interactionId":"AI3",
+                 "replyType":"ANSWER","generalAnswer":false,
+                 "ticketDraft":{"title":"vpn连不上","category":"C_NET",
+                                "description":"vpn连不上","priority":"MEDIUM"}}
+                """));
+        JsonNode draft = result.path("ticket_draft");
+        assertEquals("vpn连不上", draft.path("title").asText());
+        assertEquals("vpn连不上", draft.path("description").asText());
+        assertEquals("C_NET", draft.path("category").asText());
+        assertEquals("MEDIUM", draft.path("priority").asText());
+    }
+
+    /** 无草稿的普通答复不得凭空渲染 ticket_draft 字段 */
+    @Test
+    void ticket_draft_absent_when_metadata_has_none() {
+        JsonNode result = json(message("""
+                {"schemaVersion":1,"citations":[],"interactionId":"AI4",
+                 "replyType":"ANSWER","generalAnswer":true}
+                """));
+        assertFalse(result.hasNonNull("ticket_draft"));
+    }
     /** AC-30：撤回的消息正文替换为占位文案；交互 ID / 引用 / 答复类型等元数据一律不外泄 */
     @Test
     void ac30_withdrawal_never_exposes_answer_metadata() {

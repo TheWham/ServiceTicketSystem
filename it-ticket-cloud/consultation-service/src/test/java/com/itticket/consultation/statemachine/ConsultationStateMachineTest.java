@@ -20,7 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>docs/specs/03-business-state-machine.md 的 SM-CONSULT-001 迁移表(逐行穷尽覆盖);</li>
  *   <li>SM-001「任何未列出的 (当前状态, 事件, 角色) 组合均拒绝」「终态默认不可迁移」;</li>
  *   <li>PRD 8.2 / 8.3 咨询状态与流转、PRD 24.2 的 AC-03 / AC-04 / AC-05;</li>
- *   <li>AX-006:PLATFORM_ADMIN / KNOWLEDGE_ADMIN 不在咨询迁移表内,不得获得迁移权。</li>
+ *   <li>管理员(PLATFORM_ADMIN / KNOWLEDGE_ADMIN)作为自助客服发起方,与员工共享同一 Actor。</li>
  * </ul>
  *
  * <p>测试名按 TR-001 携带 F-03 / AC-03 / AC-04 / AC-05 标识。
@@ -328,34 +328,34 @@ class ConsultationStateMachineTest {
     }
 
     // ------------------------------------------------------------------
-    // 四、AX-006:管理员角色不参与咨询迁移
+    // 四、管理员作为自助客服发起方,与员工共享同一 Actor
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("F-03 RoleCode 到 Actor 的映射:管理员角色不参与咨询迁移,返回 null")
-    void f03_actor_of_maps_only_employee_and_engineer() {
+    @DisplayName("F-03 RoleCode 到 Actor 的映射:管理员映射为发起方(EMPLOYEE)")
+    void f03_actor_of_maps_admins_to_requester() {
         assertThat(Actor.of(RoleCode.EMPLOYEE)).isEqualTo(Actor.EMPLOYEE);
         assertThat(Actor.of(RoleCode.ENGINEER)).isEqualTo(Actor.ENGINEER);
-        assertThat(Actor.of(RoleCode.PLATFORM_ADMIN)).isNull();
-        assertThat(Actor.of(RoleCode.KNOWLEDGE_ADMIN)).isNull();
+        assertThat(Actor.of(RoleCode.PLATFORM_ADMIN)).isEqualTo(Actor.EMPLOYEE);
+        assertThat(Actor.of(RoleCode.KNOWLEDGE_ADMIN)).isEqualTo(Actor.EMPLOYEE);
         assertThat(Actor.of(null)).isNull();
     }
 
     @Test
-    @DisplayName("F-03 管理员(Actor 为 null)执行迁移表中任何一行都返回 FORBIDDEN")
-    void f03_admin_roles_are_forbidden_on_every_transition() {
-        Actor platformAdmin = Actor.of(RoleCode.PLATFORM_ADMIN);
-        Actor knowledgeAdmin = Actor.of(RoleCode.KNOWLEDGE_ADMIN);
+    @DisplayName("F-03 管理员与员工在同一 Actor 下对迁移表逐行给出相同结论")
+    void f03_admin_roles_share_employee_transitions() {
+        Actor employee = Actor.of(RoleCode.EMPLOYEE);
+        Actor[] admins = {Actor.of(RoleCode.PLATFORM_ADMIN), Actor.of(RoleCode.KNOWLEDGE_ADMIN)};
 
         for (TransitionRule rule : ConsultationStateMachine.rules()) {
-            for (Actor admin : new Actor[]{platformAdmin, knowledgeAdmin}) {
-                TransitionDecision decision =
+            TransitionDecision expected =
+                    ConsultationStateMachine.evaluate(rule.from(), rule.event(), employee);
+            for (Actor admin : admins) {
+                TransitionDecision actual =
                         ConsultationStateMachine.evaluate(rule.from(), rule.event(), admin);
-
-                assertThat(decision.allowed())
-                        .as("管理员不应被允许执行 %s / %s", rule.from(), rule.event())
-                        .isFalse();
-                assertThat(decision.failureCode()).isEqualTo(ApiCode.FORBIDDEN);
+                assertThat(actual)
+                        .as("管理员应与员工在 %s / %s 上结论一致", rule.from(), rule.event())
+                        .isEqualTo(expected);
             }
         }
     }
@@ -534,7 +534,7 @@ class ConsultationStateMachineTest {
     }
 
     @Test
-    @DisplayName("F-03 actor 为 null(管理员)时 allowedEvents 恒为空集")
+    @DisplayName("F-03 actor 为 null(无咨询权限的角色)时 allowedEvents 恒为空集")
     void f03_allowed_events_is_empty_for_null_actor() {
         assertThat(ConsultationStateMachine.allowedEvents(null, null)).isEmpty();
         for (ConsultationStatus status : ConsultationStatus.values()) {

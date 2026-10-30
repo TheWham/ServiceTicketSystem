@@ -98,15 +98,15 @@ class ServiceAssembly:
         # 会抱着串行锁占住线程池，后续请求全部 5031
         self.retriever.reranker.REQUEST_TIMEOUT_SECONDS = self.rerank_request_timeout
 
-        # ---- 4) 查询改写（1.2s 短超时、不重试；可整体关闭）----
+        # ---- 4) 查询改写（测试放宽 3.5s 短超时、不重试；可整体关闭）----
         self.rewrite_disabled = _env_bool("RAG_DISABLE_QUERY_REWRITE", False)
-        self.rewrite_timeout = float(os.environ.get("RAG_REWRITE_TIMEOUT", "2.0"))
+        self.rewrite_timeout = float(os.environ.get("RAG_REWRITE_TIMEOUT", "3.5"))
         self.rewriter: Optional[QueryRewriter] = None
         if rc.query_rewrite and not self.rewrite_disabled:
             cache_dir = os.environ.get("RAG_REWRITE_CACHE_DIR") or str(
                 REPO_ROOT / "artifacts/evaluation/.llm_cache/rewrite")
-            # 预算倒推：Java 客户端 4.2s = 改写 T + 向量/BM25 ~0.7s + 精排 ≤1.5s（在线收紧后）
-            # ⇒ T ≤ 2.0s；实测网关改写延迟 0.8~2.1s（中位 1.7s），取 2.0s 兼顾成功率与预算。
+            # 测试放宽：Java 客户端 5s = 改写 T + 向量/BM25 ~0.7s + 精排 ≤1.5s（在线收紧后）
+            # ⇒ T ≤ 3.5s；总预算由 4.2s 放宽到 5s（RAG_PYTHON_TIMEOUT_MS=5000），取 3.5s 兼顾成功率与预算。
             # max_retries=0 必须显式传：SDK 默认自带重试会让一次改写变成 T×3。
             self.rewriter = QueryRewriter(
                 model=rc.rewrite_model, cache_dir=cache_dir,

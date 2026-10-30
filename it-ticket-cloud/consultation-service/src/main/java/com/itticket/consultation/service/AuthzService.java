@@ -59,7 +59,8 @@ public class AuthzService {
 
     /**
      * READ_CHAT / SEND_MESSAGE:仅会话参与者。
-     * AX-006 未给平台管理员授予咨询聊天权限,历史工程师在咨询表中也无任何条目,一律拒绝。
+     * 平台/知识库管理员以发起方身份使用自助智能客服,只对自己发起的会话是参与者;
+     * 对他人会话没有聊天权限,一律拒绝(AX-001:不泄露对象存在性)。
      */
     public void requireParticipant(CurrentUser user, Consultation consultation) {
         if (user.userId().equals(consultation.getCreatorId())

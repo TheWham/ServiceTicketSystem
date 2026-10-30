@@ -5,8 +5,8 @@
 不设 `response_format`（那会禁止 tool_calls）。kimi-k3 不接受 temperature，
 默认不传该参数（可用 AGENT_TEMPERATURE 显式覆盖）。
 """
-
 import json
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
@@ -27,19 +27,53 @@ class ToolCall:
         self.arguments = arguments
 
 
+@dataclass(frozen=True)
+class ModelUsage:
+    """模型返回的真实 token 用量；缺失时必须保持 0，不做估算。"""
+    tokens_in: int = 0
+    tokens_out: int = 0
+    total_tokens: int = 0
+    reported: bool = False
+
+    @property
+    def tokens_source(self) -> str:
+        return "reported" if self.reported else "none"
+
+
 class ModelTurn:
     """一轮模型输出：若干工具调用 或 最终文本（二选一）。"""
 
-    __slots__ = ("tool_calls", "content", "raw_message")
+    __slots__ = ("tool_calls", "content", "raw_message", "usage")
 
-    def __init__(self, tool_calls: List[ToolCall], content: Optional[str], raw_message: Any):
+    def __init__(self, tool_calls: List[ToolCall], content: Optional[str], raw_message: Any,
+                 usage: Optional[ModelUsage] = None):
         self.tool_calls = tool_calls
         self.content = content
         self.raw_message = raw_message
+        self.usage = usage or ModelUsage()
 
     @property
     def has_tool_calls(self) -> bool:
         return bool(self.tool_calls)
+
+
+def _usage_from_response(resp: Any) -> ModelUsage:
+    usage = getattr(resp, "usage", None)
+    if usage is None:
+        return ModelUsage()
+    def _num(name: str) -> int:
+        value = getattr(usage, name, None)
+        if value is None:
+            value = usage.get(name) if hasattr(usage, "get") else None
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+    tokens_in = _num("prompt_tokens") or _num("input_tokens")
+    tokens_out = _num("completion_tokens") or _num("output_tokens")
+    total = _num("total_tokens") or tokens_in + tokens_out
+    return ModelUsage(tokens_in=tokens_in, tokens_out=tokens_out, total_tokens=total,
+                      reported=bool(tokens_in or tokens_out))
 
 
 class ModelClient:
@@ -80,4 +114,4 @@ class ModelClient:
             if not isinstance(args, dict):
                 args = {}
             calls.append(ToolCall(tool_call.id, tool_call.function.name, args))
-        return ModelTurn(calls, msg.content, msg)
+        return ModelTurn(calls, msg.content, msg, _usage_from_response(resp))

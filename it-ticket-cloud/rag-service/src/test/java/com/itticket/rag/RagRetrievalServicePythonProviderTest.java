@@ -238,6 +238,6 @@ public class RagRetrievalServicePythonProviderTest {
         RagRetrievalProperties defaults = new RagRetrievalProperties();
         Assertions.assertEquals(RagRetrievalProperties.Provider.python, defaults.getProvider());
         Assertions.assertEquals("http://127.0.0.1:8310", defaults.getPythonBaseUrl());
-        Assertions.assertEquals(4200, defaults.getPythonTimeoutMs().intValue());
+        Assertions.assertEquals(5000, defaults.getPythonTimeoutMs().intValue());
     }
 }

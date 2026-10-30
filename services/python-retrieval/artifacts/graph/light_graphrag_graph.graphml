@@ -1,0 +1,114 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd"><key id="d1" for="edge" attr.name="context_snippet" attr.type="string"/>
+<key id="d0" for="edge" attr.name="relation" attr.type="string"/>
+<graph edgedefault="directed"><node id="华科智造"/>
+<node id="多组织架构与跨部门审批流转制度"/>
+<node id="周建华"/>
+<node id="华东交付一部"/>
+<node id="现场驻场实施组长"/>
+<node id="王大明"/>
+<node id="交付总监"/>
+<node id="日常报销"/>
+<node id="陈梓豪"/>
+<node id="大额申报利益冲突时转派监察委员会"/>
+<node id="单笔金额超过2万元"/>
+<node id="审批人与申请人存在利益冲突"/>
+<node id="监察委员会主任"/>
+<node id="监察委员会"/>
+<node id="2024年新增规定"/>
+<node id="主任出差时由副主任执行最终否决权"/>
+<node id="赵小雪"/>
+<node id="监察委员会副主任"/>
+<node id="最终否决权"/>
+<node id="3万元驻场补贴"/>
+<node id="华东项目"/>
+<node id="合规回避与代签规则"/>
+<edge source="华科智造" target="多组织架构与跨部门审批流转制度" id="0">
+  <data key="d0">制定</data>
+  <data key="d1"></data>
+</edge>
+<edge source="多组织架构与跨部门审批流转制度" target="大额申报利益冲突时转派监察委员会" id="0">
+  <data key="d0">规定</data>
+  <data key="d1"></data>
+</edge>
+<edge source="周建华" target="华东交付一部" id="0">
+  <data key="d0">隶属于</data>
+  <data key="d1"></data>
+</edge>
+<edge source="周建华" target="现场驻场实施组长" id="0">
+  <data key="d0">任职于</data>
+  <data key="d1"></data>
+</edge>
+<edge source="周建华" target="王大明" id="0">
+  <data key="d0">直属主管</data>
+  <data key="d1"></data>
+</edge>
+<edge source="周建华" target="3万元驻场补贴" id="0">
+  <data key="d0">申报</data>
+  <data key="d1"></data>
+</edge>
+<edge source="现场驻场实施组长" target="王大明" id="0">
+  <data key="d0">直属主管</data>
+  <data key="d1"></data>
+</edge>
+<edge source="王大明" target="交付总监" id="0">
+  <data key="d0">职务</data>
+  <data key="d1"></data>
+</edge>
+<edge source="王大明" target="日常报销" id="0">
+  <data key="d0">审批权限</data>
+  <data key="d1"></data>
+</edge>
+<edge source="王大明" target="陈梓豪" id="0">
+  <data key="d0">利益回避转派</data>
+  <data key="d1"></data>
+</edge>
+<edge source="陈梓豪" target="监察委员会主任" id="0">
+  <data key="d0">职务</data>
+  <data key="d1"></data>
+</edge>
+<edge source="陈梓豪" target="赵小雪" id="0">
+  <data key="d0">出差代签授权人</data>
+  <data key="d1"></data>
+</edge>
+<edge source="大额申报利益冲突时转派监察委员会" target="单笔金额超过2万元" id="0">
+  <data key="d0">触发条件</data>
+  <data key="d1"></data>
+</edge>
+<edge source="大额申报利益冲突时转派监察委员会" target="审批人与申请人存在利益冲突" id="0">
+  <data key="d0">触发条件</data>
+  <data key="d1"></data>
+</edge>
+<edge source="大额申报利益冲突时转派监察委员会" target="陈梓豪" id="0">
+  <data key="d0">主管审核人</data>
+  <data key="d1"></data>
+</edge>
+<edge source="监察委员会" target="2024年新增规定" id="0">
+  <data key="d0">发布</data>
+  <data key="d1"></data>
+</edge>
+<edge source="监察委员会" target="合规回避与代签规则" id="0">
+  <data key="d0">负责</data>
+  <data key="d1"></data>
+</edge>
+<edge source="2024年新增规定" target="主任出差时由副主任执行最终否决权" id="0">
+  <data key="d0">规定</data>
+  <data key="d1"></data>
+</edge>
+<edge source="赵小雪" target="监察委员会副主任" id="0">
+  <data key="d0">职务</data>
+  <data key="d1"></data>
+</edge>
+<edge source="赵小雪" target="最终否决权" id="0">
+  <data key="d0">权限</data>
+  <data key="d1"></data>
+</edge>
+<edge source="3万元驻场补贴" target="华东项目" id="0">
+  <data key="d0">所属项目</data>
+  <data key="d1"></data>
+</edge>
+<edge source="华东项目" target="华东交付一部" id="0">
+  <data key="d0">归属</data>
+  <data key="d1"></data>
+</edge>
+</graph></graphml>

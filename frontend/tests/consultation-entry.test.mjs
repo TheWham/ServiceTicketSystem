@@ -6,6 +6,8 @@ import * as vue from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import ElementPlus, { ID_INJECTION_KEY, ZINDEX_INJECTION_KEY } from 'element-plus'
 import * as icons from '@element-plus/icons-vue'
+import * as navigation from '../src/utils/navigation.js'
+import * as engineerViews from '../src/utils/engineerViews.js'
 
 // Compile the actual page and render its UI. Only child panels and external
 // services are replaced; Vue and Element Plus use their real implementations.
@@ -20,7 +22,10 @@ function page(file, role = 'EMPLOYEE', path = '/employee', inlineTemplate = true
   const { descriptor } = parse(readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8'))
   const compiled = compileScript(descriptor, { id: file, inlineTemplate })
   const dependency = name => modules[name] || (name.endsWith('/stores/user.js')
-    ? { useUserStore: () => store } : name.endsWith('.vue') ? child : {})
+    ? { useUserStore: () => store }
+    : name.endsWith('/utils/navigation.js') ? navigation
+    : name.endsWith('/utils/engineerViews.js') ? engineerViews
+    : name.endsWith('.vue') ? child : {})
   const code = compiled.content
     .replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g,
       (_, names, name) => `const {${names.replace(/\s+as\s+/g, ':')}} = dependency(${JSON.stringify(name)})`)
