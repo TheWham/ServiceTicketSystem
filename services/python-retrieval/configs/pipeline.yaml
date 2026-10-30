@@ -53,3 +53,23 @@ retrieval:
 reranker:
   model: qwen3-reranker-8b      # 可被环境变量 RERANK_MODEL 或 CLI --reranker 覆盖
   backend: dashscope            # 仅走 KSP 网关时生效（.env 配了 RERANK_* 直连时忽略）
+
+# ==============================================================================
+# 图知识库（Task 8；默认写而不启用——enabled 翻 true 前零行为变化）
+# 凭证不落明文：password 为空时从 password_env 指名的环境变量（或 .env 同名键）取；
+# password 直填仅限本地测试。REPLACES 语义由版本消歧在检索层处理，永不进
+# expansion.edge_whitelist（误配会在加载期 ValueError 拒绝）。
+# ==============================================================================
+graph:
+  enabled: false
+  neo4j:
+    uri: "bolt://localhost:7687"
+    username: "neo4j"
+    password_env: "NEO4J_PASSWORD"
+    password: ""
+  expansion:
+    edge_whitelist: [SAME_ROOT_CAUSE, RELATED, PROCESS_APPLIES]
+    max_neighbors: 2
+    decay: 0.5
+    score_floor: 0.10
+    timeout_ms: 300
