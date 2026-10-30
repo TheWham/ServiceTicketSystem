@@ -1,5 +1,6 @@
 package com.itticket.consultation.adapter.generation;
 import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.itticket.consultation.adapter.*;
 import com.itticket.consultation.adapter.agent.PythonAgentClient;
@@ -41,7 +42,15 @@ public final class OpenAiCompatibleAnswerGenerator implements AnswerGenerator {
         var input = json.createObjectNode().put("question", query.question());
         input.set("priorTurns", json.valueToTree(query.priorTurns()));
         if (query.assetId() != null) input.put("assetId", query.assetId());
-        input.set("material", json.valueToTree(material));
+        // 身份标注投影:基础条目 role=SOURCE,图扩展邻居条目 role=NEIGHBOR(引用归邻居自身 versionId)。
+        // 邻居身份只看图扩展标记——准入谓词保证扩展条目必带三字段真值、基础条目三字段为 null。
+        ArrayNode materialArray = json.createArrayNode();
+        for (RetrievedKnowledge item : material) {
+            ObjectNode entry = materialArray.addObject();
+            entry.put("role", Boolean.TRUE.equals(item.graphExpanded()) ? "NEIGHBOR" : "SOURCE");
+            entry.setAll((ObjectNode) json.valueToTree(item));
+        }
+        input.set("material", materialArray);
 
         TicketDraftDto draft = null;
         JsonNode payload;
@@ -113,6 +122,8 @@ public final class OpenAiCompatibleAnswerGenerator implements AnswerGenerator {
                 8. 无引用时必须明确说明这是通用办公 IT 建议，不能声称依据公司规定、内部知识或已确认企业配置。
                    不得编造企业内部网址/IP、邮箱、联系人、账号、政策、审批流程或来源；缺企业信息时请用户询问 IT。
                    有资料时也只能复述资料明确给出的企业事实，通用补充须与资料内容区分。
+                9. material 中 role=NEIGHBOR 的是源命中卡的关联知识，回答可参考，引用时引其自身的 versionId，
+                   不得把邻居卡的操作步骤陈述为源卡内容。
 
                 只输出一个 JSON 对象,不要加代码块标记,字段如下:
                 {
