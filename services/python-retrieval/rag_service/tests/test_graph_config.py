@@ -11,7 +11,9 @@
 3. **decay 界内**：必须严格 0<decay<1——decay=1.0 会让扩展分=源卡分，
    破坏「扩展分严格低于基础分」与 topScore 语义（Review Focus 4）；
 4. **REPLACES 拒绝**：REPLACES 永不进热路径白名单，配了即视为配错，
-   加载期 ValueError 拒绝；不含 REPLACES 时打告警日志说明其不参与扩展。
+   加载期 ValueError 拒绝；enabled=true 且不含 REPLACES 时打告警日志说明其
+   不参与扩展（F1：默认关=静默——policy 热路径每次请求都 load_config，
+   无条件告警会每请求刷屏；enabled 类型安全解析防 "false" 字符串陷阱，F2）。
 """
 
 import logging
@@ -136,14 +138,38 @@ def test_replaces_in_whitelist_rejected(tmp_path):
 
 
 def test_whitelist_without_replaces_logs_warning(tmp_path, caplog, monkeypatch):
-    """不含 REPLACES 的白名单 → 告警日志说明 REPLACES 不参与图扩展。"""
+    """enabled=true 且不含 REPLACES 的白名单 → 告警日志说明 REPLACES 不参与图扩展。"""
     monkeypatch.setenv(TEST_PW_ENV, "env-secret")  # enabled=true 需有凭证，否则先被凭证校验拒
     with caplog.at_level(logging.WARNING, logger="rag_pipeline.config"):
         cfg = load_config(write_yaml(tmp_path, graph_yaml()))
     assert cfg.graph.enabled is True  # 前置：确实加载成功
     assert any("REPLACES" in r.getMessage() for r in caplog.records), (
-        "白名单不含 REPLACES 时应打告警日志，当前 records: "
-        f"{[r.getMessage() for r in caplog.records]}" )
+        "enabled=true 且白名单不含 REPLACES 时应打告警日志，当前 records: "
+        f"{[r.getMessage() for r in caplog.records]}")
+
+
+def test_disabled_graph_does_not_log_whitelist_warning(tmp_path, caplog, monkeypatch):
+    """F1：enabled=false 时「不含 REPLACES」告警不打——默认关=静默。
+
+    policy 版本消歧热路径每次请求都 load_config()，无条件告警会
+    每请求刷一条误导性 WARNING；告警只在开图时提示一次语义。"""
+    monkeypatch.delenv(TEST_PW_ENV, raising=False)
+    with caplog.at_level(logging.WARNING, logger="rag_pipeline.config"):
+        cfg = load_config(write_yaml(tmp_path, graph_yaml(enabled="false", password="")))
+    assert cfg.graph.enabled is False
+    assert not any("REPLACES" in r.getMessage() for r in caplog.records), (
+        "enabled=false 时不打「不含 REPLACES」告警，当前 records: "
+        f"{[r.getMessage() for r in caplog.records]}")
+
+
+@pytest.mark.parametrize("raw, expected", [('"false"', False), ('"true"', True)])
+def test_enabled_string_parsed_type_safely(tmp_path, monkeypatch, raw, expected):
+    """F2：enabled 写成带引号字符串时不得落进 bool("false")==True 的
+    truthiness 陷阱；非 bool 类型按仓库既有 _env_bool 同集语义解析
+    （"1"/"true"/"yes"/"on" 小写集合，其余含 "false" 均为 False）。"""
+    monkeypatch.setenv(TEST_PW_ENV, "env-secret")  # 字符串 "true" 解析为 True 时需有凭证
+    cfg = load_config(write_yaml(tmp_path, graph_yaml(enabled=raw)))
+    assert cfg.graph.enabled is expected
 
 
 if __name__ == "__main__":

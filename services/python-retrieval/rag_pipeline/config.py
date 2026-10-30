@@ -166,6 +166,15 @@ class PipelineConfig:
     reranker_backend: str = "dashscope"    # 仅走 KSP 网关时生效（直连供应商时忽略）
 
 
+def _as_bool(value: Any) -> bool:
+    """类型安全布尔解析（语义对齐 rag_service.assembly._env_bool 同集）：
+    bool 直接用；其余按字符串 strip+小写后仅接受 "1"/"true"/"yes"/"on"。
+    防止 yaml 带引号字符串 'false' 落进 bool("false")==True 的 truthiness 陷阱。"""
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
 def _fill(dc: Any, data: Optional[Dict[str, Any]]) -> Any:
     """把 YAML 片段填进 dataclass：未知键忽略、缺失键保留默认值。"""
     for k, v in (data or {}).items():
@@ -180,30 +189,30 @@ def _build_graph_config(raw: Optional[Dict[str, Any]]) -> GraphConfig:
     校验全部在加载期完成——配置错误必须在启动时炸，而不是在检索热路径上
     才发现扩展分冒充了相似度（Review Focus 4）。
     - REPLACES 进白名单 → ValueError（永不进热路径，配了即配错）；
-      不含 REPLACES → 告警日志说明其不参与图扩展（由版本消歧在检索层处理）；
+      enabled=true 且不含 REPLACES → 告警日志说明其不参与图扩展（由版本消歧
+      在检索层处理）。告警仅在 enabled=true 时打：默认关=静默，否则 policy
+      版本消歧热路径每次请求 load_config 都会刷一条误导性 WARNING；
     - decay 必须严格 0<decay<1：decay>=1 使扩展分不低于源卡，搅浑准入/去重
       语义与 topScore 复核；decay<=0 使扩展条目恒为 0 分；
     - 凭证：password 直填（本地测试）优先，否则从 password_env 指名的环境变量取
       （进程环境 > .env）；enabled=true 且两者皆空 → ValueError，不带空密码上路。
+
+    顺序约定：两条 ValueError（白名单/decay）与凭证校验前置，说明性告警
+    放在全部校验之后、返回之前——必炸的配置不会先留下声报级别的噪声日志。
     """
     raw = raw or {}
     g = GraphConfig()
     if raw.get("enabled") is not None:
-        g.enabled = bool(raw.get("enabled"))
+        g.enabled = _as_bool(raw["enabled"])
     g.neo4j = _fill(Neo4jConfig(), raw.get("neo4j"))
     g.expansion = _fill(ExpansionConfig(), raw.get("expansion"))
 
-    logger = logging.getLogger(__name__)
     if "REPLACES" in g.expansion.edge_whitelist:
         raise ValueError(
             "graph.expansion.edge_whitelist 不允许包含 REPLACES：其语义已由版本消歧"
             "（rag_pipeline.policy）在检索层处理，进图扩展热路径会与准入/去重"
             "语义搅浑。请从白名单移除。"
         )
-    logger.warning(
-        "graph.expansion.edge_whitelist 不含 REPLACES：REPLACES 边不参与图扩展"
-        "（由版本消歧在检索层处理），此为设计预期；如需其进热路径请先复核设计。"
-    )
 
     if not (0 < g.expansion.decay < 1):
         raise ValueError(
@@ -223,6 +232,12 @@ def _build_graph_config(raw: Optional[Dict[str, Any]]) -> GraphConfig:
             f"graph.enabled=true 但 Neo4j 凭证为空：请设置环境变量 "
             f"{g.neo4j.password_env}（或 .env 同名键），本地测试可在 "
             "graph.neo4j.password 直填（仅限本地）。"
+        )
+
+    if g.enabled and "REPLACES" not in g.expansion.edge_whitelist:
+        logging.getLogger(__name__).warning(
+            "graph.expansion.edge_whitelist 不含 REPLACES：REPLACES 边不参与图扩展"
+            "（由版本消歧在检索层处理），此为设计预期；如需其进热路径请先复核设计。"
         )
     return g
 
