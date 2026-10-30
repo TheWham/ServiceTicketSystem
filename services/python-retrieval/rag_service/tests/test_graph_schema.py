@@ -96,6 +96,14 @@ def test_validate_relations_unknown_target_rejected_whole_batch():
     assert "ITKB-FAKE-999" in str(ei.value), "错误信息须含未知 target 便于批次定位"
 
 
+def test_validate_relations_none_passes_as_empty():
+    assert validate_relations(None, valid_targets={"ITKB-A"}) == []
+
+
+def test_validate_graph_nodes_none_passes_as_empty():
+    assert validate_graph_nodes(None) == []
+
+
 def test_validate_relations_drops_missing_evidence():
     """evidence is None 的关系被丢弃(防幻觉铁律),其余保留。"""
     raw = [
@@ -104,6 +112,16 @@ def test_validate_relations_drops_missing_evidence():
     ]
     out = validate_relations(raw, valid_targets={"ITKB-A", "ITKB-B"})
     assert out == [RelationDef(target="ITKB-A", type="related", note="有据", evidence="原文短句")]
+
+
+def test_validate_relations_drops_blank_string_evidence():
+    """锚定:evidence 为纯空白字符串与 None 同等丢弃;非空白证据原样保留、不剥空白。"""
+    raw = [
+        {"target": "ITKB-A", "type": "related", "note": "空白据", "evidence": "   "},
+        {"target": "ITKB-B", "type": "related", "note": "实据", "evidence": "  证据原文  "},
+    ]
+    out = validate_relations(raw, valid_targets={"ITKB-A", "ITKB-B"})
+    assert out == [RelationDef(target="ITKB-B", type="related", note="实据", evidence="  证据原文  ")]
 
 
 def test_validate_relations_rejects_unknown_type():
