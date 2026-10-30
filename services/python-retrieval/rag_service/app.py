@@ -8,7 +8,7 @@
   注意 `data.status` 有四态，其中 `UNDATED` / `NO_MATCH` 是**结论不是失败**，仍是 HTTP 200。
 - `GET /api/health`：**async def**，不抢检索锁——检索打满时仍 0ms 级响应，
   并回显在线预算（rerankWaitBudget/rerankMaxRetries）便于确认收紧已生效。
-- 统一 Result 包络（{code,msg,data}，code=0 成功），异常映射：锁定 5031 / 参数 4000 / 兜底 5000。
+- 统一 Result 包络（{code,msg,data}，code=0 成功），异常映射：锁定 5031 / 图库不可用 5032 / 参数 4000 / 兜底 5000。
 """
 
 from contextlib import asynccontextmanager
@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 
 from .assembly import LockBusy, ServiceAssembly
 from .contract import PolicyResolveRequest, ResultEnvelope, RetrievalRequest
+from .graph_expansion import GRAPH_UNAVAILABLE_MSG, GraphUnavailable
 
 
 def create_app(assembly: ServiceAssembly = None) -> FastAPI:
@@ -27,7 +28,13 @@ def create_app(assembly: ServiceAssembly = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.assembly = assembly or ServiceAssembly()
-        yield
+        try:
+            yield
+        finally:
+            # 图扩展 driver 懒构造、进程退出显式关闭（无图/注入桩则无事可关）
+            expander = getattr(app.state.assembly, "graph_expander", None)
+            if expander is not None:
+                expander.close()
 
     app = FastAPI(title="rag-service (python retrieval kernel)", version="0.1.0", lifespan=lifespan)
 
@@ -37,6 +44,12 @@ def create_app(assembly: ServiceAssembly = None) -> FastAPI:
     @app.exception_handler(LockBusy)
     async def _on_lock_busy(request, exc: LockBusy):
         return JSONResponse(status_code=503, content=_envelope(5031, f"检索繁忙，请稍后重试：{exc}"))
+
+    @app.exception_handler(GraphUnavailable)
+    async def _on_graph_unavailable(request, exc: GraphUnavailable):
+        # 图库不可用是依赖硬失败：503/5032 明确区分于空结果与拒答，不静默回退
+        return JSONResponse(status_code=503,
+                            content=_envelope(5032, GRAPH_UNAVAILABLE_MSG))
 
     @app.exception_handler(RequestValidationError)
     async def _on_validation(request, exc: RequestValidationError):
