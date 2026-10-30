@@ -163,7 +163,7 @@ class GraphExtractor:
     # ---------- 通用调用(复刻 llm_synthesizer.py:164 语义) ----------
 
     def _chat_json(self, model: str, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
-        """本模块的 LLM 调用接缝:断网测试在此覆写注入替身(Python 试同样可注入桩 client)。"""
+        """本模块的 LLM 调用接缝:断网测试在此覆写注入替身(Python 测试同样可注入桩 client)。"""
         resp = self.client.chat.completions.create(
             model=model,
             messages=[
@@ -178,6 +178,7 @@ class GraphExtractor:
         """单步固定模式:查缓存 -> LLM 调用(失败重试 1 次)-> 返回原始 dict 或 None(触发兜底)。
 
         成功(含缓存命中)后 self.last_used_llm = True;两次尝试均失败置 False 并返回 None。
+        注:ent 步守卫层面的内部回退不经本方法,由 _fallback_entities 兜底处改置 False。
         成功结果写缓存;兜底不写(降级产物不得固化到磁盘)。
         """
         cached = self._read_cache(step, user_prompt)
@@ -253,9 +254,13 @@ class GraphExtractor:
         new_entities = [e for e in normalized if e.name not in canonical_names]
         return (normalized, new_entities)
 
-    @staticmethod
-    def _fallback_entities(flat: List[str]) -> Tuple[List[EntityDef], List[EntityDef]]:
-        """实体规则兜底:原扁平名全标 "概念",新增为空。"""
+    def _fallback_entities(self, flat: List[str]) -> Tuple[List[EntityDef], List[EntityDef]]:
+        """实体规则兜底:原扁平名全标 "概念",新增为空。
+
+        实体凡来自规则兜底——不管上游是 LLM 两次失败、归一零有效产出还是校验防御失败——
+        调用方读到的 last_used_llm 必须是 False(provenance = rule),统一在此改置。
+        """
+        self.last_used_llm = False
         return ([EntityDef(name=n, type="概念") for n in flat], [])
 
     @staticmethod
@@ -352,6 +357,11 @@ class GraphExtractor:
         兜底 = relations 空列表(replaces 规则迁移条目由 runner 叠加)+ graph_nodes 空列表。
         """
         corpus = list(corpus_digests) if corpus_digests else [digest]
+        if len(corpus) == 1:
+            logger.warning(
+                "graph_rel: 卡 %s 语料清单缺失(corpus_digests 缺省或仅含本卡), "
+                "卡间关系将为空;批处理 runner 应传入全语料摘要清单", digest.wiki_id,
+            )
         valid_targets = {d.wiki_id for d in corpus}
 
         raw = self._llm_result_or_none("rel", RELATION_SYSTEM_PROMPT,
@@ -403,7 +413,9 @@ class GraphExtractor:
             logger.warning("graph_rel: 卡 %s 关系数 %d 超上限 %d, 截断",
                            wiki_id, len(kept), MAX_RELATIONS_PER_CARD)
             kept = kept[:MAX_RELATIONS_PER_CARD]
-        return validate_relations(kept, valid_targets | {wiki_id})
+        # 自指条目已在上方守卫滤除,校验直传 valid_targets(不与本卡编码作冗余并集,
+        # 否则与「target 不得自指」语义矛盾)
+        return validate_relations(kept, valid_targets)
 
     @staticmethod
     def _guard_graph_nodes(raw: Any, wiki_id: str) -> List[GraphNodeDef]:

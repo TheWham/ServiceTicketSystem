@@ -29,6 +29,7 @@ from rag_pipeline.ingestion.graph_schema import (  # noqa: E402
     validate_relations,
 )
 from rag_pipeline.ingestion.graph_extractor import (  # noqa: E402
+    ENT_PROMPT_BODY_LIMIT,
     MAX_ENTITIES_PER_CARD,
     CardDigest,
     GraphExtractor,
@@ -51,9 +52,11 @@ class _StubExtractor(GraphExtractor):
         self.payload = payload
         self.error = error
         self.chat_calls = 0
+        self.user_prompt = None
 
     def _chat_json(self, model, system_prompt, user_prompt):
         self.chat_calls += 1
+        self.user_prompt = user_prompt
         if self.error is not None:
             raise self.error
         return self.payload
@@ -246,3 +249,63 @@ def test_cache_hit_skips_llm_call(tmp_path):
     assert len(names) == 2
     assert any(n.startswith("graph_ent_") and n.endswith(".json") for n in names)
     assert any(n.startswith("graph_rel_") and n.endswith(".json") for n in names)
+
+
+# ---------- ⑥ ent 步内部回退路径 provenance:last_used_llm 必须归零 ----------
+
+def test_zero_valid_entities_falls_back_with_rule_provenance(tmp_path):
+    """LLM 归一零有效产出 -> 回退扁平实体兜底,provenance 必须是 rule。
+
+    桩 payload 给出的名称全部不在词表且正文无证据(全拒),原有扁平实体非空:
+    走「防卡片退化」内部回退,此时实体来自规则兜底,调用方读到的
+    last_used_llm 必须是 False(不得残留 LLM 成功标记)。
+    """
+    body = "本正文与下列候选实体毫无交集。"
+    payload = {
+        "entities": [{"name": "全息投影", "type": "设备"}],
+        "new_entities": [{"name": "量子网关", "type": "设备"}],
+    }
+    ex = _StubExtractor(payload, cache_dir=str(tmp_path))
+    flat = ["无线局域网(WiFi)", "堡垒机"]
+    normalized, new_entities = ex.normalize_entities("KB-1", flat, body, glossary=GLOSSARY)
+    assert normalized == [EntityDef(name="无线局域网(WiFi)", type="概念"),
+                          EntityDef(name="堡垒机", type="概念")]
+    assert new_entities == []
+    assert ex.last_used_llm is False  # 兜底产出的 provenance 必须是 rule
+
+
+class _GuardDriftStub(_StubExtractor):
+    """桩:模拟守卫与校验器规则漂移——守卫放行了校验器拒收的畸形 type。"""
+
+    def _guard_entity_candidates(self, candidates, wiki_id, body, index):
+        return [SimpleNamespace(name="漂移实体", type="幻觉类型")]
+
+
+def test_validate_entities_defensive_fallback(tmp_path):
+    """守卫后 validate_entities 防御性拒收 -> 回退兜底,provenance 同样归零。
+
+    桩给畸形输出(守卫放行了非法 type),validate_entities 整批抛 ValueError:
+    防御性回退分支生效,返回原扁平实体全标 概念,last_used_llm 为 False。
+    """
+    ex = _GuardDriftStub(payload={"entities": [], "new_entities": []}, cache_dir=str(tmp_path))
+    flat = ["堡垒机"]
+    normalized, new_entities = ex.normalize_entities("KB-1", flat, "正文", glossary=GLOSSARY)
+    assert normalized == [EntityDef(name="堡垒机", type="概念")]
+    assert new_entities == []
+    assert ex.last_used_llm is False
+
+
+def test_ent_prompt_body_truncated_to_limit(tmp_path):
+    """ent 步提示词正文截断:超过 ENT_PROMPT_BODY_LIMIT 的部分不进 prompt。"""
+    head = "原始实体出现在正文开头。"
+    filler = "充" * (ENT_PROMPT_BODY_LIMIT + 100)
+    tail = "结尾标记"
+    body = head + filler + tail
+    payload = {"entities": [{"name": "原始实体", "type": "概念"}], "new_entities": []}
+    ex = _StubExtractor(payload, cache_dir=str(tmp_path))
+    normalized, _ = ex.normalize_entities("KB-1", ["原始实体"], body)
+    assert normalized == [EntityDef(name="原始实体", type="概念")]
+    assert ex.user_prompt is not None
+    # 截断结果逐字进 prompt,尾部超限内容被切掉
+    assert ("正文：\n" + body[:ENT_PROMPT_BODY_LIMIT]) in ex.user_prompt
+    assert tail not in ex.user_prompt
