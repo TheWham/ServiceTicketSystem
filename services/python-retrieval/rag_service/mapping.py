@@ -109,7 +109,7 @@ def build_response(
         facts = reasoning_res.get("graph_facts") or []
         seeds = reasoning_res.get("seed_entities") or []
         if facts:
-            top_facts_str = "\n".join(f"- {f}" for f in facts[:4])
+            top_facts_str = "\n".join(f"- {f}" for f in facts[:6])
             seeds_str = "、".join(seeds[:5])
             graph_prefix = (
                 f"【知识图谱因果推导】\n"

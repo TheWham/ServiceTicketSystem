@@ -319,22 +319,41 @@ function getEdgeColor(rel) {
   return { color: '#818cf8', highlight: '#c7d2fe', hover: '#a5b4fc' }
 }
 
-// 构建拓扑图数据
-function buildGraphData() {
+// 异步尝试从 Neo4j 读取真实全量子图，若失败则安全降级为推导链
+async function fetchNeo4jSubgraph(scene = 'vpn') {
+  try {
+    const res = await fetch(`http://127.0.0.1:8350/api/neo4j/graph_data?scene=${encodeURIComponent(scene)}`, {
+      signal: AbortSignal.timeout(1800)
+    })
+    if (res.ok) {
+      const json = await res.json()
+      if (json.code === 0 && json.data && json.data.nodes?.length) {
+        return json.data
+      }
+    }
+  } catch (e) {
+    // 降级为本地推导链构建
+  }
+  return null
+}
+
+// 构建拓扑图数据（融合 Neo4j 真实子图与本地推导事实）
+async function buildGraphData() {
   if (!props.reasoning) return { nodes: new DataSet([]), edges: new DataSet([]) }
 
-  const nodesMap = new Map()
-  const edgesList = []
+  const scene = props.reasoning.scene || 'vpn'
+  const neo4jData = await fetchNeo4jSubgraph(scene)
 
-  // 1. 先加入核心种子实体
-  for (const ent of props.reasoning.entities || []) {
-    if (!nodesMap.has(ent)) {
-      const col = getNodeColor(ent)
-      nodesMap.set(ent, {
-        id: ent,
-        label: ent,
+  if (neo4jData && neo4jData.nodes?.length && neo4jData.edges?.length) {
+    // 1. 优先使用与 Neo4j 100% 对应的原生节点与关系
+    const nodes = new DataSet(neo4jData.nodes.map(n => {
+      const col = getNodeColor(n.label || n.id)
+      const isRoot = /根因|锁定/.test(n.label || n.id)
+      return {
+        id: n.id,
+        label: n.label || n.id,
         shape: 'dot',
-        size: /根因|锁定/.test(ent) ? 24 : 18,
+        size: isRoot ? 24 : (n.id.startsWith('ITKB-') ? 20 : 16),
         color: {
           background: col.background,
           border: col.border,
@@ -342,49 +361,37 @@ function buildGraphData() {
           hover: { background: '#6366f1', border: '#a5b4fc' }
         },
         font: { color: '#ffffff', size: 12, strokeWidth: 2, strokeColor: '#020617' },
-        title: `实体节点: ${ent}`
-      })
-    }
+        title: `实体: ${n.label || n.id}${n.is_deprecated ? ' (已废止)' : ''}`
+      }
+    }))
+
+    const edges = new DataSet(neo4jData.edges.map((e, idx) => {
+      const ec = getEdgeColor(e.label)
+      return {
+        id: `ne_${idx}`,
+        from: e.from,
+        to: e.to,
+        label: e.label,
+        arrows: 'to',
+        color: ec,
+        font: { size: 10, color: '#cbd5e1', background: '#0f172a', strokeWidth: 0 },
+        title: e.title || `${e.from} ──(${e.label})──> ${e.to}`
+      }
+    }))
+
+    return { nodes, edges }
   }
 
-  // 2. 加入因果链条中的 source 与 target 以及 edges
+  // 2. 本地兜底模式：基于已解析的推导链组装
+  const nodesMap = new Map()
+  const edgesList = []
+  const connectedNodeIds = new Set()
+
+  // 收集所有带连线的关系
   for (const ch of props.reasoning.chains || []) {
     if (ch.src && ch.tgt) {
-      if (!nodesMap.has(ch.src)) {
-        const col = getNodeColor(ch.src)
-        nodesMap.set(ch.src, {
-          id: ch.src,
-          label: ch.src,
-          shape: 'dot',
-          size: 18,
-          color: {
-            background: col.background,
-            border: col.border,
-            highlight: { background: '#818cf8', border: '#c7d2fe' },
-            hover: { background: '#6366f1', border: '#a5b4fc' }
-          },
-          font: { color: '#ffffff', size: 12, strokeWidth: 2, strokeColor: '#020617' },
-          title: `实体节点: ${ch.src}`
-        })
-      }
-      if (!nodesMap.has(ch.tgt)) {
-        const col = getNodeColor(ch.tgt)
-        nodesMap.set(ch.tgt, {
-          id: ch.tgt,
-          label: ch.tgt,
-          shape: 'dot',
-          size: /根因|锁定/.test(ch.tgt) ? 24 : 18,
-          color: {
-            background: col.background,
-            border: col.border,
-            highlight: { background: '#818cf8', border: '#c7d2fe' },
-            hover: { background: '#6366f1', border: '#a5b4fc' }
-          },
-          font: { color: '#ffffff', size: 12, strokeWidth: 2, strokeColor: '#020617' },
-          title: `实体节点: ${ch.tgt}`
-        })
-      }
-
+      connectedNodeIds.add(ch.src)
+      connectedNodeIds.add(ch.tgt)
       const ec = getEdgeColor(ch.rel)
       edgesList.push({
         from: ch.src,
@@ -398,6 +405,59 @@ function buildGraphData() {
     }
   }
 
+  // 保证已连接节点进入节点表
+  for (const id of connectedNodeIds) {
+    const col = getNodeColor(id)
+    nodesMap.set(id, {
+      id,
+      label: id,
+      shape: 'dot',
+      size: /根因|锁定/.test(id) ? 24 : 16,
+      color: {
+        background: col.background,
+        border: col.border,
+        highlight: { background: '#818cf8', border: '#c7d2fe' },
+        hover: { background: '#6366f1', border: '#a5b4fc' }
+      },
+      font: { color: '#ffffff', size: 12, strokeWidth: 2, strokeColor: '#020617' },
+      title: `实体节点: ${id}`
+    })
+  }
+
+  // 如果某些种子实体没有孤立连线，与其核心根因节点连接，杜绝出现孤立悬空点
+  const rootNode = Array.from(nodesMap.keys()).find(k => /锁定|根因/.test(k))
+  for (const ent of props.reasoning.entities || []) {
+    if (!nodesMap.has(ent)) {
+      if (rootNode) {
+        // 自动补充与根因的推导连线
+        edgesList.push({
+          from: ent,
+          to: rootNode,
+          label: '诱发根因',
+          arrows: 'to',
+          color: getEdgeColor('诱发根因'),
+          font: { size: 10, color: '#cbd5e1', background: '#0f172a', strokeWidth: 0 },
+          title: `${ent} ──(诱发根因)──> ${rootNode}`
+        })
+      }
+      const col = getNodeColor(ent)
+      nodesMap.set(ent, {
+        id: ent,
+        label: ent,
+        shape: 'dot',
+        size: 18,
+        color: {
+          background: col.background,
+          border: col.border,
+          highlight: { background: '#818cf8', border: '#c7d2fe' },
+          hover: { background: '#6366f1', border: '#a5b4fc' }
+        },
+        font: { color: '#ffffff', size: 12, strokeWidth: 2, strokeColor: '#020617' },
+        title: `核心实体: ${ent}`
+      })
+    }
+  }
+
   return {
     nodes: new DataSet(Array.from(nodesMap.values())),
     edges: new DataSet(edgesList)
@@ -405,24 +465,24 @@ function buildGraphData() {
 }
 
 // 初始化抽屉内部 Vis-Network 画布
-function initDrawerNetwork() {
+async function initDrawerNetwork() {
   if (!drawerNetworkRef.value) return
   if (drawerNetwork) {
     drawerNetwork.destroy()
     drawerNetwork = null
   }
 
-  const { nodes, edges } = buildGraphData()
+  const { nodes, edges } = await buildGraphData()
   const options = {
     physics: {
       barnesHut: {
-        gravitationalConstant: -2800,
-        centralGravity: 0.28,
-        springLength: 95,
-        springConstant: 0.05,
+        gravitationalConstant: -3200,
+        centralGravity: 0.25,
+        springLength: 105,
+        springConstant: 0.045,
         damping: 0.09
       },
-      stabilization: { iterations: 100 }
+      stabilization: { iterations: 110 }
     },
     interaction: {
       hover: true,
@@ -462,24 +522,24 @@ function onFullscreenOpened() {
   })
 }
 
-function initFullscreenNetwork() {
+async function initFullscreenNetwork() {
   if (!fullscreenNetworkRef.value) return
   if (fullscreenNetwork) {
     fullscreenNetwork.destroy()
     fullscreenNetwork = null
   }
 
-  const { nodes, edges } = buildGraphData()
+  const { nodes, edges } = await buildGraphData()
   const options = {
     physics: {
       barnesHut: {
-        gravitationalConstant: -4500,
-        centralGravity: 0.22,
-        springLength: 130,
+        gravitationalConstant: -4800,
+        centralGravity: 0.20,
+        springLength: 140,
         springConstant: 0.04,
         damping: 0.09
       },
-      stabilization: { iterations: 120 }
+      stabilization: { iterations: 130 }
     },
     interaction: {
       hover: true,

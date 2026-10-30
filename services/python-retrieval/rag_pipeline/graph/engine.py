@@ -18,6 +18,7 @@ from .schema import GroundedTriple, ITRelationEnum, canonicalize_entity
 logger = logging.getLogger(__name__)
 
 CARD_ID_PATTERN = re.compile(r"ITKB(?:-[A-Z0-9]+)+")
+FACT_PATTERN = re.compile(r"^(?:【.+?】\s*)?(.+?)\s+──\((.+?)\)──>\s+(.+)$")
 
 
 class Neo4jKnowledgeGraph:
@@ -249,6 +250,34 @@ class Neo4jKnowledgeGraph:
                             fact = f"【反向关联】{src} ──({rel})──> {dst}"
                         matched_facts.append(fact)
 
+        def _fact_sort_key(f_str: str) -> Tuple[int, int, str]:
+            m = FACT_PATTERN.match(f_str.strip())
+            if not m:
+                return (9, 9, f_str)
+            src_n, rel_n, dst_n = m.group(1).strip(), m.group(2).strip(), m.group(3).strip()
+            src_in = src_n in canonical_seeds
+            dst_in = dst_n in canonical_seeds
+
+            # Tier 0: 种子实体之间直接互联（如 VPN错误691 -> AD域账号锁定，移动端旧密码轮询 -> AD域账号锁定）
+            if src_in and dst_in:
+                return (0, 0, f_str)
+
+            # Tier 1: 种子实体的处置动作与前置排查、制度废止
+            if src_in or dst_in:
+                if any(k in rel_n for k in ["排查", "处置", "动作", "等待", "重置"]):
+                    return (1, 0, f_str)
+                if any(k in rel_n for k in ["废止", "替代"]):
+                    return (1, 1, f_str)
+                if any(k in rel_n for k in ["根因", "诱发"]):
+                    return (1, 2, f_str)
+                if any(k in rel_n for k in ["主责", "通道", "系统", "组件"]):
+                    return (1, 3, f_str)
+                return (1, 4, f_str)
+
+            # Tier 2: 2-Hop 间接外围边
+            return (2, 0, f_str)
+
+        matched_facts.sort(key=_fact_sort_key)
         return matched_facts
 
     def get_associated_card_ids(
