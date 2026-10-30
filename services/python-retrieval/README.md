@@ -39,6 +39,11 @@ EMBED_MODEL=qwen3-embedding-8b
 RERANK_API_KEY=sk-...
 RERANK_BASE_URL=https://kspmas.ksyun.com/v1
 RERANK_MODEL=qwen3-reranker-8b
+
+# ---- Neo4j 图数据库（GraphRAG，默认 bolt://localhost:7687）----
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=neo4j123456
 ```
 
 > `.env` 在 `services/python-retrieval/` 目录下，`RAG_HOME` 指向这里时自动读取。
@@ -97,6 +102,30 @@ python tools/sync_wiki_to_rag_service.py
 | 检索返回空（8310 正常 8302 空） | articleId 不匹配（映射未灌） | 同上 |
 | 查询改写超时 | LLM 上游延迟 >3.5s | 属预期降级，回落原查询；频繁则换模型或 `RAG_DISABLE_QUERY_REWRITE=true` |
 | rerank 降级为启发式 | 网关 429 限流 | 自动降级，不影响可用性；频繁则等或换 key |
+
+## GraphRAG 知识图谱与评测工作台
+
+### 1. 同步知识三元组至 Neo4j
+
+服务启动时若检测到 Neo4j 节点数为 0 会自动触发同步。也可手动执行全量 38 篇 IT 卡片三元组灌库：
+
+```bash
+python tools/sync_triples_to_neo4j.py
+```
+
+### 2. 启动 GraphRAG vs 纯向量检索 对比评测工作台（:8350）
+
+提供基于 FastAPI + Vis.js 的同屏对比评测工作台：
+
+```bash
+python tools/run_compare_ui.py
+# 浏览器访问 http://127.0.0.1:8350
+```
+
+支持功能：
+- **同屏双轨对照**：纯向量检索 vs GraphRAG 多跳因果推导全维度对比（实体、推导链、耗时、切片）
+- **Neo4j 拓扑交互可视化**：物理力导向动态布局、节点拖拽、多跳关系标注与废止替代剪枝
+- **预置多跳评测集**：一键运行 VPN/AD 域并发锁死、CMDB 资产网络依赖、制度新旧版本消歧等典型级联场景
 
 ## 关闭
 

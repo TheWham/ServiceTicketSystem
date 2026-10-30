@@ -50,8 +50,10 @@
 | ticket-service | 8201 | 工单全业务：提单（幂等）、自动路由、9 态状态机、优先级矩阵、SLA 计时、通知、异常队列、照片附件、**派单草案（HITL 写操作门禁）** |
 | consultation-service | 8301 | 智能客服编排：AI 咨询（问答/澄清/拒答）、知识搜索、转人工与人工会话、咨询附件、AI 反馈、**确认建单（人机回环）** |
 | rag-service | 8302 | RAG 编排：知识生命周期状态机、文档入库、检索结果 ④ MySQL PUBLISHED 复核、AI 反馈沉淀知识；检索内核默认下沉 Python `rag_service`（provider 可切 `es` 回滚） |
-| rag_service（Python） | 8310 | 检索内核：向量化 + BM25 双路召回 + RRF 融合 + Cross-Encoder 精排 + 低置信拒答 + 查询改写 + 版本消歧 `/api/v1/policy/resolve` |
+| rag_service（Python） | 8310 | 检索内核：自适应意图路由 + 向量/BM25 双路召回 + RRF + Cross-Encoder 精排 + GraphRAG (Neo4j 多跳因果推导 + Docstore 回溯) + 版本消歧 `/api/v1/policy/resolve` |
 | agent_service（Python） | 8320 | 生成侧：Function Calling（ReAct 循环 + 白名单工具：查本人工单/产建单草稿/补搜知识），带 Trace→Span→Generation 链路追踪；`AI_AGENT_ENABLED=true` 时由 consultation-service 调用 |
+| Neo4j 图数据库 | 7687 / 7474 | 知识图谱：全量 38 篇 IT 卡片实体三元组拓扑存储、2-Hop 关联推导与废止剪枝（Bolt: 7687，控制台: 7474） |
+| compare-ui（Python） | 8350 | GraphRAG vs 纯向量检索 对比评测 Web 工作台（Vis.js 物理力导向拓扑交互、因果子图导出） |
 | common / common-web | — | 统一 Result/错误码/JWT 工具；全局异常、`UserContext` 透传头解析、时间格式 |
 
 > 职责边界：consultation-service 不做检索与模型托管（检索在 rag-service/Python，对话状态在本服务）；rag-service 不做大模型生成（生成在 consultation-service/agent_service）；Python 侧不落业务库（工单是 ticket-service 事实源，知识以 MySQL PUBLISHED 为准，Java 侧复核后才可信）。模型端点统一走 OpenAI 兼容网关（对话 + embedding + rerank）。
@@ -229,6 +231,12 @@ npm run dev                                                # http://127.0.0.1:51
 - **降级语义（RD-006）**：模型/检索故障统一表达为结构化拒答 + `suggestTransfer=true`，不静默回退、不把服务故障解释为"无命中"；密钥缺失仅 AI 问答降级，知识搜索/人工咨询不受影响。
 - **转人工**：加权负载选工程师（候选上限 8）→ 10 工作分钟响应 SLA → 人工会话 → 提交结论 → 员工确认 → 24h 内可重开；可一键转工单（预填标题/描述，经 ticket-service 建单后回写 `CONVERTED_TO_TICKET`）。
 - **AI 反馈沉淀**：员工对 AI 回答点"已解决"后，反馈经脱敏自动沉淀为待审核知识文章（Redis 幂等标记，5s 扫描 `ai_interaction`），审核发布后进入检索。
+- **知识图谱因果推导（GraphRAG，Neo4j 双轨检索）**：
+  - **自适应意图路由（Adaptive Query Router）**：单维事实（0ms 纯向量/BM25 检索）vs 多维并发级联故障（触发 GraphRAG 多跳因果推导），内置规则自愈兜底，毫秒级自适应分流。
+  - **Neo4j 生产级图数据库（:7687）**：存储 38 篇 IT 卡片抽取出的刚性因果拓扑三元组（实体/关系/属性），支持 2-Hop BFS 关系路径遍历、废止规则替代（REPLACES）、CMDB 资产与网络依赖追溯。
+  - **双轨事实抽取与全文回溯**：轨 A 图谱 BFS 提取关联实体与因果三元组（因果关系/排查动作优先排序，截断保真），轨 B 由 MySQL Docstore 自动回溯父块全文，彻底解决纯向量检索在多症状并发、断连孤岛与根因定界上的缺陷。
+  - **思维链路徽标与全景拓扑大屏（Vis.js）**：AI 客服回答前置注入 `【知识图谱因果推导】` 提示块，前端自动挂载【🔍 知识图谱因果推导 | 查看思维链路】徽标；点击即开 Vis.js 物理力导向抽屉，并支持一键开启 **「⛶ 大屏全屏显示」**（100vw × 100vh 交互式拓扑画布，支持实体节点拖拽、视角复位、按领域动态染色与实时图谱探索）。
+  - **多跳对比评测 Web 工作台（:8350）**：`python tools/run_compare_ui.py` 一键启动，预置 VPN/AD 域并发锁死、CMDB 资产级联、制度废止替代等典型用例，提供纯向量 vs GraphRAG 同屏对照评测。
 
 ## API 一览
 
