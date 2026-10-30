@@ -17,7 +17,9 @@ DEFAULT_ID_PREFIX = "ITKB"
 def _yaml_scalar(value: Any) -> str:
     if value is None or value == "":
         return "null"
-    text = str(value).replace('"', '\\"')
+    # 双引号包裹时反斜杠是 YAML 转义引导符:先转义 \ 再转义 ",
+    # 否则重写的 frontmatter 不可解析(ScannerError)或双 \ 静默变单 \。
+    text = str(value).replace("\\", "\\\\").replace('"', '\\"')
     return f'"{text}"'
 
 

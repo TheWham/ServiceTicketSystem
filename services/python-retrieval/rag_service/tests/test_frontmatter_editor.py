@@ -12,6 +12,7 @@
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -128,7 +129,6 @@ class TestRoundTrip:
 
 class TestMigrateReplaces:
     """replaces 迁移:产出 relations 条目且 replaces 原值不动。"""
-
     def test_migrates_non_empty_replaces(self):
         meta = {
             "id": "ITKB-0301",
@@ -172,6 +172,11 @@ class TestMigrateReplaces:
         }
         migrated = migrate_replaces(meta)
         assert [r["target"] for r in migrated["relations"]] == ["ITKB-0200", "ITKB-0300"]
+
+    def test_replaces_plain_string_rejected(self):
+        # 不做静默单元素列表容错:非列表显式拒绝(AGENTS:明确失败不做静默回退)
+        with pytest.raises(ValueError, match="replaces 必须是列表: str"):
+            migrate_replaces({"id": "ITKB-0301", "replaces": "ITKB-A-001"})
 
 
 class TestRender:
@@ -239,6 +244,31 @@ class TestRender:
         assert yaml.safe_load(text)["entities"] == [{"name": "VPN", "type": "协议"}]
         assert text == 'entities:\n- name: "VPN"\n  type: "协议"'
 
+    def test_render_obj_list_rejects_str_mixed_into_object_list(self):
+        # str 混入对象列表:显式拒绝,不得把 str 当本应转义的对象条目静默写入
+        with pytest.raises(ValueError, match="对象条目"):
+            render_obj_list([{"kind": "symptom", "name": "内网不通"}, "oops"])
+
+    def test_render_frontmatter_block_rejects_dict_mixed_into_string_list(self):
+        # 字符串列表混入 dict:显式拒绝,不得 str(dict) 静默塞入
+        with pytest.raises(ValueError, match="keywords.*混合"):
+            render_frontmatter_block(
+                {"keywords": ["vpn", {"name": "内网不通"}]}
+            )
+
+    def test_render_frontmatter_block_rejects_dict_str_mixed_list(self):
+        # 对象列表位置混入 str(整体非纯 dict 列表)同样显式拒绝
+        with pytest.raises(ValueError, match="relations.*混合"):
+            render_frontmatter_block(
+                {
+                    "relations": [
+                        {"target": "ITKB-0300", "type": "replaces",
+                         "note": "n", "evidence": "frontmatter:replaces"},
+                        "oops",
+                    ]
+                }
+            )
+
 
 class TestWriteCard:
     """"原子写与换行约定。"""
@@ -271,12 +301,44 @@ class TestWriteCard:
         write_card(path, migrate_replaces(meta), body)
         assert list(tmp_path.glob("*.tmp")) == []  # 临时文件已被 replace 掉
 
+    def test_write_failure_cleans_tmp_and_reraises(self, tmp_path, monkeypatch):
+        # 写失败(replace 抛错)必须清理 tmp 后原样 re-raise,不留 .tmp 残留(裁决 9)
+        path = tmp_path / "card.md"
+        _write_fixture(path)
+        meta, body = load_card(path)
+
+        def _boom(src, dst):
+            raise OSError("simulated replace failure")
+
+        monkeypatch.setattr(
+            "rag_pipeline.ingestion.frontmatter_editor.os.replace", _boom
+        )
+        with pytest.raises(OSError, match="simulated replace failure"):
+            write_card(path, meta, body)
+        assert list(tmp_path.glob("*.tmp")) == []
+        # 原卡不被半成品破坏
+        meta2, body2 = load_card(path)
+        assert meta2 == meta
+        assert body2 == CARD_BODY
+
     def test_load_card_rejects_missing_frontmatter(self, tmp_path):
         path = tmp_path / "plain.md"
         path.write_text("没有 frontmatter 的正文", encoding="utf-8")
-        try:
+        with pytest.raises(ValueError, match="frontmatter"):
             load_card(path)
-        except ValueError as e:
-            assert "frontmatter" in str(e)
-        else:  # pragma: no cover - 失败路径必须真的失败
-            raise AssertionError("缺少 frontmatter 必须显式拒绝,不得静默返回空")
+
+    def test_load_card_rejects_unparsable_frontmatter_yaml(self, tmp_path):
+        # F6:坏 YAML 必须显式失败,不得静默回退成空 frontmatter
+        path = tmp_path / "bad.md"
+        path.write_text(
+            "---\nid: [未闭合的流\n---\n正文", encoding="utf-8", newline="\n"
+        )
+        with pytest.raises(ValueError, match="frontmatter YAML 解析失败"):
+            load_card(path)
+
+    def test_load_card_rejects_non_mapping_frontmatter(self, tmp_path):
+        # F6:frontmatter 是序列(如 "- a")而非键值映射,显式拒绝
+        path = tmp_path / "seq.md"
+        path.write_text("---\n- a\n- b\n---\n正文", encoding="utf-8", newline="\n")
+        with pytest.raises(ValueError, match="期望键值映射.*list"):
+            load_card(path)

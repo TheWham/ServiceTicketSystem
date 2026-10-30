@@ -72,9 +72,16 @@ def render_frontmatter_block(meta: Dict[str, Any]) -> str:
     """
     lines: List[str] = []
     for key, value in meta.items():
-        if isinstance(value, list) and value and all(isinstance(i, dict) for i in value):
-            lines.append(f"{key}:")
-            lines.append(render_obj_list(value))
+        if isinstance(value, list) and value:
+            if all(isinstance(i, dict) for i in value):
+                lines.append(f"{key}:")
+                lines.append(render_obj_list(value))
+            elif any(isinstance(i, dict) for i in value):
+                # 混合类型列表(str 与 dict 混杂):显式拒绝,
+                # 不得 str(dict) 静默塞入字符串列表(裁决 9)
+                raise ValueError(f"{key}: 列表混入对象条目, 拒绝混合类型列表")
+            else:
+                lines.append(f"{key}: {_yaml_str_list(value)}")
         elif isinstance(value, list):
             lines.append(f"{key}: {_yaml_str_list(value)}")
         else:
@@ -115,6 +122,7 @@ def write_card(path: Path, meta: Dict[str, Any], body: str) -> None:
     换行约定读原文字节探测(load_card 经 read_text 通用换行翻译会把
     CRLF 归一成 LF,写回时按原约定还原),故多次就地编辑不会把存量
     CRLF 卡整体翻译成 LF;新文件默认 LF。
+    任一步骤抛错时清理临时文件后原样 re-raise,不残留 .tmp。
     """
     fm = render_frontmatter_block(meta)
     text = f"---\n{fm}\n---\n{body}"
@@ -127,9 +135,13 @@ def write_card(path: Path, meta: Dict[str, Any], body: str) -> None:
     if newline == "\r\n":
         text = text.replace("\n", "\r\n")
     tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "w", encoding="utf-8", newline="") as fh:
-        fh.write(text)
-    os.replace(tmp, path)
+    try:
+        with open(tmp, "w", encoding="utf-8", newline="") as fh:
+            fh.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)  # 写失败清理临时文件不留 .tmp,原样 re-raise(裁决 9)
+        raise
 
 
 def migrate_replaces(meta: Dict[str, Any]) -> Dict[str, Any]:
@@ -138,12 +150,14 @@ def migrate_replaces(meta: Dict[str, Any]) -> Dict[str, Any]:
     返回新 dict(键序 = 原键序,relations 不存在时追加在尾),入参不被改动;
     note 为固定迁移注记,evidence 指回 frontmatter 字段本身,
     让图知道这条关系的出处是文档头而非人工编写或 LLM 萃取。
+    replaces 非列表(如单个字符串)时显式 ValueError,不做静默容错。
     """
     replaces = meta.get("replaces")
-    if isinstance(replaces, str):
-        replaces = [replaces]  # 扁平字符串按单元素列表处理,与 render 的列表语义一致
-    if not replaces:
+    if not replaces:  # 缺失或空列表:无迁移条目
         return dict(meta)
+    if not isinstance(replaces, list):
+        # 非列表(如单个字符串)显式拒绝,不做静默单元素列表容错(AGENTS:明确失败)
+        raise ValueError(f"replaces 必须是列表: {type(replaces).__name__}")
     relations = [
         dict(item) if isinstance(item, dict) else item
         for item in (meta.get("relations") or [])
