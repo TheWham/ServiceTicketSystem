@@ -11,6 +11,7 @@ import com.itticket.consultation.service.KnowledgeQueryService;
 import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -59,14 +60,14 @@ class GuardedRagDeadlineTest {
         var knowledge = mock(KnowledgeQueryService.class);
         when(knowledge.isPublishedCurrentVersion("A1", "V1")).thenReturn(true);
         var material = new RetrievedKnowledge("C1", "A1", "V1", "排障", "检查输入设备。",
-                "检查输入设备。", "C_NET", BigDecimal.ONE, "V1");
+                "检查输入设备。", "C_NET", BigDecimal.ONE, "V1", null, null, null);
         var started = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         var adapter = new ComposedRagAdapter(
                 (query, context) -> com.itticket.consultation.adapter.policy.RequestVerdict.of(
                         OfficeDomain.OFFICE_IT, com.itticket.consultation.adapter.policy.RequestVerdict.NO_TOOL),
                 (query, context) -> new RetrievalResult(OfficeDomain.OFFICE_IT, true, null,
-                        List.of(material), BigDecimal.ONE), new RetrievalPolicy(knowledge),
+                        List.of(material), BigDecimal.ONE), new RetrievalPolicy(knowledge, Set.of("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"), new BigDecimal("0.10"), 2),
                 (query, input, context) -> {
                     started.countDown();
                     boolean released = false;

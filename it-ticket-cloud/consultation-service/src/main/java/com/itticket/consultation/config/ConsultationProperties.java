@@ -4,7 +4,9 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 
 /** 咨询域可配置项。默认值取自 PRD 与 spec,平台管理员可在允许范围内覆盖。 */
@@ -121,8 +123,26 @@ public class ConsultationProperties {
         private int circuitHalfOpenSuccessThreshold = 3;
         /** AI-001:高风险主题关键词,命中即拒答并引导转人工。 */
 
+        /** 图扩展邻居准入谓词参数,默认与 python 侧 rag_pipeline.config 一致。 */
+        private GraphExpansion graphExpansion = new GraphExpansion();
+
         /** Function Calling 智能体配置(生成侧下沉到 Python agent_service)。 */
         private Agent agent = new Agent();
+    }
+
+    /**
+     * 图扩展邻居准入谓词:五条件全满足才收,任一不满足仅丢该扩展条目,不影响拒答门。
+     * 默认值与 python 侧 rag_pipeline.config.ExpansionConfig 一致。
+     */
+    @Data
+    public static class GraphExpansion {
+        /** 白名单;REPLACES 与共指边在工业共识上不是列证依据,永不入场。 */
+        private LinkedHashSet<String> edgeWhitelist = new LinkedHashSet<>(
+                Arrays.asList("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"));
+        /** 扩展条目分下限。 */
+        private BigDecimal scoreFloor = new BigDecimal("0.10");
+        /** 单个源卡可携带的邻居上限。 */
+        private int maxNeighbors = 2;
     }
 
     /**

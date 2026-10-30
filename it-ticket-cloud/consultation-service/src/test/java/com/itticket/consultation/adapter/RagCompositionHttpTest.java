@@ -100,7 +100,7 @@ class RagCompositionHttpTest {
         var http = new DependencyHttpClient();
         var model = new OpenAiCompatibleModelClient(config, http);
         client = new GuardedRagClient(new ComposedRagAdapter(new SemanticRequestClassifier(model),
-                new RagServiceKnowledgeRetriever(config, http), new RetrievalPolicy(knowledge),
+                new RagServiceKnowledgeRetriever(config, http), new RetrievalPolicy(knowledge, Set.of("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"), new BigDecimal("0.10"), 2),
                 new OpenAiCompatibleAnswerGenerator(model, config, null),
                 false), config);
     }

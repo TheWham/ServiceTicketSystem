@@ -30,7 +30,12 @@ public class AiCompositionConfig {
             default -> throw new IllegalArgumentException("Unsupported AI provider");
         };
     }
-    @Bean public RetrievalPolicy retrievalPolicy(KnowledgeQueryService knowledge) { return new RetrievalPolicy(knowledge); }
+    @Bean public RetrievalPolicy retrievalPolicy(ConsultationProperties properties,
+            KnowledgeQueryService knowledge) {
+        return new RetrievalPolicy(knowledge, properties.getAi().getGraphExpansion().getEdgeWhitelist(),
+                properties.getAi().getGraphExpansion().getScoreFloor(),
+                properties.getAi().getGraphExpansion().getMaxNeighbors());
+    }
 
     // ---- Function Calling 智能体:生成侧下沉 Python agent_service(tools.* 已启用时生效)----
     @Bean public PythonAgentClient pythonAgentClient(ConsultationProperties properties, DependencyHttpClient http) {

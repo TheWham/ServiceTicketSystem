@@ -1,5 +1,7 @@
 package com.itticket.rag.vo;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.math.BigDecimal;
 
 /**
@@ -20,6 +22,9 @@ import java.math.BigDecimal;
  * @param categoryId   知识分类
  * @param score        余弦相似度 [0,1]；纯全文命中（无向量）时为 null
  * @param indexVersion 该切片所属的索引版本（ES 文档 index_version 字段，MR-011 · specs/10-model-rag-integration.md:151）
+ * @param graphExpanded 图扩展邻居标记（python 契约 commit 42d3101）：true 表示本切片为图扩展条目，缺省为 null
+ * @param expandedFrom 源卡 wiki_id（仅图扩展条目携带，缺省为 null）
+ * @param relation 白名单关系型（仅图扩展条目携带，缺省为 null）
  * @author IT工单系统研发组 - RAG专项
  */
 public record RetrievedChunk(
@@ -31,5 +36,8 @@ public record RetrievedChunk(
         String content,
         String categoryId,
         BigDecimal score,
-        String indexVersion) {
+        String indexVersion,
+        @JsonInclude(JsonInclude.Include.NON_NULL) Boolean graphExpanded,
+        @JsonInclude(JsonInclude.Include.NON_NULL) String expandedFrom,
+        @JsonInclude(JsonInclude.Include.NON_NULL) String relation) {
 }

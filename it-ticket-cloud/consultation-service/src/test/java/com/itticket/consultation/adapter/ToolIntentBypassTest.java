@@ -15,6 +15,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,7 +50,7 @@ class ToolIntentBypassTest {
         return new ComposedRagAdapter(
                 (query, ctx) -> RequestVerdict.of(domain, tool),
                 (query, ctx) -> retrieval,
-                new RetrievalPolicy(knowledge),
+                new RetrievalPolicy(knowledge, Set.of("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"), new BigDecimal("0.10"), 2),
                 (query, material, ctx) -> {
                     answerText.set("已为您查询到名下最近的 10 条工单。");
                     return new GenerationResult(AiReplyType.ANSWER, answerText.get(), List.of(),
@@ -110,9 +111,9 @@ class ToolIntentBypassTest {
     private static RetrievalResult weakHits() {
         return new RetrievalResult(OfficeDomain.OFFICE_IT, true, null, List.of(
                 new RetrievedKnowledge("c1", "A1", "V1", "员工IT故障自助排查流程", "摘要",
-                        "正文", "C_OTH", new BigDecimal("0.4395"), "V1"),
+                        "正文", "C_OTH", new BigDecimal("0.4395"), "V1", null, null, null),
                 new RetrievedKnowledge("c2", "A2", "V2", "密码重置与过期处理", "摘要",
-                        "正文", "C_ACC", new BigDecimal("0.2580"), "V2")),
+                        "正文", "C_ACC", new BigDecimal("0.2580"), "V2", null, null, null)),
                 new BigDecimal("0.4395"));
     }
 
@@ -126,7 +127,7 @@ class ToolIntentBypassTest {
         ComposedRagAdapter adapter = new ComposedRagAdapter(
                 (query, ctx) -> RequestVerdict.of(OfficeDomain.OFFICE_IT, "prepare_ticket"),
                 (query, ctx) -> weakHits(),
-                new RetrievalPolicy(knowledge),
+                new RetrievalPolicy(knowledge, Set.of("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"), new BigDecimal("0.10"), 2),
                 (query, material, ctx) -> new GenerationResult(AiReplyType.ANSWER,
                         "已生成工单草稿（test），请确认后建单。", List.of(),
                         BigDecimal.ONE, null, "agent", null),
@@ -151,7 +152,7 @@ class ToolIntentBypassTest {
         ComposedRagAdapter adapter = new ComposedRagAdapter(
                 (query, ctx) -> RequestVerdict.of(OfficeDomain.OFFICE_IT, RequestVerdict.NO_TOOL),
                 (query, ctx) -> weakHits(),
-                new RetrievalPolicy(knowledge),
+                new RetrievalPolicy(knowledge, Set.of("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"), new BigDecimal("0.10"), 2),
                 (query, material, ctx) -> new GenerationResult(AiReplyType.ANSWER,
                         "凭通用经验给点建议。", List.of(), BigDecimal.ONE, null, "agent", null),
                 true);
