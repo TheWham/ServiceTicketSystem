@@ -1,0 +1,82 @@
+{
+  "relations": [
+    {
+      "target": "ITKB-APPENDIX-1",
+      "type": "process_applies",
+      "note": "本卡「员工自助排查」六步遵循员工IT故障自助排查五步法中的重启与收集错误信息环节",
+      "evidence": "步骤1：重启电脑。如果频繁蓝屏，记录下蓝屏错误代码（拍照保存）"
+    },
+    {
+      "target": "ITKB-APPENDIX-2",
+      "type": "process_applies",
+      "note": "本卡「IT工程师进阶处理」遵循IT故障排查通用流程中的日志分析与分层定位环节",
+      "evidence": "检查系统事件查看器（eventvwr.msc）→ Windows日志 → 系统，筛选关键错误"
+    },
+    {
+      "target": "ITKB-APPENDIX-3",
+      "type": "related",
+      "note": "本卡使用mdsched.exe、sfc /scannow、eventvwr.msc等排查命令，可对照常用排查命令速查表",
+      "evidence": "Win+R → cmd（管理员） → sfc /scannow 扫描修复系统文件"
+    },
+    {
+      "target": "ITKB-HW-001",
+      "type": "same_root_cause",
+      "note": "内存故障既是蓝屏的首要根因，也是电脑无法开机黑屏卡的重点排查对象",
+      "evidence": "内存故障（接触不良、金手指氧化、内存条损坏）"
+    },
+    {
+      "target": "ITKB-SYS-002",
+      "type": "related",
+      "note": "软件冲突可致蓝屏，与软件闪退无响应卡在卸载可疑软件、事件日志分析等处置手段上相通",
+      "evidence": "软件冲突（杀毒软件、系统优化工具）"
+    },
+    {
+      "target": "ITKB-HW-005",
+      "type": "related",
+      "note": "系统完全卡死时鼠标键盘无响应，需与键盘鼠标失灵故障进行鉴别",
+      "evidence": "或电脑完全卡死，鼠标键盘无响应，只能长按电源键强制关机"
+    }
+  ],
+  "graph_nodes": [
+    {
+      "kind": "symptom",
+      "name": "蓝屏"
+    },
+    {
+      "kind": "symptom",
+      "name": "自动重启"
+    },
+    {
+      "kind": "root_cause",
+      "name": "内存故障"
+    },
+    {
+      "kind": "root_cause",
+      "name": "驱动程序不兼容"
+    },
+    {
+      "kind": "root_cause",
+      "name": "系统文件损坏"
+    },
+    {
+      "kind": "root_cause",
+      "name": "散热不良"
+    },
+    {
+      "kind": "root_cause",
+      "name": "硬盘坏道"
+    },
+    {
+      "kind": "tool",
+      "name": "sfc /scannow"
+    },
+    {
+      "kind": "tool",
+      "name": "BlueScreenView"
+    },
+    {
+      "kind": "tool",
+      "name": "MemTest86"
+    }
+  ]
+}

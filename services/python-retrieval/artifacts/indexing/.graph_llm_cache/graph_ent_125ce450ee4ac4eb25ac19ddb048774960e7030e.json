@@ -1,0 +1,86 @@
+{
+  "entities": [
+    {
+      "name": "VPN",
+      "type": "概念"
+    },
+    {
+      "name": "SSL VPN",
+      "type": "系统"
+    },
+    {
+      "name": "PPTP",
+      "type": "协议"
+    },
+    {
+      "name": "GRE",
+      "type": "协议"
+    },
+    {
+      "name": "防火墙",
+      "type": "设备"
+    },
+    {
+      "name": "NAT 设备",
+      "type": "设备"
+    },
+    {
+      "name": "PPTP 服务器",
+      "type": "系统"
+    },
+    {
+      "name": "1723 端口",
+      "type": "配置项"
+    },
+    {
+      "name": "VPN连接失败",
+      "type": "故障现象"
+    },
+    {
+      "name": "认证失败",
+      "type": "故障现象"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "VPN",
+      "type": "概念"
+    },
+    {
+      "name": "SSL VPN",
+      "type": "系统"
+    },
+    {
+      "name": "PPTP",
+      "type": "协议"
+    },
+    {
+      "name": "GRE",
+      "type": "协议"
+    },
+    {
+      "name": "防火墙",
+      "type": "设备"
+    },
+    {
+      "name": "NAT 设备",
+      "type": "设备"
+    },
+    {
+      "name": "PPTP 服务器",
+      "type": "系统"
+    },
+    {
+      "name": "1723 端口",
+      "type": "配置项"
+    },
+    {
+      "name": "VPN连接失败",
+      "type": "故障现象"
+    },
+    {
+      "name": "认证失败",
+      "type": "故障现象"
+    }
+  ]
+}

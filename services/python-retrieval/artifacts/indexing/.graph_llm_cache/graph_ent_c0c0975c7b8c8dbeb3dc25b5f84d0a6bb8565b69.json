@@ -1,0 +1,62 @@
+{
+  "entities": [
+    {
+      "name": "AD域",
+      "type": "系统"
+    },
+    {
+      "name": "Active Directory用户和计算机",
+      "type": "软件"
+    },
+    {
+      "name": "事件ID 4740",
+      "type": "概念"
+    },
+    {
+      "name": "组策略",
+      "type": "概念"
+    },
+    {
+      "name": "账户锁定策略",
+      "type": "配置项"
+    },
+    {
+      "name": "自助密码重置平台",
+      "type": "系统"
+    },
+    {
+      "name": "安全日志",
+      "type": "概念"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "AD域",
+      "type": "系统"
+    },
+    {
+      "name": "Active Directory用户和计算机",
+      "type": "软件"
+    },
+    {
+      "name": "事件ID 4740",
+      "type": "概念"
+    },
+    {
+      "name": "组策略",
+      "type": "概念"
+    },
+    {
+      "name": "账户锁定策略",
+      "type": "配置项"
+    },
+    {
+      "name": "自助密码重置平台",
+      "type": "系统"
+    },
+    {
+      "name": "安全日志",
+      "type": "概念"
+    }
+  ]
+}

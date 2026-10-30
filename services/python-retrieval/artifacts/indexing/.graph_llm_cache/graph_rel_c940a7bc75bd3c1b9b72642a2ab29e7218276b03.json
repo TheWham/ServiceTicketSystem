@@ -1,0 +1,88 @@
+{
+  "relations": [
+    {
+      "target": "ITKB-VPN-001",
+      "type": "related",
+      "note": "VPN/代理干扰是IM无法登录的常见根因，需关闭VPN/代理后重试",
+      "evidence": "网络代理/VPN干扰了IM的连接"
+    },
+    {
+      "target": "ITKB-NET-004",
+      "type": "related",
+      "note": "DNS解析异常可致IM无法连接，需用nslookup排查解析",
+      "evidence": "检查DNS解析是否正常（nslookup解析IM服务器域名）"
+    },
+    {
+      "target": "ITKB-APPENDIX-1",
+      "type": "process_applies",
+      "note": "本卡员工自助排查步骤遵循员工自助排查五步法（检查网络、重启等）",
+      "evidence": "步骤6：重启电脑"
+    },
+    {
+      "target": "ITKB-APPENDIX-2",
+      "type": "process_applies",
+      "note": "IT进阶处理按网络、代理、防火墙、账号状态分层排查，符合IT故障排查通用流程",
+      "evidence": "按网络、代理、防火墙、账号状态分层排查处置"
+    },
+    {
+      "target": "ITKB-APPENDIX-3",
+      "type": "related",
+      "note": "排查中使用nslookup等常用命令，可对照常用排查命令速查表",
+      "evidence": "nslookup解析IM服务器域名"
+    },
+    {
+      "target": "ITKB-MAIL-001",
+      "type": "related",
+      "note": "同属邮件与通讯类故障，均处理消息/邮件发送失败场景",
+      "evidence": "消息发送失败"
+    },
+    {
+      "target": "ITKB-MAIL-002",
+      "type": "related",
+      "note": "同属邮件与通讯类故障，均处理接收异常场景",
+      "evidence": "接收延迟严重"
+    }
+  ],
+  "graph_nodes": [
+    {
+      "kind": "symptom",
+      "name": "企业微信等IM客户端无法登录"
+    },
+    {
+      "kind": "symptom",
+      "name": "消息发送失败、接收延迟严重、文件传输中断"
+    },
+    {
+      "kind": "root_cause",
+      "name": "网络代理/VPN干扰了IM的连接"
+    },
+    {
+      "kind": "root_cause",
+      "name": "公司防火墙拦截了IM的通信端口和域名"
+    },
+    {
+      "kind": "root_cause",
+      "name": "客户端版本过旧"
+    },
+    {
+      "kind": "root_cause",
+      "name": "账号被管理员禁用或企业认证过期"
+    },
+    {
+      "kind": "root_cause",
+      "name": "本地时间与服务端时间偏差过大"
+    },
+    {
+      "kind": "tool",
+      "name": "nslookup"
+    },
+    {
+      "kind": "tool",
+      "name": "代理服务器PAC文件"
+    },
+    {
+      "kind": "tool",
+      "name": "管理后台"
+    }
+  ]
+}

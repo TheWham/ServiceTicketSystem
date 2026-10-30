@@ -1,0 +1,118 @@
+{
+  "entities": [
+    {
+      "name": "任务管理器",
+      "type": "软件"
+    },
+    {
+      "name": "机械硬盘",
+      "type": "设备"
+    },
+    {
+      "name": "SSD",
+      "type": "设备"
+    },
+    {
+      "name": "内存",
+      "type": "设备"
+    },
+    {
+      "name": "CrystalDiskInfo",
+      "type": "软件"
+    },
+    {
+      "name": "Windows Search",
+      "type": "系统"
+    },
+    {
+      "name": "Superfetch",
+      "type": "系统"
+    },
+    {
+      "name": "cleanmgr",
+      "type": "命令工具"
+    },
+    {
+      "name": "Windows Defender",
+      "type": "软件"
+    },
+    {
+      "name": "火绒",
+      "type": "软件"
+    },
+    {
+      "name": "Malwarebytes",
+      "type": "软件"
+    },
+    {
+      "name": "Windows 10/11",
+      "type": "系统"
+    },
+    {
+      "name": "电脑运行缓慢",
+      "type": "故障现象"
+    },
+    {
+      "name": "开机极慢",
+      "type": "故障现象"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "任务管理器",
+      "type": "软件"
+    },
+    {
+      "name": "机械硬盘",
+      "type": "设备"
+    },
+    {
+      "name": "SSD",
+      "type": "设备"
+    },
+    {
+      "name": "内存",
+      "type": "设备"
+    },
+    {
+      "name": "CrystalDiskInfo",
+      "type": "软件"
+    },
+    {
+      "name": "Windows Search",
+      "type": "系统"
+    },
+    {
+      "name": "Superfetch",
+      "type": "系统"
+    },
+    {
+      "name": "cleanmgr",
+      "type": "命令工具"
+    },
+    {
+      "name": "Windows Defender",
+      "type": "软件"
+    },
+    {
+      "name": "火绒",
+      "type": "软件"
+    },
+    {
+      "name": "Malwarebytes",
+      "type": "软件"
+    },
+    {
+      "name": "Windows 10/11",
+      "type": "系统"
+    },
+    {
+      "name": "电脑运行缓慢",
+      "type": "故障现象"
+    },
+    {
+      "name": "开机极慢",
+      "type": "故障现象"
+    }
+  ]
+}

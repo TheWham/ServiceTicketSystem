@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "IT故障排查",
+      "type": "概念"
+    },
+    {
+      "name": "工单系统",
+      "type": "系统"
+    },
+    {
+      "name": "知识库",
+      "type": "系统"
+    },
+    {
+      "name": "ipconfig",
+      "type": "命令工具"
+    },
+    {
+      "name": "ping",
+      "type": "命令工具"
+    },
+    {
+      "name": "tracert",
+      "type": "命令工具"
+    },
+    {
+      "name": "nslookup",
+      "type": "命令工具"
+    },
+    {
+      "name": "netstat",
+      "type": "命令工具"
+    },
+    {
+      "name": "sfc",
+      "type": "命令工具"
+    },
+    {
+      "name": "DISM",
+      "type": "命令工具"
+    },
+    {
+      "name": "chkdsk",
+      "type": "命令工具"
+    },
+    {
+      "name": "msinfo32",
+      "type": "命令工具"
+    },
+    {
+      "name": "eventvwr.msc",
+      "type": "命令工具"
+    },
+    {
+      "name": "DHCP",
+      "type": "协议"
+    },
+    {
+      "name": "DNS",
+      "type": "协议"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "IT故障排查",
+      "type": "概念"
+    },
+    {
+      "name": "工单系统",
+      "type": "系统"
+    },
+    {
+      "name": "知识库",
+      "type": "系统"
+    },
+    {
+      "name": "ipconfig",
+      "type": "命令工具"
+    },
+    {
+      "name": "ping",
+      "type": "命令工具"
+    },
+    {
+      "name": "tracert",
+      "type": "命令工具"
+    },
+    {
+      "name": "nslookup",
+      "type": "命令工具"
+    },
+    {
+      "name": "netstat",
+      "type": "命令工具"
+    },
+    {
+      "name": "sfc",
+      "type": "命令工具"
+    },
+    {
+      "name": "DISM",
+      "type": "命令工具"
+    },
+    {
+      "name": "chkdsk",
+      "type": "命令工具"
+    },
+    {
+      "name": "msinfo32",
+      "type": "命令工具"
+    },
+    {
+      "name": "eventvwr.msc",
+      "type": "命令工具"
+    },
+    {
+      "name": "DHCP",
+      "type": "协议"
+    },
+    {
+      "name": "DNS",
+      "type": "协议"
+    }
+  ]
+}

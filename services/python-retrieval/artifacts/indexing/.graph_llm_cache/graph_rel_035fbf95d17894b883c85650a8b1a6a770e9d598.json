@@ -1,0 +1,32 @@
+{
+  "relations": [
+    {
+      "target": "ITKB-ACC-001",
+      "type": "replaces",
+      "note": "本卡为 v0.9 旧版规约已全面废止，现行标准由 ITKB-ACC-001（5 次锁定/15-30 分钟自动解锁）替代，本卡仅作历史溯源保留",
+      "evidence": "已于 v1.0 全面废止。现行标准请以《ITKB-ACC-001 域账号锁定排查与解锁处理》为准，仅作历史溯源保留"
+    }
+  ],
+  "graph_nodes": [
+    {
+      "kind": "symptom",
+      "name": "账号已被锁定"
+    },
+    {
+      "kind": "symptom",
+      "name": "登录失败次数过多"
+    },
+    {
+      "kind": "root_cause",
+      "name": "连续多次输入错误密码触发旧版安全策略"
+    },
+    {
+      "kind": "root_cause",
+      "name": "恶意软件暴力破解尝试"
+    },
+    {
+      "kind": "tool",
+      "name": "安全日志"
+    }
+  ]
+}

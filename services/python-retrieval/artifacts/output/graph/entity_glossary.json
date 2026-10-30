@@ -1,0 +1,1628 @@
+{
+  "entities": {
+    "AD域": {
+      "type": "系统",
+      "aliases": []
+    },
+    "Active Directory用户和计算机": {
+      "type": "软件",
+      "aliases": []
+    },
+    "事件ID 4740": {
+      "type": "概念",
+      "aliases": []
+    },
+    "组策略": {
+      "type": "概念",
+      "aliases": []
+    },
+    "账户锁定策略": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "自助密码重置平台": {
+      "type": "系统",
+      "aliases": []
+    },
+    "安全日志": {
+      "type": "概念",
+      "aliases": []
+    },
+    "AD域控制器": {
+      "type": "系统",
+      "aliases": []
+    },
+    "临时密码": {
+      "type": "账号权限",
+      "aliases": []
+    },
+    "初始密码": {
+      "type": "账号权限",
+      "aliases": []
+    },
+    "密码复杂度": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "密码策略": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "共享文件夹": {
+      "type": "概念",
+      "aliases": []
+    },
+    "NTFS权限": {
+      "type": "账号权限",
+      "aliases": []
+    },
+    "共享权限": {
+      "type": "账号权限",
+      "aliases": []
+    },
+    "AD安全组": {
+      "type": "账号权限",
+      "aliases": []
+    },
+    "UNC路径": {
+      "type": "概念",
+      "aliases": []
+    },
+    "DFS命名空间": {
+      "type": "系统",
+      "aliases": []
+    },
+    "Kerberos": {
+      "type": "协议",
+      "aliases": []
+    },
+    "gpupdate /force": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "文件服务器": {
+      "type": "设备",
+      "aliases": []
+    },
+    "NAS": {
+      "type": "设备",
+      "aliases": []
+    },
+    "拒绝访问": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "有效访问": {
+      "type": "概念",
+      "aliases": []
+    },
+    "多因素认证（MFA）": {
+      "type": "概念",
+      "aliases": []
+    },
+    "Authenticator": {
+      "type": "软件",
+      "aliases": []
+    },
+    "短信验证码": {
+      "type": "概念",
+      "aliases": []
+    },
+    "SIM卡": {
+      "type": "设备",
+      "aliases": []
+    },
+    "MFA管理后台": {
+      "type": "系统",
+      "aliases": []
+    },
+    "Azure AD MFA": {
+      "type": "系统",
+      "aliases": []
+    },
+    "Duo": {
+      "type": "软件",
+      "aliases": []
+    },
+    "RSA": {
+      "type": "软件",
+      "aliases": []
+    },
+    "MFA服务器": {
+      "type": "系统",
+      "aliases": []
+    },
+    "注册二维码": {
+      "type": "概念",
+      "aliases": []
+    },
+    "备用验证码": {
+      "type": "概念",
+      "aliases": []
+    },
+    "令牌": {
+      "type": "概念",
+      "aliases": []
+    },
+    "时间校正": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "自动设置": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "重启": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "设备": {
+      "type": "设备",
+      "aliases": []
+    },
+    "软件": {
+      "type": "软件",
+      "aliases": []
+    },
+    "服务端": {
+      "type": "系统",
+      "aliases": []
+    },
+    "网络故障": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "错误提示": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "截图": {
+      "type": "概念",
+      "aliases": []
+    },
+    "错误关键词": {
+      "type": "概念",
+      "aliases": []
+    },
+    "内部知识库": {
+      "type": "系统",
+      "aliases": []
+    },
+    "公司Wiki": {
+      "type": "系统",
+      "aliases": []
+    },
+    "IT工单": {
+      "type": "概念",
+      "aliases": []
+    },
+    "OSI模型": {
+      "type": "概念",
+      "aliases": []
+    },
+    "分层排查": {
+      "type": "概念",
+      "aliases": []
+    },
+    "事件查看器": {
+      "type": "软件",
+      "aliases": []
+    },
+    "应用日志": {
+      "type": "概念",
+      "aliases": []
+    },
+    "服务器日志": {
+      "type": "概念",
+      "aliases": []
+    },
+    "排除法": {
+      "type": "概念",
+      "aliases": []
+    },
+    "回归测试": {
+      "type": "概念",
+      "aliases": []
+    },
+    "知识库": {
+      "type": "系统",
+      "aliases": []
+    },
+    "ipconfig": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "ping": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "tracert": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "nslookup": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "netstat": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "sfc": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "DISM": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "chkdsk": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "mdsched.exe": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "msinfo32": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "eventvwr.msc": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "taskmgr": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "DNS": {
+      "type": "协议",
+      "aliases": []
+    },
+    "DHCP": {
+      "type": "协议",
+      "aliases": []
+    },
+    "工单系统": {
+      "type": "系统",
+      "aliases": []
+    },
+    "电源适配器": {
+      "type": "设备",
+      "aliases": []
+    },
+    "电池": {
+      "type": "设备",
+      "aliases": []
+    },
+    "内存条": {
+      "type": "设备",
+      "aliases": []
+    },
+    "主板": {
+      "type": "设备",
+      "aliases": []
+    },
+    "显示器": {
+      "type": "设备",
+      "aliases": []
+    },
+    "CPU": {
+      "type": "设备",
+      "aliases": []
+    },
+    "电源线": {
+      "type": "设备",
+      "aliases": []
+    },
+    "电源插座": {
+      "type": "设备",
+      "aliases": []
+    },
+    "内存插槽": {
+      "type": "设备",
+      "aliases": []
+    },
+    "主板电容": {
+      "type": "设备",
+      "aliases": []
+    },
+    "金手指": {
+      "type": "设备",
+      "aliases": []
+    },
+    "万用表": {
+      "type": "设备",
+      "aliases": []
+    },
+    "黑屏": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "无法开机": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "最小系统法": {
+      "type": "概念",
+      "aliases": []
+    },
+    "打印机": {
+      "type": "设备",
+      "aliases": []
+    },
+    "网络打印机": {
+      "type": "设备",
+      "aliases": []
+    },
+    "共享打印机": {
+      "type": "设备",
+      "aliases": []
+    },
+    "打印服务器": {
+      "type": "系统",
+      "aliases": []
+    },
+    "打印机驱动": {
+      "type": "软件",
+      "aliases": []
+    },
+    "打印服务（Print Spooler）": {
+      "type": "软件",
+      "aliases": []
+    },
+    "打印队列": {
+      "type": "概念",
+      "aliases": []
+    },
+    "脱机使用打印机": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "卡纸": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "缺墨": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "services.msc": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "control printers": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "USB": {
+      "type": "协议",
+      "aliases": []
+    },
+    "C:\\Windows\\System32\\spool\\PRINTERS": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "NVRAM": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "外接显示器": {
+      "type": "设备",
+      "aliases": []
+    },
+    "HDMI": {
+      "type": "协议",
+      "aliases": []
+    },
+    "VGA": {
+      "type": "协议",
+      "aliases": []
+    },
+    "DP": {
+      "type": "协议",
+      "aliases": []
+    },
+    "Type-C": {
+      "type": "协议",
+      "aliases": []
+    },
+    "显卡驱动": {
+      "type": "软件",
+      "aliases": []
+    },
+    "分辨率": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "刷新率": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "输入源": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "扩展坞": {
+      "type": "设备",
+      "aliases": []
+    },
+    "转接头": {
+      "type": "设备",
+      "aliases": []
+    },
+    "视频线": {
+      "type": "设备",
+      "aliases": []
+    },
+    "EDID": {
+      "type": "协议",
+      "aliases": []
+    },
+    "Win+P": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "设备管理器": {
+      "type": "软件",
+      "aliases": []
+    },
+    "U盘": {
+      "type": "设备",
+      "aliases": []
+    },
+    "移动硬盘": {
+      "type": "设备",
+      "aliases": []
+    },
+    "磁盘管理": {
+      "type": "系统",
+      "aliases": []
+    },
+    "文件系统": {
+      "type": "概念",
+      "aliases": []
+    },
+    "盘符": {
+      "type": "概念",
+      "aliases": []
+    },
+    "gpedit.msc": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "BIOS/UEFI": {
+      "type": "系统",
+      "aliases": []
+    },
+    "DiskGenius": {
+      "type": "软件",
+      "aliases": []
+    },
+    "DiskPart": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "R-Studio": {
+      "type": "软件",
+      "aliases": []
+    },
+    "EaseUS": {
+      "type": "软件",
+      "aliases": []
+    },
+    "APFS": {
+      "type": "概念",
+      "aliases": []
+    },
+    "键盘": {
+      "type": "设备",
+      "aliases": []
+    },
+    "鼠标": {
+      "type": "设备",
+      "aliases": []
+    },
+    "USB接收器": {
+      "type": "设备",
+      "aliases": []
+    },
+    "蓝牙": {
+      "type": "协议",
+      "aliases": []
+    },
+    "触摸板": {
+      "type": "设备",
+      "aliases": []
+    },
+    "驱动程序": {
+      "type": "软件",
+      "aliases": []
+    },
+    "Keyboard Test Utility": {
+      "type": "软件",
+      "aliases": []
+    },
+    "BIOS": {
+      "type": "系统",
+      "aliases": []
+    },
+    "USB Legacy Support": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "双击速度": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "账号锁定": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "223.5.5.5": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "10.0.0.1": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "QQ": {
+      "type": "软件",
+      "aliases": []
+    },
+    "DNS 解析失败": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "VPN": {
+      "type": "概念",
+      "aliases": []
+    },
+    "SSL VPN": {
+      "type": "系统",
+      "aliases": []
+    },
+    "PPTP": {
+      "type": "协议",
+      "aliases": []
+    },
+    "GRE": {
+      "type": "协议",
+      "aliases": []
+    },
+    "防火墙": {
+      "type": "设备",
+      "aliases": []
+    },
+    "NAT 设备": {
+      "type": "设备",
+      "aliases": []
+    },
+    "PPTP 服务器": {
+      "type": "系统",
+      "aliases": []
+    },
+    "1723 端口": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "VPN连接失败": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "认证失败": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "Outlook": {
+      "type": "软件",
+      "aliases": []
+    },
+    "网页邮箱": {
+      "type": "系统",
+      "aliases": []
+    },
+    "SMTP": {
+      "type": "协议",
+      "aliases": []
+    },
+    "退信": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "Exchange": {
+      "type": "软件",
+      "aliases": []
+    },
+    "反垃圾邮件网关": {
+      "type": "设备",
+      "aliases": []
+    },
+    "OneDrive": {
+      "type": "软件",
+      "aliases": []
+    },
+    "脱机工作": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "邮箱配额": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "白名单": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "SPF/DKIM/DMARC": {
+      "type": "协议",
+      "aliases": []
+    },
+    "MXToolbox": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "配置文件": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "网页版邮箱（OWA）": {
+      "type": "系统",
+      "aliases": []
+    },
+    "POP3/IMAP": {
+      "type": "协议",
+      "aliases": []
+    },
+    "垃圾邮件过滤器": {
+      "type": "软件",
+      "aliases": []
+    },
+    "邮箱存储配额": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "邮件追踪（Message Trace）": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "阻止发件人列表": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "安全发件人列表": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "Outlook规则": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "传输规则（Transport Rule）": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "Exchange Online": {
+      "type": "系统",
+      "aliases": []
+    },
+    "Exchange Server": {
+      "type": "系统",
+      "aliases": []
+    },
+    "Outlook配置文件": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "企业微信": {
+      "type": "软件",
+      "aliases": []
+    },
+    "IM客户端": {
+      "type": "软件",
+      "aliases": []
+    },
+    "代理服务器": {
+      "type": "设备",
+      "aliases": []
+    },
+    "网络连接失败": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "登录超时": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "PAC文件": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "防火墙策略": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "域名": {
+      "type": "概念",
+      "aliases": []
+    },
+    "端口": {
+      "type": "概念",
+      "aliases": []
+    },
+    "账号": {
+      "type": "账号权限",
+      "aliases": []
+    },
+    "WiFi": {
+      "type": "概念",
+      "aliases": []
+    },
+    "无线网卡驱动": {
+      "type": "软件",
+      "aliases": []
+    },
+    "MAC地址": {
+      "type": "概念",
+      "aliases": []
+    },
+    "AP": {
+      "type": "设备",
+      "aliases": []
+    },
+    "802.1X认证": {
+      "type": "协议",
+      "aliases": []
+    },
+    "NPS服务器": {
+      "type": "系统",
+      "aliases": []
+    },
+    "RADIUS": {
+      "type": "协议",
+      "aliases": []
+    },
+    "AC控制器": {
+      "type": "设备",
+      "aliases": []
+    },
+    "路由器": {
+      "type": "设备",
+      "aliases": []
+    },
+    "PoE供电": {
+      "type": "概念",
+      "aliases": []
+    },
+    "MAC地址过滤": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "DHCP地址池": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "以太网": {
+      "type": "概念",
+      "aliases": []
+    },
+    "网线": {
+      "type": "设备",
+      "aliases": []
+    },
+    "水晶头": {
+      "type": "设备",
+      "aliases": []
+    },
+    "交换机端口": {
+      "type": "设备",
+      "aliases": []
+    },
+    "配线架": {
+      "type": "设备",
+      "aliases": []
+    },
+    "VLAN": {
+      "type": "概念",
+      "aliases": []
+    },
+    "网卡驱动": {
+      "type": "软件",
+      "aliases": []
+    },
+    "ncpa.cpl": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "show interface status": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "网线测试仪": {
+      "type": "设备",
+      "aliases": []
+    },
+    "err-disabled": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "IP/MAC绑定": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "打线刀": {
+      "type": "设备",
+      "aliases": []
+    },
+    "ARP攻击": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "广播风暴": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "交换机端口协商": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "Wireshark": {
+      "type": "软件",
+      "aliases": []
+    },
+    "WiFi Analyzer": {
+      "type": "软件",
+      "aliases": []
+    },
+    "上网行为管理": {
+      "type": "系统",
+      "aliases": []
+    },
+    "任务管理器": {
+      "type": "软件",
+      "aliases": []
+    },
+    "cmd": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "show interface": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "交换机": {
+      "type": "设备",
+      "aliases": []
+    },
+    "限速策略": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "UDP 53端口": {
+      "type": "概念",
+      "aliases": []
+    },
+    "阿里DNS": {
+      "type": "系统",
+      "aliases": []
+    },
+    "DNS服务器": {
+      "type": "系统",
+      "aliases": []
+    },
+    "VPN/代理软件": {
+      "type": "软件",
+      "aliases": []
+    },
+    "ipconfig /flushdns": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "hosts文件": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "Internet协议版本4": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "DNS_PROBE_FINISHED_NXDOMAIN": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "ERR_NAME_NOT_RESOLVED": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "IP地址冲突": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "IP地址": {
+      "type": "概念",
+      "aliases": []
+    },
+    "DHCP服务器": {
+      "type": "系统",
+      "aliases": []
+    },
+    "DHCP池": {
+      "type": "概念",
+      "aliases": []
+    },
+    "DHCP Snooping": {
+      "type": "概念",
+      "aliases": []
+    },
+    "静态IP": {
+      "type": "概念",
+      "aliases": []
+    },
+    "ARP": {
+      "type": "协议",
+      "aliases": []
+    },
+    "虚拟机": {
+      "type": "软件",
+      "aliases": []
+    },
+    "ipconfig /release": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "ipconfig /renew": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "WPS": {
+      "type": "软件",
+      "aliases": []
+    },
+    "Office": {
+      "type": "软件",
+      "aliases": []
+    },
+    "LibreOffice": {
+      "type": "软件",
+      "aliases": []
+    },
+    "Stellar Repair": {
+      "type": "软件",
+      "aliases": []
+    },
+    "Kernel for Office": {
+      "type": "软件",
+      "aliases": []
+    },
+    "打开并修复": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "快速修复": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "在线修复": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "IRM": {
+      "type": "账号权限",
+      "aliases": []
+    },
+    "数字签名": {
+      "type": "概念",
+      "aliases": []
+    },
+    "文件已损坏，无法打开": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "文件格式与文件扩展名不匹配": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "文件被其他程序锁定": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "解除锁定": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "COM加载项": {
+      "type": "概念",
+      "aliases": []
+    },
+    "安全模式": {
+      "type": "概念",
+      "aliases": []
+    },
+    "硬件图形加速": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "默认打印机": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "DEP（数据执行保护）": {
+      "type": "概念",
+      "aliases": []
+    },
+    "Microsoft Print to PDF": {
+      "type": "软件",
+      "aliases": []
+    },
+    "宏": {
+      "type": "概念",
+      "aliases": []
+    },
+    "Windows用户配置文件": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "winword /safe": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "excel /safe": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "WPS云文档": {
+      "type": "软件",
+      "aliases": []
+    },
+    "同步冲突": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "冲突副本": {
+      "type": "概念",
+      "aliases": []
+    },
+    "历史版本": {
+      "type": "概念",
+      "aliases": []
+    },
+    "WPS协作": {
+      "type": "软件",
+      "aliases": []
+    },
+    "云盘": {
+      "type": "系统",
+      "aliases": []
+    },
+    "备份与恢复": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "WPS云服务": {
+      "type": "系统",
+      "aliases": []
+    },
+    "WPS云文档管理后台": {
+      "type": "系统",
+      "aliases": []
+    },
+    "协作模式": {
+      "type": "概念",
+      "aliases": []
+    },
+    "本地定时备份": {
+      "type": "概念",
+      "aliases": []
+    },
+    "Excel": {
+      "type": "软件",
+      "aliases": []
+    },
+    "公式不计算": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "计算选项": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "单元格格式": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "显示公式模式": {
+      "type": "概念",
+      "aliases": []
+    },
+    "循环引用": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "外部链接": {
+      "type": "概念",
+      "aliases": []
+    },
+    "VBA宏": {
+      "type": "概念",
+      "aliases": []
+    },
+    "受保护的视图": {
+      "type": "概念",
+      "aliases": []
+    },
+    "Power Query": {
+      "type": "软件",
+      "aliases": []
+    },
+    "错误检查": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "编辑链接": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "Application.Calculation": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "Evaluate Formula": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "F9": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "回收站": {
+      "type": "概念",
+      "aliases": []
+    },
+    "卷影副本": {
+      "type": "概念",
+      "aliases": []
+    },
+    "快照": {
+      "type": "概念",
+      "aliases": []
+    },
+    "数据恢复软件": {
+      "type": "软件",
+      "aliases": []
+    },
+    "磁盘镜像": {
+      "type": "概念",
+      "aliases": []
+    },
+    "备份系统": {
+      "type": "系统",
+      "aliases": []
+    },
+    "Veeam": {
+      "type": "系统",
+      "aliases": []
+    },
+    "Acronis": {
+      "type": "系统",
+      "aliases": []
+    },
+    "Windows Backup": {
+      "type": "系统",
+      "aliases": []
+    },
+    "Recuva": {
+      "type": "软件",
+      "aliases": []
+    },
+    "共享盘": {
+      "type": "概念",
+      "aliases": []
+    },
+    "网络驱动器": {
+      "type": "概念",
+      "aliases": []
+    },
+    "SMB": {
+      "type": "协议",
+      "aliases": []
+    },
+    "SMBv1": {
+      "type": "协议",
+      "aliases": []
+    },
+    "找不到网络路径": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "凭据管理器": {
+      "type": "软件",
+      "aliases": []
+    },
+    "control keymgr.dll": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "PowerShell": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "Get-SmbConnection": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "WPS云盘": {
+      "type": "软件",
+      "aliases": []
+    },
+    "Office上传中心（Microsoft Office Upload Center）": {
+      "type": "软件",
+      "aliases": []
+    },
+    "onedrive.exe /reset": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "GPO": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "*.sharepoint.com": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "*.wps.cn": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "Windows": {
+      "type": "系统",
+      "aliases": []
+    },
+    "蓝屏": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "CRITICAL_PROCESS_DIED": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "MEMORY_MANAGEMENT": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "DRIVER_IRQL_NOT_LESS_OR_EQUAL": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "内存故障": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "sfc /scannow": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "BlueScreenView": {
+      "type": "软件",
+      "aliases": []
+    },
+    "MemTest86": {
+      "type": "软件",
+      "aliases": []
+    },
+    "CrystalDiskInfo": {
+      "type": "软件",
+      "aliases": []
+    },
+    "dump 文件": {
+      "type": "概念",
+      "aliases": []
+    },
+    "软件闪退": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "程序无响应": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "兼容模式": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "事件 ID 1000": {
+      "type": "概念",
+      "aliases": []
+    },
+    "VC++ 运行库": {
+      "type": "软件",
+      "aliases": []
+    },
+    ".NET Framework": {
+      "type": "软件",
+      "aliases": []
+    },
+    "DirectX": {
+      "type": "软件",
+      "aliases": []
+    },
+    "Dependency Walker": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "Process Monitor": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "%APPDATA%": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "%LOCALAPPDATA%": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "DLL": {
+      "type": "概念",
+      "aliases": []
+    },
+    "Windows更新": {
+      "type": "概念",
+      "aliases": []
+    },
+    "Windows Update": {
+      "type": "系统",
+      "aliases": []
+    },
+    "KB补丁": {
+      "type": "概念",
+      "aliases": []
+    },
+    "WSUS": {
+      "type": "系统",
+      "aliases": []
+    },
+    "SCCM": {
+      "type": "系统",
+      "aliases": []
+    },
+    "cleanmgr": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "Windows 更新疑难解答": {
+      "type": "软件",
+      "aliases": []
+    },
+    "0x80070002": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "0x800f0922": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "0x8024401c": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "Windows Update Assistant": {
+      "type": "软件",
+      "aliases": []
+    },
+    "Media Creation Tool": {
+      "type": "软件",
+      "aliases": []
+    },
+    "wuauserv": {
+      "type": "系统",
+      "aliases": []
+    },
+    "机械硬盘": {
+      "type": "设备",
+      "aliases": []
+    },
+    "SSD": {
+      "type": "设备",
+      "aliases": []
+    },
+    "内存": {
+      "type": "设备",
+      "aliases": []
+    },
+    "Windows Search": {
+      "type": "系统",
+      "aliases": []
+    },
+    "Superfetch": {
+      "type": "系统",
+      "aliases": []
+    },
+    "Windows Defender": {
+      "type": "软件",
+      "aliases": []
+    },
+    "火绒": {
+      "type": "软件",
+      "aliases": []
+    },
+    "Malwarebytes": {
+      "type": "软件",
+      "aliases": []
+    },
+    "Windows 10/11": {
+      "type": "系统",
+      "aliases": []
+    },
+    "电脑运行缓慢": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "开机极慢": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "浏览器": {
+      "type": "软件",
+      "aliases": []
+    },
+    "Chrome": {
+      "type": "软件",
+      "aliases": []
+    },
+    "Edge": {
+      "type": "软件",
+      "aliases": []
+    },
+    "Firefox": {
+      "type": "软件",
+      "aliases": []
+    },
+    "缓存": {
+      "type": "概念",
+      "aliases": []
+    },
+    "Cookie": {
+      "type": "概念",
+      "aliases": []
+    },
+    "浏览器扩展": {
+      "type": "软件",
+      "aliases": []
+    },
+    "SSL证书": {
+      "type": "概念",
+      "aliases": []
+    },
+    "代理": {
+      "type": "概念",
+      "aliases": []
+    },
+    "HTTPS扫描": {
+      "type": "概念",
+      "aliases": []
+    },
+    "杀毒软件": {
+      "type": "软件",
+      "aliases": []
+    },
+    "ERR_SSL_PROTOCOL_ERROR": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "系统时间": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "inetcpl.cpl": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "L2TP": {
+      "type": "协议",
+      "aliases": []
+    },
+    "IPSec": {
+      "type": "协议",
+      "aliases": []
+    },
+    "IKEv2": {
+      "type": "协议",
+      "aliases": []
+    },
+    "AD账号": {
+      "type": "账号权限",
+      "aliases": []
+    },
+    "预共享密钥": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "VPN服务器": {
+      "type": "系统",
+      "aliases": []
+    },
+    "VPN客户端": {
+      "type": "软件",
+      "aliases": []
+    },
+    "Windows防火墙": {
+      "type": "软件",
+      "aliases": []
+    },
+    "NAT穿透": {
+      "type": "概念",
+      "aliases": []
+    },
+    "HTTPS": {
+      "type": "协议",
+      "aliases": []
+    },
+    "服务器地址": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "用户名密码": {
+      "type": "账号权限",
+      "aliases": []
+    },
+    "split tunnel": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "路由表": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "IP段冲突": {
+      "type": "故障现象",
+      "aliases": []
+    },
+    "Always-On VPN": {
+      "type": "系统",
+      "aliases": []
+    },
+    "route print": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "管理员权限": {
+      "type": "账号权限",
+      "aliases": []
+    },
+    "VPN策略": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "DNS后缀": {
+      "type": "配置项",
+      "aliases": []
+    },
+    "远程桌面(RDP)": {
+      "type": "协议",
+      "aliases": []
+    },
+    "mstsc": {
+      "type": "命令工具",
+      "aliases": []
+    },
+    "TCP 3389": {
+      "type": "概念",
+      "aliases": []
+    },
+    "Remote Desktop Connection Manager": {
+      "type": "软件",
+      "aliases": []
+    },
+    "ToDesk": {
+      "type": "软件",
+      "aliases": []
+    },
+    "TeamViewer": {
+      "type": "软件",
+      "aliases": []
+    }
+  }
+}

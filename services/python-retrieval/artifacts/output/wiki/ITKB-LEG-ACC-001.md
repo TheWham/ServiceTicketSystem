@@ -7,11 +7,32 @@ effective_date: "2022-01-01"
 effective_date_source: "demo-constructed"
 version: "v0.9"
 replaces: []
-entities: ["AD域", "账号锁定", "密码错误", "解锁账号", "安全日志", "4740"]
+entities:
+- name: "账号锁定"
+  type: "故障现象"
+- name: "安全日志"
+  type: "系统"
 keywords: ["账号锁定", "密码错误", "登录失败", "AD域", "账号禁用", "多次输错密码", "解锁账号", "4740"]
 summary: "（已废止，v1.0 版 ITKB-ACC-001 为准）旧版宽松锁定策略：3 次锁定、不自动解锁，与现行 5 次/15-30分钟策略冲突。"
 meta_source: "rule"
 status: "已废止"
+relations:
+- target: "ITKB-ACC-001"
+  type: "replaces"
+  note: "本卡为 v0.9 旧版规约已全面废止，现行标准由 ITKB-ACC-001（5 次锁定/15-30 分钟自动解锁）替代，本卡仅作历史溯源保留"
+  evidence: "已于 v1.0 全面废止。现行标准请以《ITKB-ACC-001 域账号锁定排查与解锁处理》为准，仅作历史溯源保留"
+graph_nodes:
+- kind: "symptom"
+  name: "账号已被锁定"
+- kind: "symptom"
+  name: "登录失败次数过多"
+- kind: "root_cause"
+  name: "连续多次输入错误密码触发旧版安全策略"
+- kind: "root_cause"
+  name: "恶意软件暴力破解尝试"
+- kind: "tool"
+  name: "安全日志"
+graph_meta_source: "llm"
 ---
 
 # 【LEG-ACC-001】域账号锁定处理（旧版·宽松策略，已废止）

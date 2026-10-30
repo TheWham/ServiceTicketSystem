@@ -1,0 +1,88 @@
+{
+  "relations": [
+    {
+      "target": "ITKB-NET-004",
+      "type": "same_root_cause",
+      "note": "DNS解析文件服务器主机名失败是本卡根因之一，与DNS解析失败故障卡同根因",
+      "evidence": "③ DNS解析文件服务器主机名失败"
+    },
+    {
+      "target": "ITKB-VPN-001",
+      "type": "related",
+      "note": "VPN/网络未就绪会导致持久映射的共享盘断开，关联VPN连接失败处置",
+      "evidence": "① 网络驱动器映射使用持久连接但VPN/网络未就绪"
+    },
+    {
+      "target": "ITKB-ACC-002",
+      "type": "related",
+      "note": "密码变更后凭据管理器旧密码未更新是共享盘拒绝访问的常见根因，关联密码重置卡",
+      "evidence": "④ 用户密码变更后凭据管理器中的旧密码未更新"
+    },
+    {
+      "target": "ITKB-ACC-003",
+      "type": "related",
+      "note": "共享盘提示拒绝访问涉及共享权限与NTFS权限核查，与文件夹访问被拒绝处置相关",
+      "evidence": "5. 检查文件服务器磁盘状态、共享权限、NTFS权限。"
+    },
+    {
+      "target": "ITKB-APPENDIX-1",
+      "type": "process_applies",
+      "note": "本卡包含员工自助排查环节，适用员工IT故障自助排查流程",
+      "evidence": "## 员工自助排查"
+    },
+    {
+      "target": "ITKB-APPENDIX-2",
+      "type": "process_applies",
+      "note": "本卡包含IT工程师进阶处理环节，适用IT故障排查通用流程",
+      "evidence": "## IT工程师进阶处理"
+    },
+    {
+      "target": "ITKB-APPENDIX-3",
+      "type": "related",
+      "note": "本卡排查使用ping、Get-SmbConnection等命令，可对照命令速查表",
+      "evidence": "ping文件服务器IP和主机名，检查DNS解析是否正常"
+    }
+  ],
+  "graph_nodes": [
+    {
+      "kind": "symptom",
+      "name": "共享盘显示红叉（盘符断开）"
+    },
+    {
+      "kind": "symptom",
+      "name": "双击提示「无法访问」「找不到网络路径」「拒绝访问」"
+    },
+    {
+      "kind": "symptom",
+      "name": "共享盘完全消失不见"
+    },
+    {
+      "kind": "root_cause",
+      "name": "网络驱动器映射使用持久连接但VPN/网络未就绪"
+    },
+    {
+      "kind": "root_cause",
+      "name": "SMB协议版本不兼容"
+    },
+    {
+      "kind": "root_cause",
+      "name": "DNS解析文件服务器主机名失败"
+    },
+    {
+      "kind": "root_cause",
+      "name": "用户密码变更后凭据管理器中的旧密码未更新"
+    },
+    {
+      "kind": "root_cause",
+      "name": "文件服务器脱机或文件共享服务停止"
+    },
+    {
+      "kind": "tool",
+      "name": "control keymgr.dll"
+    },
+    {
+      "kind": "tool",
+      "name": "Get-SmbConnection"
+    }
+  ]
+}

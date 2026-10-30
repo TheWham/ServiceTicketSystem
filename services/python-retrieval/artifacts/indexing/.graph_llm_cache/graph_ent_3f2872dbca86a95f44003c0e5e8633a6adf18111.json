@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "VPN",
+      "type": "概念"
+    },
+    {
+      "name": "SSL VPN",
+      "type": "协议"
+    },
+    {
+      "name": "L2TP",
+      "type": "协议"
+    },
+    {
+      "name": "IPSec",
+      "type": "协议"
+    },
+    {
+      "name": "PPTP",
+      "type": "协议"
+    },
+    {
+      "name": "IKEv2",
+      "type": "协议"
+    },
+    {
+      "name": "AD账号",
+      "type": "账号权限"
+    },
+    {
+      "name": "预共享密钥",
+      "type": "配置项"
+    },
+    {
+      "name": "VPN连接失败",
+      "type": "故障现象"
+    },
+    {
+      "name": "VPN服务器",
+      "type": "系统"
+    },
+    {
+      "name": "VPN客户端",
+      "type": "软件"
+    },
+    {
+      "name": "边界防火墙",
+      "type": "设备"
+    },
+    {
+      "name": "Windows防火墙",
+      "type": "软件"
+    },
+    {
+      "name": "第三方杀毒软件",
+      "type": "软件"
+    },
+    {
+      "name": "证书",
+      "type": "配置项"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "VPN",
+      "type": "概念"
+    },
+    {
+      "name": "SSL VPN",
+      "type": "协议"
+    },
+    {
+      "name": "L2TP",
+      "type": "协议"
+    },
+    {
+      "name": "IPSec",
+      "type": "协议"
+    },
+    {
+      "name": "PPTP",
+      "type": "协议"
+    },
+    {
+      "name": "IKEv2",
+      "type": "协议"
+    },
+    {
+      "name": "AD账号",
+      "type": "账号权限"
+    },
+    {
+      "name": "预共享密钥",
+      "type": "配置项"
+    },
+    {
+      "name": "VPN连接失败",
+      "type": "故障现象"
+    },
+    {
+      "name": "VPN服务器",
+      "type": "系统"
+    },
+    {
+      "name": "VPN客户端",
+      "type": "软件"
+    },
+    {
+      "name": "边界防火墙",
+      "type": "设备"
+    },
+    {
+      "name": "Windows防火墙",
+      "type": "软件"
+    },
+    {
+      "name": "第三方杀毒软件",
+      "type": "软件"
+    },
+    {
+      "name": "证书",
+      "type": "配置项"
+    }
+  ]
+}

@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "Windows",
+      "type": "系统"
+    },
+    {
+      "name": "蓝屏",
+      "type": "故障现象"
+    },
+    {
+      "name": "CRITICAL_PROCESS_DIED",
+      "type": "故障现象"
+    },
+    {
+      "name": "MEMORY_MANAGEMENT",
+      "type": "故障现象"
+    },
+    {
+      "name": "DRIVER_IRQL_NOT_LESS_OR_EQUAL",
+      "type": "故障现象"
+    },
+    {
+      "name": "内存故障",
+      "type": "故障现象"
+    },
+    {
+      "name": "驱动程序",
+      "type": "软件"
+    },
+    {
+      "name": "sfc /scannow",
+      "type": "命令工具"
+    },
+    {
+      "name": "mdsched.exe",
+      "type": "命令工具"
+    },
+    {
+      "name": "BlueScreenView",
+      "type": "软件"
+    },
+    {
+      "name": "MemTest86",
+      "type": "软件"
+    },
+    {
+      "name": "CrystalDiskInfo",
+      "type": "软件"
+    },
+    {
+      "name": "事件查看器",
+      "type": "软件"
+    },
+    {
+      "name": "安全模式",
+      "type": "概念"
+    },
+    {
+      "name": "dump 文件",
+      "type": "概念"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "Windows",
+      "type": "系统"
+    },
+    {
+      "name": "蓝屏",
+      "type": "故障现象"
+    },
+    {
+      "name": "CRITICAL_PROCESS_DIED",
+      "type": "故障现象"
+    },
+    {
+      "name": "MEMORY_MANAGEMENT",
+      "type": "故障现象"
+    },
+    {
+      "name": "DRIVER_IRQL_NOT_LESS_OR_EQUAL",
+      "type": "故障现象"
+    },
+    {
+      "name": "内存故障",
+      "type": "故障现象"
+    },
+    {
+      "name": "驱动程序",
+      "type": "软件"
+    },
+    {
+      "name": "sfc /scannow",
+      "type": "命令工具"
+    },
+    {
+      "name": "mdsched.exe",
+      "type": "命令工具"
+    },
+    {
+      "name": "BlueScreenView",
+      "type": "软件"
+    },
+    {
+      "name": "MemTest86",
+      "type": "软件"
+    },
+    {
+      "name": "CrystalDiskInfo",
+      "type": "软件"
+    },
+    {
+      "name": "事件查看器",
+      "type": "软件"
+    },
+    {
+      "name": "安全模式",
+      "type": "概念"
+    },
+    {
+      "name": "dump 文件",
+      "type": "概念"
+    }
+  ]
+}

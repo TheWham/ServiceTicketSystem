@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "WPS",
+      "type": "软件"
+    },
+    {
+      "name": "Office",
+      "type": "软件"
+    },
+    {
+      "name": "LibreOffice",
+      "type": "软件"
+    },
+    {
+      "name": "Stellar Repair",
+      "type": "软件"
+    },
+    {
+      "name": "Kernel for Office",
+      "type": "软件"
+    },
+    {
+      "name": "打开并修复",
+      "type": "命令工具"
+    },
+    {
+      "name": "快速修复",
+      "type": "命令工具"
+    },
+    {
+      "name": "在线修复",
+      "type": "命令工具"
+    },
+    {
+      "name": "IRM",
+      "type": "账号权限"
+    },
+    {
+      "name": "数字签名",
+      "type": "概念"
+    },
+    {
+      "name": "文件已损坏，无法打开",
+      "type": "故障现象"
+    },
+    {
+      "name": "文件格式与文件扩展名不匹配",
+      "type": "故障现象"
+    },
+    {
+      "name": "文件被其他程序锁定",
+      "type": "故障现象"
+    },
+    {
+      "name": "U盘",
+      "type": "设备"
+    },
+    {
+      "name": "解除锁定",
+      "type": "配置项"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "WPS",
+      "type": "软件"
+    },
+    {
+      "name": "Office",
+      "type": "软件"
+    },
+    {
+      "name": "LibreOffice",
+      "type": "软件"
+    },
+    {
+      "name": "Stellar Repair",
+      "type": "软件"
+    },
+    {
+      "name": "Kernel for Office",
+      "type": "软件"
+    },
+    {
+      "name": "打开并修复",
+      "type": "命令工具"
+    },
+    {
+      "name": "快速修复",
+      "type": "命令工具"
+    },
+    {
+      "name": "在线修复",
+      "type": "命令工具"
+    },
+    {
+      "name": "IRM",
+      "type": "账号权限"
+    },
+    {
+      "name": "数字签名",
+      "type": "概念"
+    },
+    {
+      "name": "文件已损坏，无法打开",
+      "type": "故障现象"
+    },
+    {
+      "name": "文件格式与文件扩展名不匹配",
+      "type": "故障现象"
+    },
+    {
+      "name": "文件被其他程序锁定",
+      "type": "故障现象"
+    },
+    {
+      "name": "U盘",
+      "type": "设备"
+    },
+    {
+      "name": "解除锁定",
+      "type": "配置项"
+    }
+  ]
+}

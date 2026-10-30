@@ -1,0 +1,82 @@
+{
+  "relations": [
+    {
+      "target": "ITKB-LEG-VPN-001",
+      "type": "replaces",
+      "note": "本卡为现行版本，废止旧版推荐PPTP并限制SSL VPN的处置方法，改为推荐SSL VPN",
+      "evidence": "（已废止，v1.0 版 ITKB-VPN-001 为准）旧版推荐 PPTP 协议连接并限制 SSL VPN 的处置方法"
+    },
+    {
+      "target": "ITKB-VPN-002",
+      "type": "related",
+      "note": "本卡处理VPN拨号/认证失败，VPN-002处理已连接后无法访问内网资源，属同一VPN故障链的上下游环节",
+      "evidence": "解决VPN已连接但无法访问内网资源问题"
+    },
+    {
+      "target": "ITKB-VPN-003",
+      "type": "related",
+      "note": "远程桌面连接内网电脑依赖VPN连通，VPN-003排查项明确包含VPN与防火墙",
+      "evidence": "按开机状态、远程桌面开关、VPN与防火墙、NLA凭据、IP变更逐步排查处置"
+    },
+    {
+      "target": "ITKB-ACC-001",
+      "type": "related",
+      "note": "AD账号被锁定是VPN认证失败的常见根因之一，需联动账号锁定排查卡处理",
+      "evidence": "③ 用户名密码错误或AD账号被锁定"
+    },
+    {
+      "target": "ITKB-ACC-002",
+      "type": "related",
+      "note": "密码过期会导致VPN认证失败，IT进阶处理中需检查密码是否过期，与密码重置卡关联",
+      "evidence": "检查用户AD账号状态（是否锁定、密码是否过期）"
+    },
+    {
+      "target": "ITKB-APPENDIX-2",
+      "type": "process_applies",
+      "note": "本卡按本地网络、客户端配置到服务器与账号状态分层排查，符合IT故障排查通用流程",
+      "evidence": "提供从本地网络、客户端配置到服务器与账号状态的分层排查处置方法"
+    }
+  ],
+  "graph_nodes": [
+    {
+      "kind": "symptom",
+      "name": "无法建立VPN连接"
+    },
+    {
+      "kind": "symptom",
+      "name": "认证失败"
+    },
+    {
+      "kind": "symptom",
+      "name": "远程服务器无响应"
+    },
+    {
+      "kind": "symptom",
+      "name": "常见错误代码：800、806、807、809、868、691"
+    },
+    {
+      "kind": "root_cause",
+      "name": "家庭网络/酒店网络防火墙阻断了VPN协议（PPTP/L2TP/IPSec）"
+    },
+    {
+      "kind": "root_cause",
+      "name": "VPN客户端配置错误（服务器地址、预共享密钥）"
+    },
+    {
+      "kind": "root_cause",
+      "name": "用户名密码错误或AD账号被锁定"
+    },
+    {
+      "kind": "root_cause",
+      "name": "证书过期（SSL VPN）"
+    },
+    {
+      "kind": "tool",
+      "name": "SSL VPN"
+    },
+    {
+      "kind": "tool",
+      "name": "IKEv2"
+    }
+  ]
+}

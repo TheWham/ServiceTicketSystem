@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "ping",
+      "type": "命令工具"
+    },
+    {
+      "name": "ARP攻击",
+      "type": "故障现象"
+    },
+    {
+      "name": "广播风暴",
+      "type": "故障现象"
+    },
+    {
+      "name": "DNS",
+      "type": "协议"
+    },
+    {
+      "name": "交换机端口协商",
+      "type": "配置项"
+    },
+    {
+      "name": "Wireshark",
+      "type": "软件"
+    },
+    {
+      "name": "WiFi Analyzer",
+      "type": "软件"
+    },
+    {
+      "name": "上网行为管理",
+      "type": "系统"
+    },
+    {
+      "name": "任务管理器",
+      "type": "软件"
+    },
+    {
+      "name": "cmd",
+      "type": "命令工具"
+    },
+    {
+      "name": "show interface",
+      "type": "命令工具"
+    },
+    {
+      "name": "交换机",
+      "type": "设备"
+    },
+    {
+      "name": "防火墙",
+      "type": "设备"
+    },
+    {
+      "name": "AP",
+      "type": "设备"
+    },
+    {
+      "name": "限速策略",
+      "type": "配置项"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "ping",
+      "type": "命令工具"
+    },
+    {
+      "name": "ARP攻击",
+      "type": "故障现象"
+    },
+    {
+      "name": "广播风暴",
+      "type": "故障现象"
+    },
+    {
+      "name": "DNS",
+      "type": "协议"
+    },
+    {
+      "name": "交换机端口协商",
+      "type": "配置项"
+    },
+    {
+      "name": "Wireshark",
+      "type": "软件"
+    },
+    {
+      "name": "WiFi Analyzer",
+      "type": "软件"
+    },
+    {
+      "name": "上网行为管理",
+      "type": "系统"
+    },
+    {
+      "name": "任务管理器",
+      "type": "软件"
+    },
+    {
+      "name": "cmd",
+      "type": "命令工具"
+    },
+    {
+      "name": "show interface",
+      "type": "命令工具"
+    },
+    {
+      "name": "交换机",
+      "type": "设备"
+    },
+    {
+      "name": "防火墙",
+      "type": "设备"
+    },
+    {
+      "name": "AP",
+      "type": "设备"
+    },
+    {
+      "name": "限速策略",
+      "type": "配置项"
+    }
+  ]
+}
