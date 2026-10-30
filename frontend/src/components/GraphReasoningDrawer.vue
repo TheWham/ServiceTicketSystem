@@ -300,13 +300,13 @@ function getNodeColor(label) {
   if (/锁定|根因/.test(label)) {
     return { background: '#e11d48', border: '#f43f5e' } // 玫瑰红 / 根因
   }
-  if (/错误|故障|失败|超时|异常|691|502/.test(label)) {
+  if (/错误|故障|失败|超时|异常|691|502|APPCRASH|闪退|崩溃|NXDOMAIN|蓝屏|BSOD/.test(label)) {
     return { background: '#d97706', border: '#f59e0b' } // 琥珀橙 / 故障表象
   }
-  if (/处置|排查|重置|等待|平台|控制器|服务台/.test(label)) {
+  if (/处置|排查|重置|等待|平台|控制器|服务台|sfc|ipconfig|flushdns|BlueScreenView|查看器|1000/.test(label)) {
     return { background: '#059669', border: '#10b981' } // 翡翠绿 / 处置排查
   }
-  if (/系统|网络|VPN|邮箱|客户端|ERP/.test(label)) {
+  if (/系统|网络|VPN|邮箱|客户端|ERP|运行库|Redistributable|Framework|DNS|驱动|内存/.test(label)) {
     return { background: '#0284c7', border: '#38bdf8' } // 科技天蓝 / 系统与通道
   }
   return { background: '#6366f1', border: '#818cf8' } // 经典紫色 / 其他关联
@@ -320,9 +320,11 @@ function getEdgeColor(rel) {
 }
 
 // 异步尝试从 Neo4j 读取真实全量子图，若失败则安全降级为推导链
-async function fetchNeo4jSubgraph(scene = 'vpn') {
+async function fetchNeo4jSubgraph(entities = [], scene = 'custom') {
   try {
-    const res = await fetch(`http://127.0.0.1:8350/api/neo4j/graph_data?scene=${encodeURIComponent(scene)}`, {
+    const entParam = Array.isArray(entities) ? entities.join(',') : ''
+    const url = `http://127.0.0.1:8350/api/neo4j/graph_data?entities=${encodeURIComponent(entParam)}&scene=${encodeURIComponent(scene)}`
+    const res = await fetch(url, {
       signal: AbortSignal.timeout(1800)
     })
     if (res.ok) {
@@ -341,15 +343,26 @@ async function fetchNeo4jSubgraph(scene = 'vpn') {
 async function buildGraphData() {
   if (!props.reasoning) return { nodes: new DataSet([]), edges: new DataSet([]) }
 
-  const scene = props.reasoning.scene || 'vpn'
-  const neo4jData = await fetchNeo4jSubgraph(scene)
+  const entities = props.reasoning.entities || []
+  const scene = props.reasoning.scene || 'custom'
+  const neo4jData = await fetchNeo4jSubgraph(entities, scene)
 
-  if (neo4jData && neo4jData.nodes?.length && neo4jData.edges?.length) {
+  // 校验返回的 Neo4j 节点是否与当前实体匹配（杜绝返回默认历史 VPN 数据）
+  const hasMatchedEntities = neo4jData && neo4jData.nodes?.length && (
+    entities.length === 0 ||
+    neo4jData.nodes.some(n => {
+      const label = n.label || n.id || ''
+      return entities.some(ent => label.includes(ent) || ent.includes(label))
+    })
+  )
+
+  if (hasMatchedEntities && neo4jData.edges?.length) {
     // 1. 优先使用与 Neo4j 100% 对应的原生节点与关系
-    const nodes = new DataSet(neo4jData.nodes.map(n => {
+    const nodesMap = new Map()
+    for (const n of neo4jData.nodes) {
       const col = getNodeColor(n.label || n.id)
       const isRoot = /根因|锁定/.test(n.label || n.id)
-      return {
+      nodesMap.set(n.id, {
         id: n.id,
         label: n.label || n.id,
         shape: 'dot',
@@ -362,24 +375,76 @@ async function buildGraphData() {
         },
         font: { color: '#ffffff', size: 12, strokeWidth: 2, strokeColor: '#020617' },
         title: `实体: ${n.label || n.id}${n.is_deprecated ? ' (已废止)' : ''}`
-      }
-    }))
+      })
+    }
 
-    const edges = new DataSet(neo4jData.edges.map((e, idx) => {
+    const edges = []
+    const edgeKeySet = new Set()
+    for (let idx = 0; idx < neo4jData.edges.length; idx++) {
+      const e = neo4jData.edges[idx]
       const ec = getEdgeColor(e.label)
-      return {
-        id: `ne_${idx}`,
-        from: e.from,
-        to: e.to,
-        label: e.label,
-        arrows: 'to',
-        color: ec,
-        font: { size: 10, color: '#cbd5e1', background: '#0f172a', strokeWidth: 0 },
-        title: e.title || `${e.from} ──(${e.label})──> ${e.to}`
+      const key = `${e.from}->${e.to}:${e.label}`
+      if (!edgeKeySet.has(key)) {
+        edgeKeySet.add(key)
+        edges.push({
+          id: `ne_${idx}`,
+          from: e.from,
+          to: e.to,
+          label: e.label,
+          arrows: 'to',
+          color: ec,
+          font: { size: 10, color: '#cbd5e1', background: '#0f172a', strokeWidth: 0 },
+          title: e.title || `${e.from} ──(${e.label})──> ${e.to}`
+        })
       }
-    }))
+    }
 
-    return { nodes, edges }
+    // 补充：确保当前推理事实链中的边 100% 呈现在图谱中
+    for (const ch of props.reasoning.chains || []) {
+      if (ch.src && ch.tgt) {
+        if (!nodesMap.has(ch.src)) {
+          const col = getNodeColor(ch.src)
+          nodesMap.set(ch.src, {
+            id: ch.src,
+            label: ch.src,
+            shape: 'dot',
+            size: /根因|锁定/.test(ch.src) ? 24 : 16,
+            color: { background: col.background, border: col.border },
+            font: { color: '#ffffff', size: 12, strokeWidth: 2, strokeColor: '#020617' },
+            title: `实体: ${ch.src}`
+          })
+        }
+        if (!nodesMap.has(ch.tgt)) {
+          const col = getNodeColor(ch.tgt)
+          nodesMap.set(ch.tgt, {
+            id: ch.tgt,
+            label: ch.tgt,
+            shape: 'dot',
+            size: /根因|锁定/.test(ch.tgt) ? 24 : 16,
+            color: { background: col.background, border: col.border },
+            font: { color: '#ffffff', size: 12, strokeWidth: 2, strokeColor: '#020617' },
+            title: `实体: ${ch.tgt}`
+          })
+        }
+        const key = `${ch.src}->${ch.tgt}:${ch.rel}`
+        if (!edgeKeySet.has(key)) {
+          edgeKeySet.add(key)
+          const ec = getEdgeColor(ch.rel)
+          edges.push({
+            id: `chain_${key}`,
+            from: ch.src,
+            to: ch.tgt,
+            label: ch.rel,
+            arrows: 'to',
+            color: ec,
+            font: { size: 10, color: '#cbd5e1', background: '#0f172a', strokeWidth: 0 },
+            title: `${ch.src} ──(${ch.rel})──> ${ch.tgt}`
+          })
+        }
+      }
+    }
+
+    return { nodes: new DataSet(Array.from(nodesMap.values())), edges: new DataSet(edges) }
   }
 
   // 2. 本地兜底模式：基于已解析的推导链组装
@@ -508,6 +573,32 @@ function onDrawerOpened() {
     }, 100)
   })
 }
+
+// 监听当前推导上下文变更，保证每次打开不同问题卡片时画布拓扑实时更新
+watch(() => props.reasoning, () => {
+  if (visible.value) {
+    nextTick(() => {
+      setTimeout(() => {
+        initDrawerNetwork()
+      }, 50)
+    })
+  }
+}, { deep: true })
+
+watch(visible, (val) => {
+  if (val) {
+    nextTick(() => {
+      setTimeout(() => {
+        initDrawerNetwork()
+      }, 100)
+    })
+  } else {
+    if (drawerNetwork) {
+      drawerNetwork.destroy()
+      drawerNetwork = null
+    }
+  }
+})
 
 // 大屏全屏显示
 function openFullscreen() {

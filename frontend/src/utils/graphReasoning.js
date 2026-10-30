@@ -101,13 +101,21 @@ export function parseGraphReasoning(msg) {
     hasGraph: cit === targetCitation
   }))
 
-  // 推导最佳工作台场景 (vpn / replaces / cmdb / default)
-  let scene = 'vpn'
+  // 推导最佳工作台场景 (cmdb / replaces / sys_crash / dns / bsod / vpn / custom)
+  let scene = 'custom'
   const allText = text + ' ' + (msg.content || '')
   if (allText.includes('报销') || allText.includes('ERP') || allText.includes('502') || allText.includes('财务')) {
     scene = 'cmdb'
   } else if (allText.includes('废止') || allText.includes('替代') || allText.includes('次数') || allText.includes('规章')) {
     scene = 'replaces'
+  } else if (allText.includes('APPCRASH') || allText.includes('闪退') || allText.includes('运行库') || allText.includes('1000')) {
+    scene = 'sys_crash'
+  } else if (allText.includes('DNS') || allText.includes('NXDOMAIN')) {
+    scene = 'dns'
+  } else if (allText.includes('蓝屏') || allText.includes('BSOD')) {
+    scene = 'bsod'
+  } else if (allText.includes('VPN') || allText.includes('691')) {
+    scene = 'vpn'
   }
 
   return {

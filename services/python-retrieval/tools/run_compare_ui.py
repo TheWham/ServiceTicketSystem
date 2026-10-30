@@ -236,11 +236,29 @@ def get_neo4j_status():
 
 
 @app.get("/api/neo4j/graph_data")
-def get_neo4j_graph_data(scene: str = "vpn"):
-    """从 Neo4j 动态读取特定场景的子图拓扑数据用于前端可视化。"""
+def get_neo4j_graph_data(scene: str = "vpn", entities: str = ""):
+    """从 Neo4j 动态读取特定场景或指定实体列表的子图拓扑数据用于前端可视化。"""
     try:
         kg, _, _, _ = get_components()
-        if scene == "vpn":
+        entity_list = [e.strip() for e in entities.split(",") if e.strip()] if entities else []
+
+        params = {}
+        if entity_list:
+            cypher = """
+            MATCH (e)
+            WHERE e.name IN $entity_list OR any(ent IN $entity_list WHERE e.name CONTAINS ent)
+            WITH collect(e) AS seeds
+            UNWIND seeds AS s
+            MATCH path = (s)-[r*1..2]-(m)
+            UNWIND relationships(path) AS rel
+            RETURN DISTINCT startNode(rel).name AS source, type(rel) AS rel, endNode(rel).name AS target,
+                   coalesce(startNode(rel).is_deprecated, false) AS src_dep,
+                   coalesce(endNode(rel).is_deprecated, false) AS tgt_dep,
+                   coalesce(rel.quote, '') AS quote
+            LIMIT 60
+            """
+            params["entity_list"] = entity_list
+        elif scene == "vpn":
             cypher = """
             MATCH path = (e {name: 'VPN错误691'})-[r*1..2]-(m)
             UNWIND relationships(path) AS rel
@@ -283,7 +301,7 @@ def get_neo4j_graph_data(scene: str = "vpn"):
         edges = []
 
         with kg.driver.session() as s:
-            records = list(s.run(cypher))
+            records = list(s.run(cypher, **params) if params else s.run(cypher))
             for rec in records:
                 src = rec["source"]
                 tgt = rec["target"]

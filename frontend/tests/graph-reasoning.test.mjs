@@ -113,4 +113,32 @@ test('parseGraphReasoning: 正确识别 CMDB 与 废止替代场景', () => {
   }
   const repRes = parseGraphReasoning(repMsg)
   assert.equal(repRes.scene, 'replaces')
+
+  const crashMsg = {
+    content: '办公软件闪退，报错 APPCRASH 事件ID 1000',
+    citations: [
+      {
+        articleId: 'ITKB-SYS-002',
+        title: '软件闪退故障处置',
+        snippet: '【知识图谱因果推导】 • 识别关联实体：软件闪退(APPCRASH)、VC++运行库 • 拓扑因果推导链： - 软件闪退(APPCRASH) ──(诱发根因)──> VC++运行库'
+      }
+    ]
+  }
+  const crashRes = parseGraphReasoning(crashMsg)
+  assert.equal(crashRes.scene, 'sys_crash')
+  assert.equal(crashRes.entities.includes('软件闪退(APPCRASH)'), true)
+
+  const dnsMsg = {
+    content: '微信正常但网页提示 DNS_PROBE_FINISHED_NXDOMAIN',
+    citations: [
+      {
+        articleId: 'ITKB-NET-004',
+        title: 'DNS解析失败故障排查',
+        snippet: '【知识图谱因果推导】 • 识别关联实体：DNS_PROBE_FINISHED_NXDOMAIN、DNS缓存污染 • 拓扑因果推导链： - DNS缓存污染 ──(诱发根因)──> DNS_PROBE_FINISHED_NXDOMAIN'
+      }
+    ]
+  }
+  const dnsRes = parseGraphReasoning(dnsMsg)
+  assert.equal(dnsRes.scene, 'dns')
+  assert.equal(dnsRes.entities.includes('DNS_PROBE_FINISHED_NXDOMAIN'), true)
 })
