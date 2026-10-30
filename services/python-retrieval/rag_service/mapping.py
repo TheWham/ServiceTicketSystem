@@ -43,7 +43,8 @@ def build_response(
     """把 hybrid_rerank_search 的返回装配为 RagRetrievalResponse。
 
     拒答判定（服务层裁定，见 tests/test_refusal_policy.py）：
-        refuse ⇔ 内核已拒答 ∨ 无候选 ∨ max(score) < reject_threshold
+        refuse ⇔ 内核已拒答 ∨ 无候选 ∨ 基础条目 max(score) < reject_threshold
+    （topScore 只统计基础条目，扩展衰减分不计入；见下文 top 计算处。）
     刻意不以 "是否走了远程 rerank" 为条件——网关 429 限流打满在线收紧后的预算时，
     rerank 会降级为启发式打分，内核的拒答门（依赖 last_used_remote）随之被跳过，
     "知识库未记载"的对抗题就会被误作答。远程成功时本判定与内核一致（复现 Day14 基线）。
@@ -78,9 +79,15 @@ def build_response(
             content=content if content.strip() else title,   # 原样保留 Markdown 结构供下游拼 grounding
             category_id=request_category_id or entry.get("categoryId") or None,
             score=_clamp_score(it.get("rerank_score")),
+            # Task 11 读取 Task 10 的内部键，父块代表缺键时 None→序列化不出场
+            graph_expanded=it.get("graph_expanded"),
+            expanded_from=it.get("graph_expanded_from"),
+            relation=it.get("graph_relation"),
         ))
 
-    top = max((i.score for i in items), default=0.0)
+    # topScore 只在基础条目中计算（spec：扩展衰减分不冒充相似度、不抬高 top）；
+    # 拒答判定用同一 top（不变，本就是这一个变量）。全扩展无基础的防御极端下取 0.0。
+    top = max((i.score for i in items if not i.graph_expanded), default=0.0)
     if rejected or not items or (reject_threshold is not None and top < reject_threshold):
         return RagRetrievalResponse(
             items=[], domain="OFFICE_IT", suggested_reply_type="REFUSE",
@@ -91,6 +98,6 @@ def build_response(
     return RagRetrievalResponse(
         items=items, domain="OFFICE_IT", suggested_reply_type="ANSWER",
         suggested_refusal_reason=None,
-        top_score=top,                                    # 契约：topScore == max(items[].score)
+        top_score=top,                                    # 契约：topScore == max(基础条目 score)，扩展分不计入
         reliable=True, published_only=True,
     )

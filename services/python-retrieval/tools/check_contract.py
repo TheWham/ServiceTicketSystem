@@ -127,6 +127,22 @@ def main():
     else:
         check("topScore 存在", "topScore" in data)
 
+    # Task 11：图扩展三字段——若 item 含 graphExpanded 则必须自证来源，
+    # 且 topScore 只统计基础条目（扩展衰减分严格更低，不抬高 top）。
+    for i, it in enumerate(items):
+        if it.get("graphExpanded") is None:
+            continue
+        tag = f"items[{i}]"
+        check(f"{tag}.expandedFrom 非空白（扩展条目须自证来源）",
+              bool((it.get("expandedFrom") or "").strip()), str(it.get("expandedFrom")))
+        check(f"{tag}.relation 非空白", bool((it.get("relation") or "").strip()),
+              str(it.get("relation")))
+    base_scores = [it["score"] for it in items if not it.get("graphExpanded")]
+    if any(it.get("graphExpanded") for it in items):
+        check("topScore == max(基础条目 score)（扩展分不计入）",
+              bool(base_scores) and data.get("topScore") == max(base_scores),
+              f"topScore={data.get('topScore')} baseMax={max(base_scores) if base_scores else 'n/a'}")
+
     print(f"\n[3/7] 拒答契约（{adversarial['id']}）")
     status, env = post(base, "/api/v1/rag/retrievals",
                        {"question": adversarial["query"], "topK": 3})
