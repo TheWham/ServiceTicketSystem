@@ -126,6 +126,17 @@
                   这条回答基于 AI 通用知识，暂无知识库依据。
                 </div>
 
+                <!-- 知识图谱思维链路高光角标（当命中 GraphRAG 多跳因果推导时激活） -->
+                <div v-if="hasGraph(msg)" class="graph-reasoning-badge-bar">
+                  <div class="graph-reasoning-pill" role="button" tabindex="0"
+                       title="点击展开 Neo4j 拓扑演绎链路与根因分析"
+                       @click="showGraphReasoning(msg)" @keydown.enter="showGraphReasoning(msg)">
+                    <span class="graph-pill-icon"><el-icon><Connection /></el-icon></span>
+                    <span class="graph-pill-title">知识图谱因果推导</span>
+                    <span class="graph-pill-link">查看思维链路 <el-icon><ArrowRight /></el-icon></span>
+                  </div>
+                </div>
+
                 <!-- 有知识依据时展示经过校验的真实引用 -->
                 <div v-if="msg.citations && msg.citations.length" class="citations">
                   <div class="citations-title">
@@ -282,6 +293,12 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 知识图谱思维链路详情抽屉 -->
+    <GraphReasoningDrawer
+      v-model="graphDrawerVisible"
+      :reasoning="activeGraphReasoning"
+    />
   </div>
 </template>
 
@@ -301,6 +318,8 @@ import {
   consultationApi, REFUSAL_REASON, TERMINAL_STATUS, TICKET_ENTRY_MESSAGE, CONSULTATION_STATUS
 } from '../api/consultation.js'
 import { saveAiTicketDraft } from '../utils/aiTicketDraft.js'
+import GraphReasoningDrawer from './GraphReasoningDrawer.vue'
+import { hasGraphReasoning, parseGraphReasoning } from '../utils/graphReasoning.js'
 
 /**
  * 员工侧智能客服聊天面板(无外部布局假设):
@@ -323,6 +342,20 @@ const categories = [
 ]
 
 const session = ref(null)
+const graphDrawerVisible = ref(false)
+const activeGraphReasoning = ref(null)
+
+function hasGraph(msg) {
+  return hasGraphReasoning(msg)
+}
+
+function showGraphReasoning(msg) {
+  const parsed = parseGraphReasoning(msg)
+  if (parsed) {
+    activeGraphReasoning.value = parsed
+    graphDrawerVisible.value = true
+  }
+}
 const messages = ref([])
 const draft = ref('')
 const attachmentDrafts = ref([])
@@ -1059,6 +1092,56 @@ onUnmounted(stopPolling)
 }
 .ticket-entry-desc { margin: 8px 0 12px; font-size: 13px; color: var(--el-text-color-regular); }
 .ticket-entry-actions { display: flex; gap: 8px; }
+
+/* 知识图谱思维链路角标 */
+.graph-reasoning-badge-bar {
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+.graph-reasoning-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(168, 85, 247, 0.15) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  padding: 6px 12px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.12);
+}
+.graph-reasoning-pill:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.25) 100%);
+  border-color: rgba(99, 102, 241, 0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.22);
+}
+.graph-pill-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #6366f1;
+  color: #fff;
+  font-size: 12px;
+}
+.graph-pill-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #4f46e5;
+  letter-spacing: 0.3px;
+}
+.graph-pill-link {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #7c3aed;
+  margin-left: 4px;
+}
 
 /* 引用 */
 .citations { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--el-border-color); }
