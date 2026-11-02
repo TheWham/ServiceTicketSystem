@@ -198,14 +198,16 @@ npm run dev                                                # http://127.0.0.1:51
 
 ### 4. 登录
 
-种子账号 4 个，**默认密码均为 `123456`**，角色为 PRD §5.1 大写枚举（忘记密码三要素 = 账号 + 姓名 + 员工号）：
+种子账号 6 个，角色为 PRD §5.1 大写枚举（忘记密码三要素 = 账号 + 姓名 + 员工号）：
 
-| 用户ID | 员工号 | 姓名 | 角色 | 主页 |
-|:---|:---|:---|:---|:---|
-| U_EMP01 | E1001 | 演示员工 | EMPLOYEE | `/employee`（服务台 + 智能客服） |
-| U_ENG01 | E2001 | 演示工程师 | ENGINEER | `/engineer`（工单池/任务/人工咨询） |
-| U_ADM01 | E3001 | 平台管理员 | PLATFORM_ADMIN | `/supervisor`（派单草案裁决/账号管理） |
-| U_KBA02 | E4002 | 知识库管理员 | KNOWLEDGE_ADMIN | `/knowledge-admin`（文档导入/知识审核发布） |
+| 用户ID | 员工号 | 姓名 | 角色 | 主页 | 密码 | 
+|:---|:---|:---|:---|:---|:---|
+| U_EMP01 | E1001 | 演示员工 | EMPLOYEE | `/employee`（服务台 + 智能客服） | 123456 |
+| U_EMP02 | 1 | 演示员工 | EMPLOYEE | `/employee`（服务台 + 智能客服） | 123456zq |
+| U_ENG01 | E2001 | 演示工程师 | ENGINEER | `/engineer`（工单池/任务/人工咨询） | 123456 |
+| U_ENG02 | 2 | 演示工程师 | ENGINEER | `/engineer`（工单池/任务/人工咨询） | 123456x |
+| U_ADM01 | E3001 | 平台管理员 | PLATFORM_ADMIN | `/supervisor`（派单草案裁决/账号管理） | 123456 | 
+| U_KBA02 | E4002 | 知识库管理员 | KNOWLEDGE_ADMIN | `/knowledge-admin`（文档导入/知识审核发布） | 123456pyz | 
 
 ## 核心功能
 
