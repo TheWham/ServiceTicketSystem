@@ -309,6 +309,15 @@ class TestBuildGraphDataEdges:
         assert "ITKB-HB-003" in msg and "ITKB-HB-LEG-003" in msg, msg
         assert "level-2 措辞不可判定" in msg, msg
 
+    def test_replaces_self_replace_single_edge_raises(self):
+        # D-12:自替换去重后仅剩一条(src == dst,单 evidence)同样无方向
+        # 可判——显式 ValueError(带卡名与边信息),不再静默通过。
+        card = dict(CARDS[2][1]); card["relations"] = [
+            {"target": "ITKB-HB-003", "type": "replaces", "note": "a", "evidence": "e1"},
+        ]
+        with pytest.raises(ValueError, match=r"自替换.*ITKB-HB-003.*e1"):
+            build_graph_data([("ITKB-HB-003", card)], GLOSSARY, FP)
+
     def test_replaces_self_replace_pair_raises(self):
         # M6:同一卡双向自替换(src == dst,同卡两条不同 evidence 去重后仍成对)
         # → 显式 ValueError(消息含两卡 id=同一编码+自替换冲突说明),不再 assert。
@@ -316,7 +325,7 @@ class TestBuildGraphDataEdges:
             {"target": "ITKB-HB-003", "type": "replaces", "note": "a", "evidence": "e1"},
             {"target": "ITKB-HB-003", "type": "replaces", "note": "b", "evidence": "e2"},
         ]
-        with pytest.raises(ValueError, match=r"自替换.*ITKB-HB-003"):
+        with pytest.raises(ValueError, match=r"自替换.*ITKB-HB-003.*e1.*e2"):
             build_graph_data([("ITKB-HB-003", card)], GLOSSARY, FP)
 
     def test_identical_edges_deduplicated(self):

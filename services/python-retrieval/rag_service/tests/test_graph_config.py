@@ -139,6 +139,7 @@ def test_replaces_in_whitelist_rejected(tmp_path):
 
 def test_whitelist_without_replaces_logs_warning(tmp_path, caplog, monkeypatch):
     """enabled=true 且不含 REPLACES 的白名单 → 告警日志说明 REPLACES 不参与图扩展。"""
+    monkeypatch.setattr("rag_pipeline.config._whitelist_notice_latched", False)  # D-23: 归零 latch 保证首加载必告警
     monkeypatch.setenv(TEST_PW_ENV, "env-secret")  # enabled=true 需有凭证，否则先被凭证校验拒
     with caplog.at_level(logging.WARNING, logger="rag_pipeline.config"):
         cfg = load_config(write_yaml(tmp_path, graph_yaml()))
@@ -146,6 +147,24 @@ def test_whitelist_without_replaces_logs_warning(tmp_path, caplog, monkeypatch):
     assert any("REPLACES" in r.getMessage() for r in caplog.records), (
         "enabled=true 且白名单不含 REPLACES 时应打告警日志，当前 records: "
         f"{[r.getMessage() for r in caplog.records]}")
+
+
+def test_whitelist_warning_once_per_process(tmp_path, caplog, monkeypatch):
+    """D-23：once-latch——同一进程内“不含 REPLACES”说明性告警只打一条。
+
+    policy 版本消歧热路径每请求都 load_config()，若每请求都告警会每请求
+    刷一条设计说明；同一进程第二次加载不得再告警（关图零告警不变，
+    由 test_disabled_graph_does_not_log_whitelist_warning 钉）。"""
+    monkeypatch.setattr("rag_pipeline.config._whitelist_notice_latched", False)
+    monkeypatch.setenv(TEST_PW_ENV, "env-secret")
+    with caplog.at_level(logging.WARNING, logger="rag_pipeline.config"):
+        for _ in range(2):
+            cfg = load_config(write_yaml(tmp_path, graph_yaml()))
+            assert cfg.graph.enabled is True  # 前置：两次都确实加载成功
+    records = [r.getMessage() for r in caplog.records if "REPLACES" in r.getMessage()]
+    assert len(records) == 1, (
+        "同一进程两次 load_config(enabled=true) 应只打一条 REPLACES 白名单告警"
+        f"，实际 {len(records)} 条: {records}")
 
 
 def test_disabled_graph_does_not_log_whitelist_warning(tmp_path, caplog, monkeypatch):

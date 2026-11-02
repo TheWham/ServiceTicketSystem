@@ -32,6 +32,7 @@ import copy
 import json
 import os
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -73,6 +74,7 @@ def _golden_questions() -> List[Dict[str, Any]]:
 QUESTIONS = _golden_questions()
 
 WHITELIST = ("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES")
+TOP_K = 5            # _retrieve 默认 top_k(检索层截断只辖基础条目,D-50a)
 
 
 def _retrieve(client: TestClient, question: str, top_k: int = 5) -> Dict[str, Any]:
@@ -148,12 +150,19 @@ def graph_off_client(request) -> TestClient:
 @pytest.mark.graph_e2e
 def test_golden_1_low_score_expanded_entries_reach_responses(graph_on_client):
     """金标①:开图响应 items 含 graphExpanded=true 条目;其 score<topScore;
-    topScore==max(基础条目 score);扩展条目的 expandedFrom 指向基础条目。"""
+    topScore==max(基础条目 score);扩展条目的 expandedFrom 指向基础条目。
+    D-50a:另钉条数上界——topK 只辖基础条目,扩展条目逐源≤max_neighbors、
+    总量≤max_neighbors×基础条目数(源必须是基础通过卡)。"""
+    max_neighbors = load_config().graph.expansion.max_neighbors
     hits = 0
     for q in QUESTIONS:
         data = _retrieve(graph_on_client, q["query"])
         base = [it for it in _items(data) if not it.get("graphExpanded")]
         expanded = [it for it in _items(data) if it.get("graphExpanded")]
+        # D-50a 条数上界之一:基础条目 ≤ topK(检索层 topK 截断先于扩展追加,
+        # 扩展只可能让总条目数超过 topK, 不可能让基础条目超限)。
+        assert len(base) <= TOP_K, \
+            f"基础条目数 {len(base)} 超过 topK={TOP_K}: topK 截断失效"
         if expanded:
             hits += 1
             base_scores = [it["score"] for it in base]
@@ -165,6 +174,17 @@ def test_golden_1_low_score_expanded_entries_reach_responses(graph_on_client):
                     f"扩展条目启发式衰减分必须严格低于源卡/topScore:{it['score']} vs {data['topScore']}"
                 assert it["relation"] in WHITELIST
                 assert it["expandedFrom"], "扩展条目必须携带 expandedFrom"
+            # D-50a 条数上界之二:扩展逐源限界。每个基础命中卡最多溢出
+            # max_neighbors 个白名单邻居(expand 每源截断 + LIMIT $cap 只兜
+            # 总量);且每个扩展源都必须是基础通过卡(chunkId 剖出父卡对账)。
+            per_source = Counter(it["expandedFrom"] for it in expanded)
+            base_parents = {it["chunkId"].split("#")[0] for it in base}
+            for src, cnt in per_source.items():
+                assert src in base_parents, f"扩展源 {src} 不在基础条目命中卡中"
+                assert cnt <= max_neighbors, \
+                    f"源 {src} 溢出 {cnt} 个扩展邻居, 超每源上限 max_neighbors={max_neighbors}"
+            assert len(expanded) <= max_neighbors * len(base), \
+                f"扩展总条数 {len(expanded)} 超 max_neighbors({max_neighbors})×基础条目数({len(base)})"
         if base:
             # 无扩展命中时也须保持:topScore 只在基础条目中计算
             assert data["topScore"] == pytest.approx(max(it["score"] for it in base))

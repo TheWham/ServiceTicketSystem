@@ -143,8 +143,22 @@ def test_boost_text_invariance_golden():
     """
     typed = [{"name": n, "type": "配置项"} for n in ITKB_NET_001_FLAT_ENTITIES]
     old_flat_join = "、".join(ITKB_NET_001_FLAT_ENTITIES)          # 迁移前的旧扁平 join
-    migrated_join = "、".join(e["name"] for e in typed)            # 迁移后的取 name join
-    assert migrated_join == old_flat_join, "两序 join 必须逐字符相等"
+
+    # D-14 强化:不再只对比测试内两个同源字符串(双侧同源=自证恒真)。
+    # typed 先走生产序列化通道(wiki_generator 手写 YAML 转义/块式序列化)落
+    # frontmatter,再 yaml.safe_load 回读,在回读数据上重取 name——序列化
+    # 转义(_yaml_scalar: \ 与 " 双重转义)或对象列表渲染的任何漂移都会
+    # 在这里暴露,而不是在测试里自说自话。
+    relm = "、".join(e["name"] for e in typed)                     # 迁移后的取 name join(两序对比保留)
+    assert relm == old_flat_join, "迁移前后两序 join 必须逐字符相等"
+    fm_text = render_frontmatter(_make_entry(), _meta(entities=typed))
+    reloaded = _parse_frontmatter(fm_text)["entities"]            # 生产序列化→标准 yaml 回读
+    assert isinstance(reloaded, list) and reloaded, "回读 entities 必须是非空列表"
+    assert all(set(e) == {"name", "type"} for e in reloaded), reloaded
+    reloaded_join = "、".join(e["name"] for e in reloaded)
+    assert reloaded_join == old_flat_join, (
+        "typed 经生产序列化通道落盘再回读后 join 必须与旧扁平 join 逐字符相等: "
+        f"{reloaded_join!r} vs {old_flat_join!r}")
 
     # 真实消费链路:typed 卡经 render_card 落盘 → ParentChildChunker 切片,
     # 首子块的检索增强行实体段必须仍逐字符等于旧扁平 join(boost_injection=first)。

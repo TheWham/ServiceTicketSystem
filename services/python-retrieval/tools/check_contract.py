@@ -102,7 +102,18 @@ def main():
     check("suggestedReplyType == ANSWER", data.get("suggestedReplyType") == "ANSWER",
           str(data.get("suggestedReplyType")))
     check("suggestedRefusalReason 缺省", "suggestedRefusalReason" not in data)
-    check("items 非空且 ≤ topK", 1 <= len(items) <= 3, f"items={len(items)}")
+    # D-50b:Task 11 语义分级——topK 只辖基础条目(检索层 topK 截断先于图
+    # 扩展追加);扩展条目(graphExpanded=true)单独限界:总量 ≤ 每源邻居上限
+    # (出厂 2,= configs/pipeline.yaml graph.expansion.max_neighbors)× 基础
+    # 条目数(服务端逐源截断 + LIMIT $cap 兑总量)。关图(图三键全 null/缺省)
+    # 时所有条目都是基础条目,口径退化回原断言 1<=len(items)<=3,关图行为不变。
+    base_items = [it for it in items if not it.get("graphExpanded")]
+    expanded_items = [it for it in items if it.get("graphExpanded")]
+    check("基础条目非空且 ≤ topK", 1 <= len(base_items) <= 3,
+          f"base={len(base_items)} expanded={len(expanded_items)}")
+    check("扩展条目数 ≤ 每源上限(2)×基础条目数",
+          len(expanded_items) <= 2 * len(base_items),
+          f"expanded={len(expanded_items)} base={len(base_items)}")
 
     for i, it in enumerate(items):
         tag = f"items[{i}]"
@@ -163,7 +174,15 @@ def main():
     status, env = post(base, "/api/v1/rag/retrievals",
                        {"question": positive["query"], "topK": 20})
     items = (env.get("data") or {}).get("items") or []
-    check("items ≤ 20", len(items) <= 20, str(len(items)))
+    # D-50b:topK=20 同一只辖基础条目;扩展条目单独限界(关图时 base==items,
+    # 与原断言 len(items)<=20 口径一致)。
+    base20 = [it for it in items if not it.get("graphExpanded")]
+    expanded20 = [it for it in items if it.get("graphExpanded")]
+    check("基础条目 ≤ 20", len(base20) <= 20,
+          f"base={len(base20)} expanded={len(expanded20)} items={len(items)}")
+    check("扩展条目数 ≤ 每源上限(2)×基础条目数",
+          len(expanded20) <= 2 * len(base20),
+          f"expanded={len(expanded20)} base={len(base20)}")
 
     print("\n[5/7] 非法请求（question 缺失）")
     status, env = post(base, "/api/v1/rag/retrievals", {"topK": 3})

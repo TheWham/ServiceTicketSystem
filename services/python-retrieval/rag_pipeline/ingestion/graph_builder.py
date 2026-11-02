@@ -267,16 +267,19 @@ def _dedupe_replaces_pairs(
 
     drop: Set[int] = set()
     for pair, idxs in pair_indices.items():
-        if len(idxs) < 2:
-            continue
         if len(pair) != 2:
-            # M6:自替换(src == dst)成对 → 无法判定方向,显式失败不再 assert。
+            # M6 + D-12:自替换(frozenset 基数 1,即 src == dst)——去重后剩一条还是
+            # 多条都无方向可判,显式失败(带卡名/边信息),不再静默通过也不再 assert。
             bad_id = edges[idxs[0]]["src"][len("card:"):]
             raise ValueError(
-                f"REPLACES 对 {bad_id} ↔ {bad_id} 自替换冲突: 两卡 id 为同一编码 "
-                f"{bad_id!r}(replaces 边 src == dst), 同卡的替换边无方向可判; "
-                f"涉及 evidence: {sorted({edges[i]['evidence'] for i in idxs})}"
+                f"REPLACES 自替换: 卡 {bad_id} ↔ {bad_id} 存在 src == dst 的替换边"
+                f"(去重后 {len(idxs)} 条), 同卡的替换边无方向可判, 属数据异常, "
+                f"请修正该卡 relations; 涉及 evidence: "
+                f"{sorted({edges[i]['evidence'] for i in idxs})}"
             )
+        if len(idxs) < 2:
+            continue
+
         first_id, second_id = _ordered_by_input(
             *(w[len("card:"):] for w in pair), order=card_order
         )

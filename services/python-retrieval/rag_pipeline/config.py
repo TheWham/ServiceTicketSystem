@@ -85,6 +85,10 @@ WIKI_DIR = ARTIFACTS_ROOT / "output" / "wiki"          # demo: Wiki 卡片输入
 INDEXING_OUTPUT = ARTIFACTS_ROOT / "indexing"          # demo: 建库产物（向量库/缓存/报告）
 EVALUATION_OUTPUT = ARTIFACTS_ROOT / "evaluation"      # demo: 评测产物（报告）
 
+# D-23:「白名单不含 REPLACES」说明性告警的进程级 once-latch
+# （热路径每请求 load_config()，真正的刚需告警只发一次；测试可用 monkeypatch 归零）。
+_whitelist_notice_latched = False
+
 
 @dataclass
 class ChunkingConfig:
@@ -235,10 +239,15 @@ def _build_graph_config(raw: Optional[Dict[str, Any]]) -> GraphConfig:
         )
 
     if g.enabled and "REPLACES" not in g.expansion.edge_whitelist:
-        logging.getLogger(__name__).warning(
-            "graph.expansion.edge_whitelist 不含 REPLACES：REPLACES 边不参与图扩展"
-            "（由版本消歧在检索层处理），此为设计预期；如需其进热路径请先复核设计。"
-        )
+        # D-23 once-latch：policy 版本消歧热路径每次请求都 load_config()，这条
+        # 设计说明同一进程只告警一次，避免每请求刷一条 WARNING（关图零告警不变）。
+        global _whitelist_notice_latched
+        if not _whitelist_notice_latched:
+            _whitelist_notice_latched = True
+            logging.getLogger(__name__).warning(
+                "graph.expansion.edge_whitelist 不含 REPLACES：REPLACES 边不参与图扩展"
+                "（由版本消歧在检索层处理），此为设计预期；如需其进热路径请先复核设计。"
+            )
     return g
 
 
