@@ -110,12 +110,12 @@ class AgentRunner:
     """
 
     def __init__(self, model_client: Optional[ModelClient] = None, max_steps: Optional[int] = None,
-                 langfuse_exporter: Optional[LangfuseExporter] = None, mode: str = "supervisor"):
+                 langfuse_exporter: Optional[LangfuseExporter] = None, mode: Optional[str] = None):
         self.model = model_client or ModelClient()
         self.max_steps = max(1, max_steps or acfg.MAX_STEPS)
         self.langfuse = langfuse_exporter or LangfuseExporter()
         self.checkpointer = MemorySaver()
-        self.mode = mode
+        self.mode = mode or acfg.AGENT_MODE
         if self.mode == "supervisor":
             self.graph = build_subagent_supervisor_graph(checkpointer=self.checkpointer)
         else:

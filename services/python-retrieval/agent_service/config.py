@@ -50,6 +50,9 @@ MAX_OUTPUT_TOKENS = int(os.environ.get("AGENT_MAX_OUTPUT_TOKENS", "8192"))
 # kimi-k3 不接受 temperature；deepseek 接受。默认不传，走模型默认值。
 TEMPERATURE = os.environ.get("AGENT_TEMPERATURE", "")
 
+# ---- 智能体编排模式 (supervisor: 主从多智能体与安全护栏 | react: 经典单智能体循环) ----
+AGENT_MODE = os.environ.get("AGENT_MODE", "supervisor").strip().lower()
+
 # ---- ReAct 循环 ----
 MAX_STEPS = int(os.environ.get("AGENT_MAX_STEPS", "5"))
 

@@ -56,6 +56,7 @@ def create_app(runner: AgentRunner = None) -> FastAPI:
         exporter = app.state.langfuse_exporter
         return {
             "status": "UP",
+            "agent_mode": acfg.AGENT_MODE,
             "model_configured": acfg.model_configured(),
             "model": acfg.LLM_MODEL,
             "max_steps": acfg.MAX_STEPS,
