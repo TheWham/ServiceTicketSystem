@@ -781,8 +781,55 @@ HTML_PAGE = """<!DOCTYPE html>
         let currentResponseJson = {};
 
         function loadScenario(num) {
+            // 1. 高亮选中的预置卡片
+            document.querySelectorAll('.preset-card').forEach((card, idx) => {
+                if (idx + 1 === num) {
+                    card.style.borderColor = 'var(--accent-cyan)';
+                    card.style.background = '#1a2942';
+                    card.style.boxShadow = '0 0 14px rgba(56, 189, 248, 0.3)';
+                } else {
+                    card.style.borderColor = 'var(--border-color)';
+                    card.style.background = 'var(--card-bg)';
+                    card.style.boxShadow = 'none';
+                }
+            });
+
+            // 2. 仅填充输入框，绝不自动触发执行
             document.getElementById('queryInput').value = SCENARIOS[num];
-            executeWorkflow();
+
+            // 3. 重置拓扑流转与之前的结果，等待用户主动点击按钮
+            resetNodes();
+            const bubble = document.getElementById('chatBubble');
+            bubble.className = 'chat-bubble';
+            bubble.innerText = '👉 已载入「场景 ' + num + '」，请核对输入框中的内容，随后点击右侧【⚡ 执行编排】按钮启动多智能体流转！';
+
+            const secBadge = document.getElementById('securityBadge');
+            secBadge.className = 'badge';
+            secBadge.style.color = '#94a3b8';
+            secBadge.style.borderColor = '#334155';
+            secBadge.innerText = '⚪ 等待执行编排';
+
+            document.getElementById('ticketCard').style.display = 'none';
+            document.getElementById('vaultSimpleBox').innerText = '等待点击「⚡ 执行编排」后实时提取分析...';
+            document.getElementById('logBox').innerHTML = '<div class="log-entry" style="color: #64748b;">已载入场景 ' + num + '，等待点击「⚡ 执行编排」...</div>';
+            
+            // 重置 Subagent 查看区
+            document.getElementById('supervisorDecisionPill').innerText = '待命';
+            document.getElementById('supervisorOutputBox').innerText = '等待执行编排...';
+            
+            document.getElementById('kwCard').className = 'worker-card skipped';
+            document.getElementById('kwStatusPill').className = 'worker-status-pill status-skip';
+            document.getElementById('kwStatusPill').innerText = '⚪ 待命中';
+            document.getElementById('kwVersions').innerText = '-';
+            document.getElementById('kwEvidenceBox').innerText = '等待执行编排...';
+
+            document.getElementById('twCard').className = 'worker-card skipped';
+            document.getElementById('twStatusPill').className = 'worker-status-pill status-skip';
+            document.getElementById('twStatusPill').innerText = '⚪ 待命中';
+            document.getElementById('twEvidenceBox').innerText = '等待执行编排...';
+            document.getElementById('twDraftBox').innerText = '无';
+
+            document.getElementById('jsonBox').innerText = '{}';
         }
 
         function switchTab(tabName) {
@@ -807,7 +854,15 @@ HTML_PAGE = """<!DOCTYPE html>
 
         async function executeWorkflow() {
             const query = document.getElementById('queryInput').value.trim();
-            if (!query) return;
+            if (!query) {
+                alert('请先点击上方预置场景或在输入框中输入技术问题！');
+                return;
+            }
+
+            const execBtn = document.querySelector('.exec-btn');
+            const originalHtml = execBtn.innerHTML;
+            execBtn.innerHTML = '<span>⏳ 正在驱动流转...</span>';
+            execBtn.disabled = true;
 
             resetNodes();
             document.getElementById('node-guard-in').classList.add('active');
@@ -942,6 +997,9 @@ HTML_PAGE = """<!DOCTYPE html>
 
             } catch (err) {
                 logBox.innerHTML += '<div class="log-entry" style="color: #ef4444;">❌ 流程调用异常: ' + err + '</div>';
+            } finally {
+                execBtn.innerHTML = originalHtml;
+                execBtn.disabled = false;
             }
         }
     </script>
