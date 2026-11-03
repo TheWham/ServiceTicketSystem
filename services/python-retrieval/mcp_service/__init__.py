@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """IT 服务工单与知识咨询 MCP Service 模块。"""
 
+from .client import ITServiceMCPClient
 from .contract import (
     CategoryItem,
     TicketDraft,
@@ -24,6 +25,7 @@ __all__ = [
     "mcp",
     "FastMCP",
     "ZeroDepFastMCP",
+    "ITServiceMCPClient",
     "TicketDraft",
     "CategoryItem",
     "ToolResultEnvelope",

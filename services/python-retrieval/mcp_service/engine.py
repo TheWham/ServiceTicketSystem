@@ -327,7 +327,12 @@ class ZeroDepFastMCP:
         if transport != "stdio":
             raise NotImplementedError(f"Transport '{transport}' not implemented in zero-dependency engine.")
 
-        # 确保标准输出与标准输入以 UTF-8 处理
+        # 确保标准输出与标准输入以 UTF-8 处理 (防止 Windows 平台默认 GBK 编解码乱码)
+        if hasattr(sys.stdin, "reconfigure"):
+            sys.stdin.reconfigure(encoding="utf-8")
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+
         for line in sys.stdin:
             line_str = line.strip()
             if not line_str:
