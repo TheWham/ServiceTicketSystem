@@ -351,7 +351,7 @@ async function buildGraphData() {
 
   // 校验返回的 Neo4j 节点是否与当前实体匹配（杜绝返回默认历史 VPN 数据）
   const hasMatchedEntities = neo4jData && neo4jData.nodes?.length && (
-    entities.length === 0 ||
+    entities.length > 0 &&
     neo4jData.nodes.some(n => {
       const label = n.label || n.id || ''
       return entities.some(ent => label.includes(ent) || ent.includes(label))

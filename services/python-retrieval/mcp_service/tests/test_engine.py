@@ -55,14 +55,37 @@ def test_engine_prompt_get():
 
     @mcp.prompt()
     def review_prompt(code: str) -> str:
-        """Review code."""
+        """Review code.
+
+        :param code: Source code to review
+        """
         return f"Please review this code:\n{code}"
 
+    # 1. 验证 prompts/list 能够返回完整的 arguments 元数据
+    list_req = {"jsonrpc": "2.0", "id": 41, "method": "prompts/list", "params": {}}
+    list_resp = mcp.handle_jsonrpc(list_req)
+    assert list_resp["id"] == 41
+    prompts = list_resp["result"]["prompts"]
+    assert len(prompts) == 1
+    assert prompts[0]["name"] == "review_prompt"
+    assert "arguments" in prompts[0]
+    assert prompts[0]["arguments"][0]["name"] == "code"
+    assert prompts[0]["arguments"][0]["description"] == "Source code to review"
+    assert prompts[0]["arguments"][0]["required"] is True
+
+    # 2. 正常传参调用
     req = {"jsonrpc": "2.0", "id": 4, "method": "prompts/get", "params": {"name": "review_prompt", "arguments": {"code": "print(1)"}}}
     resp = mcp.handle_jsonrpc(req)
     assert resp["id"] == 4
     assert "messages" in resp["result"]
     assert "print(1)" in resp["result"]["messages"][0]["content"]["text"]
+
+    # 3. 客户端空参调用（不传 arguments 或传空字典）测试韧性降级，不发生 TypeError 崩溃
+    empty_req = {"jsonrpc": "2.0", "id": 5, "method": "prompts/get", "params": {"name": "review_prompt"}}
+    empty_resp = mcp.handle_jsonrpc(empty_req)
+    assert empty_resp["id"] == 5
+    assert "messages" in empty_resp["result"]
+    assert "<code>" in empty_resp["result"]["messages"][0]["content"]["text"]
 
 def test_engine_initialize():
     mcp = ZeroDepFastMCP("TestServer")

@@ -136,7 +136,14 @@
       "Bash(tasklist //FI \"IMAGENAME eq com.docker.backend.exe\" //FO CSV //NH)",
       "Bash(PYTHONIOENCODING=utf-8 python -c ' *)",
       "Bash(PYTHONIOENCODING=utf-8 python -m pytest analytics_service/tests -q)",
-      "Bash(PYTHONIOENCODING=utf-8 python -)"
+      "Bash(PYTHONIOENCODING=utf-8 python -)",
+      "Bash(python -c \"import ast,sys; ast.parse\\(open\\('analytics_service/classifier.py',encoding='utf-8'\\).read\\(\\)\\)\")",
+      "Bash(python -X utf8 -c ' *)",
+      "Bash(python -X utf8 -m pytest analytics_service/tests -q)",
+      "Read(//tmp/**)",
+      "Bash(curl -s --max-time 30 -o /tmp/claim.out -w 'HTTP %{http_code}\\\\n' -X POST http://127.0.0.1:8201/api/v1/tickets/__TRACKED_VAR__/claim -H 'Content-Type: application/json' -H 'X-User-Id: U_ENG02' -H 'X-User-Role: ENGINEER' -H 'X-User-Dept: D002' -H 'X-Request-Id: claim-__TRACKED_VAR__' --data '{\"impact_scope\":\"SINGLE\",\"urgency_level\":\"LOW\"}')",
+      "Bash(node --test tests/ai-ticket-draft.test.mjs)",
+      "Bash(node -e ' *)"
     ]
   }
 }

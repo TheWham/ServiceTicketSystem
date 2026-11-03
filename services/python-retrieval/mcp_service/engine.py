@@ -88,6 +88,35 @@ def _build_input_schema(func: Callable) -> Dict[str, Any]:
     }
 
 
+def _build_prompt_arguments(func: Callable) -> List[Dict[str, Any]]:
+    """通过函数签名自动推导 MCP Prompt 的 arguments 参数列表。"""
+    sig = inspect.signature(func)
+    doc = inspect.getdoc(func) or ""
+
+    param_docs: Dict[str, str] = {}
+    for line in doc.splitlines():
+        line_s = line.strip()
+        if line_s.startswith(":param "):
+            parts = line_s[len(":param "):]
+            if ":" in parts:
+                p_name, p_desc = parts.split(":", 1)
+                param_docs[p_name.strip()] = p_desc.strip()
+
+    arguments: List[Dict[str, Any]] = []
+    for name, param in sig.parameters.items():
+        if name in ("self", "cls"):
+            continue
+
+        arg_def: Dict[str, Any] = {
+            "name": name,
+            "description": param_docs.get(name, f"参数 {name}"),
+            "required": param.default is inspect.Parameter.empty,
+        }
+        arguments.append(arg_def)
+
+    return arguments
+
+
 class ZeroDepFastMCP:
     """零外部依赖的生产级 FastMCP 仿真与协议引擎。"""
 
@@ -134,9 +163,13 @@ class ZeroDepFastMCP:
         def decorator(func: Callable):
             p_name = name or func.__name__
             p_desc = description or inspect.getdoc(func) or f"Prompt template {p_name}"
+            # 首行作为简明描述
+            p_short_desc = p_desc.splitlines()[0].strip() if p_desc else p_name
+            p_args = _build_prompt_arguments(func)
             self.prompts[p_name] = {
                 "name": p_name,
-                "description": p_desc,
+                "description": p_short_desc,
+                "arguments": p_args,
                 "func": func,
             }
             return func
@@ -275,6 +308,7 @@ class ZeroDepFastMCP:
                 {
                     "name": p["name"],
                     "description": p["description"],
+                    "arguments": p.get("arguments", []),
                 }
                 for p in self.prompts.values()
             ]
@@ -294,7 +328,19 @@ class ZeroDepFastMCP:
                 }
             p_entry = self.prompts[p_name]
             try:
-                rendered = p_entry["func"](**p_args)
+                sig = inspect.signature(p_entry["func"])
+                call_args = {}
+                for p_k, param in sig.parameters.items():
+                    if p_k in ("self", "cls"):
+                        continue
+                    if p_k in p_args:
+                        call_args[p_k] = p_args[p_k]
+                    elif param.default is not inspect.Parameter.empty:
+                        call_args[p_k] = param.default
+                    else:
+                        call_args[p_k] = f"<{p_k}>"
+
+                rendered = p_entry["func"](**call_args)
                 return {
                     "jsonrpc": "2.0",
                     "id": req_id,

@@ -40,14 +40,25 @@ def test_resource_system_status():
     assert "services" in parsed
 
 def test_prompt_troubleshoot():
+    # 显式参数
     prompt = it_troubleshoot_prompt("VPN")
     assert "VPN" in prompt
     assert "排查" in prompt
 
+    # 默认/空参调用兼容
+    default_prompt = it_troubleshoot_prompt()
+    assert "排查" in default_prompt
+    assert "未指定故障" in default_prompt
+
 def test_prompt_draft_confirm():
+    # 显式参数
     prompt = ticket_draft_confirm_prompt("鼠标失灵", "无法点击左键", "C_HW_PC", "LOW")
     assert "鼠标失灵" in prompt
     assert "C_HW_PC" in prompt
+
+    # 默认/空参调用兼容
+    default_prompt = ticket_draft_confirm_prompt()
+    assert "系统故障" in default_prompt
 
 def test_live_or_graceful_tickets():
     # 测试连接 8201 真实服务或异常返回 (不抛未捕获异常)

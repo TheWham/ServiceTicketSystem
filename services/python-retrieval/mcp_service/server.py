@@ -42,7 +42,7 @@ mcp = FastMCP("IT-Ticket-Service-Server")
 # 微服务基址与身份默认值配置
 TICKET_SERVICE_BASE_URL = os.environ.get("TICKET_SERVICE_BASE_URL", "http://127.0.0.1:8201")
 KNOWLEDGE_SEARCH_BASE_URL = os.environ.get("KNOWLEDGE_SEARCH_BASE_URL", "http://127.0.0.1:8301")
-DEFAULT_USER_ID = os.environ.get("MCP_USER_ID", "U1001")
+DEFAULT_USER_ID = os.environ.get("MCP_USER_ID", "U_EMP01")
 DEFAULT_USER_ROLE = os.environ.get("MCP_USER_ROLE", "EMPLOYEE")
 HTTP_TIMEOUT = float(os.environ.get("MCP_HTTP_TIMEOUT", "10.0"))
 
@@ -254,8 +254,11 @@ def get_system_status() -> str:
 # ==============================================================================
 
 @mcp.prompt()
-def it_troubleshoot_prompt(issue_keyword: str) -> str:
-    """面向 IT 故障排查的标准化引导模版。"""
+def it_troubleshoot_prompt(issue_keyword: str = "未指定故障/常见问题") -> str:
+    """面向 IT 故障排查的标准化引导模版。
+
+    :param issue_keyword: 故障关键词（如 VPN、网络连接、打印机、账号登录）
+    """
     return f"""你是一位企业 IT 服务台的资深排障专家。当前员工遇到了涉及【{issue_keyword}】的故障。
 请遵循以下排查准则作答：
 1. 先根据内部知识库（search_knowledge）核实企业官方解决指引；
@@ -266,12 +269,18 @@ def it_troubleshoot_prompt(issue_keyword: str) -> str:
 
 @mcp.prompt()
 def ticket_draft_confirm_prompt(
-    title: str,
-    description: str,
+    title: str = "系统故障",
+    description: str = "用户遇到未知异常，待补充具体细节",
     category: Optional[str] = None,
     priority: Optional[str] = "MEDIUM",
 ) -> str:
-    """人机回环（HITL）工单建单前向员工确认要素的交互模版。"""
+    """人机回环（HITL）工单建单前向员工确认要素的交互模版。
+
+    :param title: 工单简明标题
+    :param description: 故障详细描述
+    :param category: 建议分类编码 (如 C_NET, C_HW_PC)
+    :param priority: 优先级 (LOW, MEDIUM, HIGH, URGENT)
+    """
     return f"""请以礼貌、严谨的 IT 服务台语气，为员工确认即将提交的工单草稿：
 - 工单标题：{title}
 - 问题描述：{description}

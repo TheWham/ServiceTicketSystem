@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/mcp-config.json",
   "mcpServers": {
     "it-ticket-service": {
-      "command": "python",
+      "command": "C:/Users/Admin/AppData/Local/Programs/Python/Python314/python.exe",
       "args": [
         "d:/day12/demos/services/python-retrieval/mcp_service/server.py"
       ],
@@ -10,7 +10,7 @@
         "PYTHONIOENCODING": "utf-8",
         "PYTHONUTF8": "1",
         "PYTHONPATH": "d:/day12/demos/services/python-retrieval",
-        "MCP_USER_ID": "U1001",
+        "MCP_USER_ID": "U_EMP01",
         "MCP_USER_ROLE": "EMPLOYEE",
         "TICKET_SERVICE_BASE_URL": "http://127.0.0.1:8201",
         "KNOWLEDGE_SEARCH_BASE_URL": "http://127.0.0.1:8301"

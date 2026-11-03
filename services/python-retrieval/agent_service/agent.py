@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""ReAct 决策循环 + 生成结果解析。
+"""基于 LangGraph 编排的 ReAct 决策循环 + 生成结果解析。
 
-驱动「模型 ⇄ 工具」多轮：模型决定调用哪个工具 → 宿主执行 → 结果以 role="tool" 回传 →
-模型据此反思/纠错/补参数 → 直到产出最终答复（约定为结构化 JSON）。
+驱动「模型 ⇄ 工具」多轮有向图流转：
+  模型决定调用哪个工具 → 宿主执行（向量检索/工单） → 结果以 role="tool" 回传 →
+  模型据此反思/纠错/补参数 → 直到产出最终答复（约定为结构化 JSON）。
 最后一轮以 tool_choice=none 强制模型出最终答案，防工具调用死循环（RD-007）。
 """
 import hashlib
@@ -11,10 +12,12 @@ import logging
 import uuid
 from typing import Any, Dict, List, Optional
 
+from langgraph.checkpoint.memory import MemorySaver
 from rag_pipeline.observability.tracer import Tracer
 
 from . import config as acfg
 from .contract import AgentChatRequest, AgentChatResponse, TicketDraft, TraceSummary
+from .graph import AgentGraphState, build_react_agent_graph
 from .model_client import ModelClient, ModelError
 from .observability.langfuse_exporter import LangfuseExporter
 from .tools import ToolContext, dispatch, tool_specs
@@ -98,13 +101,15 @@ def _trace_summary(summary: Dict[str, Any]) -> TraceSummary:
 
 
 class AgentRunner:
-    """无状态运行器（模型客户端进程级复用）。"""
+    """基于 LangGraph 编排的智能体运行器（单例复用，支持 Checkpointer 审计）。"""
 
     def __init__(self, model_client: Optional[ModelClient] = None, max_steps: Optional[int] = None,
                  langfuse_exporter: Optional[LangfuseExporter] = None):
         self.model = model_client or ModelClient()
         self.max_steps = max(1, max_steps or acfg.MAX_STEPS)
         self.langfuse = langfuse_exporter or LangfuseExporter()
+        self.checkpointer = MemorySaver()
+        self.graph = build_react_agent_graph(checkpointer=self.checkpointer)
 
     def run(self, req: AgentChatRequest, user_id: str, role: str,
             request_id: str = "", session_id: str = "") -> AgentChatResponse:
@@ -120,35 +125,33 @@ class AgentRunner:
             {"role": "user", "content": _build_user_input(req)},
         ]
         specs = tool_specs()
-        final_content: Optional[str] = None
 
-        for step in range(self.max_steps):
-            last_step = step == self.max_steps - 1
-            with tracer.generation(f"ReAct轮{step + 1}", model=acfg.LLM_MODEL) as gen_span:
-                turn = self.model.complete_with_tools(messages, specs, "none" if last_step else "auto")
-                gen_span.record(output={"toolCalls": [c.name for c in turn.tool_calls],
-                                        "hasToolCalls": turn.has_tool_calls},
-                                tokens_in=turn.usage.tokens_in,
-                                tokens_out=turn.usage.tokens_out,
-                                tokens_source=turn.usage.tokens_source)
-            if not turn.has_tool_calls:
-                final_content = turn.content or ""
-                break
-            # 回放模型的工具调用（OpenAI tools 协议格式），再逐个执行并回传结果
-            messages.append({
-                "role": "assistant", "content": None,
-                "tool_calls": [{"id": c.id, "type": "function",
-                                "function": {"name": c.name,
-                                             "arguments": json.dumps(c.arguments, ensure_ascii=False)}}
-                               for c in turn.tool_calls],
-            })
-            for call in turn.tool_calls:
-                with tracer.span(f"tool.{call.name}") as span:
-                    span.record(input=call.arguments)
-                    result = dispatch(call.name, call.arguments, ctx)
-                    span.record(output={"success": result.get("success")})
-                messages.append({"role": "tool", "tool_call_id": call.id,
-                                 "content": json.dumps(result, ensure_ascii=False)})
+        # 基于 LangGraph 驱动 ReAct 循环流转
+        initial_state: AgentGraphState = {
+            "messages": messages,
+            "user_id": user_id or "",
+            "role": role or "",
+            "request_id": ctx.request_id,
+            "question": req.question or "",
+            "step": 0,
+            "max_steps": self.max_steps,
+            "latest_tool_calls": [],
+            "final_content": None,
+            "draft": None,
+            "audit_trail": [f"【启动 LangGraph】开启智能体编排，会话单号: {ctx.request_id}"]
+        }
+        config = {
+            "configurable": {
+                "thread_id": ctx.request_id,
+                "model_client": self.model,
+                "specs": specs,
+                "ctx": ctx,
+                "tracer": tracer
+            }
+        }
+
+        final_state = self.graph.invoke(initial_state, config=config)
+        final_content = final_state.get("final_content")
 
         if final_content is None:
             raise ModelError("ReAct 步数超限")

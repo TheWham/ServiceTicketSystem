@@ -180,4 +180,17 @@ def create_app(assembly: ServiceAssembly = None) -> FastAPI:
         except Exception as e:
             return JSONResponse(status_code=500, content={"code": 1, "error": str(e)})
 
+    # ---- 挂载 LangGraph 知识库沉淀流程编排路由 ----
+    try:
+        import sys
+        from pathlib import Path
+        py_retrieval_dir = str(Path(__file__).resolve().parents[1])
+        if py_retrieval_dir not in sys.path:
+            sys.path.insert(0, py_retrieval_dir)
+        from knowledge_flow.router import router as knowledge_flow_router
+        app.include_router(knowledge_flow_router)
+    except Exception as e:
+        import logging
+        logging.getLogger("rag_service").warning("知识库流程编排路由挂载跳过: %s", e)
+
     return app

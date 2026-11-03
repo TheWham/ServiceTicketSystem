@@ -3,39 +3,17 @@
  * 从 AI 客服检索引用的 snippet 中解析刚性拓扑因果链、识别实体与多跳推导事实
  */
 
-export function hasGraphReasoning(msg) {
-  if (!msg) return false
-  if (msg.citations && msg.citations.length) {
-    if (msg.citations.some(
-      c => c.snippet && (c.snippet.includes('【知识图谱因果推导】') || c.snippet.includes('拓扑因果推导链'))
-    )) {
-      return true
-    }
-  }
-  const content = msg.content || msg.answerText || ''
-  if (content.includes('【知识图谱因果推导】') || content.includes('拓扑因果推导链')) {
-    return true
-  }
-  // 智能兜底：如果回答内容涉及典型级联穿透排查（如 691 + AD/邮箱失效，或者跨卡因果分析），且包含卡片引用，激活图谱推导
-  if (msg.citations && msg.citations.length && (
-    (content.includes('691') && (content.includes('凭据失效') || content.includes('域账号') || content.includes('AD'))) ||
-    (content.includes('502') && (content.includes('SSL VPN') || content.includes('报销') || content.includes('ERP'))) ||
-    (content.includes('蓝屏') && (content.includes('Minidump') || content.includes('dump') || content.includes('dmp'))) ||
-    (content.includes('DNS') && content.includes('NXDOMAIN')) ||
-    (content.includes('APPCRASH') && content.includes('运行库'))
-  )) {
-    return true
-  }
-  return false
-}
-
 export function parseGraphReasoning(msg) {
-  if (!hasGraphReasoning(msg)) return null
+  if (!msg) return null
 
   let targetCitation = (msg.citations || []).find(
     c => c.snippet && (c.snippet.includes('【知识图谱因果推导】') || c.snippet.includes('拓扑因果推导链'))
   )
   let text = targetCitation ? (targetCitation.snippet || '') : (msg.content || msg.answerText || '')
+
+  if (!text.includes('【知识图谱因果推导】') && !text.includes('拓扑因果推导链')) {
+    return null
+  }
 
   // 1. 提取识别的种子实体
   let entities = []
@@ -100,7 +78,12 @@ export function parseGraphReasoning(msg) {
       isAction: false,
       isDeprecated: false
     }
-  })
+  }).filter(c => c.src || c.tgt)
+
+  // 严密契约校验：必须提取到有效的种子实体或推导链，杜绝零实体零推导的空抽屉或误判
+  if (entities.length === 0 && parsedChains.length === 0) {
+    return null
+  }
 
   // 3. 提取排查处置建议
   let suggestion = '建议优先顺延图谱因果链处置根因节点。'
@@ -144,4 +127,9 @@ export function parseGraphReasoning(msg) {
     scene,
     rawText: text
   }
+}
+
+export function hasGraphReasoning(msg) {
+  if (!msg) return false
+  return parseGraphReasoning(msg) !== null
 }
