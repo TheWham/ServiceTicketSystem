@@ -178,4 +178,14 @@ export const goldenCaseApi = {
   remove: (id) => api.delete(`/rag/golden-cases/${id}`)
 }
 
+
+// ---- LangGraph 知识库沉淀流程编排 API (Python :8310) ----
+export const knowledgeFlowApi = {
+  trigger: (data) => api.post('/knowledge-flow/trigger', data, { timeout: 60000 }),
+  getPending: (threadId) => api.get('/knowledge-flow/pending/' + threadId, { timeout: 30000 }),
+  resume: (threadId, decision) => api.post('/knowledge-flow/resume/' + threadId, decision, { timeout: 60000 }),
+  getHistory: (threadId) => api.get('/knowledge-flow/history/' + threadId, { timeout: 30000 }),
+  timeTravelPatch: (threadId, patch) => api.post('/knowledge-flow/patch/' + threadId, patch, { timeout: 60000 })
+}
+
 export default api

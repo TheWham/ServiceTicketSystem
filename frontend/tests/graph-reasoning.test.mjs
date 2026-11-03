@@ -22,6 +22,36 @@ test('hasGraphReasoning: 准确识别是否命中图谱推导', () => {
     ]
   }
   assert.equal(hasGraphReasoning(graphMsg), true)
+
+  // 典型排障 SOP 纯双路召回（如“电脑蓝屏死机怎么办”，正文包含 Minidump 和 dump，但无图谱推导前缀）
+  const bsodSopMsg = {
+    content: '针对电脑蓝屏死机，请按以下步骤排查：\n【第七步：解析转储文件】提取蓝屏dump，C:\\Windows\\Minidump下会有崩溃转储文件，可用BlueScreenView打开查看详细模块。',
+    citations: [
+      {
+        articleId: 'ITKB-SYS-001',
+        title: '软件及操作系统常见排障指南',
+        versionId: 'ver-1792085759135-101',
+        score: 0.92,
+        snippet: '针对电脑蓝屏死机，请在排查前做好数据备份。第一步：记录蓝屏代码；第七步：提取蓝屏dump文件...'
+      }
+    ]
+  }
+  assert.equal(hasGraphReasoning(bsodSopMsg), false, '普通双路召回蓝屏排障SOP不应误触发图谱推导')
+  assert.equal(parseGraphReasoning(bsodSopMsg), null, '普通双路召回蓝屏排障SOP解析应返回null')
+
+  // 其他包含特征词但无图谱推导因果事实的普通回答
+  const otherNormalMsg = {
+    content: '拨打客服热线或查看错误代码691，可能需要联系管理员重置AD账号。',
+    citations: [
+      {
+        articleId: 'ITKB-VPN-002',
+        title: '常见网络问题',
+        snippet: '普通操作手册内容'
+      }
+    ]
+  }
+  assert.equal(hasGraphReasoning(otherNormalMsg), false, '普通双路召回回答不应误触发图谱推导')
+  assert.equal(parseGraphReasoning(otherNormalMsg), null)
 })
 
 test('parseGraphReasoning: 完整结构化解析实体、因果链与建议', () => {
