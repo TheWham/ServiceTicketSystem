@@ -4,12 +4,12 @@
     "it-ticket-service": {
       "command": "python",
       "args": [
-        "d:/day12/demos/day27/run_day27_it_ticket_mcp.py",
-        "run"
+        "d:/day12/demos/services/python-retrieval/mcp_service/server.py"
       ],
       "env": {
         "PYTHONIOENCODING": "utf-8",
         "PYTHONUTF8": "1",
+        "PYTHONPATH": "d:/day12/demos/services/python-retrieval",
         "MCP_USER_ID": "U1001",
         "MCP_USER_ROLE": "EMPLOYEE",
         "TICKET_SERVICE_BASE_URL": "http://127.0.0.1:8201",

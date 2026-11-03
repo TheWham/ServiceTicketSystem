@@ -16,13 +16,23 @@
 import json
 import logging
 import os
+import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 import uuid
 
 import httpx
 
-from .contract import VALID_CATEGORIES, VALID_PRIORITIES, TicketDraft
-from .engine import FastMCP
+if __package__ or "." in __name__:
+    from .contract import VALID_CATEGORIES, VALID_PRIORITIES, TicketDraft
+    from .engine import FastMCP
+else:
+    # 直接作为脚本执行时的自适应路径解析
+    pkg_dir = Path(__file__).resolve().parent
+    if str(pkg_dir.parent) not in sys.path:
+        sys.path.insert(0, str(pkg_dir.parent))
+    from mcp_service.contract import VALID_CATEGORIES, VALID_PRIORITIES, TicketDraft
+    from mcp_service.engine import FastMCP
 
 log = logging.getLogger(__name__)
 
@@ -270,3 +280,12 @@ def ticket_draft_confirm_prompt(
 
 请向员工明确询问：
 “您好，已为您整理好上述工单草稿。请核对信息是否准确？确认无误请回复‘确认建单’，我将为您正式生成工单并派发给对应工程师处理。”"""
+
+
+# ==============================================================================
+# 服务入口：支持直接作为独立脚本运行 (python mcp_service/server.py)
+# ==============================================================================
+
+if __name__ == "__main__":
+    mcp.run(transport="stdio")
+
