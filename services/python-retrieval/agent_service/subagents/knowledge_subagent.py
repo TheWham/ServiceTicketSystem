@@ -125,6 +125,8 @@ def knowledge_tool_node(state: KnowledgeSubagentState, config: Optional[Runnable
 def should_continue(state: KnowledgeSubagentState) -> str:
     calls = state.get("latest_tool_calls") or []
     if calls:
+        if state.get("step", 0) >= state.get("max_steps", 3):
+            return END
         return "knowledge_tool_node"
     return END
 

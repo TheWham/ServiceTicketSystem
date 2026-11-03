@@ -127,6 +127,8 @@ def ticket_tool_node(state: TicketSubagentState, config: Optional[RunnableConfig
 def should_continue(state: TicketSubagentState) -> str:
     calls = state.get("latest_tool_calls") or []
     if calls:
+        if state.get("step", 0) >= state.get("max_steps", 3):
+            return END
         return "ticket_tool_node"
     return END
 

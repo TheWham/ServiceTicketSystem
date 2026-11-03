@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
-"""基于 LangGraph 的 ReAct 智能体编排状态图 (Agent Graph)。
+"""基于 LangGraph 的主从多智能体编排状态图 (Supervisor-Subagent Graph)。
 
-将原先手写 Python for 循环模拟的 ReAct 决策过程全面重构为显式有向图 (StateGraph)：
-  START ──> model_node ──(should_continue)──┬──[有工具调用]──> tool_node ──┐
-                 ▲                          │                             │
-                 │                          └──[无工具调用]──> END         │
-                 └────────────────────────────────────────────────────────┘
-
-优势：
-1. 节点与边职责单一透明，原生支持有向图生命周期管理；
-2. 搭载 Checkpointer 检查点持久化，保留多轮思考快照；
-3. 原生支持向量检索工具 `search_knowledge`、工单查询与草稿生成的闭环流转；
-4. 完美保持上游 APM 链路追踪与企业级白名单安全约束。
+实现 Supervisor-Worker 工业级主从拓扑：
+1. 节点与子图：
+   - guard_input: 输入安全护栏 (Prompt 越狱注入拦截 + PII 敏感信息脱敏进 Vault)
+   - supervisor: 主管总控决策中心 (根据问题特征自适应调度子智能体)
+   - knowledge_worker: 知识排障子图 (独立 ReAct 循环，专职 8301 知识检索)
+   - ticket_worker: 工单流转子图 (独立 ReAct 循环，专职 8201 查单与规范草稿)
+   - formulator: 终审收敛节点 (汇总多源事实证据，组装严格 6 键 JSON 契约)
+   - guard_output: 输出安全护栏 (将 Vault 中真实敏感信息无损还原)
+2. 拓扑收敛性：
+   - 子图执行完毕后 100% 回环至 Supervisor，避免点对点死锁循环。
+   - 保留 Checkpointer 审计快照与 Langfuse 观测追踪。
 """
 
 import json
@@ -24,19 +24,33 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 
 from . import config as acfg
-from .model_client import ModelClient, ModelTurn
-from .tools import ToolContext, dispatch
+from .model_client import ModelClient, ModelTurn, ModelError
+from .tools import ToolContext, dispatch, tool_specs
+from .subagents.knowledge_subagent import (
+    build_knowledge_subagent,
+    KnowledgeSubagentState,
+)
+from .subagents.ticket_subagent import (
+    build_ticket_subagent,
+    TicketSubagentState,
+)
+from .supervisor import (
+    SupervisorTeamState,
+    input_guard_node,
+    supervisor_router_node,
+    formulator_node,
+    output_guard_node,
+)
 
 log = logging.getLogger(__name__)
 
 
 # ==============================================================================
-# 1. LangGraph State 结构契约 (TypedDict)
+# 1. 经典单 Agent ReAct 状态契约 (兼容保留)
 # ==============================================================================
 
 class AgentGraphState(TypedDict):
-    """LangGraph 智能体状态：纯原生可序列化数据结构。"""
-    # 消息列表累加器：保留完整对话上下文与工具执行日志
+    """LangGraph 单智能体状态：纯原生可序列化数据结构。"""
     messages: Annotated[List[Dict[str, Any]], operator.add]
     user_id: str
     role: str
@@ -44,22 +58,14 @@ class AgentGraphState(TypedDict):
     question: str
     step: int
     max_steps: int
-    # 当前轮次待执行的工具调用列表
     latest_tool_calls: List[Dict[str, Any]]
-    # 模型输出的最终文本答复（达到终态时填充）
     final_content: Optional[str]
-    # 建单草稿缓存数据（由 prepare_ticket 产出）
     draft: Optional[Dict[str, Any]]
-    # 状态图全生命周期审计轨迹累加
     audit_trail: Annotated[List[str], operator.add]
 
 
-# ==============================================================================
-# 2. 状态图计算节点实现 (Nodes)
-# ==============================================================================
-
 def model_node(state: AgentGraphState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
-    """模型决策节点：驱动 LLM 思考，产出工具调用指令或最终回答。"""
+    """单智能体模型决策节点。"""
     configurable = (config or {}).get("configurable", {})
     model: ModelClient = configurable.get("model_client")
     specs: List[Dict[str, Any]] = configurable.get("specs", [])
@@ -69,7 +75,6 @@ def model_node(state: AgentGraphState, config: Optional[RunnableConfig] = None) 
     max_steps = state.get("max_steps", acfg.MAX_STEPS)
     messages = state.get("messages", [])
 
-    # 步数安全熔断：最后一轮强制 tool_choice="none"，逼出最终答案，防工具死循环 (RD-007)
     last_step = (step >= max_steps - 1)
     tool_choice = "none" if last_step else "auto"
 
@@ -86,7 +91,6 @@ def model_node(state: AgentGraphState, config: Optional[RunnableConfig] = None) 
         turn = model.complete_with_tools(messages, specs, tool_choice)
 
     if not turn.has_tool_calls:
-        # 模型已输出最终结论
         return {
             "step": step + 1,
             "latest_tool_calls": [],
@@ -94,117 +98,183 @@ def model_node(state: AgentGraphState, config: Optional[RunnableConfig] = None) 
             "audit_trail": [f"【ReAct 第 {step + 1} 轮】模型完成推理，直接产出最终结构化答复"]
         }
 
-    # 包装模型的 Assistant 工具调用消息
     tool_calls_dict = [
         {"id": c.id, "name": c.name, "arguments": c.arguments}
         for c in turn.tool_calls
     ]
     assistant_msg = {
         "role": "assistant",
-        "content": None,
+        "content": turn.content or "",
         "tool_calls": [
-            {
-                "id": c.id,
-                "type": "function",
-                "function": {
-                    "name": c.name,
-                    "arguments": json.dumps(c.arguments, ensure_ascii=False)
-                }
-            }
+            {"id": c.id, "type": "function", "function": {"name": c.name, "arguments": json.dumps(c.arguments, ensure_ascii=False)}}
             for c in turn.tool_calls
         ]
     }
-    tool_names = [c.name for c in turn.tool_calls]
     return {
         "step": step + 1,
-        "latest_tool_calls": tool_calls_dict,
         "messages": [assistant_msg],
-        "audit_trail": [f"【ReAct 第 {step + 1} 轮】模型决定发起工具调用: {tool_names}"]
+        "latest_tool_calls": tool_calls_dict,
+        "audit_trail": [f"【ReAct 第 {step + 1} 轮】决策调用工具: {[c.name for c in turn.tool_calls]}"]
     }
 
 
 def tool_node(state: AgentGraphState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
-    """工具派发执行节点：执行 search_knowledge、query_my_tickets 或 prepare_ticket 并回传结果。"""
+    """单智能体工具执行节点。"""
     configurable = (config or {}).get("configurable", {})
     ctx: ToolContext = configurable.get("ctx")
     tracer = configurable.get("tracer")
-
     tool_calls = state.get("latest_tool_calls", [])
-    tool_messages = []
-    executed_names = []
+
+    tool_messages: List[Dict[str, Any]] = []
+    audit_logs: List[str] = []
 
     for call in tool_calls:
-        name = call["name"]
-        args = call["arguments"]
-        call_id = call["id"]
-        executed_names.append(name)
+        call_id = call.get("id")
+        name = call.get("name")
+        args = call.get("arguments", {})
 
         if tracer:
-            with tracer.span(f"tool.{name}") as span:
-                span.record(input=args)
+            with tracer.span(name=f"tool:{name}", kind="TOOL", input={"arguments": args}) as span:
                 result = dispatch(name, args, ctx)
-                span.record(output={"success": result.get("success")})
+                span.record(output=result)
         else:
             result = dispatch(name, args, ctx)
 
         tool_messages.append({
             "role": "tool",
             "tool_call_id": call_id,
+            "name": name,
             "content": json.dumps(result, ensure_ascii=False)
         })
+        audit_logs.append(f"【工具执行】工具 {name} 完成，结果已注入对话上下文 (成功={result.get('success', False)})")
 
-    draft_dict = ctx.draft.model_dump() if (ctx and ctx.draft) else None
+    draft_dict = ctx.draft.model_dump() if ctx and ctx.draft else None
     return {
         "messages": tool_messages,
         "latest_tool_calls": [],
         "draft": draft_dict,
-        "audit_trail": [f"【工具执行】完成工具执行: {executed_names}，结果已以 role=tool 形式回写消息流"]
+        "audit_trail": audit_logs
     }
 
 
-# ==============================================================================
-# 3. 条件边逻辑 (Conditional Edges)
-# ==============================================================================
-
 def should_continue(state: AgentGraphState) -> str:
-    """条件路由：根据最新状态决定是流向工具执行，还是终止流转。"""
-    # 1. 已获取最终答复文本 -> 终结
-    if state.get("final_content") is not None:
-        return END
-
-    # 2. 存在待执行工具调用
-    if state.get("latest_tool_calls"):
-        # 超限熔断防护
+    calls = state.get("latest_tool_calls") or []
+    if calls:
         if state.get("step", 0) >= state.get("max_steps", acfg.MAX_STEPS):
-            log.warning("[LangGraph] ReAct 步数已达到最大限制 %s，强制结束", state.get("max_steps"))
             return END
         return "tool_node"
-
     return END
 
 
-# ==============================================================================
-# 4. 图编译工厂函数 (Graph Builder)
-# ==============================================================================
-
 def build_react_agent_graph(checkpointer: Optional[BaseCheckpointSaver] = None):
-    """编译并构建可运行的 LangGraph ReAct 状态图实例。"""
+    """编译经典单 Agent ReAct 状态图。"""
     workflow = StateGraph(AgentGraphState)
-
-    # 注册节点
     workflow.add_node("model_node", model_node)
     workflow.add_node("tool_node", tool_node)
 
-    # 设定流转拓扑
     workflow.add_edge(START, "model_node")
+    workflow.add_conditional_edges("model_node", should_continue, {
+        "tool_node": "tool_node",
+        END: END
+    })
+    workflow.add_edge("tool_node", "model_node")
+    return workflow.compile(checkpointer=checkpointer)
+
+
+# ==============================================================================
+# 2. Supervisor-Worker 主从多智能体编排状态图 (核心实现)
+# ==============================================================================
+
+def knowledge_worker_node(state: SupervisorTeamState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
+    """知识排障子智能体适配节点。"""
+    configurable = (config or {}).get("configurable", {})
+    subgraph = build_knowledge_subagent()
+    question = state.get("sanitized_question") or state.get("question", "")
+    max_steps = configurable.get("max_steps", 3)
+
+    child_state: KnowledgeSubagentState = {
+        "question": question,
+        "messages": [{"role": "user", "content": question}],
+        "step": 0,
+        "max_steps": max_steps,
+        "latest_tool_calls": [],
+        "knowledge_evidence": None,
+        "used_version_ids": state.get("used_version_ids", []),
+        "audit_trail": []
+    }
+    result = subgraph.invoke(child_state, config=config)
+    evidence = result.get("knowledge_evidence")
+    if evidence is None and result.get("step", 0) >= max_steps:
+        raise ModelError("ReAct 步数超限")
+
+    return {
+        "knowledge_evidence": evidence or "已排查相关知识",
+        "used_version_ids": result.get("used_version_ids", []),
+        "audit_trail": result.get("audit_trail", [])
+    }
+
+
+def ticket_worker_node(state: SupervisorTeamState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
+    """工单流转子智能体适配节点。"""
+    configurable = (config or {}).get("configurable", {})
+    subgraph = build_ticket_subagent()
+    question = state.get("sanitized_question") or state.get("question", "")
+
+    child_state: TicketSubagentState = {
+        "question": question,
+        "messages": [{"role": "user", "content": question}],
+        "step": 0,
+        "max_steps": configurable.get("max_steps", 3),
+        "latest_tool_calls": [],
+        "ticket_evidence": None,
+        "ticket_draft": state.get("ticket_draft"),
+        "audit_trail": []
+    }
+    result = subgraph.invoke(child_state, config=config)
+    evidence = result.get("ticket_evidence")
+    if evidence is None and result.get("step", 0) >= configurable.get("max_steps", 3):
+        raise ModelError("ReAct 步数超限")
+
+    return {
+        "ticket_evidence": evidence or "已完成工单流转核验",
+        "ticket_draft": result.get("ticket_draft"),
+        "audit_trail": result.get("audit_trail", [])
+    }
+
+
+def build_subagent_supervisor_graph(checkpointer: Optional[BaseCheckpointSaver] = None):
+    """编译工业级 Supervisor-Subagent 主从多智能体编排状态图。"""
+    workflow = StateGraph(SupervisorTeamState)
+
+    # 1. 注册核心节点
+    workflow.add_node("guard_input", input_guard_node)
+    workflow.add_node("supervisor", supervisor_router_node)
+    workflow.add_node("knowledge_worker", knowledge_worker_node)
+    workflow.add_node("ticket_worker", ticket_worker_node)
+    workflow.add_node("formulator", formulator_node)
+    workflow.add_node("guard_output", output_guard_node)
+
+    # 2. 拓扑连线
+    workflow.add_edge(START, "guard_input")
+    workflow.add_edge("guard_input", "supervisor")
+
+    # Supervisor 条件路由分发
     workflow.add_conditional_edges(
-        "model_node",
-        should_continue,
+        "supervisor",
+        lambda state: state["next_action"],
         {
-            "tool_node": "tool_node",
-            END: END
+            "CALL_KNOWLEDGE": "knowledge_worker",
+            "CALL_TICKET": "ticket_worker",
+            "FINISH": "formulator"
         }
     )
-    workflow.add_edge("tool_node", "model_node")
+
+    # 子图执行后统一收敛返回 Supervisor 重新决策
+    workflow.add_edge("knowledge_worker", "supervisor")
+    workflow.add_edge("ticket_worker", "supervisor")
+
+    # 终审出网流
+    workflow.add_edge("formulator", "guard_output")
+    workflow.add_edge("guard_output", END)
 
     return workflow.compile(checkpointer=checkpointer)

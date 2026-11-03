@@ -114,6 +114,28 @@ def supervisor_router_node(state: SupervisorTeamState, config: Optional[Runnable
     }
 
 
+def _parse_evidence_piece(evidence: str) -> Dict[str, Any]:
+    """若 evidence 本身是合法 6 键 JSON，解析其结构；否则作为普通纯文本。"""
+    if not evidence:
+        return {"text": ""}
+    ev = evidence.strip()
+    if ev.startswith("{") and ev.endswith("}"):
+        try:
+            data = json.loads(ev)
+            if isinstance(data, dict) and "answerText" in data:
+                return {
+                    "text": str(data.get("answerText") or ""),
+                    "replyType": data.get("replyType") or "ANSWER",
+                    "usedVersionIds": data.get("usedVersionIds") or [],
+                    "confidence": float(data.get("confidence", 0.95)),
+                    "knowledgeConflict": bool(data.get("knowledgeConflict", False)),
+                    "offTopic": bool(data.get("offTopic", False)),
+                }
+        except Exception:
+            pass
+    return {"text": ev}
+
+
 def formulator_node(state: SupervisorTeamState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
     """步骤 3：决策汇总与最终 6 键结构化 JSON 拼装。"""
     if not state.get("security_flag", True):
@@ -122,14 +144,25 @@ def formulator_node(state: SupervisorTeamState, config: Optional[RunnableConfig]
 
     k_evidence = state.get("knowledge_evidence") or ""
     t_evidence = state.get("ticket_evidence") or ""
-    used_versions = state.get("used_version_ids") or []
+    used_versions = list(state.get("used_version_ids") or [])
     draft = state.get("ticket_draft")
 
+    k_parsed = _parse_evidence_piece(k_evidence)
+    t_parsed = _parse_evidence_piece(t_evidence)
+
     answer_parts = []
-    if k_evidence:
-        answer_parts.append(k_evidence.strip())
-    if t_evidence:
-        answer_parts.append(t_evidence.strip())
+    if k_parsed.get("text"):
+        answer_parts.append(k_parsed["text"].strip())
+    if t_parsed.get("text"):
+        answer_parts.append(t_parsed["text"].strip())
+
+    if k_parsed.get("usedVersionIds"):
+        for v in k_parsed["usedVersionIds"]:
+            if v not in used_versions:
+                used_versions.append(v)
+
+    confidence = k_parsed.get("confidence") or 0.95
+    reply_type = k_parsed.get("replyType") or "ANSWER"
 
     if not answer_parts:
         final_answer = "已为您处理完成当前咨询。"
@@ -137,12 +170,12 @@ def formulator_node(state: SupervisorTeamState, config: Optional[RunnableConfig]
         final_answer = "\n\n".join(answer_parts)
 
     response_payload = {
-        "replyType": "ANSWER",
+        "replyType": reply_type,
         "answerText": final_answer,
         "usedVersionIds": used_versions,
-        "confidence": 0.95,
-        "knowledgeConflict": False,
-        "offTopic": False
+        "confidence": confidence,
+        "knowledgeConflict": k_parsed.get("knowledgeConflict", False),
+        "offTopic": k_parsed.get("offTopic", False)
     }
 
     return {

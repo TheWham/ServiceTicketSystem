@@ -17,9 +17,10 @@ from rag_pipeline.observability.tracer import Tracer
 
 from . import config as acfg
 from .contract import AgentChatRequest, AgentChatResponse, TicketDraft, TraceSummary
-from .graph import AgentGraphState, build_react_agent_graph
+from .graph import AgentGraphState, build_react_agent_graph, build_subagent_supervisor_graph
 from .model_client import ModelClient, ModelError
 from .observability.langfuse_exporter import LangfuseExporter
+from .supervisor import SupervisorTeamState
 from .tools import ToolContext, dispatch, tool_specs
 
 log = logging.getLogger(__name__)
@@ -101,15 +102,24 @@ def _trace_summary(summary: Dict[str, Any]) -> TraceSummary:
 
 
 class AgentRunner:
-    """基于 LangGraph 编排的智能体运行器（单例复用，支持 Checkpointer 审计）。"""
+    """基于 LangGraph 编排的智能体运行器（单例复用，支持 Checkpointer 审计）。
+
+    支持两种编排模式：
+    - "supervisor": Supervisor-Worker 主从多智能体编排 (带双向 Guardrails 安全护栏)
+    - "react": 经典单 Agent ReAct 决策循环
+    """
 
     def __init__(self, model_client: Optional[ModelClient] = None, max_steps: Optional[int] = None,
-                 langfuse_exporter: Optional[LangfuseExporter] = None):
+                 langfuse_exporter: Optional[LangfuseExporter] = None, mode: str = "supervisor"):
         self.model = model_client or ModelClient()
         self.max_steps = max(1, max_steps or acfg.MAX_STEPS)
         self.langfuse = langfuse_exporter or LangfuseExporter()
         self.checkpointer = MemorySaver()
-        self.graph = build_react_agent_graph(checkpointer=self.checkpointer)
+        self.mode = mode
+        if self.mode == "supervisor":
+            self.graph = build_subagent_supervisor_graph(checkpointer=self.checkpointer)
+        else:
+            self.graph = build_react_agent_graph(checkpointer=self.checkpointer)
 
     def run(self, req: AgentChatRequest, user_id: str, role: str,
             request_id: str = "", session_id: str = "") -> AgentChatResponse:
@@ -120,38 +130,66 @@ class AgentRunner:
                         name="agent.chat", workflow="Function Calling 智能体",
                         user_id=user_id or "", session_id=session_id or "")
         ctx = ToolContext(user_id, role, request_id, question=req.question)
-        messages: List[Dict[str, Any]] = [
-            {"role": "system", "content": _system_prompt()},
-            {"role": "user", "content": _build_user_input(req)},
-        ]
-        specs = tool_specs()
 
-        # 基于 LangGraph 驱动 ReAct 循环流转
-        initial_state: AgentGraphState = {
-            "messages": messages,
-            "user_id": user_id or "",
-            "role": role or "",
-            "request_id": ctx.request_id,
-            "question": req.question or "",
-            "step": 0,
-            "max_steps": self.max_steps,
-            "latest_tool_calls": [],
-            "final_content": None,
-            "draft": None,
-            "audit_trail": [f"【启动 LangGraph】开启智能体编排，会话单号: {ctx.request_id}"]
-        }
-        config = {
-            "configurable": {
-                "thread_id": ctx.request_id,
-                "model_client": self.model,
-                "specs": specs,
-                "ctx": ctx,
-                "tracer": tracer
+        if self.mode == "supervisor":
+            initial_state: SupervisorTeamState = {
+                "question": req.question or "",
+                "sanitized_question": "",
+                "pii_vault": {},
+                "security_flag": True,
+                "security_message": "",
+                "next_action": "",
+                "knowledge_evidence": None,
+                "used_version_ids": [m.version_id for m in req.material],
+                "ticket_evidence": None,
+                "ticket_draft": None,
+                "final_content": None,
+                "audit_trail": [f"【启动 LangGraph Supervisor】开启主从多智能体编排，会话单号: {ctx.request_id}"]
             }
-        }
-
-        final_state = self.graph.invoke(initial_state, config=config)
-        final_content = final_state.get("final_content")
+            config = {
+                "configurable": {
+                    "thread_id": ctx.request_id,
+                    "model_client": self.model,
+                    "ctx": ctx,
+                    "tracer": tracer,
+                    "max_steps": self.max_steps
+                }
+            }
+            final_state = self.graph.invoke(initial_state, config=config)
+            final_content = final_state.get("final_content")
+            draft_data = final_state.get("ticket_draft")
+            draft_obj = TicketDraft(**draft_data) if isinstance(draft_data, dict) else ctx.draft
+        else:
+            messages: List[Dict[str, Any]] = [
+                {"role": "system", "content": _system_prompt()},
+                {"role": "user", "content": _build_user_input(req)},
+            ]
+            specs = tool_specs()
+            initial_state: AgentGraphState = {
+                "messages": messages,
+                "user_id": user_id or "",
+                "role": role or "",
+                "request_id": ctx.request_id,
+                "question": req.question or "",
+                "step": 0,
+                "max_steps": self.max_steps,
+                "latest_tool_calls": [],
+                "final_content": None,
+                "draft": None,
+                "audit_trail": [f"【启动 LangGraph】开启智能体编排，会话单号: {ctx.request_id}"]
+            }
+            config = {
+                "configurable": {
+                    "thread_id": ctx.request_id,
+                    "model_client": self.model,
+                    "specs": specs,
+                    "ctx": ctx,
+                    "tracer": tracer
+                }
+            }
+            final_state = self.graph.invoke(initial_state, config=config)
+            final_content = final_state.get("final_content")
+            draft_obj = ctx.draft
 
         if final_content is None:
             raise ModelError("ReAct 步数超限")
@@ -176,7 +214,7 @@ class AgentRunner:
             summary["outputSha256"] = _sha(final_content or "")
             self.langfuse.export(summary)
             raise ModelError(f"模型输出不是合法 JSON: {e}") from e
-        response = _to_response(payload, ctx.draft)
+        response = _to_response(payload, draft_obj)
         response.trace_id = tracer.trace_id
         response.trace = _trace_summary(summary)
         # 只在业务成功完成后带上安全的输出摘要再上报；失败也不影响回答链路。
