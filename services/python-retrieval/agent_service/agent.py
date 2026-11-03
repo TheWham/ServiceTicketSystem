@@ -123,6 +123,11 @@ class AgentRunner:
 
     def run(self, req: AgentChatRequest, user_id: str, role: str,
             request_id: str = "", session_id: str = "") -> AgentChatResponse:
+        resp, _ = self.run_graph(req, user_id, role, request_id, session_id)
+        return resp
+
+    def run_graph(self, req: AgentChatRequest, user_id: str, role: str,
+                  request_id: str = "", session_id: str = "") -> Tuple[AgentChatResponse, Dict[str, Any]]:
         # 一轮 ReAct 一棵 Trace：generation span 记每轮模型调用，span 记每次工具调用。
         # trace_id 由外部 X-Request-Id 派生为 Langfuse 可用的确定性 32-hex ID。
         trace_id = self.langfuse.trace_id(request_id or uuid.uuid4().hex[:12])
@@ -228,7 +233,7 @@ class AgentRunner:
             "usedVersionIds": list(response.used_version_ids),
         }
         self.langfuse.export(summary)
-        return response
+        return response, final_state
 
 
 def _to_response(payload: Any, draft: Optional[TicketDraft]) -> AgentChatResponse:

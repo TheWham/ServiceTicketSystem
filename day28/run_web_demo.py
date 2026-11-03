@@ -9,25 +9,30 @@
 5. 真实呈现符合 Java 微服务 6 键契约标准的 JSON 与带外人机回环建单卡片。
 """
 
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 import http.server
 import json
 import os
 import socketserver
-import sys
 import threading
 import time
 import urllib.parse
+import uuid
 import webbrowser
 
-# 引入已调通的 Supervisor-Worker 图编译工厂
-from run_it_supervisor_guardrails_demo import (
-    GuardrailsSecurityEngine,
-    ITServiceState,
-    build_it_supervisor_graph,
-)
+# 确保引入真实的 agent_service 与生产模型客户端
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "services", "python-retrieval")))
+from agent_service.agent import AgentRunner
+from agent_service.contract import AgentChatRequest
+from agent_service.guardrails import GuardrailsSecurityEngine
 
 PORT = 8989
-compiled_app = build_it_supervisor_graph()
+real_agent_runner = AgentRunner(mode="supervisor")
 
 HTML_PAGE = """<!DOCTYPE html>
 <html lang="zh-CN">
@@ -1035,54 +1040,63 @@ class DemoHTTPHandler(http.server.SimpleHTTPRequestHandler):
 
             query = body.get("query", "").strip()
 
-            state_input: ITServiceState = {
-                "raw_query": query,
-                "sanitized_query": "",
-                "pii_vault": {},
-                "security_flag": True,
-                "security_message": "",
-                "next_action": "",
-                "knowledge_evidence": None,
-                "used_version_ids": [],
-                "ticket_evidence": None,
-                "ticket_draft": None,
-                "final_response_json": None,
-                "audit_trail": []
-            }
+            req = AgentChatRequest(question=query, history=[], material=[])
+            req_id = f"web-{uuid.uuid4().hex[:8]}"
 
-            res = compiled_app.invoke(state_input)
-            payload = json.loads(res["final_response_json"])
+            # 驱动生产级 LangGraph Supervisor-Subagent 状态图与真实 LLM（非模拟数据）
+            try:
+                resp, final_state = real_agent_runner.run_graph(req, user_id="U1001", role="EMPLOYEE", request_id=req_id)
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": f"智能体编排执行异常: {e}"}, ensure_ascii=False).encode("utf-8"))
+                return
 
-            # 结构化抽取各个 Subagent 独立事实与审计流
-            audit_trail = res.get("audit_trail", [])
+            audit_trail = final_state.get("audit_trail", [])
             supervisor_logs = [log for log in audit_trail if "Supervisor" in log]
-            kw_logs = [log for log in audit_trail if "KnowledgeWorker" in log or "Neo4j" in log or "双路" in log]
-            tw_logs = [log for log in audit_trail if "TicketWorker" in log or "8201" in log or "工单" in log]
+            kw_logs = [log for log in audit_trail if "KnowledgeWorker" in log or "search_knowledge" in log or "知识" in log]
+            tw_logs = [log for log in audit_trail if "TicketWorker" in log or "ticket" in log or "工单" in log]
+
+            # 组装面向前端的微服务契约 payload
+            if resp.reply_type == "REFUSE":
+                answer_show = f"❌ 请求已被安全护栏拦截：{final_state.get('security_message', '存在安全风险')}"
+            else:
+                answer_show = resp.answer_text
+
+            payload = {
+                "replyType": resp.reply_type,
+                "answerText": answer_show,
+                "usedVersionIds": list(resp.used_version_ids),
+                "confidence": resp.confidence,
+                "knowledgeConflict": resp.knowledge_conflict,
+                "offTopic": resp.off_topic,
+                "ticketDraft": resp.ticket_draft.model_dump() if resp.ticket_draft else None
+            }
 
             response_data = {
                 "raw_query": query,
-                "sanitized_query": res.get("sanitized_query", ""),
-                "security_flag": res.get("security_flag", True),
-                "security_message": res.get("security_message", ""),
-                "pii_vault": res.get("pii_vault", {}),
+                "sanitized_query": final_state.get("sanitized_question", query),
+                "security_flag": final_state.get("security_flag", True),
+                "security_message": final_state.get("security_message", "合规通过"),
+                "pii_vault": final_state.get("pii_vault", {}),
                 "subagents": {
                     "supervisor": {
                         "name": "Supervisor (调度中枢)",
-                        "decision": res.get("next_action", "FINISH"),
+                        "decision": final_state.get("next_action", "FINISH"),
                         "trail": supervisor_logs
                     },
                     "knowledge_worker": {
                         "name": "KnowledgeWorker (知识专家)",
-                        "called": bool(res.get("knowledge_evidence")),
-                        "evidence": res.get("knowledge_evidence") or "",
-                        "used_version_ids": res.get("used_version_ids") or [],
+                        "called": bool(final_state.get("knowledge_evidence")),
+                        "evidence": final_state.get("knowledge_evidence") or "",
+                        "used_version_ids": final_state.get("used_version_ids") or [],
                         "trail": kw_logs
                     },
                     "ticket_worker": {
                         "name": "TicketWorker (工单专家)",
-                        "called": bool(res.get("ticket_evidence") or res.get("ticket_draft")),
-                        "evidence": res.get("ticket_evidence") or "",
-                        "draft": res.get("ticket_draft"),
+                        "called": bool(final_state.get("ticket_evidence") or final_state.get("ticket_draft")),
+                        "evidence": final_state.get("ticket_evidence") or "",
+                        "draft": final_state.get("ticket_draft"),
                         "trail": tw_logs
                     }
                 },

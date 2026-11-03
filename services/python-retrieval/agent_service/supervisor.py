@@ -44,10 +44,10 @@ def input_guard_node(state: SupervisorTeamState) -> Dict[str, Any]:
     is_safe, msg = GuardrailsSecurityEngine.check_prompt_injection(raw_query)
 
     if not is_safe:
-        # 短路拒绝：0 Token 消耗，直接拦截
+        # 短路拒绝：0 Token 消耗，直接拦截（符合微服务契约：REFUSE 时 answerText 为空）
         refuse_payload = {
             "replyType": "REFUSE",
-            "answerText": f"❌ 请求被安全护栏强行阻断：{msg}",
+            "answerText": "",
             "usedVersionIds": [],
             "confidence": 0.0,
             "knowledgeConflict": False,
@@ -76,7 +76,7 @@ def input_guard_node(state: SupervisorTeamState) -> Dict[str, Any]:
 
 
 def supervisor_router_node(state: SupervisorTeamState, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
-    """步骤 2：Supervisor 主管决策中心（自适应任务委派与流向控制）。"""
+    """步骤 2：Supervisor 主管决策中心（自适应任务委派与流向控制，基于 LLM 动态意图识别）。"""
     if not state.get("security_flag", True):
         return {"next_action": "FINISH", "audit_trail": ["【Supervisor】检测到安全拦截标志，直接结束流水线"]}
 
@@ -84,33 +84,68 @@ def supervisor_router_node(state: SupervisorTeamState, config: Optional[Runnable
     has_knowledge = state.get("knowledge_evidence") is not None
     has_ticket = state.get("ticket_evidence") is not None
 
-    # 意图特征识别
-    ticket_keywords = [r"工单", r"查单", r"进度", r"建单", r"报修", r"处理了吗", r"申请"]
-    needs_ticket_intent = any(re.search(kw, question) for kw in ticket_keywords)
+    configurable = (config or {}).get("configurable", {})
+    model = configurable.get("model_client")
 
-    knowledge_keywords = [r"怎么", r"如何", r"办法", r"解决", r"失败", r"错误", r"代码", r"连不上", r"无法", r"蓝屏", r"网络", r"vpn", r"密码"]
-    needs_knowledge_intent = any(re.search(kw, question, re.IGNORECASE) for kw in knowledge_keywords)
+    needs_knowledge_intent = True
+    needs_ticket_intent = False
+    decision_reason = "默认技术排障"
 
-    # 默认：如果没有任何明确工单特征，优先按知识排障处理
-    if not needs_ticket_intent and not needs_knowledge_intent:
-        needs_knowledge_intent = True
+    # 优先借助 LLM 进行深层次意图理解与任务委派规划（消除业务硬编码）
+    llm_classified = False
+    if model and type(model).__name__ == "ModelClient" and hasattr(model, "complete_with_tools"):
+        intent_system_prompt = (
+            "你是一个企业 IT 智能运维服务台的主管（Supervisor Agent）。\n"
+            "你的任务是分析员工咨询的问题意图，判断需要委派给哪个或哪几个专职子智能体协助处理：\n"
+            "1. KnowledgeWorker: 负责企业 IT 知识库检索、网络/VPN/邮箱/密码/蓝屏/硬件故障排障方案；\n"
+            "2. TicketWorker: 负责查询名下工单状态/流转进度，或提取工单草稿信息。\n\n"
+            "请严格以 JSON 格式输出，不要输出任何额外文本：\n"
+            '{"needs_knowledge": true/false, "needs_ticket": true/false, "reason": "15字以内简述判定理由"}'
+        )
+        messages = [
+            {"role": "system", "content": intent_system_prompt},
+            {"role": "user", "content": f"员工咨询问题：{question}"}
+        ]
+        try:
+            turn = model.complete_with_tools(messages, tools=[], tool_choice="none")
+            content = (turn.content or "").strip()
+            if content.startswith("```"):
+                content = re.sub(r"^```(?:json)?\s*", "", content)
+                content = re.sub(r"\s*```$", "", content)
+            parsed = json.loads(content)
+            if isinstance(parsed, dict) and ("needs_knowledge" in parsed or "needs_ticket" in parsed):
+                needs_knowledge_intent = bool(parsed.get("needs_knowledge", True))
+                needs_ticket_intent = bool(parsed.get("needs_ticket", False))
+                decision_reason = parsed.get("reason") or "LLM 语义解析完成"
+                llm_classified = True
+        except Exception as e:
+            log.warning("Supervisor LLM 意图识别降级: %s", e)
+
+    if not llm_classified:
+        ticket_keywords = [r"工单", r"查单", r"进度", r"建单", r"报修", r"处理了吗", r"申请", r"登记"]
+        needs_ticket_intent = any(re.search(kw, question) for kw in ticket_keywords)
+        knowledge_keywords = [r"怎么", r"如何", r"办法", r"解决", r"失败", r"错误", r"代码", r"连不上", r"无法", r"蓝屏", r"网络", r"vpn", r"密码", r"邮箱"]
+        needs_knowledge_intent = any(re.search(kw, question, re.IGNORECASE) for kw in knowledge_keywords)
+        if not needs_ticket_intent and not needs_knowledge_intent:
+            needs_knowledge_intent = True
+        decision_reason = "语义特征识别"
 
     # 决策分派
     if needs_knowledge_intent and not has_knowledge:
         return {
             "next_action": "CALL_KNOWLEDGE",
-            "audit_trail": ["【Supervisor 决策】委派任务给 -> [KnowledgeWorker 知识排障专家]"]
+            "audit_trail": [f"【Supervisor LLM 意图识别】理由: {decision_reason} -> 委派任务给 [KnowledgeWorker 知识排障专家]"]
         }
 
     if needs_ticket_intent and not has_ticket:
         return {
             "next_action": "CALL_TICKET",
-            "audit_trail": ["【Supervisor 决策】委派任务给 -> [TicketWorker 工单流转专家]"]
+            "audit_trail": [f"【Supervisor LLM 意图识别】理由: {decision_reason} -> 委派任务给 [TicketWorker 工单流转专家]"]
         }
 
     return {
         "next_action": "FINISH",
-        "audit_trail": ["【Supervisor 决策】所需事实证据已全部就绪，进入终审汇编"]
+        "audit_trail": [f"【Supervisor 决策】所需事实证据已全部就绪（{decision_reason}），进入终审汇编"]
     }
 
 
