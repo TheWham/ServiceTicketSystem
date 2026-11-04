@@ -112,7 +112,7 @@ public class AiConsultationService {
                 knowledgeQueryService::isPublishedCurrentVersion);
 
         String interactionId = persistInteraction(sessionId, result, verdict);
-        persistAiMessage(sessionId, idempotencyKey, interactionId, verdict);
+        persistAiMessage(sessionId, idempotencyKey, interactionId, result, verdict);
 
         if (verdict.replyType() == AiReplyType.REFUSE) {
             log.info("[ai] 拒答 session={} reason={} requestId={}",
@@ -185,7 +185,7 @@ public class AiConsultationService {
     }
 
     private void persistAiMessage(String sessionId, String idempotencyKey, String interactionId,
-                                  AiAnswerGuard.Verdict verdict) {
+                                  RagResult result, AiAnswerGuard.Verdict verdict) {
         boolean refused = verdict.replyType() == AiReplyType.REFUSE;
         String content = refused ? refusalTranscript(verdict) : verdict.answerText();
         Map<String, Object> metadata = new LinkedHashMap<>();
@@ -195,6 +195,13 @@ public class AiConsultationService {
         metadata.put("replyType", verdict.replyType());
         metadata.put("refusalReason", verdict.refusalReason());
         metadata.put("generalAnswer", verdict.replyType() == AiReplyType.ANSWER && verdict.citations().isEmpty());
+        // 语义缓存命中审计（schemaVersion=1 追加字段）：仅命中时写入,
+        // 实时路径不写 cacheHit 键——历史留白不伪装成“未命中”。
+        if (result != null && result.cacheHit() != null) {
+            metadata.put("cacheHit", true);
+            metadata.put("cacheSimilarity", result.cacheHit().similarity());
+            metadata.put("cacheScope", result.cacheHit().scope());
+        }
         messageService.appendAiMessage(sessionId, "ai-a:" + idempotencyKey, content, Json.write(metadata));
     }
 

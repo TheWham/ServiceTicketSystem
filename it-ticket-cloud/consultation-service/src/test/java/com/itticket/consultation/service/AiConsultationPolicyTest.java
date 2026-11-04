@@ -102,6 +102,58 @@ class AiConsultationPolicyTest {
     }
 
     /**
+     * 语义缓存命中审计：命中信息随消息 metadata 落库（cacheHit/cacheSimilarity/cacheScope），
+     * schemaVersion 保持 1；实时路径（无命中）不写入 cacheHit 键——历史留白不伪装成“未命中”。
+     */
+    @Test
+    void cacheHitMetadataIsPersistedOnAnswer() {
+        ConsultationProperties properties = new ConsultationProperties();
+        properties.getAi().setAnswerEnabled(true);
+        RagResult cached = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER,
+                "检查麦克风与音频输入设置。", List.of(new KnowledgeCitationDto("A1", "V1", "会议音频排障",
+                new BigDecimal("0.85"), "摘要")), BigDecimal.ONE,
+                null, "model", List.of("V1"), 10, null, false, false)
+                .withCacheHit(0.97, "category=C_NET");
+        Fixture fixture = new Fixture(properties, cached);
+        when(fixture.knowledge.isPublishedCurrentVersion(anyString(), anyString())).thenReturn(true);
+        AiChatResponse response = fixture.chat("会议没有声音");
+        assertThat(response.replyType()).isEqualTo(AiReplyType.ANSWER);
+
+        ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
+        verify(fixture.messages).appendAiMessage(eq("S1"), anyString(), eq(response.answerText()), metadata.capture());
+        Map<?, ?> saved = Json.read(metadata.getValue(), Map.class);
+        assertThat(saved.get("schemaVersion")).isEqualTo(1);
+        assertThat(saved.get("cacheHit")).isEqualTo(true);
+        assertThat(saved.get("cacheSimilarity")).isEqualTo(0.97);
+        assertThat(saved.get("cacheScope")).isEqualTo("category=C_NET");
+    }
+
+    @Test
+    void realtimeAnswerMetadataHasNoCacheHitKey() {
+        ConsultationProperties properties = new ConsultationProperties();
+        properties.getAi().setAnswerEnabled(true);
+        Fixture fixture = new Fixture(properties, generalAnswer());
+        fixture.chat("VPN cannot connect");
+
+        ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
+        verify(fixture.messages).appendAiMessage(eq("S1"), anyString(), anyString(), metadata.capture());
+        Map<?, ?> saved = Json.read(metadata.getValue(), Map.class);
+        assertThat(saved.containsKey("cacheHit")).isFalse();
+        assertThat(saved.containsKey("cacheSimilarity")).isFalse();
+    }
+
+    @Test
+    void disabledAnswerPathStillPersistsMessageWithoutCacheHit() {
+        ConsultationProperties properties = new ConsultationProperties();
+        properties.getAi().setAnswerEnabled(false);
+        Fixture fixture = new Fixture(properties, generalAnswer());
+        AiChatResponse response = fixture.chat("VPN cannot connect");
+        assertThat(response).isNotNull();
+        verify(fixture.messages).appendAiMessage(eq("S1"), anyString(), anyString(), anyString());
+        verifyNoInteractions(fixture.rag);
+    }
+
+    /**
      * 越界拒答路径：模型判定 OFF_TOPIC 拒答 ->
      * 响应透出 refusalReason=OFF_TOPIC（前端展示“非业务范围”徽标），
      * 落库给用户的拒答文案必须同时出现“办公 IT”与“不能答复”，明示服务边界。
@@ -128,6 +180,7 @@ class AiConsultationPolicyTest {
     private static class Fixture {
         final ConsultationMessageService messages = mock(ConsultationMessageService.class);
         final GuardedRagClient rag = mock(GuardedRagClient.class);
+        final KnowledgeQueryService knowledge = mock(KnowledgeQueryService.class);
         final AiConsultationService service;
 
         Fixture(ConsultationProperties properties, RagResult answer) {
@@ -142,7 +195,7 @@ class AiConsultationPolicyTest {
             when(idempotency.execute(anyString(), anyString(), anyString(), any(), eq(AiChatResponse.class), any()))
                     .thenAnswer(call -> new IdempotentResult<>(((Supplier<?>) call.getArgument(5)).get(), false));
             when(rag.answer(any(), nullable(String.class))).thenReturn(answer);
-            service = new AiConsultationService(transitions, messages, mock(KnowledgeQueryService.class), rag,
+            service = new AiConsultationService(transitions, messages, knowledge, rag,
                     mock(AiInteractionMapper.class), new AuthzService(properties), idempotency, properties);
         }
 
