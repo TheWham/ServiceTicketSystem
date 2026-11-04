@@ -151,6 +151,22 @@ itticket:
         - 更换主板
         - 硬盘拆
 
+      # 语义答案缓存(带知识版本哨兵):默认关闭;开启前 embedding-model 必填(fail-fast)。
+      # 命中仍需逐条 citations 的 versionId 对 MySQL 当前版本哨兵复核,失效即驱逐。
+      cache:
+        enabled: ${AI_SEMANTIC_CACHE_ENABLED:false}
+        # 问题向量余弦相似度门槛(下限 0.90,低于会被装配期拒绝)
+        threshold: ${AI_SEMANTIC_CACHE_THRESHOLD:0.93}
+        max-entries: ${AI_SEMANTIC_CACHE_MAX_ENTRIES:500}
+        # 兕底 TTL 7 天
+        ttl-seconds: ${AI_SEMANTIC_CACHE_TTL_SECONDS:604800}
+        # 嵌入模型 ID;不填且 enabled=true 时启动失败。不同模型向量不可比。
+        embedding-model: ${AI_CACHE_EMBEDDING_MODEL:}
+        # 嵌入端点基址(不含 /embeddings);为空回退 ai.base-url(前提:同供应商族在
+        # 该基址提供 /embeddings,与 Python 侧 KspEmbeddingProvider 同族,实施期验证)
+        embedding-base-url: ${AI_CACHE_EMBEDDING_BASE_URL:}
+        embedding-timeout-ms: ${AI_CACHE_EMBEDDING_TIMEOUT_MS:1000}
+
 logging:
   level:
     root: info

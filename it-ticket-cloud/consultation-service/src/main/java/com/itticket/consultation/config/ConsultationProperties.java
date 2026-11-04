@@ -128,6 +128,33 @@ public class ConsultationProperties {
 
         /** Function Calling 智能体配置(生成侧下沉到 Python agent_service)。 */
         private Agent agent = new Agent();
+
+        /** 语义答案缓存(带知识版本哨兵),默认关闭。 */
+        private Cache cache = new Cache();
+        /**
+         * 语义答案缓存配置。正确性锚定在 MySQL 知识版本哨兵上:缓存条目必须携带非空
+         * citations(检索到的知识版本号),命中出缓存前逐条对当前版本复核,失效即驱逐。
+         * 不同 embedding 模型的向量彼此不可比,条目按模型名分命名空间。
+         */
+        @Data
+        public static class Cache {
+            /** 总开关。默认关闭:关闭时与引入缓存前的行为完全一致。 */
+            private boolean enabled = false;
+            /** 问题向量余弦相似度命中门槛;低于 0.90 的取值在装配期被拒绝(语义漂移风险)。 */
+            private double threshold = 0.93;
+            /** 条目上限(进程内有界结构,LRU 逐出)。 */
+            private int maxEntries = 500;
+            /** 兜底 TTL:命中条目最长存活 7 天,防止知识后补后旧答案长期不被哨兵驱逐。 */
+            private long ttlSeconds = 604800;
+            /** 嵌入模型 ID;enabled=true 时必填,否则启动失败(不提供半启用状态)。 */
+            private String embeddingModel;
+            /** OpenAI 兼容嵌入端点基址(不含 /embeddings);为空回退 ai.base-url。 */
+            private String embeddingBaseUrl;
+            /** 嵌入调用时长上限,计入请求统一超时预算。 */
+            private long embeddingTimeoutMs = 1000;
+            /** 同条目刷新去抖窗口(秒);0 表示每次都刷新。 */
+            private long minWriteIntervalSeconds = 0;
+        }
     }
 
     /**
