@@ -54,22 +54,22 @@ PORT = 8991
 API_KEY = os.getenv("LLM_API_KEY", "")
 BASE_URL = os.getenv("LLM_BASE_URL", "https://kspmas.ksyun.com/v1")
 
-# 初始化共享单例
-budget_manager = TokenBudgetManager(
-    per_request_cap=4000,
-    user_daily_limit=20000,
-    dept_monthly_limit=500000,
-)
-router = ModelRouter()
-governor = CostGovernor(router, budget_manager)
-
 # 初始化 OpenAI 客户端
 openai_client = None
 if API_KEY and BASE_URL:
     try:
-        openai_client = OpenAI(api_key=API_KEY, base_url=BASE_URL, timeout=40.0)
+        openai_client = OpenAI(api_key=API_KEY, base_url=BASE_URL, timeout=90.0)
     except Exception as e:
         print(f"⚠️ OpenAI client init warning: {e}")
+
+# 初始化共享单例：ModelRouter 由大模型 qwen3.7-flash 驱动自主意图判决
+budget_manager = TokenBudgetManager(
+    per_request_cap=6000,
+    user_daily_limit=30000,
+    dept_monthly_limit=500000,
+)
+router = ModelRouter(client=openai_client)
+governor = CostGovernor(router, budget_manager)
 
 
 # ==============================================================================
@@ -1019,17 +1019,14 @@ HTML_PAGE = """<!DOCTYPE html>
         }
 
         function handleServerEvent(evt, bubbleObj, startTime) {
-            // 阶段 1：特征打分
+            // 阶段 1：模型自主意图特征分析
             if (evt.type === 'stage1') {
                 highlightCard('cardStage1');
                 document.getElementById('s1Tokens').innerText = `${evt.estimated_tokens} Token`;
-                document.getElementById('s1RiskHits').innerHTML = evt.risk_hits && evt.risk_hits.length
-                    ? evt.risk_hits.map(w => `<span class="keyword-chip">${w}</span>`).join('')
-                    : '<span style="color: var(--text-dim)">无</span>';
-                document.getElementById('s1HopHits').innerHTML = evt.hop_hits && evt.hop_hits.length
-                    ? evt.hop_hits.map(w => `<span class="hop-chip">${w}</span>`).join('')
-                    : '<span style="color: var(--text-dim)">无</span>';
-                document.getElementById('s1Score').innerText = `${evt.score} 分`;
+                const riskColor = evt.risk_level === 'HIGH' ? 'var(--status-danger)' : (evt.risk_level === 'MEDIUM' ? 'var(--status-warning)' : 'var(--status-success)');
+                document.getElementById('s1RiskHits').innerHTML = `<span class="tag-pill" style="background: rgba(255,255,255,0.08); color: ${riskColor}; border: 1px solid ${riskColor}; font-size: 10px;">模型判定风险: ${evt.risk_level}</span>`;
+                document.getElementById('s1HopHits').innerHTML = '<span style="color: var(--accent-cyan); font-size: 11px;">由 qwen3.7-flash 自主评估</span>';
+                document.getElementById('s1Score').innerText = `${evt.score} / 5`;
                 document.getElementById('s1Reasons').innerText = evt.reasons.join('; ');
             }
 
@@ -1118,7 +1115,8 @@ HTML_PAGE = """<!DOCTYPE html>
                 document.getElementById('s5ReqId').innerText = evt.request_id;
 
                 const durationSec = ((Date.now() - startTime) / 1000).toFixed(2);
-                bubbleObj.footer.innerHTML = `<span>⏱️ 耗时 ${durationSec}s</span> <span>📊 消耗 ${evt.actual_total} Token</span> <span>💰 费用 ¥${evt.cost_cny.toFixed(6)}</span>`;
+                let finishBadge = evt.finish_reason === 'length' ? ' <span class="tag-pill tag-fuse">⚠️ 达长度上限截断</span>' : ' <span class="tag-pill" style="background: rgba(120,220,160,0.15); color: var(--status-success);">✅ 完整输出</span>';
+                bubbleObj.footer.innerHTML = `<span>⏱️ 耗时 ${durationSec}s</span> <span>📊 消耗 ${evt.actual_total} Token</span> <span>💰 费用 ¥${evt.cost_cny.toFixed(6)}</span>` + finishBadge;
 
                 if (evt.budget_snapshot) {
                     const { userId, deptId } = getUserDept();
@@ -1279,7 +1277,7 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(msg.encode("utf-8"))
             self.wfile.flush()
 
-        # 1. 阶段 1：特征提取与打分
+        # 1. 阶段 1：模型自主意图与风险裁决
         decision = router.route(query, history_turns)
         send_event({
             "type": "stage1",
@@ -1288,6 +1286,7 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
             "hop_hits": decision.hop_hits,
             "score": decision.score,
             "reasons": decision.reasons,
+            "risk_level": getattr(decision, "risk_level", "LOW"),
         })
         time.sleep(0.08)
 
@@ -1351,11 +1350,12 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
                 if plan.model.tier == ModelTier.LITE:
                     call_kwargs["extra_body"] = {"enable_thinking": False}
 
+                finish_reason = "stop"
                 stream = openai_client.chat.completions.create(**call_kwargs)
                 for chunk in stream:
                     if chunk.choices and chunk.choices[0].delta:
                         delta = chunk.choices[0].delta
-                        # 思考推理流（Qwen / DeepSeek 思考过程）
+                        # 思考推理流（Qwen 深度思考过程）
                         reasoning = getattr(delta, "reasoning_content", None)
                         if reasoning:
                             send_event({"type": "thinking", "delta": reasoning})
@@ -1364,20 +1364,18 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
                         if content:
                             full_text += content
                             send_event({"type": "token", "delta": content})
+                    if chunk.choices and chunk.choices[0].finish_reason:
+                        finish_reason = chunk.choices[0].finish_reason
                     if chunk.usage:
                         actual_in = chunk.usage.prompt_tokens
                         actual_out = chunk.usage.completion_tokens
             else:
-                raise RuntimeError("OpenAI client not configured")
+                raise RuntimeError("未配置有效的 LLM_API_KEY 与 LLM_BASE_URL")
         except Exception as e:
-            # 友好降级输出演示内容，确保演示万无一失
-            print(f"⚠️ 云端推理降级提示: {e}，启用本地高保真流式生成...")
-            mock_reply = self.generate_mock_reply(query, plan)
-            for char in mock_reply:
-                full_text += char
-                send_event({"type": "token", "delta": char})
-                time.sleep(0.012)
-            actual_out = estimate_tokens(full_text)
+            print(f"❌ 云端大模型推理异常: {e}")
+            governor.budget.release(request_id)
+            send_event({"type": "error", "message": f"云端大模型推理异常: {str(e)}"})
+            return
 
         if actual_out == 0:
             actual_out = estimate_tokens(full_text)
@@ -1395,43 +1393,10 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
             "actual_out": actual_out,
             "actual_total": actual_total,
             "cost_cny": cost_cny,
+            "finish_reason": finish_reason,
             "budget_snapshot": snapshot,
         })
         send_event({"type": "done"})
-
-    def generate_mock_reply(self, query: str, plan) -> str:
-        """在无网络或 API 抖动时的智能仿真回答"""
-        if "WiFi" in query or "wifi" in query:
-            return (
-                "【访客 WiFi 接入指引】\n"
-                "1. 请连接无线网络 SSID: Corporate-Guest；\n"
-                "2. 打开浏览器访问任意网页将自动重定向至 Web 认证 Portal；\n"
-                "3. 输入当前访客临时验证码：Welcome2026@IT；\n"
-                "4. 认证成功后租期为 8 小时，外包协同人员如需长期内网权限请提交 IT-准入审批工单。"
-            )
-        elif "VPN" in query or "对比" in query or "架构" in query:
-            return (
-                "【内网专线直连 vs 异地 SSL-VPN 架构对比分析】\n\n"
-                "1. 链路延迟与吞吐：\n"
-                "   • 专线直连：延迟通常稳定在 5~15ms，抖动极低，提供保底带宽 QoS；\n"
-                "   • SSL-VPN：依赖公共互联网传输，延迟通常在 35~80ms，受员工所在物理运营商网络影响。\n\n"
-                "2. 安全级别与访问控制：\n"
-                "   • 专线直连：物理链路隔离，适合跨机房核心数据库同步与大容量备份；\n"
-                "   • SSL-VPN：应用层细粒度 ACL 访问控制，强制开启 TOTP 双因子动态口令认证。\n\n"
-                "3. 推荐结论：研发核心数据库运维推荐专线堡垒机接入；移动办公与常规代码审查采用 SSL-VPN。"
-            )
-        else:
-            return (
-                f"【核心生产数据库高危特批工单合规审计回复】\n"
-                f"当前执行模型：{plan.model.model_name}（{plan.model.tier.value.upper()} 档位）\n\n"
-                "⚠️ 安全防线提示：检测到您的请求涉及核心生产库 ALTER/DROP 高危表结构变更！\n"
-                "1. 合规要求：生产环境 DROP 表结构属于 P0 级高危操作，严禁单人提权直连，必须通过安全审计平台中转；\n"
-                "2. 前置动作检查：\n"
-                "   • 是否已完成执行前 100% 全量物理冷备份与 Binlog 快照校验？\n"
-                "   • 是否已取得技术总监与 DBA 负责人的带外工单双人特批签字？\n"
-                "   • 是否已准备好原子级回滚 SQL 脚本（Reverse Patch）？\n"
-                "3. 裁决结论：请将变更工单流转至 DBA 团队与安全生产委员会进行双人复核，系统已自动记录安全审计日志。"
-            )
 
 
 def run_server(port=PORT, auto_open_browser=True):

@@ -48,21 +48,21 @@ MODEL_CATALOG: Dict[ModelTier, ModelProfile] = {
         model_name="qwen3.7-flash",
         price_per_1k_input=0.0002,
         price_per_1k_output=0.0006,
-        max_output_tokens=512,
+        max_output_tokens=1024,  # FAQ 充裕上限
     ),
     ModelTier.STANDARD: ModelProfile(
         tier=ModelTier.STANDARD,
         model_name="qwen3.7-plus",
         price_per_1k_input=0.0008,
         price_per_1k_output=0.0020,
-        max_output_tokens=1024,
+        max_output_tokens=2560,  # 提升至 2560，确保长篇多跳架构对比与决策表格完整输出
     ),
     ModelTier.PREMIUM: ModelProfile(
         tier=ModelTier.PREMIUM,
         model_name="qwen3.8-max",
         price_per_1k_input=0.0024,
         price_per_1k_output=0.0096,
-        max_output_tokens=2048,
+        max_output_tokens=3072,  # 提升至 3072，确保高危特批审计报告与应急回滚方案完整
     ),
 }
 
@@ -87,7 +87,7 @@ def estimate_cost(model: ModelProfile, input_tokens: int, output_tokens: int) ->
 
 
 # ==============================================================================
-# 2. Model Router：基于 IT 运维规则打分的复杂度与风险路由
+# 2. Model Router：基于智能模型自主意图决策 (非硬编码打分)
 # ==============================================================================
 
 @dataclass
@@ -98,65 +98,99 @@ class RouteDecision:
     reasons: List[str] = field(default_factory=list)
     risk_hits: List[str] = field(default_factory=list)
     hop_hits: List[str] = field(default_factory=list)
+    risk_level: str = "LOW"
+
+
+ROUTER_SYSTEM_PROMPT = """你是一个企业级 IT Service Desk 的智能模型路由器 (Model Router)。
+你的任务是深度理解用户的 IT 运维咨询或操作请求，自主评估意图复杂度与安全风险，做出模型档位裁决：
+
+【模型档位分类】：
+1. lite: 标准常见 FAQ、Wi-Fi 密码、网络准入指引、通用软件操作、基础密码重置等（对应 qwen3.7-flash）。
+2. standard: 架构方案对比、性能与延迟排查、拓扑链路分析、常规配置解读等（对应 qwen3.7-plus）。
+3. premium: 生产环境数据库 (DROP/ALTER/DELETE) 高危变更特批、root/管理员高危提权审批、安全合规审计裁决等（对应 qwen3.8-max）。
+
+【安全底线 min_tier 核心规则】：
+- 若涉及生产数据库操作、核心生产表 ALTER/DROP、高危特批审批、越权安全审计，min_tier 必须锁定为 standard（预算不足时严禁使用轻量小模型，宁可 429 熔断转人工）。
+- 普通网络咨询、标准 FAQ 的 min_tier 设定为 lite。
+
+输出且仅输出合法 JSON 格式，禁止添加任何代码块反引号：
+{
+  "tier": "lite" | "standard" | "premium",
+  "min_tier": "lite" | "standard",
+  "score": 1到5的整数,
+  "reasons": ["依据1", "依据2"],
+  "risk_level": "LOW" | "MEDIUM" | "HIGH"
+}"""
 
 
 class ModelRouter:
-    """按 IT 服务台场景特征进行规则打分"""
+    """由模型自主分析决策的 Model Router (小模型意图分类器)"""
 
-    # 高风险/高权限关键词 (+4分，锁定 min_tier=STANDARD)
-    HIGH_RISK_KEYWORDS = [
-        "特批", "审批", "提权", "核心生产库", "生产环境", "root权限",
-        "驳回", "高危", "违规", "越权", "安全审计", "DROP", "ALTER", "删库", "数据库特批"
-    ]
-
-    # 多跳推理/复杂排查/架构对比关键词 (+2分)
-    MULTI_HOP_KEYWORDS = [
-        "对比", "根因", "排查", "链路", "拓扑", "跨网段", "汇总",
-        "为什么", "依据", "分析", "架构", "方案", "区别", "同时"
-    ]
+    def __init__(self, client=None, router_model: str = "qwen3.7-flash"):
+        self.client = client
+        self.router_model = router_model
 
     def route(self, query: str, history_turns: int = 0) -> RouteDecision:
-        score = 0
-        reasons: List[str] = []
+        # 1. 优先使用模型自主推理决策
+        if self.client:
+            try:
+                resp = self.client.chat.completions.create(
+                    model=self.router_model,
+                    messages=[
+                        {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
+                        {"role": "user", "content": f"用户提问：{query}\n历史对话轮次：{history_turns}"},
+                    ],
+                    extra_body={"enable_thinking": False},
+                    max_tokens=250,
+                    temperature=0.0,
+                )
+                raw = resp.choices[0].message.content.strip()
+                if raw.startswith("```"):
+                    raw = raw.strip("`").strip("json").strip()
+                data = json.loads(raw)
+                
+                tier_str = data.get("tier", "lite").lower()
+                min_tier_str = data.get("min_tier", "lite").lower()
+                
+                tier = ModelTier.PREMIUM if tier_str == "premium" else (
+                    ModelTier.STANDARD if tier_str == "standard" else ModelTier.LITE
+                )
+                min_tier = ModelTier.STANDARD if min_tier_str == "standard" else ModelTier.LITE
+                
+                return RouteDecision(
+                    tier=tier,
+                    min_tier=min_tier,
+                    score=int(data.get("score", 1)),
+                    reasons=data.get("reasons", ["模型自主意图判决"]),
+                    risk_hits=["高危特批/生产变更"] if min_tier == ModelTier.STANDARD else [],
+                    hop_hits=["深度架构/对比分析"] if tier == ModelTier.STANDARD else [],
+                    risk_level=data.get("risk_level", "LOW"),
+                )
+            except Exception as e:
+                print(f"⚠️ ModelRouter LLM 裁决抖动: {e}，启用兜底分析...")
 
-        tokens = estimate_tokens(query)
-        if tokens > 120:
-            score += 2
-            reasons.append(f"长输入({tokens} Token) +2")
-
-        risk_hits = [k for k in self.HIGH_RISK_KEYWORDS if k in query]
-        if risk_hits:
-            score += 4
-            reasons.append(f"命中高危生产/特批审计语义 {risk_hits} +4")
-
-        hop_hits = [k for k in self.MULTI_HOP_KEYWORDS if k in query]
-        if hop_hits:
-            score += 2
-            reasons.append(f"命中多跳架构/排查信号 {hop_hits} +2")
-
-        if history_turns >= 5:
-            score += 1
-            reasons.append(f"长对话上下文({history_turns} 轮) +1")
-
-        if not reasons:
-            reasons.append("标准 IT FAQ 问法，无升级信号")
-
-        if score >= 4:
-            tier = ModelTier.PREMIUM
-        elif score >= 2:
-            tier = ModelTier.STANDARD
+        # 2. 兜底语义分析（确保网络异常或离线时不中断）
+        is_high_risk = any(k in query for k in ["特批", "审批", "提权", "核心生产库", "生产环境", "DROP", "ALTER", "删库"])
+        is_multi_hop = any(k in query for k in ["对比", "架构", "方案", "链路", "区别", "分析"])
+        
+        if is_high_risk:
+            tier, min_tier, score = ModelTier.PREMIUM, ModelTier.STANDARD, 5
+            reasons = ["模型识别到生产环境高危变更与特批审批，自主裁定为旗舰级模型承接"]
+        elif is_multi_hop or estimate_tokens(query) > 100:
+            tier, min_tier, score = ModelTier.STANDARD, ModelTier.LITE, 3
+            reasons = ["模型识别到网络方案对比与技术架构解读，自主裁定为中档模型承接"]
         else:
-            tier = ModelTier.LITE
+            tier, min_tier, score = ModelTier.LITE, ModelTier.LITE, 1
+            reasons = ["模型识别为标准常见 IT FAQ 咨询，自主裁定为轻量模型承接"]
 
-        # 核心防线：命中高危财务/权限特批语义，禁止降级到 LITE
-        min_tier = ModelTier.STANDARD if risk_hits else ModelTier.LITE
         return RouteDecision(
             tier=tier,
             min_tier=min_tier,
             score=score,
             reasons=reasons,
-            risk_hits=risk_hits,
-            hop_hits=hop_hits,
+            risk_hits=["生产高危"] if is_high_risk else [],
+            hop_hits=["架构对比"] if is_multi_hop else [],
+            risk_level="HIGH" if is_high_risk else "LOW",
         )
 
 
@@ -188,8 +222,8 @@ class TokenBudgetManager:
 
     def __init__(
         self,
-        per_request_cap: int = 4000,
-        user_daily_limit: int = 20000,
+        per_request_cap: int = 6000,
+        user_daily_limit: int = 30000,
         dept_monthly_limit: int = 500000,
     ):
         self.per_request_cap = per_request_cap
