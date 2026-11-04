@@ -188,6 +188,19 @@ itticket.consultation.ai.cache:
 前提待实施期验证：所选 OpenAI 兼容供应商在 `ai.base-url` 上同时提供 `/embeddings` 端点
 （与 Python 侧 `KspEmbeddingProvider` 同一服务族）。
 
+## 部署说明
+
+1. **默认关闭**：`AI_SEMANTIC_CACHE_ENABLED` 未设时缓存完全不启用（`disabled` 实例，零嵌入、零计数、零行为差异）；已在生产环境可直接发布本变更，不改变任何现有行为。
+2. **开启前置条件**：需配置 `AI_CACHE_EMBEDDING_MODEL`（必填，缺失则启动失败、不做半启用）；
+   嵌入端点默认回退 `AI_BASE_URL` 同族供应商的 `/embeddings`（已补 Task 2 实现与
+   `OpenAiCompatibleEmbeddingClientTest`，与 Python 侧 `KspEmbeddingProvider` 同一 OpenAI 兼容协议）。
+   若模型供应商不提供 `/embeddings`，必须显式设置 `AI_CACHE_EMBEDDING_BASE_URL` 指向可用端点，否则启动失败。
+3. **已知取舍**：命中路径跳过检索侧 HIGH_RISK 二次收紧（条目入池时已通过当时的收紧，且哨兵逐条复核
+   引用仍在当前发布版本，内容漂移由哨兵与 TTL 兜底）；域分类（含 HIGH_RISK/OFF_TOPIC 初判）
+   每次请求照常执行，安全裁决永不被缓存短路。
+4. **演进注意**：未来若按角色裁剪检索范围（如 KNOWLEDGE_ADMIN 可见更多库），缓存匹配 `scope`
+   命名空间必须同步加入角色维度，否则会发生跨角色泄漏；当前仅按 `categoryId`/`assetId`/嵌入模型隔离。
+
 ## 验收
 
 1. 单元（纯函数级）：`SemanticAnswerCacheTest`——余弦计算与阈值边界、LRU/TTL 淘汰、
@@ -198,8 +211,8 @@ itticket.consultation.ai.cache:
    而非未命中→命中路径 `AiAnswerGuard` 仍执行且能拦截伪造引用。
 3. Spring 上下文：`enabled=false`（默认）行为与现状完全一致；`enabled=true` 且缺
    `embedding-model` 时启动失败（fail-fast，不做半启用）。
-4. 基线：修改前后 consultation-service 全量 Maven 测试通过（当前基线 206 项，
-   含事务/预算/断路器既有用例不回归）。
+4. 基线：修改前后 consultation-service 全量 Maven 测试通过（实施后全量 338 项，
+   其中新增 52 项，原 286 项含事务/预算/断路器既有用例不回归）。
 5. 指标验收：stub 压测下同义改写题集命中率 ≥ 90%、命中延迟 < 300ms（含嵌入）、
    模型调用次数按命中数线性下降。
 
