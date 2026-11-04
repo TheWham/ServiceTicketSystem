@@ -1,4 +1,5 @@
 package com.itticket.consultation.adapter;
+import com.itticket.consultation.adapter.cache.CacheHitInfo;
 import com.itticket.consultation.dto.KnowledgeCitationDto;
 import com.itticket.consultation.dto.TicketDraftDto;
 import com.itticket.consultation.enums.*;
@@ -11,18 +12,30 @@ public record RagResult(RagStatus status, AiReplyType replyType, String answerTe
                         List<String> retrievedVersionIds, long latencyMs, String errorClass,
                         boolean generalAnswer, boolean retryableFailure,
                         /** 建单草稿(人机回环);非建单场景为 null。 */
-                        TicketDraftDto ticketDraft) {
+                        TicketDraftDto ticketDraft,
+                        /** 语义缓存命中信息(相似度+作用域);实时生成路径为 null。 */
+                        CacheHitInfo cacheHit) {
     public static final int CONFIDENCE_SCALE = 4;
     public static final BigDecimal ZERO_CONFIDENCE = BigDecimal.ZERO.setScale(CONFIDENCE_SCALE);
 
-    /** 向后兼容构造(无草稿)。 */
+    /** 向后兼容构造(无草稿、无缓存信息)。 */
     public RagResult(RagStatus status, AiReplyType replyType, String answerText,
                      List<KnowledgeCitationDto> citations, BigDecimal confidence,
                      AiRefusalReason refusalReason, String modelVersion,
                      List<String> retrievedVersionIds, long latencyMs, String errorClass,
                      boolean generalAnswer, boolean retryableFailure) {
         this(status, replyType, answerText, citations, confidence, refusalReason, modelVersion,
-                retrievedVersionIds, latencyMs, errorClass, generalAnswer, retryableFailure, null);
+                retrievedVersionIds, latencyMs, errorClass, generalAnswer, retryableFailure, null, null);
+    }
+
+    /** 向后兼容构造(带草稿、无缓存信息)。 */
+    public RagResult(RagStatus status, AiReplyType replyType, String answerText,
+                     List<KnowledgeCitationDto> citations, BigDecimal confidence,
+                     AiRefusalReason refusalReason, String modelVersion,
+                     List<String> retrievedVersionIds, long latencyMs, String errorClass,
+                     boolean generalAnswer, boolean retryableFailure, TicketDraftDto ticketDraft) {
+        this(status, replyType, answerText, citations, confidence, refusalReason, modelVersion,
+                retrievedVersionIds, latencyMs, errorClass, generalAnswer, retryableFailure, ticketDraft, null);
     }
 
     public static RagResult degraded(RagStatus status, String errorClass, long latencyMs) {
@@ -33,26 +46,32 @@ public record RagResult(RagStatus status, AiReplyType replyType, String answerTe
     public static RagResult failure(RagStatus status, String errorClass, boolean retryable,
                                     List<String> retrievedVersionIds) {
         return new RagResult(status, AiReplyType.REFUSE, null, List.of(), ZERO_CONFIDENCE,
-                null, null, List.copyOf(retrievedVersionIds), 0, errorClass, false, retryable, null);
+                null, null, List.copyOf(retrievedVersionIds), 0, errorClass, false, retryable, null, null);
     }
     public static RagResult refuse(AiRefusalReason reason, String model, List<String> versions) {
         return new RagResult(RagStatus.SUCCESS, AiReplyType.REFUSE, null, List.of(),
-                ZERO_CONFIDENCE, reason, model, versions, 0, null, false, false, null);
+                ZERO_CONFIDENCE, reason, model, versions, 0, null, false, false, null, null);
     }
     public RagResult withLatency(long latency) {
         return new RagResult(status, replyType, answerText, citations, confidence,
                 refusalReason, modelVersion, retrievedVersionIds, latency, errorClass,
-                generalAnswer, retryableFailure, ticketDraft);
+                generalAnswer, retryableFailure, ticketDraft, cacheHit);
     }
     public RagResult withRetrievedVersionIds(List<String> versions) {
         return new RagResult(status, replyType, answerText, citations, confidence,
                 refusalReason, modelVersion, List.copyOf(versions), latencyMs, errorClass,
-                generalAnswer, retryableFailure, ticketDraft);
+                generalAnswer, retryableFailure, ticketDraft, cacheHit);
     }
     /** 附加建单草稿(AI 只产草稿,不落库)。 */
     public RagResult withTicketDraft(TicketDraftDto draft) {
         return new RagResult(status, replyType, answerText, citations, confidence,
                 refusalReason, modelVersion, retrievedVersionIds, latencyMs, errorClass,
-                generalAnswer, retryableFailure, draft);
+                generalAnswer, retryableFailure, draft, cacheHit);
+    }
+    /** 附加语义缓存命中信息(实时路径不加,保持 null)。 */
+    public RagResult withCacheHit(double similarity, String scope) {
+        return new RagResult(status, replyType, answerText, citations, confidence,
+                refusalReason, modelVersion, retrievedVersionIds, latencyMs, errorClass,
+                generalAnswer, retryableFailure, ticketDraft, new CacheHitInfo(similarity, scope));
     }
 }

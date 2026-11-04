@@ -58,6 +58,7 @@ public class AiCompositionConfig {
             RetrievalPolicy policy, AnswerGenerator generator, PythonAgentClient pythonAgentClient) {
         // 工具意图的放行只在 Function Calling 开启时生效：agent 关了就不消费判定结果里的 tool，
         // 避免越过拒答后得到一段无依据作答（那是放宽拒答策略，不是本意）。
-        return new ComposedRagAdapter(classifier, retriever, policy, generator, pythonAgentClient.enabled());
+        return new ComposedRagAdapter(classifier, retriever, policy, generator, pythonAgentClient.enabled(),
+                com.itticket.consultation.adapter.cache.SemanticAnswerCache.disabled());
     }
 }

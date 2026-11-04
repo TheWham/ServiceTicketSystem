@@ -102,7 +102,7 @@ class RagCompositionHttpTest {
         client = new GuardedRagClient(new ComposedRagAdapter(new SemanticRequestClassifier(model),
                 new RagServiceKnowledgeRetriever(config, http), new RetrievalPolicy(knowledge, Set.of("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"), new BigDecimal("0.10"), 2),
                 new OpenAiCompatibleAnswerGenerator(model, config, null),
-                false), config);
+                false, com.itticket.consultation.adapter.cache.SemanticAnswerCache.disabled()), config);
     }
     private RagResult ask() {
         return client.answer(new RagQuery("S1", "开会别人听不到我", "C_NET", "ASSET1", 5,
