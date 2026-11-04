@@ -239,10 +239,12 @@ class ComposedRagCacheTest {
     }
 
     @Test
-    void draftIsPreservedThroughCacheHit() {
+    void ticketDraftResultsAreNeverCached() {
         AtomicInteger retrievals = new AtomicInteger();
         AtomicInteger generations = new AtomicInteger();
         SemanticAnswerCache cache = enabledCache();
+        // Python 代理 ReAct 可在 Java 判定 NO_TOOL 时带外产出草稿:草稿承载提问者的具体环境
+        // (标题/分类/描述/资产),跨用户重放等于泄露;即使同用户,冻结草稿也劣于实时重答。
         GenerationResult draftAnswer = new GenerationResult(AiReplyType.ANSWER,
                 "已生成工单草稿,请确认。", List.of("V1"), new BigDecimal("0.91"), null, "m",
                 new TicketDraftDto("打印机故障", "C_HW_PRT", "打印机无法进纸", "MEDIUM"));
@@ -251,12 +253,12 @@ class ComposedRagCacheTest {
 
         RagResult first = rag.answer(ask("新建打印机报修工单"), context());
         assertThat(first.ticketDraft()).isNotNull();
-        assertThat(cache.stats().entries()).isEqualTo(1);
+        assertThat(cache.stats().entries()).isZero();
 
-        RagResult hit = rag.answer(ask("新建打印机报修工单"), context());
-        assertThat(hit.cacheHit()).isNotNull();
-        assertThat(hit.ticketDraft()).isEqualTo(first.ticketDraft());
-        assertThat(hit.answerText()).isEqualTo(first.answerText());
-        assertThat(retrievals.get()).isEqualTo(1);
+        RagResult second = rag.answer(ask("新建打印机报修工单"), context());
+        assertThat(second.cacheHit()).isNull();
+        assertThat(second.ticketDraft()).isEqualTo(first.ticketDraft());
+        assertThat(second.answerText()).isEqualTo(first.answerText());
+        assertThat(retrievals.get()).isEqualTo(2);
     }
 }

@@ -139,6 +139,8 @@ public final class ComposedRagAdapter implements RagAdapter {
     }
     private static String scopeOf(RagQuery query) {
         if (query.categoryId() == null && query.assetId() == null) return null;
+        if (query.categoryId() == null) return "asset=" + query.assetId();
+        if (query.assetId() == null) return "category=" + query.categoryId();
         return "category=" + query.categoryId() + ";asset=" + query.assetId();
     }
     private static RagResult restrict(OfficeDomain domain) {

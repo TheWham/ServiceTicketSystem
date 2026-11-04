@@ -75,6 +75,10 @@ public class AiCompositionConfig {
             throw new IllegalArgumentException(
                     "语义缓存阈值必须在 [0.90,1.0] 内: itticket.consultation.ai.cache.threshold");
         }
+        if (cacheProperties.getTtlSeconds() <= 0) {
+            throw new IllegalArgumentException(
+                    "语义缓存 TTL 必须为正秒数: itticket.consultation.ai.cache.ttl-seconds");
+        }
         String baseUrl = cacheProperties.getEmbeddingBaseUrl() != null && !cacheProperties.getEmbeddingBaseUrl().isBlank()
                 ? cacheProperties.getEmbeddingBaseUrl()
                 : properties.getAi().getBaseUrl();

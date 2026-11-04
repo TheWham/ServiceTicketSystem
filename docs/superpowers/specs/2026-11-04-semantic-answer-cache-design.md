@@ -106,7 +106,10 @@ adapter/cache/SemanticAnswerCache.java
 **write 规则（仅在完整成功路径调用）：**
 
 1. `RagResult.status == SUCCESS` 且 `replyType == ANSWER` 且 `refusalReason == null`
-   且 `citations` 非空（**generalAnswer/CLARIFY/拒答/降级永不缓存**）
+   且 `citations` 非空且 `ticketDraft == null`
+   （**generalAnswer/CLARIFY/拒答/降级/带工单草稿永不缓存**：草稿承载提问者具体环境，
+   跨用户重放等于泄露，冻结草稿也劣于实时重答——评审后补充，Python 代理 ReAct 可在
+   Java 判定 NO_TOOL 时带外产出草稿，故不能依赖“草稿仅走工具旁路”的假设）
 2. 作用域、history 为空、非工具旁路，与 lookup 相同
 3. 去重替换：若已有条目与本次问题相似度 ≥ threshold，替换该条目（刷新时间与内容），
    否则在容量上限内追加；超限时按 LRU 淘汰

@@ -100,4 +100,18 @@ class AiCacheAssemblyTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("embedding-base-url");
     }
+
+    @Test
+    void enabledWithNonPositiveTtlFailsFast() {
+        ConsultationProperties properties = properties();
+        properties.getAi().getCache().setEnabled(true);
+        properties.getAi().getCache().setEmbeddingModel("bge-m3");
+        properties.getAi().getCache().setTtlSeconds(0);
+
+        AiCompositionConfig config = new AiCompositionConfig();
+        assertThatThrownBy(() -> config.semanticAnswerCache(
+                properties, new DependencyHttpClient(), mock(KnowledgeQueryService.class)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("itticket.consultation.ai.cache.ttl-seconds");
+    }
 }

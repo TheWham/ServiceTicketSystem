@@ -197,6 +197,21 @@ class SemanticAnswerCacheTest {
     // ---------- Task 4: lookup 路径与哨兵 ----------
 
     @Test
+    void blankQuestionLookupIsSkippedWithoutCounters() {
+        SemanticAnswerCache cache = cache(cacheConfig());
+        cache.write(question("会议没有声音怎么处理"), context(), answered("检查输入设备。", "V1"));
+        long embedsAfterWrite = embedCalls.get();
+
+        Optional<CachedAnswer> result = cache.lookup(question("   "), context());
+
+        assertThat(result).isEmpty();
+        assertThat(embedCalls.get()).isEqualTo(embedsAfterWrite);
+        assertThat(cache.stats().realMisses()).isZero();
+        assertThat(cache.stats().depFailures()).isZero();
+        assertThat(cache.stats().hits()).isZero();
+    }
+
+    @Test
     void thresholdBoundaryHitsAtExactlyThresholdAndMissesBelow() {
         SemanticAnswerCache cache = cache(cacheConfig());
         cache.write(question("q1"), context(), answered("a1", "V1"));

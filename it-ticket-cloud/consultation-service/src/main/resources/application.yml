@@ -166,6 +166,8 @@ itticket:
         # 该基址提供 /embeddings,与 Python 侧 KspEmbeddingProvider 同族,实施期验证)
         embedding-base-url: ${AI_CACHE_EMBEDDING_BASE_URL:}
         embedding-timeout-ms: ${AI_CACHE_EMBEDDING_TIMEOUT_MS:1000}
+        # 同义改写防抖窗口(秒):窗口内同义写入不刷新条目
+        min-write-interval-seconds: ${AI_SEMANTIC_CACHE_MIN_WRITE_INTERVAL:0}
 
 logging:
   level:

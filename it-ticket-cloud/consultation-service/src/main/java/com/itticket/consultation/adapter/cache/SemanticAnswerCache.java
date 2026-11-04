@@ -29,7 +29,8 @@ import java.util.function.BiPredicate;
  * versionId)。失效即驱逐并按真实未命中穿透——不存在「过期缓存放行」。
  *
  * 写准入:仅 SUCCESS + ANSWER + citations 非空 + 非 generalAnswer + errorClass 为空;
- * 拒答 / CLARIFY / 通用回答 / 降级没有版本失效锚点(或没有模型成本),永不入缓存。
+ * 拒答 / CLARIFY / 通用回答 / 降级没有版本失效锚点(或没有模型成本),永不入缓存;
+ * 带工单草稿的结果承载提问者具体环境,跨用户重放即泄露,同样永不入缓存。
  * 追问(priorTurns 非空)不读不写——语义缓存只对独立初问有定义。
  *
  * 并发:容器由方法级 synchronized 保护;嵌入调用(网络)在锁外执行,不持锁做远程调用。
@@ -90,9 +91,13 @@ public final class SemanticAnswerCache {
         if (!enabled || !query.priorTurns().isEmpty()) {
             return Optional.empty();
         }
+        String question = normalize(query.question());
+        if (question.isEmpty()) {
+            return Optional.empty(); // 空白问题不嵌入不计数:上游域门禁会先拒,这里只兜底
+        }
         float[] vector;
         try {
-            vector = embeddings.embed(normalize(query.question()), context);
+            vector = embeddings.embed(question, context);
         } catch (DependencyFailure failure) {
             synchronized (this) { depFailures++; }
             log.warn("语义缓存嵌入依赖失败,按未命中穿透: requestId={} errorClass={}",
@@ -119,6 +124,8 @@ public final class SemanticAnswerCache {
         }
         synchronized (this) {
             hits++;
+            snapshot.live.hitCount++;
+            snapshot.live.lastAccessed = clock.instant();
             recordSimilarityLocked(snapshot.lastSimilarity);
         }
         return Optional.of(new CachedAnswer(snapshot.result, snapshot.lastSimilarity));
@@ -189,11 +196,12 @@ public final class SemanticAnswerCache {
             realMisses++;
             return null;
         }
-        best.hitCount++;
-        best.lastAccessed = clock.instant();
+        // 触碰(hitCount/lastAccessed)后移到哨兵通过之后:过期条目不再被失败地查询
+        // 刷新 LRU 体温或虚增命中计数。快照携带 live 引供哨兵通过后回触与身份驱逐。
         Entry snapshot = new Entry(best.questionText, best.questionVector, best.namespace,
                 best.categoryId, best.assetId, best.result, best.createdAt, best.lastAccessed);
-        snapshot.lastSimilarity = best.lastSimilarity;
+        snapshot.lastSimilarity = best.lastSimilarity; // bestMatch 已写入本次命中余弦
+        snapshot.live = best;
         return snapshot;
     }
 
@@ -216,7 +224,7 @@ public final class SemanticAnswerCache {
     }
 
     private synchronized void evict(Entry snapshot) {
-        boolean removed = entries.removeIf(entry -> entry.result == snapshot.result);
+        boolean removed = entries.removeIf(entry -> entry == snapshot.live);
         if (removed) {
             evictionsSentinel++;
         }
@@ -231,7 +239,8 @@ public final class SemanticAnswerCache {
                 && !result.retryableFailure()
                 && result.answerText() != null && !result.answerText().isBlank()
                 && result.citations() != null && !result.citations().isEmpty()
-                && result.citations().stream().allMatch(c -> c.versionId() != null);
+                && result.citations().stream().allMatch(c -> c.versionId() != null)
+                && result.ticketDraft() == null;
     }
 
     private void purgeExpired() {
@@ -314,6 +323,8 @@ public final class SemanticAnswerCache {
         Instant lastAccessed;
         long hitCount;
         double lastSimilarity;
+        /** 仅快照携带:指向锁内存活条目,供哨兵通过后回触与身份驱逐;真实条目恒 null。 */
+        Entry live;
 
         Entry(String questionText, float[] questionVector, String namespace, String categoryId,
               String assetId, RagResult result, Instant createdAt, Instant lastAccessed) {
