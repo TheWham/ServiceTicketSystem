@@ -110,7 +110,6 @@ public final class SemanticAnswerCache {
             synchronized (this) { depFailures++; }
             log.warn("语义缓存哨兵复核异常,按未命中穿透: requestId={} error={}",
                     context.requestId(), failure.getMessage());
-            evict(snapshot);
             return Optional.empty();
         }
         if (!current) {
@@ -253,7 +252,7 @@ public final class SemanticAnswerCache {
             if (!entry.namespace.equals(embeddingModel)) {
                 continue;
             }
-            if (!Objects.equals(entry.categoryId, categoryId) || !Objects.equals(entry.assetId, assetId)) {
+            if (!scopeMatches(entry, categoryId, assetId)) {
                 continue;
             }
             double similarity = cosine(vector, entry.questionVector);
@@ -266,6 +265,13 @@ public final class SemanticAnswerCache {
             best.lastSimilarity = bestSimilarity;
         }
         return best;
+    }
+
+    /** 查询侧 category/assetId 为 null 视为通配(不限作用域),非 null 时要求相等。 */
+    private boolean scopeMatches(Entry entry, String categoryId, String assetId) {
+        boolean categoryOk = categoryId == null || Objects.equals(entry.categoryId, categoryId);
+        boolean assetOk = assetId == null || Objects.equals(entry.assetId, assetId);
+        return categoryOk && assetOk;
     }
 
     private void recordSimilarityLocked(double similarity) {

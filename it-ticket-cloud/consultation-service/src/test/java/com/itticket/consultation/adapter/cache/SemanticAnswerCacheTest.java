@@ -193,4 +193,140 @@ class SemanticAnswerCacheTest {
         assertThat(hit).isPresent();
         assertThat(hit.get().result().answerText()).isEqualTo("旧答案。");
     }
+
+    // ---------- Task 4: lookup 路径与哨兵 ----------
+
+    @Test
+    void thresholdBoundaryHitsAtExactlyThresholdAndMissesBelow() {
+        SemanticAnswerCache cache = cache(cacheConfig());
+        cache.write(question("q1"), context(), answered("a1", "V1"));
+        // 与 (1,0) 余弦恰为 0.93 的向量: cos = x
+        float x = 0.93f;
+        float y = (float) Math.sqrt(1 - x * x);
+        nextVector.set(new float[]{x, y});
+        assertThat(cache.lookup(question("q1"), context())).isPresent();
+        assertThat(cache.stats().hits()).isEqualTo(1);
+        float low = 0.929f;
+        nextVector.set(new float[]{low, (float) Math.sqrt(1 - low * low)});
+        assertThat(cache.lookup(question("q1"), context())).isEmpty();
+        assertThat(cache.stats().realMisses()).isEqualTo(1);
+    }
+
+    @Test
+    void differentEmbeddingModelNamespacesDoNotSeeEachOther() {
+        ConsultationProperties.Ai.Cache first = cacheConfig();
+        first.setEmbeddingModel("model-a");
+        ConsultationProperties.Ai.Cache second = cacheConfig();
+        second.setEmbeddingModel("model-b");
+        nextVector.set(new float[]{1f, 0f});
+        SemanticAnswerCache cacheA = cache(first);
+        cacheA.write(question("q1"), context(), answered("a1", "V1"));
+        SemanticAnswerCache cacheB = cache(second);
+        assertThat(cacheB.lookup(question("q1"), context())).isEmpty();
+        assertThat(cacheB.stats().entries()).isZero();
+        assertThat(cacheA.stats().entries()).isEqualTo(1);
+    }
+
+    @Test
+    void scopeMismatchMissesWithoutTouchingOtherScopes() {
+        SemanticAnswerCache cache = cache(cacheConfig());
+        cache.write(question("q1"), context(), answered("a1", "V1"));
+        RagQuery otherCategory = new RagQuery("S1", "q1", List.of(), "C_OTHER", "ASSET1", 3,
+                new RagCaller("U1", "EMPLOYEE"));
+        assertThat(cache.lookup(otherCategory, context())).isEmpty();
+        // 查询侧 null 视为通配
+        RagQuery wildcard = new RagQuery("S1", "q1", List.of(), null, null, 3,
+                new RagCaller("U1", "EMPLOYEE"));
+        assertThat(cache.lookup(wildcard, context())).isPresent();
+    }
+
+    @Test
+    void sentinelEvictsOnlyStaleEntryAndCountsRealMiss() {
+        java.util.Set<String> stale = new java.util.HashSet<>();
+        SemanticAnswerCache cache = new SemanticAnswerCache(cacheConfig(), vectors,
+                (article, version) -> !stale.contains(version), clock);
+        nextVector.set(new float[]{1f, 0f});
+        cache.write(question("stale q"), context(), answered("旧答案", "V_OLD"));
+        nextVector.set(new float[]{0f, 1f});
+        cache.write(question("fresh q"), context(), answered("新答案", "V_NEW"));
+        stale.add("V_OLD");
+        nextVector.set(new float[]{1f, 0f});
+        assertThat(cache.lookup(question("stale q"), context())).isEmpty();
+        assertThat(cache.stats().evictionsSentinel()).isEqualTo(1);
+        assertThat(cache.stats().realMisses()).isEqualTo(1);
+        assertThat(cache.stats().entries()).isEqualTo(1);
+        nextVector.set(new float[]{0f, 1f});
+        assertThat(cache.lookup(question("fresh q"), context())).isPresent();
+    }
+
+    @Test
+    void sentinelExceptionIsDependencyFailureNotRealMiss() {
+        SemanticAnswerCache cache = new SemanticAnswerCache(cacheConfig(), vectors,
+                (article, version) -> { throw new RuntimeException("db down"); }, clock);
+        cache.write(question("q1"), context(), answered("a1", "V1"));
+        assertThat(cache.lookup(question("q1"), context())).isEmpty();
+        assertThat(cache.stats().depFailures()).isEqualTo(1);
+        assertThat(cache.stats().realMisses()).isZero();
+        // 条目保留:哨兵异常不代表知识失效
+        assertThat(cache.stats().entries()).isEqualTo(1);
+    }
+
+    @Test
+    void hitRefreshesLruOrder() {
+        ConsultationProperties.Ai.Cache config = cacheConfig();
+        config.setMaxEntries(2);
+        SemanticAnswerCache cache = cache(config);
+        nextVector.set(new float[]{1f, 0f});
+        cache.write(question("A"), context(), answered("a", "V1"));
+        clock.advanceSeconds(10);
+        nextVector.set(new float[]{0f, 1f});
+        cache.write(question("B"), context(), answered("b", "V2"));
+        clock.advanceSeconds(10);
+        // 命中 A,把 A 挪出最久未访问位置
+        nextVector.set(new float[]{1f, 0f});
+        assertThat(cache.lookup(question("A"), context())).isPresent();
+        clock.advanceSeconds(10);
+        nextVector.set(new float[]{0.7f, 0.7f});
+        cache.write(question("C"), context(), answered("c", "V3"));
+        assertThat(cache.stats().evictionsLru()).isEqualTo(1);
+        // 被逐的是 B(写入后从未访问),A 因命中而幸存
+        nextVector.set(new float[]{1f, 0f});
+        assertThat(cache.lookup(question("A"), context())).isPresent();
+    }
+
+    @Test
+    void lookupEmbeddingFailureCountsDependencyFailureOnly() {
+        SemanticAnswerCache cache = new SemanticAnswerCache(cacheConfig(),
+                (text, ctx) -> { throw DependencyFailure.invalid(); }, (a, v) -> true, clock);
+        assertThat(cache.lookup(question("q"), context())).isEmpty();
+        assertThat(cache.stats().depFailures()).isEqualTo(1);
+        assertThat(cache.stats().realMisses()).isZero();
+    }
+
+    @Test
+    void followUpLookupBypassesCacheWithoutCounters() {
+        SemanticAnswerCache cache = cache(cacheConfig());
+        cache.write(question("q1"), context(), answered("a1", "V1"));
+        long embedsBefore = embedCalls.get();
+        assertThat(cache.lookup(followUp("q1"), context())).isEmpty();
+        assertThat(embedCalls.get()).isEqualTo(embedsBefore); // 追问根本不嵌入
+        assertThat(cache.stats().hits()).isZero();
+        assertThat(cache.stats().realMisses()).isZero();
+        assertThat(cache.stats().depFailures()).isZero();
+    }
+
+    @Test
+    void hitReturnsWrittenResultAndRecordsSimilarity() {
+        SemanticAnswerCache cache = cache(cacheConfig());
+        RagResult written = answered("检查输入设备。", "V1");
+        cache.write(question("会议没有声音"), context(), written);
+        Optional<CachedAnswer> hit = cache.lookup(question("会议没声音"), context());
+        assertThat(hit).isPresent();
+        assertThat(hit.get().result()).isSameAs(written);
+        assertThat(hit.get().similarity()).isGreaterThan(0.93);
+        assertThat(cache.stats().hits()).isEqualTo(1);
+        assertThat(cache.stats().maxHitSimilarity()).isGreaterThan(0.93);
+        assertThat(cache.stats().recentSimilarities()).hasSize(1);
+        assertThat(cache.stats().hitRate()).isEqualTo(1.0);
+    }
 }
