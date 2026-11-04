@@ -1610,19 +1610,35 @@ HTML_PAGE = """<!DOCTYPE html>
 
 
 # ==============================================================================
-# 后端 HTTP 服务器与 SSE 事件流封装
+# 核心模块五：云端真实大模型推理与 SSE 流式网关 (CostGovernanceHTTPHandler)
+#
+# 【设计目标与生产规范】：
+# 1. 协议标准：严格采用 W3C Server-Sent Events (SSE) 协议，Header 指定 `Content-Type: text/event-stream`；
+# 2. 全阶段透明化流水线：
+#    - Stage 1 (stage1): 路由器执行小模型语义判决，上报预估 Token 与风险等级；
+#    - Stage 2 (stage2): 输出选定目标模型画像、基准单价与降级安全红线 (min_tier)；
+#    - Stage 3 (stage3): 预算管理器执行两阶段预扣 (reserve)，若触发降档则输出降级事件；若额度耗尽且触底安全红线，
+#                       立即抛出 circuit_breaker (HTTP 429 熔断拦截) 并安全阻断后续模型调用；
+#    - Stage 4 (token / thinking): 真实连接云端推理网关，双通道流式分发思考链推理过程 (reasoning_content) 与
+#                                正式回复文字增量 (delta)，精准捕获首字生成时间 (TTFT) 与吐字速率；
+#    - Stage 5 (stage5): 会话结束时，按 API 真实 Usage 释放预扣并精确记账结算，实时刷新并回写前端多维预算池。
+# 3. 动态加速策略：
+#    - 对于 LITE (qwen3.7-flash) 标准常见 FAQ，通过 `extra_body={"enable_thinking": False}` 关闭耗时思考链，
+#      实现 1~2 秒内极速直出首字，极大提升普通员工运维求助满意度；
+#    - 对于 STANDARD / PREMIUM 深度架构与高危提权，开启全量深度推理，保障推理严谨性与审计合规。
 # ==============================================================================
 
 class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
-    """处理前端页面、预算快照与 SSE 流式问答"""
+    """工业级 HTTP 演示服务网关与 SSE 事件调度分发器"""
 
     def log_message(self, format, *args):
-        # 简化日志，避免控制台刷屏
+        # 简化日志，过滤高频 SSE 与心跳轮询日志，避免控制台刷屏
         if "POST /api/chat/stream" in args[0] or "GET /api/budget" in args[0]:
             return
         super().log_message(format, *args)
 
     def do_GET(self):
+        """GET 请求路由分发：页面渲染与预算快照"""
         url = urllib.parse.urlparse(self.path)
         if url.path == "/" or url.path == "/index.html":
             self.send_response(200)
@@ -1643,6 +1659,7 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
+        """POST 请求路由分发：预算模拟与 SSE 问答流"""
         url = urllib.parse.urlparse(self.path)
         length = int(self.headers.get("Content-Length", 0))
         raw_data = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
@@ -1668,13 +1685,18 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
 
     def handle_chat_stream(self, body: dict):
-        """处理未命中缓存后的 Model Router 决策与 SSE 真实模型推理流"""
+        """核心处理链路：语义缓存未命中后的 Model Router 决策、预算两阶段预扣与云端真实模型 SSE 推理
+        
+        Args:
+            body: 包含 query(用户提问), user_id(用户工号), dept_id(所属部门), history_turns(历史轮数)
+        """
         query = body.get("query", "")
         user_id = body.get("user_id", "U-TECH-01")
         dept_id = body.get("dept_id", "DEPT-OPS")
         history_turns = int(body.get("history_turns", 0))
         request_id = f"fde-{uuid.uuid4().hex[:8]}"
 
+        # 1. 建立 W3C 标准 SSE 单向流式长连接
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
@@ -1684,11 +1706,14 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
         self.close_connection = True
 
         def send_event(data: dict):
+            """向前端实时写入单帧 SSE 数据块：data: {...}\\n\\n"""
             msg = f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
             self.wfile.write(msg.encode("utf-8"))
             self.wfile.flush()
 
-        # 1. 阶段 1：模型自主意图与风险裁决
+        # ----------------------------------------------------------------------
+        # 【阶段 1】：小模型自主意图识别与风险初筛 (Stage 1)
+        # ----------------------------------------------------------------------
         decision = router.route(query, history_turns)
         send_event({
             "type": "stage1",
@@ -1701,7 +1726,9 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
         })
         time.sleep(0.08)
 
-        # 2. 阶段 2：Router 决策
+        # ----------------------------------------------------------------------
+        # 【阶段 2】：Model Router 档位裁决与安全下限锁定 (Stage 2)
+        # ----------------------------------------------------------------------
         profile = MODEL_CATALOG[decision.tier]
         send_event({
             "type": "stage2",
@@ -1713,7 +1740,9 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
         })
         time.sleep(0.08)
 
-        # 3. 阶段 3：预算预扣与降档
+        # ----------------------------------------------------------------------
+        # 【阶段 3】：两阶段 Token 预算审查与级联降档 (Stage 3)
+        # ----------------------------------------------------------------------
         try:
             plan = governor.plan(request_id, query, user_id, dept_id, history_turns)
             send_event({
@@ -1725,7 +1754,7 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
                 "degraded": plan.degraded,
             })
         except BudgetExceeded as exc:
-            # 触发 429 熔断
+            # 触底安全底线或总额度不足，触发 HTTP 429 熔断拦截
             send_event({
                 "type": "circuit_breaker",
                 "scope": exc.scope,
@@ -1734,8 +1763,10 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
             })
             return
 
-        # 4. 阶段 4：真实大模型调用（带智能 Mock 兜底，防止云端网络异常中断演示）
-        actual_in = estimate_tokens(query) + 260
+        # ----------------------------------------------------------------------
+        # 【阶段 4】：云端大模型真实流式推理与思考链分发 (Stage 4)
+        # ----------------------------------------------------------------------
+        actual_in = estimate_tokens(query) + SYSTEM_PROMPT_RESERVE
         actual_out = 0
         full_text = ""
 
@@ -1757,7 +1788,7 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
                     "stream": True,
                     "stream_options": {"include_usage": True},
                 }
-                # LITE 常见 FAQ 关闭耗时思考链，实现 1~2 秒内极速直出
+                # LITE 常见 FAQ 关闭耗时思考链，实现 1~2 秒内极速直出首字
                 if plan.model.tier == ModelTier.LITE:
                     call_kwargs["extra_body"] = {"enable_thinking": False}
 
@@ -1766,11 +1797,11 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
                 for chunk in stream:
                     if chunk.choices and chunk.choices[0].delta:
                         delta = chunk.choices[0].delta
-                        # 思考推理流（Qwen 深度思考过程）
+                        # 思考推理流（Qwen 深度思考过程透传）
                         reasoning = getattr(delta, "reasoning_content", None)
                         if reasoning:
                             send_event({"type": "thinking", "delta": reasoning})
-                        # 最终回复流
+                        # 正式文本回复流
                         content = getattr(delta, "content", None)
                         if content:
                             full_text += content
@@ -1784,14 +1815,16 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
                 raise RuntimeError("未配置有效的 LLM_API_KEY 与 LLM_BASE_URL")
         except Exception as e:
             print(f"❌ 云端大模型推理异常: {e}")
-            governor.budget.release(request_id)
+            governor.budget.release(request_id)  # 异常撤销，归还预扣额度
             send_event({"type": "error", "message": f"云端大模型推理异常: {str(e)}"})
             return
 
         if actual_out == 0:
             actual_out = estimate_tokens(full_text)
 
-        # 5. 阶段 5：释放预扣与真实结算
+        # ----------------------------------------------------------------------
+        # 【阶段 5】：释放预扣、真实 Usage 结算入账与多退少补 (Stage 5)
+        # ----------------------------------------------------------------------
         actual_total = actual_in + actual_out
         governor.budget.settle(request_id, actual_total)
         cost_cny = estimate_cost(plan.model, actual_in, actual_out)
