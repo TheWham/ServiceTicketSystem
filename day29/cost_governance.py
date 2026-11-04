@@ -67,7 +67,7 @@ MODEL_CATALOG: Dict[ModelTier, ModelProfile] = {
 }
 
 TIER_ORDER: List[ModelTier] = [ModelTier.LITE, ModelTier.STANDARD, ModelTier.PREMIUM]
-SYSTEM_PROMPT_RESERVE = 600  # 系统提示词与检索上下文的 Token 预留
+SYSTEM_PROMPT_RESERVE = 200  # 系统提示词与检索上下文的 Token 预留 (真实约 100 Token，预留 200 充裕度)
 
 
 def estimate_tokens(text: str) -> int:

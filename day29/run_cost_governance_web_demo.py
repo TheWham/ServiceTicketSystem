@@ -931,7 +931,7 @@ HTML_PAGE = """<!DOCTYPE html>
                             </button>
                             <button class="preset-btn" onclick="applyPreset(4)">
                                 <span class="preset-tag tag-degrade">降档演练</span>
-                                <span>低额特批 (PREMIUM → STANDARD)</span>
+                                <span>低额降档 (STANDARD → LITE)</span>
                             </button>
                             <button class="preset-btn" onclick="applyPreset(5)">
                                 <span class="preset-tag tag-fuse">熔断演练</span>
@@ -1209,12 +1209,12 @@ HTML_PAGE = """<!DOCTYPE html>
                 desc: "PREMIUM 高危特批"
             },
             4: {
-                query: "工单号 IT-9822：申请对核心生产库 MySQL 生产环境 user_info 表执行 ALTER 字段特批提权，请给出安全审查意见。",
-                desc: "低额降档演练"
+                query: "请详细对比公司内网专线直连与异地 SSL-VPN 接入方案的链路延迟、安全合规级别与客户端配置差异，并给出选择依据。",
+                desc: "低额降档演练 (STANDARD → LITE)"
             },
             5: {
-                query: "工单号 IT-9823：申请对核心生产库 MySQL 生产环境 数据库特批提权与安全审计。",
-                desc: "熔断演练"
+                query: "工单号 IT-9823：申请对核心生产库 MySQL 生产环境 orders 表执行 DROP TABLE 高危特批提权与安全审计。",
+                desc: "熔断演练 (429 安全拦截)"
             }
         };
 
@@ -1445,6 +1445,7 @@ HTML_PAGE = """<!DOCTYPE html>
                 if (evt.degraded) {
                     document.getElementById('s3Status').innerHTML = '<span style="color: var(--status-warning);">⬇️ 触发降档</span>';
                     document.getElementById('s3Degraded').innerHTML = `<span style="color: var(--status-warning); font-weight: bold;">原 ${evt.routed_tier.toUpperCase()} 降至 ${evt.actual_tier.toUpperCase()}</span>`;
+                    bubbleObj.modelBadge.innerText = evt.model_name;
                     bubbleObj.headerRight.innerHTML += ` <span class="tag-pill tag-degrade" style="font-size: 10px;">降档: ${evt.routed_tier.toUpperCase()} → ${evt.actual_tier.toUpperCase()}</span>`;
                 } else {
                     document.getElementById('s3Status').innerHTML = '<span style="color: var(--status-success);">✅ 额度充足放行</span>';
@@ -1459,6 +1460,8 @@ HTML_PAGE = """<!DOCTYPE html>
                 document.getElementById('s3Status').innerHTML = '<span style="color: var(--status-danger);">⛔ 429 熔断拦截</span>';
                 document.getElementById('s3Degraded').innerText = '已触底 min_tier 严禁小模型承接';
                 bubbleObj.container.classList.add('msg-breaker');
+                bubbleObj.modelBadge.innerText = '熔断拦截 (429)';
+                bubbleObj.modelBadge.className = 'tag-pill tag-fuse';
                 bubbleObj.contentSpan.innerHTML = `<strong>⛔ HTTP 429 预算安全熔断拦截：</strong><br>${evt.message}<br><br><span style="color: var(--text-dim); font-size: 11px;">建议动作：请向 IT 平台管理员申请增加日额度，或直接转人工运维工单处理。</span>`;
             }
 
