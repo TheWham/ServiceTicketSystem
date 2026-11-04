@@ -171,7 +171,28 @@ HTML_PAGE = """<!DOCTYPE html>
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
         }
 
-        /* 预置场景快捷药丸 */
+        /* 思考过程折叠卡片 */
+        .msg-thinking {
+            background: rgba(8, 24, 40, 0.6);
+            border-left: 2px solid var(--accent-cyan);
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 11px;
+            color: var(--accent-cyan);
+            margin-bottom: 8px;
+            line-height: 1.4;
+            max-height: 140px;
+            overflow-y: auto;
+            opacity: 0.85;
+            white-space: pre-wrap;
+        }
+
+        /* 预置场景选中激活态 */
+        .preset-btn.active-preset {
+            border-color: var(--accent-cyan) !important;
+            background: rgba(103, 232, 249, 0.25) !important;
+            box-shadow: 0 0 10px rgba(103, 232, 249, 0.4);
+        }
         .preset-section {
             margin-bottom: 12px;
             border-bottom: 1px solid rgba(35, 60, 85, 0.6);
@@ -830,21 +851,25 @@ HTML_PAGE = """<!DOCTYPE html>
         function applyPreset(id) {
             const p = PRESETS[id];
             if (!p) return;
+            // 高亮选中的按钮
+            document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active-preset'));
+            const clickedBtn = document.querySelector(`.preset-btn:nth-child(${id})`);
+            if (clickedBtn) clickedBtn.classList.add('active-preset');
+
+            document.getElementById('chatInput').value = p.query;
+
             if (id === 4) {
                 simulateBudget(1500, () => {
-                    document.getElementById('chatInput').value = p.query;
                     sendChat();
                 });
                 return;
             }
             if (id === 5) {
                 simulateBudget(0, () => {
-                    document.getElementById('chatInput').value = p.query;
                     sendChat();
                 });
                 return;
             }
-            document.getElementById('chatInput').value = p.query;
             sendChat();
         }
 
@@ -967,7 +992,7 @@ HTML_PAGE = """<!DOCTYPE html>
                     const { done, value } = await reader.read();
                     if (done) break;
                     buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
+                    const lines = buffer.split(String.fromCharCode(10));
                     buffer = lines.pop(); // 保留不完整的一行
 
                     for (let i = 0; i < lines.length; i++) {
@@ -1043,17 +1068,41 @@ HTML_PAGE = """<!DOCTYPE html>
                 bubbleObj.bubble.innerHTML = `<strong>⛔ HTTP 429 预算安全熔断拦截：</strong><br>${evt.message}<br><br><span style="color: var(--text-dim); font-size: 11px;">建议动作：请向 IT 平台管理员申请增加日额度，或直接转人工运维工单处理。</span>`;
             }
 
+            // 思考过程流
+            else if (evt.type === 'thinking') {
+                highlightCard('cardStage4');
+                if (!bubbleObj.thinkingBox) {
+                    bubbleObj.bubble.innerHTML = '';
+                    bubbleObj.thinkingBox = document.createElement('div');
+                    bubbleObj.thinkingBox.className = 'msg-thinking';
+                    bubbleObj.thinkingBox.innerHTML = '<span style="font-weight: 600;">💭 深度思考推理中...</span><br>';
+                    bubbleObj.bubble.appendChild(bubbleObj.thinkingBox);
+                    bubbleObj.contentSpan = document.createElement('div');
+                    bubbleObj.bubble.appendChild(bubbleObj.contentSpan);
+                }
+                bubbleObj.thinkingBox.innerText += evt.delta;
+                scrollToBottom();
+            }
+
             // 阶段 4：Token 流式吐字
             else if (evt.type === 'token') {
                 highlightCard('cardStage4');
                 if (!bubbleObj.hasFirstToken) {
                     bubbleObj.hasFirstToken = true;
-                    bubbleObj.bubble.innerText = '';
+                    if (!bubbleObj.contentSpan) {
+                        bubbleObj.bubble.innerHTML = '';
+                        bubbleObj.contentSpan = document.createElement('div');
+                        bubbleObj.bubble.appendChild(bubbleObj.contentSpan);
+                    }
                     const ttft = Date.now() - startTime;
                     document.getElementById('s4TTFT').innerText = `${ttft} ms`;
-                    bubbleObj.ttftSpan.innerText = `TTFT: ${ttft}ms`;
+                    if (bubbleObj.ttftSpan) bubbleObj.ttftSpan.innerText = `TTFT: ${ttft}ms`;
                 }
-                bubbleObj.bubble.innerText += evt.delta;
+                if (bubbleObj.contentSpan) {
+                    bubbleObj.contentSpan.innerText += evt.delta;
+                } else {
+                    bubbleObj.bubble.innerText += evt.delta;
+                }
                 scrollToBottom();
 
                 const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -1288,21 +1337,33 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
 
         try:
             if openai_client:
-                stream = openai_client.chat.completions.create(
-                    model=plan.model.model_name,
-                    messages=[
+                call_kwargs = {
+                    "model": plan.model.model_name,
+                    "messages": [
                         {"role": "system", "content": system_instruction},
                         {"role": "user", "content": query},
                     ],
-                    max_tokens=plan.model.max_output_tokens,
-                    stream=True,
-                    stream_options={"include_usage": True},
-                )
+                    "max_tokens": plan.model.max_output_tokens,
+                    "stream": True,
+                    "stream_options": {"include_usage": True},
+                }
+                # LITE 常见 FAQ 关闭耗时思考链，实现 1~2 秒内极速直出
+                if plan.model.tier == ModelTier.LITE:
+                    call_kwargs["extra_body"] = {"enable_thinking": False}
+
+                stream = openai_client.chat.completions.create(**call_kwargs)
                 for chunk in stream:
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        text_delta = chunk.choices[0].delta.content
-                        full_text += text_delta
-                        send_event({"type": "token", "delta": text_delta})
+                    if chunk.choices and chunk.choices[0].delta:
+                        delta = chunk.choices[0].delta
+                        # 思考推理流（Qwen / DeepSeek 思考过程）
+                        reasoning = getattr(delta, "reasoning_content", None)
+                        if reasoning:
+                            send_event({"type": "thinking", "delta": reasoning})
+                        # 最终回复流
+                        content = getattr(delta, "content", None)
+                        if content:
+                            full_text += content
+                            send_event({"type": "token", "delta": content})
                     if chunk.usage:
                         actual_in = chunk.usage.prompt_tokens
                         actual_out = chunk.usage.completion_tokens
