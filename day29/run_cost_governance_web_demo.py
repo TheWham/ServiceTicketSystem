@@ -540,42 +540,15 @@ HTML_PAGE = """<!DOCTYPE html>
             word-break: break-word;
         }
 
-        /* 解决状态反馈工具条 (同截图) */
-        .solution-feedback {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-top: 12px;
-            padding-top: 10px;
-            border-top: 1px dashed var(--border-color);
-            font-size: 11px;
-            color: var(--text-secondary);
-        }
-        .feedback-buttons {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .btn-feedback {
-            border: none;
-            border-radius: 4px;
-            padding: 3px 10px;
-            font-size: 11px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.2s;
-        }
-        .btn-feedback.solved { background: #15803D; color: #FFFFFF; }
-        .btn-feedback.solved:hover { background: #166534; }
-        .btn-feedback.unsolved { background: #B45309; color: #FFFFFF; }
-        .btn-feedback.unsolved:hover { background: #92400E; }
-
         .msg-footer-stats {
             display: flex;
             align-items: center;
             gap: 12px;
             font-size: 10px;
             color: var(--text-dim);
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px solid #EDF4FA;
         }
 
         /* 熔断告警卡片 */
@@ -985,13 +958,6 @@ HTML_PAGE = """<!DOCTYPE html>
                                 <div class="assistant-content-text">你好！我是 IT Service Desk 智能服务助理。
 当前系统已装配**【Model Router 动态选模】**与**【Token 三级预算两阶段记账】**防御闸门。
 请在上方选择预置测试用例或输入您的运维咨询；右侧大盘将全链路透明化展示每次请求的特征提取、规则打分、预扣降档、模型流式输出与费用结算。</div>
-                                <div class="solution-feedback">
-                                    <span>这个回答解决你的问题了吗？</span>
-                                    <div class="feedback-buttons">
-                                        <button class="btn-feedback solved" onclick="alert('感谢您的正向反馈！已记入 IT 知识库满意度指标。')">已解决</button>
-                                        <button class="btn-feedback unsolved" onclick="alert('已将该会话标记为待完善，系统将自动生成工单流转给资深工程师复核。')">未解决</button>
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -1584,23 +1550,13 @@ HTML_PAGE = """<!DOCTYPE html>
             contentSpan.className = 'assistant-content-text';
             contentSpan.innerHTML = '<span style="color: var(--future-accent);">⚡ Model Router 正在识别意图并配置预算通道...</span>';
 
-            // 反馈栏
-            const feedbackBar = document.createElement('div');
-            feedbackBar.className = 'solution-feedback';
-            feedbackBar.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span>这个回答解决你的问题了吗？</span>
-                    <div class="feedback-buttons">
-                        <button class="btn-feedback solved" onclick="alert('感谢您的正向反馈！已记入 IT 知识库满意度指标。')">已解决</button>
-                        <button class="btn-feedback unsolved" onclick="alert('已将该会话标记为待完善，系统将自动生成工单流转给资深工程师复核。')">未解决</button>
-                    </div>
-                </div>
-                <div class="msg-footer-stats"></div>
-            `;
+            // 底部审计数据状态栏
+            const footerStats = document.createElement('div');
+            footerStats.className = 'msg-footer-stats';
 
             innerCard.appendChild(header);
             innerCard.appendChild(contentSpan);
-            innerCard.appendChild(feedbackBar);
+            innerCard.appendChild(footerStats);
             div.appendChild(innerCard);
             box.appendChild(div);
             scrollToBottom();
@@ -1611,8 +1567,7 @@ HTML_PAGE = """<!DOCTYPE html>
                 header: header,
                 headerRight: header.querySelector('.msg-header-right'),
                 contentSpan: contentSpan,
-                feedbackBar: feedbackBar,
-                footerStats: feedbackBar.querySelector('.msg-footer-stats'),
+                footerStats: footerStats,
                 modelBadge: header.querySelector('#modelTag'),
                 ttftSpan: header.querySelector('#ttftTag'),
                 hasFirstToken: false,
