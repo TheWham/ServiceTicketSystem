@@ -143,7 +143,7 @@ HTML_PAGE = """<!DOCTYPE html>
             font-size: 13px;
         }
 
-        /* 主视口布局：左侧暗色深空导航栏 + 右侧银白冰蓝主工作台 */
+        /* 主视口布局：全宽银白冰蓝主工作台 */
         .app-layout {
             display: flex;
             height: 100vh;
@@ -151,49 +151,22 @@ HTML_PAGE = """<!DOCTYPE html>
             overflow: hidden;
         }
 
-        /* ==============================================================================
-           左侧深空蓝黑导航栏 (按照截图与 future-desk.css)
-           ============================================================================== */
-        .desk-sidebar {
-            width: 224px;
-            min-width: 224px;
-            height: 100vh;
-            background: radial-gradient(ellipse at 0 10%, rgba(28, 141, 174, 0.14), transparent 55%), linear-gradient(180deg, #091828, #070F1D);
-            border-right: 1px solid rgba(78, 166, 208, 0.22);
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            padding: 16px 14px;
-            box-sizing: border-box;
-            z-index: 10;
-        }
-        .desk-sidebar::before {
-            content: '';
-            position: absolute;
-            inset: 0 auto auto 20%;
-            width: 60%;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, #67E8F9, transparent);
-        }
-
-        /* 顶部品牌 Logo */
-        .sidebar-brand {
+        /* 顶部品牌 Logo (直接融入顶栏左侧) */
+        .header-brand-box {
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 4px 2px 18px 2px;
-            border-bottom: 1px solid rgba(75, 144, 182, 0.16);
         }
         .brand-monogram {
-            width: 36px;
-            height: 36px;
+            width: 32px;
+            height: 32px;
             color: #A4F1FC;
             background: linear-gradient(135deg, #143E58, #112448);
             border: 1px solid #428DA9;
-            border-radius: 9px;
-            box-shadow: inset 0 0 16px rgba(72, 219, 246, 0.12), 0 0 16px rgba(39, 175, 216, 0.12);
+            border-radius: 8px;
+            box-shadow: inset 0 0 12px rgba(72, 219, 246, 0.12), 0 0 12px rgba(39, 175, 216, 0.12);
             font-family: ui-monospace, Consolas, monospace;
-            font-size: 17px;
+            font-size: 15px;
             font-weight: 700;
             display: flex;
             align-items: center;
@@ -202,127 +175,16 @@ HTML_PAGE = """<!DOCTYPE html>
         }
         .brand-text { display: flex; flex-direction: column; }
         .brand-title {
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 700;
-            color: #FFFFFF;
+            color: var(--text-primary);
             letter-spacing: 0.5px;
         }
         .brand-sub {
-            font-size: 9px;
+            font-size: 8px;
             font-family: ui-monospace, Consolas, monospace;
-            color: #96B6CF;
+            color: var(--future-accent);
             letter-spacing: 1px;
-            margin-top: 1px;
-        }
-
-        /* 导航分组标签 */
-        .nav-section-title {
-            color: #89A5BE;
-            font-family: ui-monospace, 'Microsoft YaHei', monospace;
-            font-size: 11px;
-            margin: 18px 4px 8px 4px;
-            letter-spacing: 0.5px;
-        }
-
-        /* 导航菜单列表 */
-        .sidebar-nav {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-        .desk-nav-link {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 9px 12px;
-            border-radius: 8px;
-            border: 1px solid transparent;
-            color: #8FAEC5;
-            text-decoration: none;
-            font-size: 13px;
-            position: relative;
-            transition: all 0.2s;
-            cursor: pointer;
-        }
-        .desk-nav-link:hover {
-            background: rgba(42, 131, 164, 0.14);
-            border-color: rgba(82, 164, 206, 0.25);
-            color: #E7FAFF;
-        }
-        .desk-nav-link.active {
-            background: linear-gradient(100deg, rgba(27, 156, 189, 0.28), rgba(50, 111, 212, 0.15));
-            color: #B9F4FF;
-            border-color: rgba(76, 190, 224, 0.45);
-            box-shadow: inset 0 0 16px rgba(26, 171, 203, 0.08), 0 4px 16px rgba(0, 0, 0, 0.15);
-            font-weight: 600;
-        }
-        .desk-nav-link.active::before {
-            content: '';
-            position: absolute;
-            left: -1px;
-            top: 10px;
-            bottom: 10px;
-            width: 3px;
-            border-radius: 3px;
-            background: #67E8F9;
-            box-shadow: 0 0 10px rgba(63, 226, 245, 0.6);
-        }
-        .nav-active-dot {
-            margin-left: auto;
-            width: 5px;
-            height: 5px;
-            border-radius: 50%;
-            background: #67E8F9;
-            box-shadow: 0 0 8px rgba(63, 226, 245, 0.65);
-        }
-
-        /* 侧边栏底部宣传卡片 (同截图) */
-        .sidebar-bottom-spacer { flex: 1; }
-        .sidebar-note {
-            background: linear-gradient(140deg, rgba(20, 72, 97, 0.32), rgba(11, 26, 48, 0.7));
-            border: 1px solid #254057;
-            border-radius: 10px;
-            padding: 12px 14px;
-            position: relative;
-            margin-bottom: 12px;
-        }
-        .sidebar-note::after {
-            content: '';
-            width: 18px;
-            height: 18px;
-            position: absolute;
-            right: 8px;
-            bottom: 8px;
-            border-right: 1px solid #47849D;
-            border-bottom: 1px solid #47849D;
-            opacity: 0.6;
-        }
-        .motto-icon {
-            color: #67E8F9;
-            margin-bottom: 6px;
-        }
-        .motto-title {
-            color: #FFFFFF;
-            font-size: 12px;
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
-        .motto-desc {
-            color: #7E9EAF;
-            font-size: 10px;
-            line-height: 1.4;
-        }
-
-        /* 侧边栏底脚 */
-        .sidebar-bottom {
-            padding-top: 10px;
-            border-top: 1px solid rgba(75, 144, 182, 0.18);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            color: #64829A;
-            font-size: 10px;
-            font-family: ui-monospace, Consolas, monospace;
         }
 
         /* ==============================================================================
@@ -1021,59 +883,22 @@ HTML_PAGE = """<!DOCTYPE html>
 <body>
 
     <div class="app-layout">
-        <!-- ================= 左侧：项目深空蓝黑导航栏 ================= -->
-        <aside class="desk-sidebar">
-            <div class="sidebar-brand">
-                <div class="brand-monogram">IT</div>
-                <div class="brand-text">
-                    <div class="brand-title">智能服务台</div>
-                    <div class="brand-sub">SERVICE DESK</div>
-                </div>
-            </div>
-
-            <div class="nav-section-title">员工工作空间</div>
-
-            <nav class="sidebar-nav">
-                <a class="desk-nav-link active" href="javascript:void(0)">
-                    <span>💬</span>
-                    <span>智能客服</span>
-                    <span class="nav-active-dot"></span>
-                </a>
-                <a class="desk-nav-link" href="javascript:void(0)">
-                    <span>⊕</span>
-                    <span>提交工单</span>
-                </a>
-                <a class="desk-nav-link" href="javascript:void(0)">
-                    <span>📄</span>
-                    <span>我的工单</span>
-                </a>
-            </nav>
-
-            <div class="sidebar-bottom-spacer"></div>
-
-            <!-- 侧边栏宣传底卡 (同项目截图) -->
-            <div class="sidebar-note">
-                <div class="motto-icon">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#67E8F9" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-                </div>
-                <div class="motto-title">让每一次求助有回应</div>
-                <div class="motto-desc">连接问题与答案<br>让工作顺畅一点</div>
-            </div>
-
-            <div class="sidebar-bottom">
-                <span>IT SERVICE DESK</span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64829A" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-            </div>
-        </aside>
-
-        <!-- ================= 右侧：银白冰蓝主工作台 ================= -->
+        <!-- ================= 银白冰蓝主工作台 ================= -->
         <main class="desk-main-content">
             <!-- 顶栏 Header -->
             <header class="desk-top-header">
-                <div class="breadcrumb-box">
-                    <span class="breadcrumb-item">员工服务</span>
-                    <span class="breadcrumb-sep">/</span>
-                    <span class="breadcrumb-current">智能客服 (Day29 成本治理与选模流水线)</span>
+                <div class="header-brand-box">
+                    <div class="brand-monogram">IT</div>
+                    <div class="brand-text">
+                        <div class="brand-title">智能服务台</div>
+                        <div class="brand-sub">SERVICE DESK</div>
+                    </div>
+                    <div class="breadcrumb-sep" style="margin: 0 12px; color: #D3E2ED;">|</div>
+                    <div class="breadcrumb-box">
+                        <span class="breadcrumb-item">员工服务</span>
+                        <span class="breadcrumb-sep">/</span>
+                        <span class="breadcrumb-current">智能客服 (Day29 成本治理与选模流水线)</span>
+                    </div>
                 </div>
                 <div class="header-right-tools">
                     <div class="model-status-pill">
