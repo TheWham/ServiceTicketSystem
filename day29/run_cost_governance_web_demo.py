@@ -38,13 +38,15 @@ except Exception:
 
 from openai import OpenAI
 
-# 引入本地成本治理核心引擎
+# 引入本地成本治理核心引擎与 RAG 检索客户端
 from cost_governance import (
     BudgetExceeded,
     CostGovernor,
     ModelRouter,
     ModelTier,
     MODEL_CATALOG,
+    RagRetrievalClient,
+    SYSTEM_PROMPT_RESERVE,
     TokenBudgetManager,
     estimate_cost,
     estimate_tokens,
@@ -70,6 +72,7 @@ budget_manager = TokenBudgetManager(
 )
 router = ModelRouter(client=openai_client)
 governor = CostGovernor(router, budget_manager)
+rag_client = RagRetrievalClient()
 
 
 # ==============================================================================
@@ -556,6 +559,94 @@ HTML_PAGE = """<!DOCTYPE html>
             background: #FFF1F0 !important;
             border: 1px solid #FFA39E !important;
             color: var(--status-danger) !important;
+        }
+
+        /* 知识库溯源卡片组件 */
+        .citations-card {
+            margin-top: 12px;
+            border-top: 1px dashed var(--border-color);
+            padding-top: 10px;
+        }
+        .citations-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--future-accent);
+            cursor: pointer;
+            padding: 4px 10px;
+            background: #F1F7FC;
+            border-radius: 6px;
+            border: 1px solid #C5D8E7;
+            user-select: none;
+            transition: background 0.15s ease;
+        }
+        .citations-header:hover {
+            background: #E5F0FA;
+        }
+        .cite-arrow {
+            font-size: 10px;
+            transition: transform 0.2s ease;
+        }
+        .cite-arrow.rotate {
+            transform: rotate(-90deg);
+        }
+        .citations-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .citations-list.hidden {
+            display: none;
+        }
+        .citation-item {
+            background: #FAFCFF;
+            border: 1px solid #E2EBF2;
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 11px;
+        }
+        .citation-head {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 4px;
+            flex-wrap: wrap;
+        }
+        .citation-idx {
+            font-size: 10px;
+            background: #E0EDF8;
+            color: var(--future-accent);
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        .citation-title {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+        .citation-score {
+            font-size: 10px;
+            color: #059669;
+            background: #ECFDF5;
+            padding: 1px 5px;
+            border-radius: 4px;
+            border: 1px solid #A7F3D0;
+        }
+        .citation-ver {
+            font-size: 9px;
+            color: var(--text-dim);
+            font-family: monospace;
+            margin-left: auto;
+        }
+        .citation-snippet {
+            color: var(--text-secondary);
+            font-size: 11px;
+            line-height: 1.45;
+            white-space: pre-wrap;
+            word-break: break-all;
         }
 
         /* 输入区（白卡高保真） */
@@ -1103,6 +1194,34 @@ HTML_PAGE = """<!DOCTYPE html>
                         </div>
                     </div>
 
+                    <!-- 卡片 RAG：企业知识库 RAG 检索与条目溯源流水 -->
+                    <div class="audit-card" id="cardStageRag">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <span>🔍 知识检索 · RAG 多路召回与溯源</span>
+                            </div>
+                            <span class="stage-badge" id="sRagBadge">Vector & BM25</span>
+                        </div>
+                        <div class="stage-table">
+                            <div class="stage-row">
+                                <span class="stage-label">检索耗时 / 命中数:</span>
+                                <span class="stage-val font-mono" id="sRagLatency">待检索</span>
+                            </div>
+                            <div class="stage-row">
+                                <span class="stage-label">首位命中条目:</span>
+                                <span class="stage-val" id="sRagTopTitle" style="max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500;">-</span>
+                            </div>
+                            <div class="stage-row">
+                                <span class="stage-label">最高相关度 (Top Score):</span>
+                                <span class="stage-val" id="sRagScore">-</span>
+                            </div>
+                            <div class="stage-row">
+                                <span class="stage-label">生效版本 / 可信度:</span>
+                                <span class="stage-val font-mono" id="sRagVersion">-</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- 卡片 3：阶段 3 预算审查与两阶段预扣 -->
                     <div class="audit-card" id="cardStage3">
                         <div class="card-header">
@@ -1258,7 +1377,7 @@ HTML_PAGE = """<!DOCTYPE html>
             updateCharCount(input);
 
             if (id === 4) {
-                simulateBudget(1500, () => {
+                simulateBudget(2500, () => {
                     sendChat();
                 });
                 return;
@@ -1438,6 +1557,22 @@ HTML_PAGE = """<!DOCTYPE html>
                 bubbleObj.modelBadge.innerText = evt.model_name;
             }
 
+            // 阶段 RAG：检索流水
+            else if (evt.type === 'stage_rag') {
+                highlightCard('cardStageRag');
+                document.getElementById('sRagLatency').innerText = `${evt.latency_ms} ms / 命中 ${evt.count} 篇`;
+                if (evt.citations && evt.citations.length > 0) {
+                    const topDoc = evt.citations[0];
+                    document.getElementById('sRagTopTitle').innerText = topDoc.title;
+                    document.getElementById('sRagScore').innerHTML = `<span class="tag-pill badge-standard">${(evt.top_score * 100).toFixed(1)}%</span>`;
+                    document.getElementById('sRagVersion').innerText = `${topDoc.version_id.substring(0, 16)}... (可信: ${evt.reliable ? '是' : '否'})`;
+                } else {
+                    document.getElementById('sRagTopTitle').innerText = '未命中企业知识库';
+                    document.getElementById('sRagScore').innerText = '0.0%';
+                    document.getElementById('sRagVersion').innerText = '无收录 (通用经验)';
+                }
+            }
+
             // 阶段 3：预扣与降档
             else if (evt.type === 'stage3') {
                 highlightCard('cardStage3');
@@ -1512,6 +1647,40 @@ HTML_PAGE = """<!DOCTYPE html>
                 if (evt.budget_snapshot) {
                     const { userId, deptId } = getUserDept();
                     updateBudgetUI(evt.budget_snapshot, userId, deptId);
+                }
+            }
+
+            // 知识库溯源卡片呈现
+            else if (evt.type === 'citations') {
+                if (evt.citations && evt.citations.length > 0) {
+                    const citeBox = document.createElement('div');
+                    citeBox.className = 'citations-card';
+                    let itemsHtml = '';
+                    evt.citations.forEach((c, idx) => {
+                        const snippetShort = c.snippet ? c.snippet.replace(/#/g, '').trim().substring(0, 160) : '';
+                        itemsHtml += `
+                            <div class="citation-item">
+                                <div class="citation-head">
+                                    <span class="citation-idx">#${idx + 1}</span>
+                                    <span class="citation-title font-medium">${escapeHtml(c.title)}</span>
+                                    <span class="citation-score">匹配度: ${(c.score * 100).toFixed(1)}%</span>
+                                    <span class="citation-ver">${escapeHtml(c.version_id)}</span>
+                                </div>
+                                <div class="citation-snippet">${escapeHtml(snippetShort)}...</div>
+                            </div>
+                        `;
+                    });
+                    citeBox.innerHTML = `
+                        <div class="citations-header" onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.cite-arrow').classList.toggle('rotate');">
+                            <span class="citations-title">📚 企业知识库溯源依据 (${evt.citations.length} 篇参考资料)</span>
+                            <span class="cite-arrow">▾</span>
+                        </div>
+                        <div class="citations-list">
+                            ${itemsHtml}
+                        </div>
+                    `;
+                    bubbleObj.innerCard.insertBefore(citeBox, bubbleObj.footerStats);
+                    scrollToBottom();
                 }
             }
         }
@@ -1591,6 +1760,14 @@ HTML_PAGE = """<!DOCTYPE html>
 
         function resetStageCards() {
             document.querySelectorAll('.audit-card').forEach(c => c.classList.remove('active-stage'));
+            const sRagLat = document.getElementById('sRagLatency');
+            if (sRagLat) sRagLat.innerText = '待检索';
+            const sRagTop = document.getElementById('sRagTopTitle');
+            if (sRagTop) sRagTop.innerText = '-';
+            const sRagSc = document.getElementById('sRagScore');
+            if (sRagSc) sRagSc.innerText = '-';
+            const sRagVer = document.getElementById('sRagVersion');
+            if (sRagVer) sRagVer.innerText = '-';
         }
 
         function escapeHtml(string) {
@@ -1741,10 +1918,56 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
         time.sleep(0.08)
 
         # ----------------------------------------------------------------------
+        # 【阶段 2.5】：企业知识库 RAG 多路检索与条目溯源 (Stage RAG)
+        # ----------------------------------------------------------------------
+        rag_res = rag_client.retrieve(query, top_k=3)
+        if rag_res.error:
+            # 严格遵循 AGENTS.md：不为外部依赖故障添加静默回退，保留真实原因并向用户展示
+            send_event({
+                "type": "error",
+                "message": f"知识库检索服务异常 (503): {rag_res.error}，请检查 rag_service (8310) 服务状态。"
+            })
+            return
+
+        citations = []
+        rag_context_parts = []
+        for doc in rag_res.items:
+            citations.append({
+                "chunk_id": doc.chunk_id,
+                "title": doc.title,
+                "score": doc.score,
+                "version_id": doc.version_id,
+                "snippet": doc.snippet,
+            })
+            rag_context_parts.append(
+                f"【条目: {doc.title} (编号: {doc.chunk_id}, 相似度: {doc.score:.3f}, 版本: {doc.version_id})】\n{doc.snippet}"
+            )
+        rag_context_text = "\n\n".join(rag_context_parts)
+        rag_tokens = estimate_tokens(rag_context_text) if rag_context_text else 0
+
+        # 推送 RAG 检索流水事件
+        send_event({
+            "type": "stage_rag",
+            "latency_ms": rag_res.latency_ms,
+            "reliable": rag_res.reliable,
+            "top_score": rag_res.top_score,
+            "count": len(rag_res.items),
+            "citations": citations,
+        })
+        time.sleep(0.08)
+
+        # ----------------------------------------------------------------------
         # 【阶段 3】：两阶段 Token 预算审查与级联降档 (Stage 3)
         # ----------------------------------------------------------------------
         try:
-            plan = governor.plan(request_id, query, user_id, dept_id, history_turns)
+            plan = governor.plan(
+                request_id,
+                query,
+                user_id,
+                dept_id,
+                history_turns,
+                extra_prompt_tokens=rag_tokens,
+            )
             send_event({
                 "type": "stage3",
                 "estimated": plan.estimated_tokens,
@@ -1766,15 +1989,27 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
         # ----------------------------------------------------------------------
         # 【阶段 4】：云端大模型真实流式推理与思考链分发 (Stage 4)
         # ----------------------------------------------------------------------
-        actual_in = estimate_tokens(query) + SYSTEM_PROMPT_RESERVE
+        system_instruction = (
+            "你是一个企业级专业 IT Service Desk 智能服务工程师。\n"
+            "你的核心职责是结合检索到的【企业 IT 知识库参考资料】对用户的提问进行权威、结构化的总结归纳与解答。\n\n"
+            "【输出格式与归纳规范】：\n"
+            "1. 严格优先依据知识库参考资料事实作答，分步骤给出清晰排查/解决指引（分节明确区分【员工自助排查步骤】与【IT 进阶运维支持】）；\n"
+            "2. 若问题涉及核心生产库 ALTER/DROP 高危表结构变更或特批提权，必须严格提示审批制度、回避原则、双人复核与应急回滚方案；\n"
+            "3. 仅当知识库参考资料确实为空或完全未提及相关问题时，才在正文开头注明：\n"
+            "   「⚠️ 当前企业知识库未收录直接对应条目，以下解答基于 IT 运维通用经验归纳」；若参考资料中已命中相关指引，严禁输出该未收录声明。"
+        )
+
+        user_content = query
+        if rag_context_text:
+            user_content = (
+                f"【用户提问】：{query}\n\n"
+                f"【企业 IT 知识库参考资料】：\n{rag_context_text}\n\n"
+                f"请严格结合上述参考资料进行深度归纳总结，输出清晰、专业、分步的解答。"
+            )
+
+        actual_in = estimate_tokens(user_content) + SYSTEM_PROMPT_RESERVE
         actual_out = 0
         full_text = ""
-
-        system_instruction = (
-            "你是一个企业级专业 IT Service Desk 智能服务工程师。"
-            "面对普通 FAQ 给出准确精炼的步骤；面对多跳架构给出专业对比；"
-            "面对高危提权或 DROP/ALTER 特批申请，必须严格提示审批制度、回避原则与应急回滚方案。"
-        )
 
         try:
             if openai_client:
@@ -1782,7 +2017,7 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
                     "model": plan.model.model_name,
                     "messages": [
                         {"role": "system", "content": system_instruction},
-                        {"role": "user", "content": query},
+                        {"role": "user", "content": user_content},
                     ],
                     "max_tokens": plan.model.max_output_tokens,
                     "stream": True,
@@ -1821,6 +2056,13 @@ class CostGovernanceHTTPHandler(http.server.BaseHTTPRequestHandler):
 
         if actual_out == 0:
             actual_out = estimate_tokens(full_text)
+
+        # 推送知识库溯源引用卡片
+        if citations:
+            send_event({
+                "type": "citations",
+                "citations": citations,
+            })
 
         # ----------------------------------------------------------------------
         # 【阶段 5】：释放预扣、真实 Usage 结算入账与多退少补 (Stage 5)

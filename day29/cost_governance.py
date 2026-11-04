@@ -15,6 +15,7 @@ Day 29 工业级成本治理与 Model Router 动态选模核心控制引擎。
 
 import json
 import math
+import os
 import sys
 import threading
 import time
@@ -27,6 +28,8 @@ if hasattr(sys.stderr, "reconfigure"):
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
+
+import requests
 
 
 # ==============================================================================
@@ -496,6 +499,135 @@ class TokenBudgetManager:
 #    一旦降到 min_tier 仍不足，立即决断抛出具有业务辨识度的「HTTP 429 安全熔断拦截」，提示转人工。
 # ==============================================================================
 
+# ==============================================================================
+# 核心模块三点五：企业知识库 RAG 检索内核客户端 (RagRetrievalClient)
+#
+# 【架构定位与工业规范】：
+# 对接底层向量检索与图谱检索微服务 (services/python-retrieval 8310 端口)，
+# 执行标准化的 Top-K 知识切片检索与 Rerank 重排，为上层模型推理提供真实可信的事实依据。
+# 严格遵守项目协作与结构约束 (AGENTS.md)：
+# 1. 不为外部依赖故障添加静默回退，明确保留并向上反馈异常原因；
+# 2. 检索结果包含确定性 chunkId、articleId、versionId 与余弦相似度分值，为下游生成与复核提供不可篡改的依据。
+# ==============================================================================
+
+@dataclass
+class RetrievedDoc:
+    """标准化的知识库检索切片单元
+    
+    Attributes:
+        chunk_id: 知识切片全局唯一 ID (如 "ITKB-NET-001#c0")
+        article_id: 所属规约/文章 ID (如 "art-1792085759135-484")
+        version_id: 生效规约版本号 (如 "ver-1792085759135-901")
+        title: 知识条目标题
+        snippet: 核心摘要/正文片段
+        content: 完整正文内容
+        score: 余弦相似度分数 (0.0 ~ 1.0)
+        category_id: 所属分类目录
+    """
+    chunk_id: str
+    article_id: str
+    version_id: str
+    title: str
+    snippet: str
+    content: str
+    score: float
+    category_id: Optional[str] = None
+
+
+@dataclass
+class RagRetrievalResult:
+    """RAG 检索调用综合结果包
+    
+    Attributes:
+        reliable: 批次整体可信度标识 (True 表示最高分达到可靠阈值)
+        top_score: 最高相似度得分
+        items: 检索命中的切片列表
+        latency_ms: 检索内核往返耗时 (毫秒)
+        error: 外部依赖故障信息 (若成功则为 None)
+    """
+    reliable: bool
+    top_score: float
+    items: List[RetrievedDoc]
+    latency_ms: float = 0.0
+    error: Optional[str] = None
+
+
+class RagRetrievalClient:
+    """企业知识库 RAG 检索微服务客户端"""
+
+    def __init__(self, base_url: Optional[str] = None, timeout: Optional[float] = None):
+        """初始化 RAG 客户端
+        
+        Args:
+            base_url: 检索内核服务地址，默认读取 AI_RAG_BASE_URL 或 fallback 127.0.0.1:8310
+            timeout: 单次 HTTP 检索调用超时时间 (秒)，默认读取 AI_RAG_REQUEST_TIMEOUT_MS (默认 10000ms / 10.0s)
+        """
+        self.base_url = (base_url or os.getenv("AI_RAG_BASE_URL", "http://127.0.0.1:8310")).rstrip("/")
+        if timeout is not None:
+            self.timeout = timeout
+        else:
+            self.timeout = float(os.getenv("AI_RAG_REQUEST_TIMEOUT_MS", "10000")) / 1000.0
+
+    def retrieve(self, question: str, top_k: int = 3) -> RagRetrievalResult:
+        """向检索微服务发起语义+关键词多路召回与重排请求
+        
+        Args:
+            question: 用户提问文本
+            top_k: 最多召回候选切片数 (默认 3 条)
+            
+        Returns:
+            RagRetrievalResult: 结构化检索结果
+        """
+        endpoint = f"{self.base_url}/api/v1/rag/retrievals"
+        start_t = time.perf_counter()
+        try:
+            resp = requests.post(
+                endpoint,
+                json={"question": question, "topK": top_k},
+                timeout=self.timeout,
+            )
+            elapsed_ms = round((time.perf_counter() - start_t) * 1000, 2)
+            if resp.status_code != 200:
+                raise RuntimeError(f"RAG 检索微服务响应 HTTP {resp.status_code}: {resp.text[:150]}")
+            
+            data_env = resp.json()
+            if data_env.get("code") != 0:
+                raise RuntimeError(f"RAG 检索微服务业务异常: {data_env.get('msg')}")
+            
+            body = data_env.get("data", {})
+            items_raw = body.get("items", [])
+            docs: List[RetrievedDoc] = []
+            for item in items_raw:
+                docs.append(
+                    RetrievedDoc(
+                        chunk_id=item.get("chunkId", ""),
+                        article_id=item.get("articleId", ""),
+                        version_id=item.get("versionId", ""),
+                        title=item.get("title", ""),
+                        snippet=item.get("snippet", ""),
+                        content=item.get("content", item.get("snippet", "")),
+                        score=float(item.get("score") or 0.0),
+                        category_id=item.get("categoryId"),
+                    )
+                )
+            return RagRetrievalResult(
+                reliable=bool(body.get("reliable", False)),
+                top_score=float(body.get("topScore") or (docs[0].score if docs else 0.0)),
+                items=docs,
+                latency_ms=elapsed_ms,
+            )
+        except Exception as e:
+            elapsed_ms = round((time.perf_counter() - start_t) * 1000, 2)
+            # 严格保留真实原因，不进行静默掩盖
+            return RagRetrievalResult(
+                reliable=False,
+                top_score=0.0,
+                items=[],
+                latency_ms=elapsed_ms,
+                error=str(e),
+            )
+
+
 @dataclass
 class CostPlan:
     """最终生成的模型执行与预算核准计划
@@ -540,12 +672,14 @@ class CostGovernor:
         user_id: str,
         dept_id: str,
         history_turns: int = 0,
+        extra_prompt_tokens: int = 0,
     ) -> CostPlan:
         """执行总控规划决策：路由 -> 估算 -> 尝试预扣 -> 级联降级 -> 安全熔断
         
         【算法核心流程】：
         1. 调用 ModelRouter 获取初步期望档位 `decision.tier` 与安全底线 `decision.min_tier`；
-        2. 计算输入基础消耗：`input_tokens = estimate_tokens(query) + SYSTEM_PROMPT_RESERVE`；
+        2. 计算输入基础消耗：`input_tokens = estimate_tokens(query) + extra_prompt_tokens + SYSTEM_PROMPT_RESERVE`；
+           其中 extra_prompt_tokens 为外部 RAG 检索知识切片的实际 Token 消耗，确保悲观预扣涵盖知识库上下文；
         3. 在 `[hi, lo]` 档位区间（从首选档位逐级递减到安全下限）展开自适应预扣循环：
            - 针对当前档位模型，计算总预扣需求：`estimated = input_tokens + model.max_output_tokens`；
            - 尝试调用 `budget.reserve(...)`；
@@ -556,7 +690,7 @@ class CostGovernor:
            - 普通请求：抛出常规额度不足异常。
         """
         decision = self.router.route(query, history_turns)
-        input_tokens = estimate_tokens(query) + SYSTEM_PROMPT_RESERVE
+        input_tokens = estimate_tokens(query) + extra_prompt_tokens + SYSTEM_PROMPT_RESERVE
 
         hi = TIER_ORDER.index(decision.tier)
         lo = TIER_ORDER.index(decision.min_tier)
