@@ -89,7 +89,7 @@ class ComposedRagCacheTest {
                 (query, ctx) -> RequestVerdict.of(domain, tool),
                 (query, ctx) -> { retrievals.incrementAndGet(); return retrieval; },
                 policy(),
-                (query, material, ctx) -> { generations.incrementAndGet(); return generation; },
+                (query, material, ctx, sink) -> { generations.incrementAndGet(); return generation; },
                 false,
                 cache);
     }
@@ -174,7 +174,7 @@ class ComposedRagCacheTest {
                 (query, ctx) -> RequestVerdict.of(OfficeDomain.OFFICE_IT, "query_my_tickets"),
                 (query, ctx) -> { retrievals.incrementAndGet(); return nothingFound(); },
                 policy(),
-                (query, material, ctx) -> { generations.incrementAndGet(); return toolAnswer; },
+                (query, material, ctx, sink) -> { generations.incrementAndGet(); return toolAnswer; },
                 true,
                 cache);
 
@@ -230,7 +230,7 @@ class ComposedRagCacheTest {
                 (query, ctx) -> RequestVerdict.of(OfficeDomain.OFFICE_IT, RequestVerdict.NO_TOOL),
                 (query, ctx) -> { throw DependencyFailure.invalid(); },
                 policy(),
-                (query, material, ctx) -> knowledgeAnswer(),
+                (query, material, ctx, sink) -> knowledgeAnswer(),
                 false,
                 cache)
                 .answer(ask(QUESTION), context());

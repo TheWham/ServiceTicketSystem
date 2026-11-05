@@ -71,18 +71,26 @@ class RagCompositionHttpTest {
         server.createContext("/chat/completions", exchange -> {
             JsonNode request = json.readTree(exchange.getRequestBody());
             JsonNode input = json.readTree(request.path("messages").get(1).path("content").textValue());
-            JsonNode content;
+            byte[] response;
             int responseStatus;
             if (input.has("material")) {
-                generationInputs.add(input); pause(modelDelay); content = modelReply;
+                // 生成调用已切换 completeStream:SSE 帧 delta.content 返回整段 modelReply。
+                generationInputs.add(input); pause(modelDelay);
+                ObjectNode frame = json.createObjectNode();
+                ObjectNode choice = frame.putArray("choices").addObject();
+                choice.putObject("delta").put("content", modelReply.toString());
+                choice.put("finish_reason", "stop");
+                exchange.getResponseHeaders().add("Content-Type", "text/event-stream; charset=utf-8");
+                response = ("data: " + frame + "\n\n" + "data: [DONE]\n\n").getBytes(StandardCharsets.UTF_8);
                 responseStatus = generationStatus;
             } else {
+                // 分类调用仍走非流式 complete(),保持单 JSON 形状。
                 classificationInputs.add(input);
-                content = json.createObjectNode().put("decision", classification);
+                JsonNode content = json.createObjectNode().put("decision", classification);
+                response = json.writeValueAsBytes(Map.of("choices", List.of(Map.of("finish_reason", "stop",
+                        "message", Map.of("content", content.toString(), "reasoning_content", "never expose")))));
                 responseStatus = classificationInputs.size() == 1 ? 200 : subsequentClassificationStatus;
             }
-            byte[] response = json.writeValueAsBytes(Map.of("choices", List.of(Map.of("finish_reason", "stop",
-                    "message", Map.of("content", content.toString(), "reasoning_content", "never expose")))));
             exchange.sendResponseHeaders(responseStatus, response.length);
             exchange.getResponseBody().write(response); exchange.close();
         });

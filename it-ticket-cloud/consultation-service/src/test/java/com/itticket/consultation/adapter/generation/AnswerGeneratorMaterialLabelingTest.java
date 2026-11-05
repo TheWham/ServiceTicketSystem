@@ -2,6 +2,7 @@ package com.itticket.consultation.adapter.generation;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.itticket.consultation.adapter.RagCallContext;
 import com.itticket.consultation.adapter.RagCaller;
 import com.itticket.consultation.adapter.RagExecutionAudit;
@@ -50,8 +51,14 @@ class AnswerGeneratorMaterialLabelingTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/chat/completions", exchange -> {
             requestBodies.add(json.readTree(exchange.getRequestBody().readAllBytes()));
-            byte[] response = json.writeValueAsBytes(Map.of("choices", List.of(Map.of(
-                    "finish_reason", "stop", "message", Map.of("content", REPLY)))));
+            // 生成已切流式收口:以 SSE 帧返回整段六键回答(content 一次到齐,finish=stop)。
+            ObjectNode frame = json.createObjectNode();
+            ObjectNode choice = frame.putArray("choices").addObject();
+            choice.putObject("delta").put("content", REPLY);
+            choice.put("finish_reason", "stop");
+            byte[] response = ("data: " + frame + "\n\n" + "data: [DONE]" + "\n\n")
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "text/event-stream; charset=utf-8");
             exchange.sendResponseHeaders(200, response.length);
             exchange.getResponseBody().write(response);
             exchange.close();
@@ -158,7 +165,8 @@ class AnswerGeneratorMaterialLabelingTest {
         RagQuery query = new RagQuery("S-1", "打印机连不上怎么办", null, null, 5,
                 new RagCaller("U_EMP01", "EMPLOYEE"));
         lastResult = generator.generate(query, material, new RagCallContext(
-                "material-labeling", System.nanoTime() + 5_000_000_000L, new RagExecutionAudit()));
+                "material-labeling", System.nanoTime() + 5_000_000_000L, new RagExecutionAudit()),
+                com.itticket.consultation.adapter.TokenSink.discarding());
         assertThat(requestBodies).hasSize(1);
         JsonNode messages = requestBodies.get(0).path("messages");
         assertThat(messages).hasSize(2);

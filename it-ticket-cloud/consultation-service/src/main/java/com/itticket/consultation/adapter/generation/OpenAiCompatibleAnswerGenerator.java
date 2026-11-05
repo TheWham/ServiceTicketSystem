@@ -37,7 +37,7 @@ public final class OpenAiCompatibleAnswerGenerator implements AnswerGenerator {
         this.model = model; this.ai = properties.getAi(); this.agent = agent;
     }
 
-    @Override public GenerationResult generate(RagQuery query, List<RetrievedKnowledge> material, RagCallContext context) {
+    @Override public GenerationResult generate(RagQuery query, List<RetrievedKnowledge> material, RagCallContext context, TokenSink sink) {
         // Structured untrusted input. Exactly the bounded evidence used to rebuild citations.
         var input = json.createObjectNode().put("question", query.question());
         input.set("priorTurns", json.valueToTree(query.priorTurns()));
@@ -55,12 +55,14 @@ public final class OpenAiCompatibleAnswerGenerator implements AnswerGenerator {
         TicketDraftDto draft = null;
         JsonNode payload;
         if (agent != null && agent.enabled()) {
-            // 生成侧在 Python:ReAct + 白名单工具;data 含 6 键 + 带外 ticketDraft
+            // 生成侧在 Python:ReAct + 白名单工具;data 含 6 键 + 带外 ticketDraft。
+            // 流式不可用:整段 answerText 在校验后单次外发(打字机退化为单帧),不重复、不拆分。
             PythonAgentClient.AgentResult result = agent.chat(query, material, context);
             payload = sixKeys(result.payload());
             draft = result.draft();
         } else {
-            payload = model.complete(systemPrompt(), input.toString(), ai.getMaxOutputTokens(), context);
+            // 本地路径走流式收口:answerText 增量经 sink 即时外发(预算内,见 completeStream)。
+            payload = model.completeStream(systemPrompt(), input.toString(), ai.getMaxOutputTokens(), context, sink);
         }
 
         if (payload.size() != 6 || !payload.path("replyType").isTextual()
@@ -81,6 +83,10 @@ public final class OpenAiCompatibleAnswerGenerator implements AnswerGenerator {
         for (JsonNode id : payload.path("usedVersionIds")) {
             if (!id.isTextual() || id.textValue().isBlank()) throw DependencyFailure.invalid();
             used.add(id.textValue());
+        }
+        if (agent != null && agent.enabled() && !sink.emitted()) {
+            // agent 路径整段一次性外发;仅一次不重复,拒答空文本由 TokenSink 忽略。
+            sink.accept(text);
         }
         AiRefusalReason reason = payload.path("offTopic").booleanValue() ? AiRefusalReason.OFF_TOPIC
                 : payload.path("knowledgeConflict").booleanValue() ? AiRefusalReason.CONFLICTING_KNOWLEDGE

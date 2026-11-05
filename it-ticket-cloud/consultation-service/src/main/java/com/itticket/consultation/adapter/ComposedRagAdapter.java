@@ -95,7 +95,8 @@ public final class ComposedRagAdapter implements RagAdapter {
             if (result.reliable() && material.isEmpty() && !toolBypass)
                 return RagResult.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, null, retrieved);
             context.timeoutMillis(Long.MAX_VALUE);
-            GenerationResult generated = generator.generate(query, material, context);
+            // Task 4 会把 SSE 出口贯通到此处;本地默认路径无流可发,先用丢弃式出口。
+            GenerationResult generated = generator.generate(query, material, context, TokenSink.discarding());
             context.timeoutMillis(Long.MAX_VALUE);
             Map<String, RetrievedKnowledge> byVersion = new LinkedHashMap<>();
             material.forEach(item -> byVersion.put(item.versionId(), item));

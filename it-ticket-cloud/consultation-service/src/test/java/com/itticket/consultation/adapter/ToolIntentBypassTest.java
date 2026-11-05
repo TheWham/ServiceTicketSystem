@@ -51,7 +51,7 @@ class ToolIntentBypassTest {
                 (query, ctx) -> RequestVerdict.of(domain, tool),
                 (query, ctx) -> retrieval,
                 new RetrievalPolicy(knowledge, Set.of("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"), new BigDecimal("0.10"), 2),
-                (query, material, ctx) -> {
+                (query, material, ctx, sink) -> {
                     answerText.set("已为您查询到名下最近的 10 条工单。");
                     return new GenerationResult(AiReplyType.ANSWER, answerText.get(), List.of(),
                             BigDecimal.ONE, null, "agent", null);
@@ -128,7 +128,7 @@ class ToolIntentBypassTest {
                 (query, ctx) -> RequestVerdict.of(OfficeDomain.OFFICE_IT, "prepare_ticket"),
                 (query, ctx) -> weakHits(),
                 new RetrievalPolicy(knowledge, Set.of("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"), new BigDecimal("0.10"), 2),
-                (query, material, ctx) -> new GenerationResult(AiReplyType.ANSWER,
+                (query, material, ctx, sink) -> new GenerationResult(AiReplyType.ANSWER,
                         "已生成工单草稿（test），请确认后建单。", List.of(),
                         BigDecimal.ONE, null, "agent", null),
                 true, com.itticket.consultation.adapter.cache.SemanticAnswerCache.disabled());
@@ -153,7 +153,7 @@ class ToolIntentBypassTest {
                 (query, ctx) -> RequestVerdict.of(OfficeDomain.OFFICE_IT, RequestVerdict.NO_TOOL),
                 (query, ctx) -> weakHits(),
                 new RetrievalPolicy(knowledge, Set.of("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"), new BigDecimal("0.10"), 2),
-                (query, material, ctx) -> new GenerationResult(AiReplyType.ANSWER,
+                (query, material, ctx, sink) -> new GenerationResult(AiReplyType.ANSWER,
                         "凭通用经验给点建议。", List.of(), BigDecimal.ONE, null, "agent", null),
                 true, com.itticket.consultation.adapter.cache.SemanticAnswerCache.disabled());
 

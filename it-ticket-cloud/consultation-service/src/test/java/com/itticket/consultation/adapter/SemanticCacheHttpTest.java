@@ -17,6 +17,7 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.*;
 import java.math.BigDecimal;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -64,16 +65,23 @@ class SemanticCacheHttpTest {
         server.createContext("/chat/completions", exchange -> {
             JsonNode request = json.readTree(exchange.getRequestBody());
             JsonNode input = json.readTree(request.path("messages").get(1).path("content").textValue());
-            JsonNode content;
+            byte[] response;
             if (input.has("material")) {
+                // 生成调用已切换 completeStream:SSE 帧 delta.content 返回整段 modelReply。
                 generationInputs.add(input);
-                content = modelReply;
+                ObjectNode frame = json.createObjectNode();
+                ObjectNode choice = frame.putArray("choices").addObject();
+                choice.putObject("delta").put("content", modelReply.toString());
+                choice.put("finish_reason", "stop");
+                exchange.getResponseHeaders().add("Content-Type", "text/event-stream; charset=utf-8");
+                response = ("data: " + frame + "\n\n" + "data: [DONE]\n\n").getBytes(StandardCharsets.UTF_8);
             } else {
+                // 分类调用仍走非流式 complete(),保持单 JSON 形状。
                 classificationInputs.add(input);
-                content = json.createObjectNode().put("decision", classification);
+                JsonNode content = json.createObjectNode().put("decision", classification);
+                response = json.writeValueAsBytes(Map.of("choices", List.of(Map.of("finish_reason", "stop",
+                        "message", Map.of("content", content.toString(), "reasoning_content", "never expose")))));
             }
-            byte[] response = json.writeValueAsBytes(Map.of("choices", List.of(Map.of("finish_reason", "stop",
-                    "message", Map.of("content", content.toString(), "reasoning_content", "never expose")))));
             respond(exchange, response, 200);
         });
         server.createContext("/embeddings", exchange -> {

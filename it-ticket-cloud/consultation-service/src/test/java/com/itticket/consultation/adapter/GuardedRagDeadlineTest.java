@@ -68,7 +68,7 @@ class GuardedRagDeadlineTest {
                         OfficeDomain.OFFICE_IT, com.itticket.consultation.adapter.policy.RequestVerdict.NO_TOOL),
                 (query, context) -> new RetrievalResult(OfficeDomain.OFFICE_IT, true, null,
                         List.of(material), BigDecimal.ONE), new RetrievalPolicy(knowledge, Set.of("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"), new BigDecimal("0.10"), 2),
-                (query, input, context) -> {
+                (query, input, context, sink) -> {
                     started.countDown();
                     boolean released = false;
                     while (!released) {
