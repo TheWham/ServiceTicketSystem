@@ -8,6 +8,7 @@ import com.itticket.consultation.entity.ConsultationMessage;
 import com.itticket.consultation.support.Json;
 import com.itticket.consultation.support.Times;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -23,6 +24,7 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.ALWAYS)
 @JsonPropertyOrder({"message_id", "sender_type", "content", "attachments", "citations",
         "interaction_id", "reply_type", "refusal_reason", "general_answer", "ticket_draft", "governance_trace",
+        "thought_stages", "reasoning_content", "thinking_duration",
         "sent_at", "withdrawn_at"})
 public record MessageProjection(
         @JsonProperty("message_id") String messageId,
@@ -36,12 +38,12 @@ public record MessageProjection(
         @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("general_answer") Boolean generalAnswer,
         /**
          * AI 拟好的建单草稿，随消息一起落库（元数据里的 {@code ticketDraft}）。
-         *
-         * <p>之所以要持久化：草稿卡原先只活在本次对话的消息对象里，历史消息映射读不到它，
-         * 于是**刷新页面卡片就没了** —— 员工看到"AI 已拟好草稿"的正文却无从点起。
          */
         @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("ticket_draft") TicketDraftDto ticketDraft,
         @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("governance_trace") GovernanceTraceDto governanceTrace,
+        @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("thought_stages") List<String> thoughtStages,
+        @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("reasoning_content") String reasoningContent,
+        @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("thinking_duration") Integer thinkingDuration,
         @JsonProperty("sent_at") String sentAt,
         @JsonProperty("withdrawn_at") String withdrawnAt) {
 
@@ -66,6 +68,9 @@ public record MessageProjection(
                 metadata.generalAnswer(),
                 metadata.ticketDraft(),
                 metadata.governanceTrace(),
+                metadata.thoughtStages(),
+                metadata.reasoningContent(),
+                metadata.thinkingDuration(),
                 Times.iso(message.getSentAt()),
                 Times.iso(message.getWithdrawnAt()));
     }
@@ -73,9 +78,10 @@ public record MessageProjection(
     private record Metadata(List<KnowledgeCitationDto> citations, String interactionId,
                             String replyType, String refusalReason, Boolean generalAnswer,
                             List<AttachmentProjection> attachments, TicketDraftDto ticketDraft,
-                            GovernanceTraceDto governanceTrace) {
+                            GovernanceTraceDto governanceTrace, List<String> thoughtStages,
+                            String reasoningContent, Integer thinkingDuration) {
         private static final Metadata EMPTY =
-                new Metadata(null, null, null, null, null, List.of(), null, null);
+                new Metadata(null, null, null, null, null, List.of(), null, null, null, null, null);
     }
 
     private static Metadata parseMetadata(String citationJson) {
@@ -85,7 +91,7 @@ public record MessageProjection(
         try {
             JsonNode root = Json.read(citationJson, JsonNode.class);
             if (root.isArray()) {
-                return new Metadata(readCitations(root), null, null, null, null, List.of(), null, null);
+                return new Metadata(readCitations(root), null, null, null, null, List.of(), null, null, null, null, null);
             }
             if (!root.isObject() || root.path("schemaVersion").asInt() != 1) return Metadata.EMPTY;
             return new Metadata(readCitations(root.path("citations")),
@@ -93,7 +99,10 @@ public record MessageProjection(
                     root.path("generalAnswer").isBoolean() ? root.path("generalAnswer").asBoolean() : null,
                     readAttachments(root.path("attachments")),
                     readTicketDraft(root.path("ticketDraft")),
-                    readGovernanceTrace(root.path("governanceTrace")));
+                    readGovernanceTrace(root.path("governanceTrace")),
+                    readThoughtStages(root.path("thoughtStages")),
+                    text(root, "reasoningContent"),
+                    readInt(root, "thinkingDuration"));
         } catch (RuntimeException e) {
             // 旧数据或元数据损坏不影响正文展示，也不猜测引用、交互 ID 或草稿。
             return Metadata.EMPTY;
@@ -126,9 +135,26 @@ public record MessageProjection(
         return value.isTextual() ? value.asText() : null;
     }
 
+    private static Integer readInt(JsonNode node, String field) {
+        JsonNode val = node.path(field);
+        return (val.isInt() || val.isLong()) ? val.asInt() : null;
+    }
+
+    private static List<String> readThoughtStages(JsonNode node) {
+        if (!node.isArray() || node.isEmpty()) return null;
+        List<String> list = new ArrayList<>();
+        for (JsonNode item : node) {
+            if (item.isTextual() && !item.asText().isBlank()) {
+                list.add(item.asText());
+            }
+        }
+        return list.isEmpty() ? null : list;
+    }
+
     private static List<AttachmentProjection> readAttachments(JsonNode node) {
         return node.isArray() ? List.of(Json.read(node.toString(), AttachmentProjection[].class)) : List.of();
     }
+
     private static GovernanceTraceDto readGovernanceTrace(JsonNode node) {
         if (!node.isObject()) return null;
         try {

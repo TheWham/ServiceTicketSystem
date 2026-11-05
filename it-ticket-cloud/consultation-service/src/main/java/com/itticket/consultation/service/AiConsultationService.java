@@ -134,6 +134,10 @@ public class AiConsultationService {
                             System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(180000L),
                             new RagExecutionAudit());
 
+                    long streamStartNanos = System.nanoTime();
+                    List<String> accumulatedStages = new java.util.concurrent.CopyOnWriteArrayList<>();
+                    StringBuilder accumulatedReasoning = new StringBuilder();
+
                     pythonAgentClient.chatStream(query, List.of(), ragContext, frame -> {
                         try {
                             if ("delta".equals(frame.event())) {
@@ -145,11 +149,24 @@ public class AiConsultationService {
                                 }
                             } else if ("stage".equals(frame.event())) {
                                 JsonNode node = json.readTree(frame.data());
+                                String desc = "";
+                                String stageType = node.path("stage").asText("");
+                                if ("ROUTED".equals(stageType)) {
+                                    desc = "模型路由：已匹配 " + node.path("tier").asText("标准") + " 档位 (" + node.path("model").asText("") + ")";
+                                } else if (node.has("message") && !node.path("message").asText("").isBlank()) {
+                                    desc = node.path("message").asText("");
+                                } else if (node.has("reason") && !node.path("reason").asText("").isBlank()) {
+                                    desc = node.path("reason").asText("");
+                                }
+                                if (!desc.isBlank() && !accumulatedStages.contains(desc)) {
+                                    accumulatedStages.add(desc);
+                                }
                                 emitter.send(SseEmitter.event().name("stage").data(node));
                             } else if ("reasoning".equals(frame.event())) {
                                 JsonNode node = json.readTree(frame.data());
                                 String reasoningDelta = node.path("delta").asText("");
                                 if (!reasoningDelta.isEmpty()) {
+                                    accumulatedReasoning.append(reasoningDelta);
                                     emitter.send(SseEmitter.event().name("reasoning_delta")
                                             .data(AiStreamEvent.reasoning(sessionId, seq.getAndIncrement(), reasoningDelta)));
                                 }
@@ -188,8 +205,16 @@ public class AiConsultationService {
                                         ? AiAnswerGuard.Verdict.refuse(offTopic ? AiRefusalReason.OFF_TOPIC : AiRefusalReason.NO_RELIABLE_KNOWLEDGE, BigDecimal.ZERO)
                                         : new AiAnswerGuard.Verdict(AiReplyType.ANSWER, answerText, citations, BigDecimal.valueOf(confidence), null, false);
 
+                                int durationSec = (int) Math.max(1, java.util.concurrent.TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - streamStartNanos));
+                                List<String> stagesToPersist = new ArrayList<>(accumulatedStages);
+                                if (stagesToPersist.isEmpty() && doneNode.has("thoughtStages") && doneNode.path("thoughtStages").isArray()) {
+                                    for (JsonNode st : doneNode.path("thoughtStages")) {
+                                        stagesToPersist.add(st.asText());
+                                    }
+                                }
                                 String interactionId = persistInteraction(sessionId, null, verdict);
-                                persistAiMessage(sessionId, idempotencyKey, interactionId, verdict, draft, trace);
+                                persistAiMessage(sessionId, idempotencyKey, interactionId, verdict, draft, trace,
+                                        stagesToPersist, accumulatedReasoning.toString(), durationSec);
 
                                 Map<String, Object> completeData = new LinkedHashMap<>();
                                 completeData.put("sessionId", sessionId);
@@ -282,7 +307,7 @@ public class AiConsultationService {
         GovernanceTraceDto trace = result == null ? null : result.governanceTrace();
 
         // 草稿与治理 Trace 要**随消息一起落库**，支持前端历史回放
-        persistAiMessage(sessionId, idempotencyKey, interactionId, verdict, draft, trace);
+        persistAiMessage(sessionId, idempotencyKey, interactionId, verdict, draft, trace, List.of(), null, 1);
 
         if (verdict.replyType() == AiReplyType.REFUSE) {
             log.info("[ai] 拒答 session={} reason={} requestId={}",
@@ -352,7 +377,8 @@ public class AiConsultationService {
     }
 
     private void persistAiMessage(String sessionId, String idempotencyKey, String interactionId,
-                                  AiAnswerGuard.Verdict verdict, TicketDraftDto draft, GovernanceTraceDto trace) {
+                                  AiAnswerGuard.Verdict verdict, TicketDraftDto draft, GovernanceTraceDto trace,
+                                  List<String> thoughtStages, String reasoningContent, Integer thinkingDuration) {
         boolean refused = verdict.replyType() == AiReplyType.REFUSE;
         String content = refused ? refusalTranscript(verdict) : verdict.answerText();
         Map<String, Object> metadata = new LinkedHashMap<>();
@@ -368,6 +394,15 @@ public class AiConsultationService {
         }
         if (trace != null) {
             metadata.put("governanceTrace", trace);
+        }
+        if (thoughtStages != null && !thoughtStages.isEmpty()) {
+            metadata.put("thoughtStages", thoughtStages);
+        }
+        if (reasoningContent != null && !reasoningContent.isBlank()) {
+            metadata.put("reasoningContent", reasoningContent);
+        }
+        if (thinkingDuration != null && thinkingDuration > 0) {
+            metadata.put("thinkingDuration", thinkingDuration);
         }
         messageService.appendAiMessage(sessionId, "ai-a:" + idempotencyKey, content, Json.write(metadata));
     }

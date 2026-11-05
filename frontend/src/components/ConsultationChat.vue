@@ -16,7 +16,15 @@
         <template #header>
           <div class="conversation-header">
             <div class="conversation-identity"><div class="small-assistant"><el-icon><Service /></el-icon></div><div><strong>IT 智能助手</strong><span>办公遇到的问题，在这里聊聊</span></div></div>
-            <el-tag :type="sessionStatus.type" effect="light" round>{{ sessionStatus.label }}</el-tag>
+            <div class="header-actions">
+              <el-tag :type="sessionStatus.type" effect="light" round class="session-status-tag">{{ sessionStatus.label }}</el-tag>
+              <el-button size="small" :icon="Plus" plain type="primary" :disabled="isAiHandling && aiThinking" @click="handleStartNewSession">
+                开启新咨询
+              </el-button>
+              <el-button size="small" :icon="Clock" plain @click="openHistoryDrawer">
+                历史会话<span v-if="recentSessions.length" class="history-count">({{ recentSessions.length }})</span>
+              </el-button>
+            </div>
           </div>
         </template>
         <!-- 等待工程师的提示 -->
@@ -355,6 +363,65 @@
       v-model="govDrawerVisible"
       :trace="activeGovTrace"
     />
+
+    <!-- 最近1个月历史会话抽屉 -->
+    <el-drawer
+      v-model="historyDrawerVisible"
+      title="最近咨询会话 (近1个月)"
+      size="min(440px, 92vw)"
+      direction="rtl"
+      class="consultation-history-drawer"
+      :append-to-body="true"
+    >
+      <div class="history-drawer-content">
+        <div class="history-filter-tip">
+          <el-icon><Clock /></el-icon>
+          <span>仅展示最近 30 天内的咨询记录，点击卡片可快速切换查看完整历史。</span>
+        </div>
+
+        <div v-loading="loadingHistory" class="history-list">
+          <el-empty
+            v-if="!loadingHistory && recentSessions.length === 0"
+            description="最近一个月暂无咨询记录"
+            :image-size="64"
+          />
+
+          <div
+            v-for="s in recentSessions"
+            :key="s.session_id"
+            class="history-card"
+            :class="{ active: s.session_id === session?.sessionId }"
+            role="button"
+            tabindex="0"
+            @click="switchSession(s)"
+            @keydown.enter="switchSession(s)"
+          >
+            <div class="history-card-header">
+              <span class="history-session-id">会话 {{ s.session_id }}</span>
+              <el-tag
+                :type="CONSULTATION_STATUS[s.status]?.type || 'info'"
+                size="small"
+                effect="light"
+                round
+              >
+                {{ CONSULTATION_STATUS[s.status]?.label || s.status }}
+              </el-tag>
+            </div>
+
+            <div class="history-preview">
+              {{ historyPreviews[s.session_id] || '点击加载对话详情…' }}
+            </div>
+
+            <div class="history-card-footer">
+              <span class="history-time">{{ formatHistoryTime(s.created_at) }}</span>
+              <span v-if="s.session_id === session?.sessionId" class="history-current-badge">
+                当前进行中
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -368,7 +435,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ChatDotRound, Service, Close, Promotion, Tickets,
   Document, WarningFilled, CircleCheck, RefreshLeft, MagicStick,
-  Monitor, Connection, Message, Printer, ArrowRight, Edit, Loading, Check, ArrowDown
+  Monitor, Connection, Message, Printer, ArrowRight, Edit, Loading, Check, ArrowDown, Plus, Clock
 } from '@element-plus/icons-vue'
 import {
   consultationApi, REFUSAL_REASON, TERMINAL_STATUS, TICKET_ENTRY_MESSAGE, CONSULTATION_STATUS
@@ -464,6 +531,94 @@ const queueStatus = ref({ assigned: false, waitingCount: 0 })
 
 /** 本人进行中(非终态)的咨询,入口页展示以便继续对话 */
 const resumable = ref([])
+
+// ===== 最近1个月历史会话抽屉 =====
+const historyDrawerVisible = ref(false)
+const recentSessions = ref([])
+const loadingHistory = ref(false)
+const historyPreviews = ref({})
+
+async function openHistoryDrawer() {
+  historyDrawerVisible.value = true
+  await loadRecentSessions()
+}
+
+async function loadRecentSessions() {
+  loadingHistory.value = true
+  try {
+    const page = await consultationApi.list(1, 50)
+    recentSessions.value = page?.items || []
+    recentSessions.value.slice(0, 15).forEach(s => {
+      if (!historyPreviews.value[s.session_id]) {
+        loadHistoryPreview(s.session_id)
+      }
+    })
+  } catch (e) {
+    ElMessage.error(e.message || '加载历史会话失败')
+  } finally {
+    loadingHistory.value = false
+  }
+}
+
+async function loadHistoryPreview(sessionId) {
+  try {
+    const page = await consultationApi.listMessages(sessionId)
+    const items = (page?.items || []).filter(m => m.sender_type !== 'SYSTEM')
+    if (items.length > 0) {
+      const firstUser = items.find(m => m.sender_type === 'EMPLOYEE') || items[0]
+      let text = firstUser.content || ''
+      if (!text && firstUser.attachments?.length) {
+        text = '[附件] ' + firstUser.attachments[0].file_name
+      }
+      historyPreviews.value[sessionId] = text.slice(0, 60) + (text.length > 60 ? '…' : '')
+    } else {
+      historyPreviews.value[sessionId] = '暂无对话消息'
+    }
+  } catch {
+    historyPreviews.value[sessionId] = '暂无对话消息'
+  }
+}
+
+async function switchSession(s) {
+  if (s.session_id === session.value?.sessionId) {
+    historyDrawerVisible.value = false
+    return
+  }
+  historyDrawerVisible.value = false
+  await resumeSession(s)
+  ElMessage.success(`已切换至会话 ${s.session_id}`)
+}
+
+async function handleStartNewSession() {
+  if (isAiHandling.value && aiThinking.value) {
+    ElMessage.warning('AI 正在回答中，请稍候…')
+    return
+  }
+  await startAi()
+  ElMessage.success('已开启新咨询会话')
+  loadRecentSessions()
+}
+
+function formatHistoryTime(isoStr) {
+  if (!isoStr) return ''
+  try {
+    const d = new Date(isoStr)
+    if (isNaN(d.getTime())) return isoStr
+    const now = new Date()
+    const diffMs = now - d
+    const diffMin = Math.floor(diffMs / 60000)
+    if (diffMin < 1) return '刚刚'
+    if (diffMin < 60) return `${diffMin} 分钟前`
+    const diffHours = Math.floor(diffMin / 60)
+    const pad = n => String(n).padStart(2, '0')
+    if (diffHours < 24 && d.getDate() === now.getDate()) {
+      return `今天 ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    }
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  } catch {
+    return isoStr
+  }
+}
 
 let pollTimer = null
 let localSeq = 0
@@ -626,6 +781,9 @@ function toLocalMessage(item) {
     })
   }
 
+  const persistedStages = item.thought_stages || item.thoughtStages || item.metadata?.thought_stages
+  const persistedDuration = item.thinking_duration || item.thinkingDuration || 1
+
   return {
     id: item.message_id,
     serverId: item.message_id,
@@ -640,8 +798,9 @@ function toLocalMessage(item) {
     // AI 建单草稿随消息落库，所以**刷新后草稿卡还在**（服务端元数据里的 ticketDraft）
     ticketDraft: item.ticket_draft || null,
     governanceTrace: govTrace,
-    thoughtStages: item.metadata?.thought_stages || item.thoughtStages || stages,
-    reasoningContent: item.metadata?.reasoning_content || item.reasoningContent || '',
+    thoughtStages: (persistedStages && persistedStages.length) ? persistedStages : stages,
+    reasoningContent: item.reasoning_content || item.reasoningContent || item.metadata?.reasoning_content || '',
+    thinkingDuration: persistedDuration,
     thoughtCollapsed: true,
     isThinking: false,
     isStreaming: false,
@@ -1203,7 +1362,10 @@ const formatTime = (iso) => {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-onMounted(autoStart)
+onMounted(async () => {
+  await autoStart()
+  loadRecentSessions()
+})
 onUnmounted(stopPolling)
 </script>
 
@@ -1811,5 +1973,94 @@ onUnmounted(stopPolling)
   font-weight: 600;
   color: #08758C;
   margin-left: 2px;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.history-count {
+  font-size: 11px;
+  margin-left: 2px;
+  opacity: 0.8;
+}
+.consultation-history-drawer :deep(.el-drawer__body) {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--el-bg-color-page);
+}
+.history-drawer-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.history-filter-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  font-size: 12px;
+  border-bottom: 1px solid var(--el-color-primary-light-8);
+}
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.history-card {
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all .2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.history-card:hover {
+  border-color: var(--el-color-primary-light-5);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+.history-card.active {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+.history-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.history-session-id {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.history-preview {
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+  line-height: 1.5;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.history-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+.history-current-badge {
+  color: var(--el-color-primary);
+  font-weight: 500;
 }
 </style>
