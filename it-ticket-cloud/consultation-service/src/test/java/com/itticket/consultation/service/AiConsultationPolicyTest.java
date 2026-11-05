@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -177,6 +178,42 @@ class AiConsultationPolicyTest {
      *  - idempotency.execute: 直通执行业务函数并标记“非重放”（绕过幂等存储）;
      *  - rag.answer: 返回用例预置的适配器结果（模拟两阶段协议已完成）。
      */
+    @Test
+    void streamFacadePassesOrchestratorSinkIntoRagChain() {
+        Fixture fixture = new Fixture(new ConsultationProperties(), generalAnswer());
+        List<String> tokens = new ArrayList<>();
+        TokenSink sink = TokenSink.of(tokens::add);
+
+        AiChatResponse response = fixture.service.chatStreamed(
+                new CurrentUser("U1", RoleCode.EMPLOYEE, Actor.EMPLOYEE),
+                "S1", new AiChatRequest("打印机不进纸", null), "idempotent-1", sink);
+
+        // 编排器的 sink 必须原样进入 RAG 链,增量令牌才能真正外发
+        ArgumentCaptor<TokenSink> captured = ArgumentCaptor.forClass(TokenSink.class);
+        verify(fixture.rag).answer(any(RagQuery.class), nullable(String.class), captured.capture());
+        assertThat(captured.getValue()).isSameAs(sink);
+        // 旧端点退化链不变:chat() 仍走丢弃型 sink
+        verify(fixture.messages).appendAiMessage(eq("S1"), eq("ai-a:idempotent-1"), eq(response.answerText()), anyString());
+    }
+
+    @Test
+    void clientGoneAbortsBeforeAnyAiPersistence() {
+        Fixture fixture = new Fixture(new ConsultationProperties(), generalAnswer());
+        TokenSink gone = new TokenSink(null) {
+            @Override public boolean clientGone() {
+                return true;
+            }
+        };
+
+        assertThatThrownBy(() -> fixture.service.chatStreamed(
+                new CurrentUser("U1", RoleCode.EMPLOYEE, Actor.EMPLOYEE),
+                "S1", new AiChatRequest("打印机不进纸", null), "idempotent-1", gone))
+                .isInstanceOf(StreamAbortedException.class);
+
+        // 断连后不落库:AI 回答与交互审计都不写
+        verify(fixture.messages, never()).appendAiMessage(anyString(), anyString(), anyString(), anyString());
+    }
+
     private static class Fixture {
         final ConsultationMessageService messages = mock(ConsultationMessageService.class);
         final GuardedRagClient rag = mock(GuardedRagClient.class);

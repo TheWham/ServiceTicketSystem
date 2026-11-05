@@ -5,6 +5,7 @@ import com.itticket.consultation.adapter.GuardedRagClient;
 import com.itticket.consultation.adapter.RagQuery;
 import com.itticket.consultation.adapter.RagCaller;
 import com.itticket.consultation.adapter.RagResult;
+import com.itticket.consultation.adapter.StreamAbortedException;
 import com.itticket.consultation.adapter.TokenSink;
 import com.itticket.consultation.api.ApiCode;
 import com.itticket.consultation.api.ApiException;
@@ -71,6 +72,16 @@ public class AiConsultationService {
     /** AI-API-002:已发布知识优先，资料不足时提供范围受限的办公 IT 通用建议。 */
     public AiChatResponse chat(CurrentUser user, String sessionId, AiChatRequest request,
                                String idempotencyKey) {
+        // 旧同步端点不外发增量令牌:传丢弃型 sink,行为与接入流式前完全一致。
+        return chatStreamed(user, sessionId, request, idempotencyKey, TokenSink.discarding());
+    }
+
+    /**
+     * 流式引擎门面(T-5):供流式编排器注入。与旧端点共用同一条幂等鉴权链,
+     * 差别仅在把编排器的 TokenSink 传入 RAG 链——增量令牌由此上屏,业务链路不变。
+     */
+    public AiChatResponse chatStreamed(CurrentUser user, String sessionId, AiChatRequest request,
+                                       String idempotencyKey, TokenSink sink) {
         Consultation consultation = transitionService.load(sessionId);
         // AI 对话只发生在员工与 AI 之间,工程师不通过该接口介入
         authzService.requireCreator(user, consultation);
@@ -78,11 +89,11 @@ public class AiConsultationService {
 
         return idempotencyService.execute(user.userId(), OP_CHAT + ':' + sessionId, idempotencyKey,
                 request, AiChatResponse.class,
-                () -> doChat(user, sessionId, request, idempotencyKey)).value();
+                () -> doChat(user, sessionId, request, idempotencyKey, sink)).value();
     }
 
     private AiChatResponse doChat(CurrentUser user, String sessionId, AiChatRequest request,
-                                  String idempotencyKey) {
+                                  String idempotencyKey, TokenSink sink) {
         Consultation consultation = transitionService.load(sessionId);
         authzService.requireCreator(user, consultation);
         requireAiActive(consultation);
@@ -101,8 +112,12 @@ public class AiConsultationService {
             RagQuery query = new RagQuery(sessionId, request.message(), history,
                     contextCategory(consultation, request), contextAsset(request),
                     properties.getAi().getTopK(), new RagCaller(user.userId(), user.role().name()));
-            // 旧同步端点不外发增量令牌:传丢弃型 sink,行为与接入流式前完全一致。
-            result = ragClient.answer(query, RequestContext.get(), TokenSink.discarding());
+            result = ragClient.answer(query, RequestContext.get(), sink);
+        }
+
+        // 断连门槛:客户端已断开时不再落库,沿用与旧端点一致的"AI 侧不半落"纪律。
+        if (sink.clientGone()) {
+            throw new StreamAbortedException("客户端已断开,本次回答不落库");
         }
 
         // 模型调用耗时较长，期间员工可结束会话。只在落库阶段加锁，
