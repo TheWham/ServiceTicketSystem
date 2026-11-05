@@ -1,0 +1,211 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1310.1844999999998 959.45" width="1310.1844999999998" height="959.45" style="--bg:#1F1F1F;--fg:#CCCCCC;--line:#CCCCCC;--accent:#0078D4;--muted:#CCCCCCCC;--surface:#181818;--border:#CCCCCC;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="seq-arrow" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" />
+  </marker>
+  <marker id="seq-arrow-open" markerWidth="8" markerHeight="5" refX="8" refY="2.5" orient="auto-start-reverse">
+    <polyline points="0 0, 8 2.5, 0 5" fill="none" stroke="var(--_arrow)" stroke-width="1" />
+  </marker>
+</defs>
+<line class="lifeline" data-actor="User" x1="112.9205" y1="92.45" x2="112.9205" y2="929.45" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="GW" x1="313.0105" y1="70" x2="313.0105" y2="929.45" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="Router" x1="514.8824999999999" y1="70" x2="514.8824999999999" y2="929.45" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="Governor" x1="714.432" y1="70" x2="714.432" y2="929.45" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="Budget" x1="944.3625" y1="70" x2="944.3625" y2="929.45" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line class="lifeline" data-actor="CloudLLM" x1="1182.8145" y1="70" x2="1182.8145" y2="929.45" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<g class="block" data-type="alt" data-label="额度充足">
+  <rect x="625.5835" y="343.45" width="439.8610000000001" height="124" rx="0" ry="0" fill="none" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="625.5835" y="343.45" width="106" height="20" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="633.5835" y="353.45" font-size="11" font-weight="600" fill="var(--_text-sec)" dy="3.8499999999999996">alt [额度充足]</text>
+  <line x1="625.5835" y1="419.45" x2="1065.4445" y2="419.45" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+  <rect x="630.5835" y="425.3" width="67" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="633.5835" y="433.45" font-size="11" text-anchor="start" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">[额度不足]</text>
+</g>
+<g class="block" data-type="loop" data-label="逐级降档探测 (hi 到 lo)">
+  <rect x="625.5835" y="275.45" width="439.8610000000001" height="192" rx="0" ry="0" fill="none" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="625.5835" y="275.45" width="197" height="20" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="633.5835" y="285.45" font-size="11" font-weight="600" fill="var(--_text-sec)" dy="3.8499999999999996">loop [逐级降档探测 (hi 到 lo)]</text>
+</g>
+<g class="block" data-type="alt" data-label="降级至 min_tier 仍不足">
+  <rect x="30" y="490.45000000000005" width="1250.1844999999998" height="419" rx="0" ry="0" fill="none" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="30" y="490.45000000000005" width="186" height="20" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="38" y="500.45000000000005" font-size="11" font-weight="600" fill="var(--_text-sec)" dy="3.8499999999999996">alt [降级至 min_tier 仍不足]</text>
+  <line x1="30" y1="606.45" x2="1280.1844999999998" y2="606.45" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+  <rect x="35" y="612.3000000000001" width="67" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="38" y="620.45" font-size="11" text-anchor="start" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">[预扣成功]</text>
+</g>
+<g class="message" data-from="User" data-to="GW" data-label="提交咨询/工单 (HTTP POST)" data-line-style="solid" data-arrow-head="filled" data-self="false" data-step="1">
+  <line x1="112.9205" y1="112.45" x2="313.0105" y2="112.45" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <rect x="131.4655" y="94.3" width="163" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="212.9655" y="102.45" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">提交咨询/工单 (HTTP POST)</text>
+  <circle class="sequence-number" cx="112.9205" cy="112.45" r="9" fill="var(--_arrow)" stroke="var(--bg)" stroke-width="1" />
+  <text x="112.9205" y="112.45" class="sequence-number-label" font-size="10" text-anchor="middle" font-weight="600" fill="var(--bg)" dy="3.5">1</text>
+</g>
+<g class="message" data-from="GW" data-to="Router" data-label="route(query) 意图与复杂度判决" data-line-style="solid" data-arrow-head="filled" data-self="false" data-step="2">
+  <line x1="313.0105" y1="152.45" x2="514.8824999999999" y2="152.45" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <rect x="323.94649999999996" y="134.29999999999998" width="180" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="413.94649999999996" y="142.45" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">route(query) 意图与复杂度判决</text>
+  <circle class="sequence-number" cx="313.0105" cy="152.45" r="9" fill="var(--_arrow)" stroke="var(--bg)" stroke-width="1" />
+  <text x="313.0105" y="152.45" class="sequence-number-label" font-size="10" text-anchor="middle" font-weight="600" fill="var(--bg)" dy="3.5">2</text>
+</g>
+<g class="message" data-from="Router" data-to="GW" data-label="返回 RouteDecision (Stage 1 &amp; 2)" data-line-style="dashed" data-arrow-head="filled" data-self="false" data-step="3">
+  <line x1="514.8824999999999" y1="207.45" x2="313.0105" y2="207.45" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <rect x="327.94649999999996" y="189.29999999999998" width="172" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="413.94649999999996" y="197.45" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">返回 RouteDecision (Stage 1 &amp; 2)</text>
+  <circle class="sequence-number" cx="514.8824999999999" cy="207.45" r="9" fill="var(--_arrow)" stroke="var(--bg)" stroke-width="1" />
+  <text x="514.8824999999999" y="207.45" class="sequence-number-label" font-size="10" text-anchor="middle" font-weight="600" fill="var(--bg)" dy="3.5">3</text>
+</g>
+<g class="message" data-from="GW" data-to="Governor" data-label="plan(requestId, query, user, dept)" data-line-style="solid" data-arrow-head="filled" data-self="false" data-step="4">
+  <line x1="313.0105" y1="247.45" x2="714.432" y2="247.45" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <rect x="424.22125000000005" y="229.29999999999998" width="179" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="513.72125" y="237.45" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">plan(requestId, query, user, dept)</text>
+  <circle class="sequence-number" cx="313.0105" cy="247.45" r="9" fill="var(--_arrow)" stroke="var(--bg)" stroke-width="1" />
+  <text x="313.0105" y="247.45" class="sequence-number-label" font-size="10" text-anchor="middle" font-weight="600" fill="var(--bg)" dy="3.5">4</text>
+</g>
+<g class="message" data-from="Governor" data-to="Budget" data-label="reserve(estimated_tokens)" data-line-style="solid" data-arrow-head="filled" data-self="false" data-step="5">
+  <line x1="714.432" y1="315.45" x2="944.3625" y2="315.45" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <rect x="755.39725" y="297.3" width="148" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="829.39725" y="305.45" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">reserve(estimated_tokens)</text>
+  <circle class="sequence-number" cx="714.432" cy="315.45" r="9" fill="var(--_arrow)" stroke="var(--bg)" stroke-width="1" />
+  <text x="714.432" y="315.45" class="sequence-number-label" font-size="10" text-anchor="middle" font-weight="600" fill="var(--bg)" dy="3.5">5</text>
+</g>
+<g class="message" data-from="Budget" data-to="Governor" data-label="预扣成功 (锁定配额)" data-line-style="dashed" data-arrow-head="filled" data-self="false" data-step="6">
+  <line x1="944.3625" y1="383.45" x2="714.432" y2="383.45" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <rect x="768.89725" y="365.3" width="121" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="829.39725" y="373.45" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">预扣成功 (锁定配额)</text>
+  <circle class="sequence-number" cx="944.3625" cy="383.45" r="9" fill="var(--_arrow)" stroke="var(--bg)" stroke-width="1" />
+  <text x="944.3625" y="383.45" class="sequence-number-label" font-size="10" text-anchor="middle" font-weight="600" fill="var(--bg)" dy="3.5">6</text>
+</g>
+<g class="message" data-from="Budget" data-to="Governor" data-label="抛出 BudgetExceeded" data-line-style="dashed" data-arrow-head="filled" data-self="false" data-step="7">
+  <line x1="944.3625" y1="447.45" x2="714.432" y2="447.45" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <rect x="765.89725" y="429.3" width="127" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="829.39725" y="437.45" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">抛出 BudgetExceeded</text>
+  <circle class="sequence-number" cx="944.3625" cy="447.45" r="9" fill="var(--_arrow)" stroke="var(--bg)" stroke-width="1" />
+  <text x="944.3625" y="447.45" class="sequence-number-label" font-size="10" text-anchor="middle" font-weight="600" fill="var(--bg)" dy="3.5">7</text>
+</g>
+<g class="message" data-from="Governor" data-to="GW" data-label="触发安全熔断 (HTTP 429 Circuit Breaker)" data-line-style="dashed" data-arrow-head="filled" data-self="false" data-step="8">
+  <line x1="714.432" y1="530.45" x2="313.0105" y2="530.45" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <rect x="398.72125000000005" y="512.3000000000001" width="230" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="513.72125" y="520.45" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">触发安全熔断 (HTTP 429 Circuit Breaker)</text>
+  <circle class="sequence-number" cx="714.432" cy="530.45" r="9" fill="var(--_arrow)" stroke="var(--bg)" stroke-width="1" />
+  <text x="714.432" y="530.45" class="sequence-number-label" font-size="10" text-anchor="middle" font-weight="600" fill="var(--bg)" dy="3.5">8</text>
+</g>
+<g class="message" data-from="GW" data-to="User" data-label="拦截并提示转人工审批" data-line-style="dashed" data-arrow-head="filled" data-self="false" data-step="9">
+  <line x1="313.0105" y1="570.45" x2="112.9205" y2="570.45" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <rect x="143.4655" y="552.3000000000001" width="139" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="212.9655" y="560.45" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">拦截并提示转人工审批</text>
+  <circle class="sequence-number" cx="313.0105" cy="570.45" r="9" fill="var(--_arrow)" stroke="var(--bg)" stroke-width="1" />
+  <text x="313.0105" y="570.45" class="sequence-number-label" font-size="10" text-anchor="middle" font-weight="600" fill="var(--bg)" dy="3.5">9</text>
+</g>
+<g class="message" data-from="Governor" data-to="GW" data-label="返回 CostPlan (Stage 3)" data-line-style="dashed" data-arrow-head="filled" data-self="false" data-step="10">
+  <line x1="714.432" y1="634.45" x2="313.0105" y2="634.45" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <rect x="448.22125000000005" y="616.3000000000001" width="131" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="513.72125" y="624.45" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">返回 CostPlan (Stage 3)</text>
+  <circle class="sequence-number" cx="714.432" cy="634.45" r="9" fill="var(--_arrow)" stroke="var(--bg)" stroke-width="1" />
+  <text x="714.432" y="634.45" class="sequence-number-label" font-size="10" text-anchor="middle" font-weight="600" fill="var(--bg)" dy="3.5">10</text>
+</g>
+<g class="message" data-from="GW" data-to="CloudLLM" data-label="发起流式推理 (qwen3.7-flash/plus/3.8-max)" data-line-style="solid" data-arrow-head="filled" data-self="false" data-step="11">
+  <line x1="313.0105" y1="674.45" x2="1182.8145" y2="674.45" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <rect x="630.4124999999999" y="656.3000000000001" width="235" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="747.9124999999999" y="664.45" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">发起流式推理 (qwen3.7-flash/plus/3.8-max)</text>
+  <circle class="sequence-number" cx="313.0105" cy="674.45" r="9" fill="var(--_arrow)" stroke="var(--bg)" stroke-width="1" />
+  <text x="313.0105" y="674.45" class="sequence-number-label" font-size="10" text-anchor="middle" font-weight="600" fill="var(--bg)" dy="3.5">11</text>
+</g>
+<g class="message" data-from="CloudLLM" data-to="GW" data-label="返回 TTFT + 思考链 + 文本分块流" data-line-style="dashed" data-arrow-head="filled" data-self="false" data-step="12">
+  <line x1="1182.8145" y1="714.45" x2="313.0105" y2="714.45" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <rect x="651.4124999999999" y="696.3000000000001" width="193" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="747.9124999999999" y="704.45" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">返回 TTFT + 思考链 + 文本分块流</text>
+  <circle class="sequence-number" cx="1182.8145" cy="714.45" r="9" fill="var(--_arrow)" stroke="var(--bg)" stroke-width="1" />
+  <text x="1182.8145" y="714.45" class="sequence-number-label" font-size="10" text-anchor="middle" font-weight="600" fill="var(--bg)" dy="3.5">12</text>
+</g>
+<g class="message" data-from="GW" data-to="User" data-label="SSE 推送 Token 渲染 (Stage 4)" data-line-style="dashed" data-arrow-head="filled" data-self="false" data-step="13">
+  <line x1="313.0105" y1="754.45" x2="112.9205" y2="754.45" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <rect x="127.46549999999999" y="736.3000000000001" width="171" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="212.9655" y="744.45" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">SSE 推送 Token 渲染 (Stage 4)</text>
+  <circle class="sequence-number" cx="313.0105" cy="754.45" r="9" fill="var(--_arrow)" stroke="var(--bg)" stroke-width="1" />
+  <text x="313.0105" y="754.45" class="sequence-number-label" font-size="10" text-anchor="middle" font-weight="600" fill="var(--bg)" dy="3.5">13</text>
+</g>
+<g class="message" data-from="CloudLLM" data-to="GW" data-label="携带 Usage (实际 Prompt/Completion Tokens)" data-line-style="dashed" data-arrow-head="filled" data-self="false" data-step="14">
+  <line x1="1182.8145" y1="794.45" x2="313.0105" y2="794.45" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <rect x="625.4124999999999" y="776.3000000000001" width="245" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="747.9124999999999" y="784.45" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">携带 Usage (实际 Prompt/Completion Tokens)</text>
+  <circle class="sequence-number" cx="1182.8145" cy="794.45" r="9" fill="var(--_arrow)" stroke="var(--bg)" stroke-width="1" />
+  <text x="1182.8145" y="794.45" class="sequence-number-label" font-size="10" text-anchor="middle" font-weight="600" fill="var(--bg)" dy="3.5">14</text>
+</g>
+<g class="message" data-from="GW" data-to="Budget" data-label="settle(requestId, actual_total)" data-line-style="solid" data-arrow-head="filled" data-self="false" data-step="15">
+  <line x1="313.0105" y1="834.45" x2="944.3625" y2="834.45" stroke="var(--_line)" stroke-width="1" marker-end="url(#seq-arrow)" />
+  <rect x="551.1865" y="816.3000000000001" width="155" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="628.6865" y="824.45" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">settle(requestId, actual_total)</text>
+  <circle class="sequence-number" cx="313.0105" cy="834.45" r="9" fill="var(--_arrow)" stroke="var(--bg)" stroke-width="1" />
+  <text x="313.0105" y="834.45" class="sequence-number-label" font-size="10" text-anchor="middle" font-weight="600" fill="var(--bg)" dy="3.5">15</text>
+</g>
+<g class="message" data-from="GW" data-to="User" data-label="推送最终费用账单与耗时审计" data-line-style="dashed" data-arrow-head="filled" data-self="false" data-step="16">
+  <line x1="313.0105" y1="889.45" x2="112.9205" y2="889.45" stroke="var(--_line)" stroke-width="1" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+  <rect x="123.96549999999999" y="871.3000000000001" width="178" height="16.3" rx="2" ry="2" fill="var(--bg)" />
+  <text x="212.9655" y="879.45" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">推送最终费用账单与耗时审计</text>
+  <circle class="sequence-number" cx="313.0105" cy="889.45" r="9" fill="var(--_arrow)" stroke="var(--bg)" stroke-width="1" />
+  <text x="313.0105" y="889.45" class="sequence-number-label" font-size="10" text-anchor="middle" font-weight="600" fill="var(--bg)" dy="3.5">16</text>
+</g>
+<g class="note" data-position="over" data-actors="Router">
+  <polygon points="383.5545,160.45 640.2104999999999,160.45 646.2104999999999,166.45 646.2104999999999,183.45 383.5545,183.45" fill="var(--bg)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <polygon points="640.2104999999999,160.45 646.2104999999999,166.45 640.2104999999999,166.45" fill="var(--_inner-stroke)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="514.8824999999999" y="171.95" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)"><tspan x="514.8824999999999" dy="-3.3000000000000007">qwen3.7-flash (0思考链)</tspan><tspan x="514.8824999999999" dy="14.3">输出: tier, min_tier, score</tspan></text>
+</g>
+<g class="note" data-position="over" data-actors="Governor">
+  <polygon points="644.583,455.45 778.281,455.45 784.281,461.45 784.281,478.45 644.583,478.45" fill="var(--bg)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <polygon points="778.281,455.45 784.281,461.45 778.281,461.45" fill="var(--_inner-stroke)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="714.432" y="466.95" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">尝试向下一级 tier 降档</text>
+</g>
+<g class="note" data-position="over" data-actors="Budget">
+  <polygon points="850.7534999999999,842.45 1031.9714999999999,842.45 1037.9714999999999,848.45 1037.9714999999999,865.45 850.7534999999999,865.45" fill="var(--bg)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <polygon points="1031.9714999999999,842.45 1037.9714999999999,848.45 1031.9714999999999,848.45" fill="var(--_inner-stroke)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="944.3625" y="853.95" font-size="11" text-anchor="middle" font-weight="400" fill="var(--_text-muted)" dy="3.8499999999999996">扣除实消耗，退还差额 (Stage 5)</text>
+</g>
+<g class="actor" data-id="User" data-label="终端用户 / 工程师" data-type="actor">
+  <g transform="translate(94.9205,32) scale(1.5)">
+    <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" fill="none" stroke="var(--_line)" stroke-width="0.6666666666666666" />
+    <path d="M15 10C15 11.6569 13.6569 13 12 13C10.3431 13 9 11.6569 9 10C9 8.34315 10.3431 7 12 7C13.6569 7 15 8.34315 15 10Z" fill="none" stroke="var(--_line)" stroke-width="0.6666666666666666" />
+    <path d="M5.62842 18.3563C7.08963 17.0398 9.39997 16 12 16C14.6 16 16.9104 17.0398 18.3716 18.3563" fill="none" stroke="var(--_line)" stroke-width="0.6666666666666666" />
+  </g>
+  <text x="112.9205" y="84" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">终端用户 / 工程师</text>
+</g>
+<g class="actor" data-id="GW" data-label="Web 网关 (SSE)" data-type="participant">
+  <rect x="248.982" y="30" width="128.05699999999996" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="313.0105" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">Web 网关 (SSE)</text>
+</g>
+<g class="actor" data-id="Router" data-label="ModelRouter (AI决策)" data-type="participant">
+  <rect x="434.1814999999999" y="30" width="161.402" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="514.8824999999999" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">ModelRouter (AI决策)</text>
+</g>
+<g class="actor" data-id="Governor" data-label="CostGovernor (总控)" data-type="participant">
+  <rect x="635.5835" y="30" width="157.697" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="714.432" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">CostGovernor (总控)</text>
+</g>
+<g class="actor" data-id="Budget" data-label="TokenBudgetManager (预算池)" data-type="participant">
+  <rect x="833.2805" y="30" width="222.164" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="944.3625" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">TokenBudgetManager (预算池)</text>
+</g>
+<g class="actor" data-id="CloudLLM" data-label="金山云 Qwen 模型集群" data-type="participant">
+  <rect x="1095.4445" y="30" width="174.73999999999998" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="1182.8145" y="50" font-size="13" text-anchor="middle" font-weight="500" fill="var(--_text)" dy="4.55">金山云 Qwen 模型集群</text>
+</g>
+</svg>
