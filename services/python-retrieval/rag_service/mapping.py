@@ -59,19 +59,29 @@ def build_response(
     docstore: Optional[Any] = None,
     reasoning_res: Optional[Dict[str, Any]] = None,
 ) -> RagRetrievalResponse:
-    """【链路二 · 步骤 5 契约响应装配与图谱注入】build_response(...)
-    
-    输入：
-      - search_res: 主路混合检索精排结果字典；
-      - wiki_mapping: 卡片 ID 与文章版本映射；
-      - docstore: MySQL Docstore 实例；
-      - reasoning_res: 图谱多跳推导上下文字典（包含 graph_facts 与 seed_entities）。
+    """把 hybrid_rerank_search 的返回装配为 RagRetrievalResponse。
+
+    【链路二 · 步骤 5 契约响应装配与图谱注入】
     动作：
       1. 组装标准化 RetrievedChunk 列表，补充 parent_content、版本号与归一化分值；
       2. 检查 reasoning_res：若存在图谱因果事实，格式化拓扑因果推导链为 graph_prefix，
          前置注入拼接至 Top-1 切片正文（top_item.content = graph_prefix + top_item.content）；
       3. 低置信度拒答门裁决（若 top_score < reject_threshold 则安全拒答）。
-    返回：RagRetrievalResponse 对外标准检索契约响应。
+
+    拒答判定（服务层裁定，见 tests/test_refusal_policy.py）：
+        refuse ⇔ 内核已拒答 ∨ 无候选 ∨ 基础条目 max(score) < reject_threshold
+    （topScore 只统计基础条目，扩展衰减分不计入；见下文 top 计算处。）
+    刻意不以 "是否走了远程 rerank" 为条件——网关 429 限流打满在线收紧后的预算时，
+    rerank 会降级为启发式打分，内核的拒答门（依赖 last_used_remote）随之被跳过，
+    "知识库未记载"的对抗题就会被误作答。远程成功时本判定与内核一致（复现 Day14 基线）。
+
+    Args:
+        search_res: IndustrialHybridRetriever.hybrid_rerank_search 的返回字典。
+        wiki_mapping: {wiki_id: {articleId, versionId, categoryId, wiki_version, ...}}。
+        request_category_id: 调用方（Java）传入的类目编码；仅回填，不据此做元数据硬过滤。
+        reject_threshold: 低置信拒答阈值（pipeline.yaml retrieval.reject_threshold）。
+        docstore: MySQL Docstore 实例（父块正文回溯）。
+        reasoning_res: 图谱多跳推导上下文字典（包含 graph_facts 与 seed_entities）。
     """
     final_results = search_res.get("final_results") or []
     rejected = bool(search_res.get("rejected", False))
@@ -101,6 +111,10 @@ def build_response(
             content=content if content.strip() else title,   # 原样保留 Markdown 结构供下游拼 grounding
             category_id=request_category_id or entry.get("categoryId") or None,
             score=_clamp_score(it.get("rerank_score")),
+            # Task 11 读取 Task 10 的内部键，父块代表缺键时 None→序列化不出场
+            graph_expanded=it.get("graph_expanded"),
+            expanded_from=it.get("graph_expanded_from"),
+            relation=it.get("graph_relation"),
         ))
 
     # 【链路二 · 步骤 5 图谱因果推导结论注入】
@@ -126,7 +140,9 @@ def build_response(
             current_max = max((i.score for i in items), default=0.0)
             top_item.score = max(current_max, 0.95)
 
-    top = max((i.score for i in items), default=0.0)
+    # topScore 只在基础条目中计算（spec：扩展衰减分不冒充相似度、不抬高 top）；
+    # 拒答判定用同一 top（不变，本就是这一个变量）。全扩展无基础的防御极端下取 0.0。
+    top = max((i.score for i in items if not i.graph_expanded), default=0.0)
     if rejected or not items or (reject_threshold is not None and top < reject_threshold):
         return RagRetrievalResponse(
             items=[], domain="OFFICE_IT", suggested_reply_type="REFUSE",
@@ -137,6 +153,6 @@ def build_response(
     return RagRetrievalResponse(
         items=items, domain="OFFICE_IT", suggested_reply_type="ANSWER",
         suggested_refusal_reason=None,
-        top_score=top,                                    # 契约：topScore == max(items[].score)
+        top_score=top,                                    # 契约：topScore == max(基础条目 score)，扩展分不计入
         reliable=True, published_only=True,
     )

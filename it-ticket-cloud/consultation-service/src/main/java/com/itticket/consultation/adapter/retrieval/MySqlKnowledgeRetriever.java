@@ -26,7 +26,8 @@ public final class MySqlKnowledgeRetriever implements KnowledgeRetriever {
                 String content = hit.getBody() == null || hit.getBody().isBlank() ? hit.getSummary() : hit.getBody();
                 if (content == null || content.isBlank()) content = title;
                 return new RetrievedKnowledge(hit.getVersionId(), hit.getArticleId(), hit.getVersionId(),
-                        title, content, content, hit.getCategoryId(), score, hit.getVersionId());
+                        title, content, content, hit.getCategoryId(), score, hit.getVersionId(),
+                        null, null, null);
             }).toList();
         } catch (RuntimeException unavailable) {
             throw new DependencyFailure(RagStatus.UNAVAILABLE, "KNOWLEDGE_DATABASE_UNAVAILABLE", false);

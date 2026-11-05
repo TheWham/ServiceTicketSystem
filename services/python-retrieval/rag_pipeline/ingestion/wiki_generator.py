@@ -17,7 +17,9 @@ DEFAULT_ID_PREFIX = "ITKB"
 def _yaml_scalar(value: Any) -> str:
     if value is None or value == "":
         return "null"
-    text = str(value).replace('"', '\\"')
+    # 双引号包裹时反斜杠是 YAML 转义引导符:先转义 \ 再转义 ",
+    # 否则重写的 frontmatter 不可解析(ScannerError)或双 \ 静默变单 \。
+    text = str(value).replace("\\", "\\\\").replace('"', '\\"')
     return f'"{text}"'
 
 
@@ -48,10 +50,26 @@ def render_frontmatter(entry: Entry, meta: Dict[str, Any],
     lines.append(f"version: {_yaml_scalar(meta.get('version') or 'v1.0')}")
     lines.append(f"status: {_yaml_scalar(meta.get('status') or '现行')}")
     lines.append(f"replaces: {_yaml_str_list(meta.get('replaces') or [])}")
-    lines.append(f"entities: {_yaml_str_list(meta.get('entities') or [])}")
+    # 对象列表键（typed entities / 图字段）：非空才写，空列表跳过整个键——
+    # 单写 `key:` 行会被 yaml.safe_load 解析为 None（Task 2b F6）。
+    # 对象列表块式序列化复用 Task 2 的 frontmatter_editor.render_obj_list
+    # （Ruling 6 公开导出，勿复制）；局部导入：frontmatter_editor 依赖本模块的
+    # _yaml_scalar/_yaml_str_list，顶层互导会成环。
+    entities = meta.get("entities") or []
+    relations = meta.get("relations") or []
+    graph_nodes = meta.get("graph_nodes") or []
+    if entities or relations or graph_nodes:
+        from .frontmatter_editor import render_obj_list
+        for key, items in (("entities", entities), ("relations", relations),
+                           ("graph_nodes", graph_nodes)):
+            if items:
+                lines.append(f"{key}:")
+                lines.append(render_obj_list(items))
     lines.append(f"keywords: {_yaml_str_list(entry.keywords)}")
     lines.append(f"summary: {_yaml_scalar(meta.get('summary'))}")
     lines.append(f"meta_source: {_yaml_scalar(meta.get('meta_source') or 'rule')}")
+    if meta.get("graph_meta_source"):  # 图萃取 provenance，仅非空输出（模式对齐 effective_date）
+        lines.append(f"graph_meta_source: {_yaml_scalar(meta['graph_meta_source'])}")
     if meta.get("conflict_note"):  # 版本冲突/废止条款仅在检出时输出
         lines.append(f"conflict_note: {_yaml_scalar(meta['conflict_note'])}")
     lines.append("---")

@@ -1,5 +1,7 @@
 package com.itticket.consultation.adapter;
 import com.itticket.consultation.adapter.analytics.AnalyticsClient;
+import com.itticket.consultation.adapter.cache.CachedAnswer;
+import com.itticket.consultation.adapter.cache.SemanticAnswerCache;
 import com.itticket.consultation.adapter.generation.*;
 import com.itticket.consultation.adapter.policy.*;
 import com.itticket.consultation.adapter.retrieval.*;
@@ -17,6 +19,11 @@ import org.slf4j.LoggerFactory;
  *   <li><b>① 意图判定</b>：classifier.classify 一次给出 domain（拒答空间）+ tool（工具意图）；</li>
  *   <li><b>② 领域门禁</b>：OFF_TOPIC/HIGH_RISK 短路拒答、UNCERTAIN 追问——位置最靠前，
  *       工具意图永远顶不开它；检索侧的域粗判只保留 HIGH_RISK 否决权（见下方注释）；</li>
+ *   <li><b>②.5 跨工单分析</b>：判定为 ANALYTICS 的请求走确定性聚合链路，不检索知识库；</li>
+ *   <li><b>②.6 语义缓存（默认关）</b>：门禁放行、且非工具意图/非分析请求时可查/写语义缓存；
+ *       安全裁决先于缓存，命中条目由缓存内部的版本哨兵逐条复核引用仍在当前发布版本，
+ *       失效则穿透重算。已知取舍（见 spec）：命中会跳过检索侧 HIGH_RISK 二次收紧——
+ *       条目入池时已通过当时的收紧，且哨兵保证内容与现役版本一致。</li>
  *   <li><b>③ 知识检索</b>：retriever → rag-service(:8302) → Python 检索服务(:8310)，
  *       返回材料 + reliable/reason；</li>
  *   <li><b>④ 工具意图放行</b>：检索无果/低置信本应拒答；若判定给了具体工具且 agent 已开启
@@ -50,14 +57,17 @@ public final class ComposedRagAdapter implements RagAdapter {
      * 而不是启动即失败 —— 那会让一个可选能力拖垮整个咨询服务的可用性。
      */
     private final AnalyticsClient analyticsClient;
+    /** 语义答案缓存(装配期注入;默认 disabled 实例,行为与无缓存一致)。 */
+    private final SemanticAnswerCache cache;
     public ComposedRagAdapter(RequestClassifier classifier, KnowledgeRetriever retriever,
-                              RetrievalPolicy policy, AnswerGenerator generator,
-                              boolean toolBypassEnabled, AnalyticsClient analyticsClient) {
+                              RetrievalPolicy policy, AnswerGenerator generator, boolean toolBypassEnabled,
+                              AnalyticsClient analyticsClient, SemanticAnswerCache cache) {
         this.classifier = classifier; this.retriever = retriever; this.policy = policy; this.generator = generator;
         this.toolBypassEnabled = toolBypassEnabled;
         this.analyticsClient = analyticsClient;
+        this.cache = cache;
     }
-    @Override public RagResult answer(RagQuery query, RagCallContext context) {
+    @Override public RagResult answer(RagQuery query, RagCallContext context, TokenSink tokenSink) {
         List<String> retrieved = List.of();
         try {
             // 一次判定给全「走哪条路」与「要不要调工具」；拒答/澄清的门禁仍最靠前，不被工具意图越过
@@ -70,7 +80,31 @@ public final class ComposedRagAdapter implements RagAdapter {
             //     余地），而检索对分析毫无用处：分析要的是工单集的分布，不是几张知识卡片。
             //     也刻意**不落进工具意图旁路**：那条通道把作答标记为 generalAnswer=true
             //     （"无知识依据的通用建议"），而分析型回答有硬数据依据，语义完全不同。
-            if (verdict.analytics()) return analyze(query, context);
+            if (verdict.analytics()) {
+                RagResult analytics = analyze(query, context);
+                // 分析链路也走统一流式出口：整段答案一次外发（打字机退化为单帧）。
+                if (AiReplyType.ANSWER.equals(analytics.replyType())
+                        && analytics.answerText() != null && !analytics.answerText().isBlank()) {
+                    tokenSink.accept(analytics.answerText());
+                }
+                return analytics;
+            }
+            // 工具意图（查工单/建单）：实据是用户私有事实，既不读也不写公共缓存池；
+            // 判定提前到检索前，语义缓存插点据此跳过。
+            boolean toolBypass = toolBypassEnabled && !RequestVerdict.NO_TOOL.equals(verdict.tool());
+            if (!toolBypass) {
+                long startedAt = System.nanoTime();
+                CachedAnswer hit = cache.lookup(query, context).orElse(null);
+                if (hit != null) {
+                    context.audit().recordRetrievedVersions(hit.result().retrievedVersionIds());
+                    // 命中答案整段单发一次:打字机最后一屏一次到达,服务层无需感知缓存。
+                    tokenSink.accept(hit.result().answerText());
+                    return hit.result()
+                            .withLatency(java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(
+                                    System.nanoTime() - startedAt))
+                            .withCacheHit(hit.similarity(), scopeOf(query));
+                }
+            }
             RetrievalResult result = retriever.retrieve(query, context);
             retrieved = result.items().stream().map(RetrievedKnowledge::versionId).distinct().toList();
             context.audit().recordRetrievedVersions(retrieved);
@@ -82,14 +116,14 @@ public final class ComposedRagAdapter implements RagAdapter {
                 if (blocked != null) return blocked;
             }
             // 工具意图（查工单/建单）：预检索无果时不直接拒答，放行给 agent 用工具去查。
-            boolean toolBypass = toolBypassEnabled && !RequestVerdict.NO_TOOL.equals(verdict.tool());
             if (result.refusalReason() != null && !toolBypass)
                 return RagResult.refuse(result.refusalReason(), null, retrieved, result.topScore());
             List<RetrievedKnowledge> material = policy.material(result, context);
             if (result.reliable() && material.isEmpty() && !toolBypass)
                 return RagResult.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, null, retrieved, result.topScore());
             context.timeoutMillis(Long.MAX_VALUE);
-            GenerationResult generated = generator.generate(query, material, context);
+            // 流式出口贯通到生成侧;本地默认路径按 token 外发,agent/缓存命中整段单发。
+            GenerationResult generated = generator.generate(query, material, context, tokenSink);
             context.timeoutMillis(Long.MAX_VALUE);
             Map<String, RetrievedKnowledge> byVersion = new LinkedHashMap<>();
             material.forEach(item -> byVersion.put(item.versionId(), item));
@@ -117,9 +151,12 @@ public final class ComposedRagAdapter implements RagAdapter {
             if (general && !toolBypass && text != null && !text.isBlank())
                 text = "以下为通用办公 IT 建议，无知识库依据。\n\n" + text;
             if (text != null && text.length() > 12000) throw DependencyFailure.invalid();
+            // 人机回环:AI 只产建单草稿(不落库),随结果返回员工确认后才建单
             RagResult answered = new RagResult(RagStatus.SUCCESS, generated.replyType(), text, citations,
-                    generated.confidence(), null, generated.modelVersion(), retrieved, 0, null, general, false,
-                    generated.ticketDraft(), generated.governanceTrace());
+                    generated.confidence(), null, generated.modelVersion(), retrieved, 0, null,
+                    general, false, generated.ticketDraft(), generated.governanceTrace(), null);
+            // 仅实证答案入缓存(拒绝/澄清/通用建议/降级由缓存内部准入门槛再拦一次)
+            if (!toolBypass) cache.write(query, context, answered);
             return answered;
         } catch (RetrievalPolicy.StaleKnowledge stale) {
             return RagResult.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, null, retrieved, null);
@@ -145,7 +182,12 @@ public final class ComposedRagAdapter implements RagAdapter {
             return failure.result(List.of());
         }
     }
-
+    private static String scopeOf(RagQuery query) {
+        if (query.categoryId() == null && query.assetId() == null) return null;
+        if (query.categoryId() == null) return "asset=" + query.assetId();
+        if (query.assetId() == null) return "category=" + query.categoryId();
+        return "category=" + query.categoryId() + ";asset=" + query.assetId();
+    }
     private static RagResult restrict(OfficeDomain domain) {
         return switch (domain) {
             case OFFICE_IT -> null;

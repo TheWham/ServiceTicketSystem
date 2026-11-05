@@ -1,6 +1,7 @@
 package com.itticket.consultation.adapter;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.itticket.consultation.config.ConsultationProperties;
 import com.itticket.consultation.dto.KnowledgeHit;
 import com.itticket.consultation.enums.AiReplyType;
@@ -32,10 +33,24 @@ class ComposedModelProtocolTest {
     void startProvider() throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/chat/completions", exchange -> {
-            requests.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            requests.add(requestBody);
             String payload = replies.isEmpty() ? "{}" : replies.remove(0);
-            byte[] response = json.writeValueAsBytes(Map.of("choices", List.of(Map.of(
-                    "finish_reason", "stop", "message", Map.of("content", payload)))));
+            byte[] response;
+            if (requestBody.contains("\"stream\":true")) {
+                // 生成调用已切换 completeStream:用 SSE 帧返回,
+                // 整段 payload 作为单个 delta.content,后跟 [DONE]。
+                ObjectNode frame = json.createObjectNode();
+                ObjectNode choice = frame.putArray("choices").addObject();
+                choice.putObject("delta").put("content", payload);
+                choice.put("finish_reason", "stop");
+                exchange.getResponseHeaders().add("Content-Type", "text/event-stream; charset=utf-8");
+                response = ("data: " + frame + "\n\n" + "data: [DONE]\n\n").getBytes(StandardCharsets.UTF_8);
+            } else {
+                // 分类调用仍走非流式 complete(),保持单 JSON 形状。
+                response = json.writeValueAsBytes(Map.of("choices", List.of(Map.of(
+                        "finish_reason", "stop", "message", Map.of("content", payload)))));
+            }
             exchange.sendResponseHeaders(200, response.length);
             exchange.getResponseBody().write(response);
             exchange.close();
@@ -51,9 +66,9 @@ class ComposedModelProtocolTest {
                 new com.itticket.consultation.adapter.model.DependencyHttpClient());
         adapter = new ComposedRagAdapter(new com.itticket.consultation.adapter.policy.SemanticRequestClassifier(model),
                 new com.itticket.consultation.adapter.retrieval.MySqlKnowledgeRetriever(knowledge, config),
-                new com.itticket.consultation.adapter.retrieval.RetrievalPolicy(knowledge),
+                new com.itticket.consultation.adapter.retrieval.RetrievalPolicy(knowledge, java.util.Set.of("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"), new java.math.BigDecimal("0.10"), 2),
                 new com.itticket.consultation.adapter.generation.OpenAiCompatibleAnswerGenerator(model, config, null),
-                false, null);
+                false, null, com.itticket.consultation.adapter.cache.SemanticAnswerCache.disabled());
     }
 
     @AfterEach
@@ -183,7 +198,8 @@ class ComposedModelProtocolTest {
 
     private RagResult ask(String question) {
         return adapter.answer(new RagQuery("S-1", question, null, null, 5, new RagCaller("U_EMP01", "EMPLOYEE")),
-                new RagCallContext("req-test", System.nanoTime() + 5_000_000_000L, new RagExecutionAudit()));
+                new RagCallContext("req-test", System.nanoTime() + 5_000_000_000L, new RagExecutionAudit()),
+                TokenSink.discarding());
     }
 
     private static String answer(String text, String ids, boolean offTopic) {

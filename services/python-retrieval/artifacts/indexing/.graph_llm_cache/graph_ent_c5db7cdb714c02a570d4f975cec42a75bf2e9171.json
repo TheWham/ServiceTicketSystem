@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "打印机",
+      "type": "设备"
+    },
+    {
+      "name": "网络打印机",
+      "type": "设备"
+    },
+    {
+      "name": "共享打印机",
+      "type": "设备"
+    },
+    {
+      "name": "打印服务器",
+      "type": "设备"
+    },
+    {
+      "name": "打印队列",
+      "type": "概念"
+    },
+    {
+      "name": "打印服务（Print Spooler）",
+      "type": "软件"
+    },
+    {
+      "name": "打印机驱动",
+      "type": "软件"
+    },
+    {
+      "name": "脱机使用打印机",
+      "type": "配置项"
+    },
+    {
+      "name": "卡纸",
+      "type": "故障现象"
+    },
+    {
+      "name": "缺墨",
+      "type": "故障现象"
+    },
+    {
+      "name": "缺纸",
+      "type": "故障现象"
+    },
+    {
+      "name": "services.msc",
+      "type": "命令工具"
+    },
+    {
+      "name": "control printers",
+      "type": "命令工具"
+    },
+    {
+      "name": "C:\\Windows\\System32\\spool\\PRINTERS",
+      "type": "概念"
+    },
+    {
+      "name": "NVRAM",
+      "type": "概念"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "打印机",
+      "type": "设备"
+    },
+    {
+      "name": "网络打印机",
+      "type": "设备"
+    },
+    {
+      "name": "共享打印机",
+      "type": "设备"
+    },
+    {
+      "name": "打印服务器",
+      "type": "设备"
+    },
+    {
+      "name": "打印队列",
+      "type": "概念"
+    },
+    {
+      "name": "打印服务（Print Spooler）",
+      "type": "软件"
+    },
+    {
+      "name": "打印机驱动",
+      "type": "软件"
+    },
+    {
+      "name": "脱机使用打印机",
+      "type": "配置项"
+    },
+    {
+      "name": "卡纸",
+      "type": "故障现象"
+    },
+    {
+      "name": "缺墨",
+      "type": "故障现象"
+    },
+    {
+      "name": "缺纸",
+      "type": "故障现象"
+    },
+    {
+      "name": "services.msc",
+      "type": "命令工具"
+    },
+    {
+      "name": "control printers",
+      "type": "命令工具"
+    },
+    {
+      "name": "C:\\Windows\\System32\\spool\\PRINTERS",
+      "type": "概念"
+    },
+    {
+      "name": "NVRAM",
+      "type": "概念"
+    }
+  ]
+}

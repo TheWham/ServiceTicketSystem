@@ -1,0 +1,94 @@
+{
+  "relations": [
+    {
+      "target": "ITKB-APPENDIX-2",
+      "type": "process_applies",
+      "note": "本卡命令速查支撑通用排查流程中信息收集、分层排查、日志分析等环节的快速定位与处置",
+      "evidence": "支撑按通用流程快速定位与处置"
+    },
+    {
+      "target": "ITKB-NET-004",
+      "type": "related",
+      "note": "刷新DNS缓存与nslookup命令直接对应DNS解析失败排查中的清缓存与解析测试步骤",
+      "evidence": "ipconfig /flushdns"
+    },
+    {
+      "target": "ITKB-NET-005",
+      "type": "related",
+      "note": "释放/续租IP命令对应IP地址冲突后通过DHCP重新获取IP的处置",
+      "evidence": "ipconfig /release && ipconfig /renew"
+    },
+    {
+      "target": "ITKB-NET-003",
+      "type": "related",
+      "note": "ping、tracert、netstat命令支撑网络断连与网速慢的连通性、路由及带宽占用排查",
+      "evidence": "ping 目标IP -t"
+    },
+    {
+      "target": "ITKB-SYS-001",
+      "type": "related",
+      "note": "sfc、chkdsk、mdsched命令对应蓝屏排查中的系统文件、硬盘与内存检测手段",
+      "evidence": "sfc /scannow"
+    },
+    {
+      "target": "ITKB-SYS-003",
+      "type": "related",
+      "note": "DISM与sfc命令对应Windows更新失败处理中的修复组件步骤",
+      "evidence": "DISM /Online /Cleanup-Image /RestoreHealth"
+    },
+    {
+      "target": "ITKB-SYS-004",
+      "type": "related",
+      "note": "任务管理器启动项管理对应运行缓慢排查中的禁用自启程序手段",
+      "evidence": "taskmgr → 启动"
+    },
+    {
+      "target": "ITKB-SYS-002",
+      "type": "related",
+      "note": "事件查看器对应软件闪退与程序无响应处置中的事件日志分析手段",
+      "evidence": "eventvwr.msc"
+    }
+  ],
+  "graph_nodes": [
+    {
+      "kind": "tool",
+      "name": "ipconfig /all"
+    },
+    {
+      "kind": "tool",
+      "name": "ipconfig /release && ipconfig /renew"
+    },
+    {
+      "kind": "tool",
+      "name": "ipconfig /flushdns"
+    },
+    {
+      "kind": "tool",
+      "name": "ping 目标IP -t"
+    },
+    {
+      "kind": "tool",
+      "name": "nslookup 域名"
+    },
+    {
+      "kind": "tool",
+      "name": "netstat -ano"
+    },
+    {
+      "kind": "tool",
+      "name": "sfc /scannow"
+    },
+    {
+      "kind": "tool",
+      "name": "DISM /Online /Cleanup-Image /RestoreHealth"
+    },
+    {
+      "kind": "tool",
+      "name": "chkdsk C: /f"
+    },
+    {
+      "kind": "tool",
+      "name": "mdsched.exe"
+    }
+  ]
+}

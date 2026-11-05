@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "WiFi",
+      "type": "概念"
+    },
+    {
+      "name": "无线网卡驱动",
+      "type": "软件"
+    },
+    {
+      "name": "DHCP",
+      "type": "协议"
+    },
+    {
+      "name": "MAC地址",
+      "type": "概念"
+    },
+    {
+      "name": "AP",
+      "type": "设备"
+    },
+    {
+      "name": "ipconfig",
+      "type": "命令工具"
+    },
+    {
+      "name": "802.1X认证",
+      "type": "协议"
+    },
+    {
+      "name": "NPS服务器",
+      "type": "系统"
+    },
+    {
+      "name": "RADIUS",
+      "type": "协议"
+    },
+    {
+      "name": "AC控制器",
+      "type": "设备"
+    },
+    {
+      "name": "路由器",
+      "type": "设备"
+    },
+    {
+      "name": "设备管理器",
+      "type": "软件"
+    },
+    {
+      "name": "PoE供电",
+      "type": "概念"
+    },
+    {
+      "name": "MAC地址过滤",
+      "type": "配置项"
+    },
+    {
+      "name": "DHCP地址池",
+      "type": "配置项"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "WiFi",
+      "type": "概念"
+    },
+    {
+      "name": "无线网卡驱动",
+      "type": "软件"
+    },
+    {
+      "name": "DHCP",
+      "type": "协议"
+    },
+    {
+      "name": "MAC地址",
+      "type": "概念"
+    },
+    {
+      "name": "AP",
+      "type": "设备"
+    },
+    {
+      "name": "ipconfig",
+      "type": "命令工具"
+    },
+    {
+      "name": "802.1X认证",
+      "type": "协议"
+    },
+    {
+      "name": "NPS服务器",
+      "type": "系统"
+    },
+    {
+      "name": "RADIUS",
+      "type": "协议"
+    },
+    {
+      "name": "AC控制器",
+      "type": "设备"
+    },
+    {
+      "name": "路由器",
+      "type": "设备"
+    },
+    {
+      "name": "设备管理器",
+      "type": "软件"
+    },
+    {
+      "name": "PoE供电",
+      "type": "概念"
+    },
+    {
+      "name": "MAC地址过滤",
+      "type": "配置项"
+    },
+    {
+      "name": "DHCP地址池",
+      "type": "配置项"
+    }
+  ]
+}

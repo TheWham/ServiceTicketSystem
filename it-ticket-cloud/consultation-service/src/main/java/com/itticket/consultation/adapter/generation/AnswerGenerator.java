@@ -3,5 +3,5 @@ import com.itticket.consultation.adapter.*;
 import com.itticket.consultation.adapter.retrieval.RetrievedKnowledge;
 import java.util.List;
 public interface AnswerGenerator {
-    GenerationResult generate(RagQuery query, List<RetrievedKnowledge> material, RagCallContext context);
+    GenerationResult generate(RagQuery query, List<RetrievedKnowledge> material, RagCallContext context, TokenSink sink);
 }

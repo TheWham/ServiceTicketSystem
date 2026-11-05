@@ -133,7 +133,7 @@ itticket:
       # ⚠ 当前有意偏离:qwen3-vl-32b-thinking 实测单次小规模问答约 14 秒,topK 增大后会更久,
       # 按 15 秒会几乎每次都降级成 MODEL_UNAVAILABLE。这里放宽到 120 秒以保证功能可用,
       # 属于已知的性能契约偏离,上线前必须二选一:换更快的模型,或走变更流程修订 RD-003。
-      first-token-timeout-ms: 5000
+      first-token-timeout-ms: ${AI_FIRST_TOKEN_TIMEOUT_MS:5000}
       request-timeout-ms: ${AI_REQUEST_TIMEOUT_MS:120000}
       # RD-003 同一请求最多重试 1 次
       max-attempts: 2
@@ -143,6 +143,32 @@ itticket:
       circuit-open-millis: 30000
       circuit-half-open-success-threshold: 3
       # AI-001 高风险主题必须拒答并给出转人工/提单入口
+
+      # 语义答案缓存(带知识版本哨兵):默认关闭;开启前 embedding-model 必填(fail-fast)。
+      # 命中仍需逐条 citations 的 versionId 对 MySQL 当前版本哨兵复核,失效即驱逐。
+      cache:
+        enabled: ${AI_SEMANTIC_CACHE_ENABLED:false}
+        # 问题向量余弦相似度门槛(下限 0.90,低于会被装配期拒绝)
+        threshold: ${AI_SEMANTIC_CACHE_THRESHOLD:0.93}
+        max-entries: ${AI_SEMANTIC_CACHE_MAX_ENTRIES:500}
+        # 兕底 TTL 7 天
+        ttl-seconds: ${AI_SEMANTIC_CACHE_TTL_SECONDS:604800}
+        # 嵌入模型 ID;不填且 enabled=true 时启动失败。不同模型向量不可比。
+        embedding-model: ${AI_CACHE_EMBEDDING_MODEL:}
+        # 嵌入端点基址(不含 /embeddings);为空回退 ai.base-url(前提:同供应商族在
+        # 该基址提供 /embeddings,与 Python 侧 KspEmbeddingProvider 同族,实施期验证)
+        embedding-base-url: ${AI_CACHE_EMBEDDING_BASE_URL:}
+        embedding-timeout-ms: ${AI_CACHE_EMBEDDING_TIMEOUT_MS:1000}
+        # 同义改写防抖窗口(秒):窗口内同义写入不刷新条目
+        min-write-interval-seconds: ${AI_SEMANTIC_CACHE_MIN_WRITE_INTERVAL:0}
+
+      # 流式回答(T-6):/stream 端点常在;开关只决定生成期间增量令牌是否上屏。
+      # false=与旧同步端点口径完全一致(引擎内丢弃型 sink,整段单发后 final),前端单一路径。
+      streaming:
+        enabled: ${AI_STREAMING_ENABLED:false}
+        # SSE 空转帧间隔(毫秒);排队与生成期间都有,兼作断连探测
+        keep-alive-millis: ${AI_STREAM_KEEP_ALIVE_MILLIS:15000}
+
 
 logging:
   level:

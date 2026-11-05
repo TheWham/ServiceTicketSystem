@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -49,7 +50,7 @@ class AiConsultationPolicyTest {
         var order = inOrder(fixture.messages, fixture.rag);
         order.verify(fixture.messages).loadAiHistory("S1", "U1", "ai-q:idempotent-1", 6, 900);
         order.verify(fixture.messages).appendEmployeeMessage("S1", "U1", "ai-q:idempotent-1", "Restarted; still broken");
-        order.verify(fixture.rag).answer(query.capture(), nullable(String.class));
+        order.verify(fixture.rag).answer(query.capture(), nullable(String.class), any(), anyLong());
         assertThat(query.getValue().question()).isEqualTo("Restarted; still broken");
         assertThat(query.getValue().priorTurns()).containsExactlyElementsOf(history);
     }
@@ -102,6 +103,58 @@ class AiConsultationPolicyTest {
     }
 
     /**
+     * 语义缓存命中审计：命中信息随消息 metadata 落库（cacheHit/cacheSimilarity/cacheScope），
+     * schemaVersion 保持 1；实时路径（无命中）不写入 cacheHit 键——历史留白不伪装成“未命中”。
+     */
+    @Test
+    void cacheHitMetadataIsPersistedOnAnswer() {
+        ConsultationProperties properties = new ConsultationProperties();
+        properties.getAi().setAnswerEnabled(true);
+        RagResult cached = new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER,
+                "检查麦克风与音频输入设置。", List.of(new KnowledgeCitationDto("A1", "V1", "会议音频排障",
+                new BigDecimal("0.85"), "摘要")), BigDecimal.ONE,
+                null, "model", List.of("V1"), 10, null, false, false)
+                .withCacheHit(0.97, "category=C_NET");
+        Fixture fixture = new Fixture(properties, cached);
+        when(fixture.knowledge.isPublishedCurrentVersion(anyString(), anyString())).thenReturn(true);
+        AiChatResponse response = fixture.chat("会议没有声音");
+        assertThat(response.replyType()).isEqualTo(AiReplyType.ANSWER);
+
+        ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
+        verify(fixture.messages).appendAiMessage(eq("S1"), anyString(), eq(response.answerText()), metadata.capture());
+        Map<?, ?> saved = Json.read(metadata.getValue(), Map.class);
+        assertThat(saved.get("schemaVersion")).isEqualTo(1);
+        assertThat(saved.get("cacheHit")).isEqualTo(true);
+        assertThat(saved.get("cacheSimilarity")).isEqualTo(0.97);
+        assertThat(saved.get("cacheScope")).isEqualTo("category=C_NET");
+    }
+
+    @Test
+    void realtimeAnswerMetadataHasNoCacheHitKey() {
+        ConsultationProperties properties = new ConsultationProperties();
+        properties.getAi().setAnswerEnabled(true);
+        Fixture fixture = new Fixture(properties, generalAnswer());
+        fixture.chat("VPN cannot connect");
+
+        ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
+        verify(fixture.messages).appendAiMessage(eq("S1"), anyString(), anyString(), metadata.capture());
+        Map<?, ?> saved = Json.read(metadata.getValue(), Map.class);
+        assertThat(saved.containsKey("cacheHit")).isFalse();
+        assertThat(saved.containsKey("cacheSimilarity")).isFalse();
+    }
+
+    @Test
+    void disabledAnswerPathStillPersistsMessageWithoutCacheHit() {
+        ConsultationProperties properties = new ConsultationProperties();
+        properties.getAi().setAnswerEnabled(false);
+        Fixture fixture = new Fixture(properties, generalAnswer());
+        AiChatResponse response = fixture.chat("VPN cannot connect");
+        assertThat(response).isNotNull();
+        verify(fixture.messages).appendAiMessage(eq("S1"), anyString(), anyString(), anyString());
+        verifyNoInteractions(fixture.rag);
+    }
+
+    /**
      * 越界拒答路径：模型判定 OFF_TOPIC 拒答 ->
      * 响应透出 refusalReason=OFF_TOPIC（前端展示“非业务范围”徽标），
      * 落库给用户的拒答文案必须同时出现“办公 IT”与“不能答复”，明示服务边界。
@@ -125,9 +178,48 @@ class AiConsultationPolicyTest {
      *  - idempotency.execute: 直通执行业务函数并标记“非重放”（绕过幂等存储）;
      *  - rag.answer: 返回用例预置的适配器结果（模拟两阶段协议已完成）。
      */
+    @Test
+    void streamFacadePassesOrchestratorSinkIntoRagChain() {
+        Fixture fixture = new Fixture(new ConsultationProperties(), generalAnswer());
+        List<String> tokens = new ArrayList<>();
+        TokenSink sink = TokenSink.of(tokens::add);
+
+        AiChatResponse response = fixture.service.chatStreamed(
+                new CurrentUser("U1", RoleCode.EMPLOYEE, Actor.EMPLOYEE),
+                "S1", new AiChatRequest("打印机不进纸", null), "idempotent-1", sink,
+                System.nanoTime() + 60_000_000_000L);
+
+        // 编排器的 sink 必须原样进入 RAG 链,增量令牌才能真正外发
+        ArgumentCaptor<TokenSink> captured = ArgumentCaptor.forClass(TokenSink.class);
+        verify(fixture.rag).answer(any(RagQuery.class), nullable(String.class), captured.capture(), anyLong());
+        assertThat(captured.getValue()).isSameAs(sink);
+        // 旧端点退化链不变:chat() 仍走丢弃型 sink
+        verify(fixture.messages).appendAiMessage(eq("S1"), eq("ai-a:idempotent-1"), eq(response.answerText()), anyString());
+    }
+
+    @Test
+    void clientGoneAbortsBeforeAnyAiPersistence() {
+        Fixture fixture = new Fixture(new ConsultationProperties(), generalAnswer());
+        TokenSink gone = new TokenSink(null) {
+            @Override public boolean clientGone() {
+                return true;
+            }
+        };
+
+        assertThatThrownBy(() -> fixture.service.chatStreamed(
+                new CurrentUser("U1", RoleCode.EMPLOYEE, Actor.EMPLOYEE),
+                "S1", new AiChatRequest("打印机不进纸", null), "idempotent-1", gone,
+                        System.nanoTime() + 60_000_000_000L))
+                .isInstanceOf(StreamAbortedException.class);
+
+        // 断连后不落库:AI 回答与交互审计都不写
+        verify(fixture.messages, never()).appendAiMessage(anyString(), anyString(), anyString(), anyString());
+    }
+
     private static class Fixture {
         final ConsultationMessageService messages = mock(ConsultationMessageService.class);
         final GuardedRagClient rag = mock(GuardedRagClient.class);
+        final KnowledgeQueryService knowledge = mock(KnowledgeQueryService.class);
         final AiConsultationService service;
 
         Fixture(ConsultationProperties properties, RagResult answer) {
@@ -141,9 +233,9 @@ class AiConsultationPolicyTest {
             IdempotencyService idempotency = mock(IdempotencyService.class);
             when(idempotency.execute(anyString(), anyString(), anyString(), any(), eq(AiChatResponse.class), any()))
                     .thenAnswer(call -> new IdempotentResult<>(((Supplier<?>) call.getArgument(5)).get(), false));
-            when(rag.answer(any(), nullable(String.class))).thenReturn(answer);
-            service = new AiConsultationService(transitions, messages, mock(KnowledgeQueryService.class), rag,
-                    mock(AiInteractionMapper.class), new AuthzService(properties), idempotency, properties, null);
+            when(rag.answer(any(), nullable(String.class), any(), anyLong())).thenReturn(answer);
+            service = new AiConsultationService(transitions, messages, knowledge, rag,
+                    mock(AiInteractionMapper.class), new AuthzService(properties), idempotency, properties);
         }
 
         /** 员工身份发一条问题（固定幂等键 idempotent-1） */

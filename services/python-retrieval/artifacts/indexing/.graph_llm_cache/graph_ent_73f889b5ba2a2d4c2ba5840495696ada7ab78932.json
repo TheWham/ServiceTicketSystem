@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "Outlook",
+      "type": "软件"
+    },
+    {
+      "name": "网页邮箱",
+      "type": "系统"
+    },
+    {
+      "name": "SMTP",
+      "type": "协议"
+    },
+    {
+      "name": "退信",
+      "type": "故障现象"
+    },
+    {
+      "name": "Exchange",
+      "type": "软件"
+    },
+    {
+      "name": "反垃圾邮件网关",
+      "type": "设备"
+    },
+    {
+      "name": "OneDrive",
+      "type": "软件"
+    },
+    {
+      "name": "脱机工作",
+      "type": "配置项"
+    },
+    {
+      "name": "邮箱配额",
+      "type": "配置项"
+    },
+    {
+      "name": "白名单",
+      "type": "配置项"
+    },
+    {
+      "name": "SPF/DKIM/DMARC",
+      "type": "协议"
+    },
+    {
+      "name": "DNS",
+      "type": "协议"
+    },
+    {
+      "name": "MXToolbox",
+      "type": "命令工具"
+    },
+    {
+      "name": "防火墙",
+      "type": "设备"
+    },
+    {
+      "name": "配置文件",
+      "type": "配置项"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "Outlook",
+      "type": "软件"
+    },
+    {
+      "name": "网页邮箱",
+      "type": "系统"
+    },
+    {
+      "name": "SMTP",
+      "type": "协议"
+    },
+    {
+      "name": "退信",
+      "type": "故障现象"
+    },
+    {
+      "name": "Exchange",
+      "type": "软件"
+    },
+    {
+      "name": "反垃圾邮件网关",
+      "type": "设备"
+    },
+    {
+      "name": "OneDrive",
+      "type": "软件"
+    },
+    {
+      "name": "脱机工作",
+      "type": "配置项"
+    },
+    {
+      "name": "邮箱配额",
+      "type": "配置项"
+    },
+    {
+      "name": "白名单",
+      "type": "配置项"
+    },
+    {
+      "name": "SPF/DKIM/DMARC",
+      "type": "协议"
+    },
+    {
+      "name": "DNS",
+      "type": "协议"
+    },
+    {
+      "name": "MXToolbox",
+      "type": "命令工具"
+    },
+    {
+      "name": "防火墙",
+      "type": "设备"
+    },
+    {
+      "name": "配置文件",
+      "type": "配置项"
+    }
+  ]
+}

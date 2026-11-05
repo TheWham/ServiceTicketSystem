@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "共享盘",
+      "type": "概念"
+    },
+    {
+      "name": "文件服务器",
+      "type": "设备"
+    },
+    {
+      "name": "网络驱动器",
+      "type": "概念"
+    },
+    {
+      "name": "SMB",
+      "type": "协议"
+    },
+    {
+      "name": "SMBv1",
+      "type": "协议"
+    },
+    {
+      "name": "DNS",
+      "type": "协议"
+    },
+    {
+      "name": "VPN",
+      "type": "概念"
+    },
+    {
+      "name": "凭据管理器",
+      "type": "软件"
+    },
+    {
+      "name": "control keymgr.dll",
+      "type": "命令工具"
+    },
+    {
+      "name": "Get-SmbConnection",
+      "type": "命令工具"
+    },
+    {
+      "name": "Server服务",
+      "type": "系统"
+    },
+    {
+      "name": "Workstation服务",
+      "type": "系统"
+    },
+    {
+      "name": "不安全的访客登录",
+      "type": "配置项"
+    },
+    {
+      "name": "共享权限",
+      "type": "账号权限"
+    },
+    {
+      "name": "NTFS权限",
+      "type": "账号权限"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "共享盘",
+      "type": "概念"
+    },
+    {
+      "name": "文件服务器",
+      "type": "设备"
+    },
+    {
+      "name": "网络驱动器",
+      "type": "概念"
+    },
+    {
+      "name": "SMB",
+      "type": "协议"
+    },
+    {
+      "name": "SMBv1",
+      "type": "协议"
+    },
+    {
+      "name": "DNS",
+      "type": "协议"
+    },
+    {
+      "name": "VPN",
+      "type": "概念"
+    },
+    {
+      "name": "凭据管理器",
+      "type": "软件"
+    },
+    {
+      "name": "control keymgr.dll",
+      "type": "命令工具"
+    },
+    {
+      "name": "Get-SmbConnection",
+      "type": "命令工具"
+    },
+    {
+      "name": "Server服务",
+      "type": "系统"
+    },
+    {
+      "name": "Workstation服务",
+      "type": "系统"
+    },
+    {
+      "name": "不安全的访客登录",
+      "type": "配置项"
+    },
+    {
+      "name": "共享权限",
+      "type": "账号权限"
+    },
+    {
+      "name": "NTFS权限",
+      "type": "账号权限"
+    }
+  ]
+}

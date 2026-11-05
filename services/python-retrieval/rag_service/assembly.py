@@ -29,6 +29,7 @@ from rag_pipeline.retrieval.hybrid import IndustrialHybridRetriever
 from rag_pipeline.retrieval.query_rewriter import QueryRewriter
 
 from .contract import HealthResponse, RagRetrievalResponse, RetrievalRequest
+from .graph_expansion import GraphExpander
 from .mapping import build_response
 
 try:
@@ -50,6 +51,24 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _parents_index_from_corpus(corpus: List[Any]) -> Dict[str, Dict[str, Any]]:
+    """语料文档 → {parent_id: 父块代表 metadata}（供图扩展消费）。
+
+    父子切片下子块 metadata 携带父块全部身份字段 + parent_content：这里采用首现
+    子块并剥离子块专属的 child_id/chunk_id——扩展条目代表整卡（父块），
+    溯源 id 回退到 parent_id（mapping.build_response 的 chunk_id 三级兜底本就支持）。
+    """
+    parents: Dict[str, Dict[str, Any]] = {}
+    for chunk in corpus:
+        md = getattr(chunk, "metadata", None) or {}
+        pid = md.get("parent_id") or md.get("wiki_id")
+        if not pid or pid in parents:
+            continue
+        parents[pid] = {k: v for k, v in md.items()
+                        if k not in ("child_id", "chunk_id")}
+    return parents
+
+
 class ServiceAssembly:
     """检索内核的单例装配体：构造即完成全部校验（指纹不符/缺库即 fail-fast）。"""
 
@@ -69,6 +88,8 @@ class ServiceAssembly:
             if pid and cat:
                 self.parent_category.setdefault(pid, cat)
         # 指纹先算：向量库加载前要用它做 manifest 校验
+        # 父块索引（语料装载点旁）：图扩展邻居卡的父块代表 metadata
+        self._parents_by_id: Dict[str, Dict[str, Any]] = _parents_index_from_corpus(self.corpus)
         self.wiki_fingerprint = compute_wiki_fingerprint(
             sorted(p for p in self.wiki_dir.glob("*.md") if p.name != "_index.md"))
         self.config_fingerprint = config_fingerprint(self.cfg)
@@ -156,6 +177,10 @@ class ServiceAssembly:
         self.rerank_degraded_count = 0
         # 版本消歧解析器（懒构造，与检索器共用同一份语料与向量库）
         self._policy_resolver: Optional[Any] = None
+        # ---- 7) 图扩展（graph.enabled 默认 false：不建即不接线，检索行为与改造前逐字段一致）----
+        self.graph_expander: Optional[GraphExpander] = (
+            GraphExpander(self.cfg.graph) if self.cfg.graph.enabled else None
+        )
 
     # ------------------------------------------------------------------ 装配细节
 
@@ -184,7 +209,7 @@ class ServiceAssembly:
 
     def search(self, req: RetrievalRequest) -> RagRetrievalResponse:
         """【链路二 · 在线主链路入口】Assembly.search(req)
-        
+
         输入：RetrievalRequest 对象（包含 question, category_id, top_k 等）。
         动作：
           1. 步骤 1 (意图分流)：router.analyze(req.question)，单维事实跳过图谱（0ms开销），复合故障触发图谱；
@@ -192,6 +217,7 @@ class ServiceAssembly:
           3. 步骤 3 (双轨检索)：reasoner.retrieve_multihop_context 执行 Neo4j 2-Hop 剪枝遍历与 MySQL Docstore 全文回溯；
           4. 步骤 4 (主路混合)：_run_search 执行向量库 + BM25 双路召回与 Cross-Encoder Rerank 精排；
           5. 步骤 5 (契约装配)：build_response 将图谱推导因果链前置注入到 Top-1 切片正文并组装契约响应。
+        graph.enabled 时在锁内、主路检索之后追加图扩展条目（扩展分不计入 topScore）。
         返回：RagRetrievalResponse 工业级对外标准检索响应体。
         """
         # 步骤 1: 自适应意图判别与实体抽取（单维走双路召回，多维走 GraphRAG）
@@ -219,15 +245,19 @@ class ServiceAssembly:
         rewrite = self.rewriter.rewrite(req.question) if self.rewriter else None
 
         # 步骤 4: 竞争锁保护下的主路双路混合检索（向量 + BM25 + Cross-Encoder 重排）
+        # 图扩展在锁临界区内、_run_search 之后 build_response 之前：
+        # 基础条目先落定（拒答/空结果短路），扩展条目才追加进 final_results。
         if self.serialize_search:
             if not self._lock.acquire(timeout=self.lock_wait_seconds):
                 raise LockBusy(f"检索锁等待超过 {self.lock_wait_seconds}s")
             try:
                 res = self._run_search(req, rewrite_query=rewrite)
+                self._apply_graph_expansion(res)
             finally:
                 self._lock.release()
         else:
             res = self._run_search(req, rewrite_query=rewrite)
+            self._apply_graph_expansion(res)
 
         if res.get("rerank_remote") is False:
             # 网关限流 → 启发式降级：内核拒答门会被跳过，服务层阈值判定仍生效（见 mapping.build_response）
@@ -241,6 +271,15 @@ class ServiceAssembly:
                               reject_threshold=self.cfg.retrieval.reject_threshold,
                               docstore=self.docstore,
                               reasoning_res=reasoning_res)
+
+    def _apply_graph_expansion(self, res: Dict[str, Any]) -> None:
+        """图扩展接入点：仅当装配件存在、基础条目非空且未拒答时追加。
+
+        扩展件自身负责硬失败（GraphUnavailable → app.py 503/5032）；这里
+        不掺任何图逻辑，只守接线条件。"""
+        if self.graph_expander and res.get("final_results") and not res.get("rejected"):
+            res["final_results"] += self.graph_expander.expand(
+                res["final_results"], self._parents_by_id)
 
     def _run_search(self, req: RetrievalRequest, rewrite_query: Optional[str] = None) -> Dict[str, Any]:
         rc = self.cfg.retrieval

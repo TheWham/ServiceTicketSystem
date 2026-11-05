@@ -1,0 +1,62 @@
+{
+  "entities": [
+    {
+      "name": "OneDrive",
+      "type": "软件"
+    },
+    {
+      "name": "WPS云盘",
+      "type": "软件"
+    },
+    {
+      "name": "Office上传中心（Microsoft Office Upload Center）",
+      "type": "软件"
+    },
+    {
+      "name": "onedrive.exe /reset",
+      "type": "命令工具"
+    },
+    {
+      "name": "GPO",
+      "type": "配置项"
+    },
+    {
+      "name": "*.sharepoint.com",
+      "type": "配置项"
+    },
+    {
+      "name": "*.wps.cn",
+      "type": "配置项"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "OneDrive",
+      "type": "软件"
+    },
+    {
+      "name": "WPS云盘",
+      "type": "软件"
+    },
+    {
+      "name": "Office上传中心（Microsoft Office Upload Center）",
+      "type": "软件"
+    },
+    {
+      "name": "onedrive.exe /reset",
+      "type": "命令工具"
+    },
+    {
+      "name": "GPO",
+      "type": "配置项"
+    },
+    {
+      "name": "*.sharepoint.com",
+      "type": "配置项"
+    },
+    {
+      "name": "*.wps.cn",
+      "type": "配置项"
+    }
+  ]
+}

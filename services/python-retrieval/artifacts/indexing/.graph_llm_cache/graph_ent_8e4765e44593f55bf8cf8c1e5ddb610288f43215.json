@@ -1,0 +1,102 @@
+{
+  "entities": [
+    {
+      "name": "键盘",
+      "type": "设备"
+    },
+    {
+      "name": "鼠标",
+      "type": "设备"
+    },
+    {
+      "name": "USB接收器",
+      "type": "设备"
+    },
+    {
+      "name": "蓝牙",
+      "type": "协议"
+    },
+    {
+      "name": "触摸板",
+      "type": "设备"
+    },
+    {
+      "name": "电池",
+      "type": "设备"
+    },
+    {
+      "name": "驱动程序",
+      "type": "软件"
+    },
+    {
+      "name": "设备管理器",
+      "type": "软件"
+    },
+    {
+      "name": "Keyboard Test Utility",
+      "type": "软件"
+    },
+    {
+      "name": "BIOS",
+      "type": "系统"
+    },
+    {
+      "name": "USB Legacy Support",
+      "type": "配置项"
+    },
+    {
+      "name": "双击速度",
+      "type": "配置项"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "键盘",
+      "type": "设备"
+    },
+    {
+      "name": "鼠标",
+      "type": "设备"
+    },
+    {
+      "name": "USB接收器",
+      "type": "设备"
+    },
+    {
+      "name": "蓝牙",
+      "type": "协议"
+    },
+    {
+      "name": "触摸板",
+      "type": "设备"
+    },
+    {
+      "name": "电池",
+      "type": "设备"
+    },
+    {
+      "name": "驱动程序",
+      "type": "软件"
+    },
+    {
+      "name": "设备管理器",
+      "type": "软件"
+    },
+    {
+      "name": "Keyboard Test Utility",
+      "type": "软件"
+    },
+    {
+      "name": "BIOS",
+      "type": "系统"
+    },
+    {
+      "name": "USB Legacy Support",
+      "type": "配置项"
+    },
+    {
+      "name": "双击速度",
+      "type": "配置项"
+    }
+  ]
+}

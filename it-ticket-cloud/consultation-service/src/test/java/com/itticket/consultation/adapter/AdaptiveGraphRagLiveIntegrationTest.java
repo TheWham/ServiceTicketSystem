@@ -149,13 +149,13 @@ public class AdaptiveGraphRagLiveIntegrationTest {
         assertThat(isRagServiceOnline()).isTrue();
 
         // 1. 组装 RetrievalPolicy（核验当前发布版本）
-        RetrievalPolicy policy = new RetrievalPolicy(knowledgeService);
+        RetrievalPolicy policy = new RetrievalPolicy(knowledgeService, java.util.Set.of(), new BigDecimal("0.10"), 2);
 
         // 2. 模拟请求判定器
         RequestClassifier classifier = (query, ctx) -> new RequestVerdict(OfficeDomain.OFFICE_IT, RequestVerdict.NO_TOOL, false);
 
         // 3. 模拟 AnswerGenerator：验证它接收到了前置注入了因果链的材料
-        AnswerGenerator mockGenerator = (query, material, ctx) -> {
+        AnswerGenerator mockGenerator = (query, material, ctx, sink) -> {
             assertThat(material).isNotEmpty();
             RetrievedKnowledge mat0 = material.get(0);
             assertThat(mat0.content()).contains("【知识图谱因果推导】");
@@ -178,7 +178,8 @@ public class AdaptiveGraphRagLiveIntegrationTest {
                 policy,
                 mockGenerator,
                 false,
-                null
+                null,
+                com.itticket.consultation.adapter.cache.SemanticAnswerCache.disabled()
         );
 
         GuardedRagClient client = new GuardedRagClient(adapter, config);
@@ -187,7 +188,7 @@ public class AdaptiveGraphRagLiveIntegrationTest {
         RagQuery query = new RagQuery("SESSION_003", complexQuery, "C_NET", "DEV_01", 3,
                 new RagCaller("U_EMP01", "EMPLOYEE"));
 
-        RagResult ragResult = client.answer(query, "REQ_COMPOSED_001");
+        RagResult ragResult = client.answer(query, "REQ_COMPOSED_001", com.itticket.consultation.adapter.TokenSink.discarding(), System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(60));
 
         // 5. 校验 AI 客服最终返回
         assertThat(ragResult.status()).isEqualTo(RagStatus.SUCCESS);

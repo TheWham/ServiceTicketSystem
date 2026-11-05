@@ -94,7 +94,7 @@ public final class PythonAgentClient {
         if (query.assetId() != null) body.put("assetId", query.assetId());
 
         String base = agent.getServiceBaseUrl().replaceAll("/+$", "");
-        http.postStream(URI.create(base + "/api/v1/agent/chat/stream"), body,
+        http.postSseFrames(URI.create(base + "/api/v1/agent/chat/stream"), body,
                 Map.of("X-User-Id", query.caller().userId(), "X-User-Role", query.caller().role()),
                 context, REQUEST_TIMEOUT_MS, onFrame);
     }

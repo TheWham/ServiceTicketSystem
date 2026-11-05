@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "以太网",
+      "type": "概念"
+    },
+    {
+      "name": "网线",
+      "type": "设备"
+    },
+    {
+      "name": "水晶头",
+      "type": "设备"
+    },
+    {
+      "name": "交换机端口",
+      "type": "设备"
+    },
+    {
+      "name": "配线架",
+      "type": "设备"
+    },
+    {
+      "name": "VLAN",
+      "type": "概念"
+    },
+    {
+      "name": "DHCP",
+      "type": "协议"
+    },
+    {
+      "name": "MAC地址",
+      "type": "概念"
+    },
+    {
+      "name": "网卡驱动",
+      "type": "软件"
+    },
+    {
+      "name": "ncpa.cpl",
+      "type": "命令工具"
+    },
+    {
+      "name": "show interface status",
+      "type": "命令工具"
+    },
+    {
+      "name": "网线测试仪",
+      "type": "设备"
+    },
+    {
+      "name": "err-disabled",
+      "type": "故障现象"
+    },
+    {
+      "name": "IP/MAC绑定",
+      "type": "配置项"
+    },
+    {
+      "name": "打线刀",
+      "type": "设备"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "以太网",
+      "type": "概念"
+    },
+    {
+      "name": "网线",
+      "type": "设备"
+    },
+    {
+      "name": "水晶头",
+      "type": "设备"
+    },
+    {
+      "name": "交换机端口",
+      "type": "设备"
+    },
+    {
+      "name": "配线架",
+      "type": "设备"
+    },
+    {
+      "name": "VLAN",
+      "type": "概念"
+    },
+    {
+      "name": "DHCP",
+      "type": "协议"
+    },
+    {
+      "name": "MAC地址",
+      "type": "概念"
+    },
+    {
+      "name": "网卡驱动",
+      "type": "软件"
+    },
+    {
+      "name": "ncpa.cpl",
+      "type": "命令工具"
+    },
+    {
+      "name": "show interface status",
+      "type": "命令工具"
+    },
+    {
+      "name": "网线测试仪",
+      "type": "设备"
+    },
+    {
+      "name": "err-disabled",
+      "type": "故障现象"
+    },
+    {
+      "name": "IP/MAC绑定",
+      "type": "配置项"
+    },
+    {
+      "name": "打线刀",
+      "type": "设备"
+    }
+  ]
+}

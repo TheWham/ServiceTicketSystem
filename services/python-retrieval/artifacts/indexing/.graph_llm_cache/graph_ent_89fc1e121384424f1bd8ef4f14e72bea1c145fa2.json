@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "IP地址冲突",
+      "type": "故障现象"
+    },
+    {
+      "name": "IP地址",
+      "type": "概念"
+    },
+    {
+      "name": "DHCP",
+      "type": "协议"
+    },
+    {
+      "name": "DHCP服务器",
+      "type": "系统"
+    },
+    {
+      "name": "DHCP池",
+      "type": "概念"
+    },
+    {
+      "name": "DHCP Snooping",
+      "type": "概念"
+    },
+    {
+      "name": "静态IP",
+      "type": "概念"
+    },
+    {
+      "name": "ARP",
+      "type": "协议"
+    },
+    {
+      "name": "MAC地址",
+      "type": "概念"
+    },
+    {
+      "name": "交换机",
+      "type": "设备"
+    },
+    {
+      "name": "路由器",
+      "type": "设备"
+    },
+    {
+      "name": "虚拟机",
+      "type": "软件"
+    },
+    {
+      "name": "cmd",
+      "type": "命令工具"
+    },
+    {
+      "name": "ipconfig /release",
+      "type": "命令工具"
+    },
+    {
+      "name": "ipconfig /renew",
+      "type": "命令工具"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "IP地址冲突",
+      "type": "故障现象"
+    },
+    {
+      "name": "IP地址",
+      "type": "概念"
+    },
+    {
+      "name": "DHCP",
+      "type": "协议"
+    },
+    {
+      "name": "DHCP服务器",
+      "type": "系统"
+    },
+    {
+      "name": "DHCP池",
+      "type": "概念"
+    },
+    {
+      "name": "DHCP Snooping",
+      "type": "概念"
+    },
+    {
+      "name": "静态IP",
+      "type": "概念"
+    },
+    {
+      "name": "ARP",
+      "type": "协议"
+    },
+    {
+      "name": "MAC地址",
+      "type": "概念"
+    },
+    {
+      "name": "交换机",
+      "type": "设备"
+    },
+    {
+      "name": "路由器",
+      "type": "设备"
+    },
+    {
+      "name": "虚拟机",
+      "type": "软件"
+    },
+    {
+      "name": "cmd",
+      "type": "命令工具"
+    },
+    {
+      "name": "ipconfig /release",
+      "type": "命令工具"
+    },
+    {
+      "name": "ipconfig /renew",
+      "type": "命令工具"
+    }
+  ]
+}

@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { parse, compileScript } from '@vue/compiler-sfc'
 import * as vue from 'vue'
+import * as governanceTrace from '../src/utils/governanceTrace.js'
+import * as graphReasoning from '../src/utils/graphReasoning.js'
 
 const terminal = ['RESOLVED', 'CONVERTED_TO_TICKET', 'CLOSED']
 
@@ -86,7 +88,7 @@ for (const name of ['ConsultationChat', 'EngineerConsultation']) {
 
 test('RAG clarification is not presented as a general answer or feedback ingestion', async () => {
   const { state: c } = component('ConsultationChat', {
-    aiMessage: async () => ({ replyType: 'CLARIFY', answerText: '请补充具体的设备和报错。', citations: [], interactionId: 'I1' })
+    aiMessageStream: async () => ({ replyType: 'CLARIFY', answerText: '请补充具体的设备和报错。', citations: [], interactionId: 'I1' })
   })
   c.session.value = { sessionId: 'S1', status: 'AI_ACTIVE' }
   c.draft.value = '用不了'
@@ -98,7 +100,7 @@ test('RAG clarification is not presented as a general answer or feedback ingesti
 
 test('Chinese input composition Enter does not send or clear the draft', async () => {
   let calls = 0
-  const { state: c } = component('ConsultationChat', { aiMessage: async () => { calls++ } })
+  const { state: c } = component('ConsultationChat', { aiMessageStream: async () => { calls++ } })
   c.session.value = { sessionId: 'S1', status: 'AI_ACTIVE' }
   c.draft.value = '网络无法连接'
   await c.send({ isComposing: true })
@@ -108,7 +110,7 @@ test('Chinese input composition Enter does not send or clear the draft', async (
 
 test('failed AI request restores the question for editing and retry', async () => {
   const { state: c } = component('ConsultationChat', {
-    aiMessage: async () => { throw new Error('服务不可用') }
+    aiMessageStream: async () => { throw new Error('服务不可用') }
   })
   c.session.value = { sessionId: 'S1', status: 'AI_ACTIVE' }
   c.draft.value = 'VPN 无法连接'
@@ -374,8 +376,13 @@ function component(name, api = {}, users = [], ui = {}) {
     './OrbitalCore.vue': {}, // Decorative child; its SVG rendering is checked in browser.
     './ChatAttachmentUploader.vue': {},
     './ChatMessageAttachments.vue': {},
+    './GraphReasoningDrawer.vue': {}, // Drawer children are template-only; browser tests cover them.
+    './TraceGovernanceDrawer.vue': {},
     '../api/consultation.js': { consultationApi: api, TERMINAL_STATUS: terminal, CONSULTATION_STATUS: {}, REFUSAL_REASON: {}, TICKET_ENTRY_MESSAGE: '[提交工单入口]' },
     '../utils/aiTicketDraft.js': { saveAiTicketDraft() {}, takeAiTicketDraft: () => null },
+    '../utils/governanceTrace.js': governanceTrace, // Pure functions; message mapping runs them for real.
+    '../utils/graphReasoning.js': graphReasoning,
+    '../utils/markdown.js': { renderMarkdown: content => content || '' }, // v-html only; templates are not rendered here.
     '../api/index.js': { userApi: { listUsers: async () => ({ data: users }) }, categoryApi: { leaf: async () => ({ data: [{ category_id: 'C_NET', name: '网络', status: 'ACTIVE' }] }) } }
   }
   const code = compiled.content.replace(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g,
@@ -448,7 +455,7 @@ test('a delayed status poll cannot reactivate a closed employee conversation', a
 test('a late AI response does not enter a new conversation after closing the old one', async () => {
   const pending = deferred()
   const { state: c } = component('ConsultationChat', {
-    aiMessage: () => pending.promise, close: async () => ({ status: 'CLOSED' }),
+    aiMessageStream: () => pending.promise, close: async () => ({ status: 'CLOSED' }),
     create: async () => ({ sessionId: 'S2', status: 'AI_ACTIVE' })
   })
   c.session.value = { sessionId: 'S1', status: 'AI_ACTIVE' }

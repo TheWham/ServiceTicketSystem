@@ -1,0 +1,70 @@
+{
+  "relations": [
+    {
+      "target": "ITKB-APPENDIX-1",
+      "type": "process_applies",
+      "note": "本卡提供员工自助排查五步（校正时间、同步令牌、切换短信、查信号、转IT），符合员工自助排查流程的‘先自助、后提交工单’路径",
+      "evidence": "员工自助排查 … 步骤5：联系IT申请临时绕过MFA或重新绑定"
+    },
+    {
+      "target": "ITKB-APPENDIX-2",
+      "type": "process_applies",
+      "note": "本卡IT工程师进阶处理（清令牌、临时禁用、查服务器状态、回归验证）遵循IT故障排查通用流程",
+      "evidence": "IT工程师进阶处理 … 检查MFA服务器状态（如Azure AD MFA、Duo、RSA等）"
+    },
+    {
+      "target": "ITKB-VPN-001",
+      "type": "related",
+      "note": "VPN拨号/认证失败常伴随MFA二次验证失败，两张卡同属认证环节故障，排查时可互相参照",
+      "evidence": "登录时要求输入手机验证码或Authenticator验证码，但收不到验证码、验证码错误、或提示「验证失败请重试」"
+    },
+    {
+      "target": "ITKB-ACC-001",
+      "type": "related",
+      "note": "同属「账号与权限问题」分类下的登录失败类故障，用户报障时易与账号锁定混淆，需鉴别处置",
+      "evidence": "登录时要求输入手机验证码或Authenticator验证码，但收不到验证码、验证码错误"
+    }
+  ],
+  "graph_nodes": [
+    {
+      "kind": "symptom",
+      "name": "收不到验证码"
+    },
+    {
+      "kind": "symptom",
+      "name": "验证码错误"
+    },
+    {
+      "kind": "symptom",
+      "name": "提示「验证失败请重试」"
+    },
+    {
+      "kind": "root_cause",
+      "name": "手机时间与服务器时间不同步（Authenticator时间偏差>30秒）"
+    },
+    {
+      "kind": "root_cause",
+      "name": "手机无信号或短信被拦截"
+    },
+    {
+      "kind": "root_cause",
+      "name": "换手机后未重新绑定Authenticator"
+    },
+    {
+      "kind": "root_cause",
+      "name": "绑定的手机号已变更"
+    },
+    {
+      "kind": "root_cause",
+      "name": "MFA服务器故障"
+    },
+    {
+      "kind": "tool",
+      "name": "MFA管理后台"
+    },
+    {
+      "kind": "tool",
+      "name": "Authenticator"
+    }
+  ]
+}

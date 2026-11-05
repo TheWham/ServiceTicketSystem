@@ -70,6 +70,16 @@ public class AuthzService {
         throw ApiException.notFound();
     }
 
+    /**
+     * 平台管理员专属运维端点门禁(如语义缓存指标导出)。
+     * 无对象存在性可保护(AX-001 不适用),直接 FORBIDDEN 而非 OBJECT_NOT_FOUND。
+     */
+    public void requirePlatformAdmin(CurrentUser user) {
+        if (user == null || !user.isPlatformAdmin()) {
+            throw new ApiException(ApiCode.FORBIDDEN, "仅平台管理员可访问该运维端点");
+        }
+    }
+
     /** 只有会话发起员工可执行的动作(转人工、关闭、确认解决、恢复、转工单)。 */
     public void requireCreator(CurrentUser user, Consultation consultation) {
         if (!user.userId().equals(consultation.getCreatorId())) {

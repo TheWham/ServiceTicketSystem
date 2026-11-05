@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "Windows更新",
+      "type": "概念"
+    },
+    {
+      "name": "Windows Update",
+      "type": "软件"
+    },
+    {
+      "name": "KB补丁",
+      "type": "概念"
+    },
+    {
+      "name": "0x80070002",
+      "type": "故障现象"
+    },
+    {
+      "name": "0x800f0922",
+      "type": "故障现象"
+    },
+    {
+      "name": "0x8024401c",
+      "type": "故障现象"
+    },
+    {
+      "name": "cleanmgr",
+      "type": "命令工具"
+    },
+    {
+      "name": "services.msc",
+      "type": "命令工具"
+    },
+    {
+      "name": "DISM",
+      "type": "命令工具"
+    },
+    {
+      "name": "wuauserv",
+      "type": "软件"
+    },
+    {
+      "name": "cryptsvc",
+      "type": "软件"
+    },
+    {
+      "name": "WSUS",
+      "type": "系统"
+    },
+    {
+      "name": "SCCM",
+      "type": "系统"
+    },
+    {
+      "name": "Windows Update Assistant",
+      "type": "软件"
+    },
+    {
+      "name": "Media Creation Tool",
+      "type": "软件"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "Windows更新",
+      "type": "概念"
+    },
+    {
+      "name": "Windows Update",
+      "type": "软件"
+    },
+    {
+      "name": "KB补丁",
+      "type": "概念"
+    },
+    {
+      "name": "0x80070002",
+      "type": "故障现象"
+    },
+    {
+      "name": "0x800f0922",
+      "type": "故障现象"
+    },
+    {
+      "name": "0x8024401c",
+      "type": "故障现象"
+    },
+    {
+      "name": "cleanmgr",
+      "type": "命令工具"
+    },
+    {
+      "name": "services.msc",
+      "type": "命令工具"
+    },
+    {
+      "name": "DISM",
+      "type": "命令工具"
+    },
+    {
+      "name": "wuauserv",
+      "type": "软件"
+    },
+    {
+      "name": "cryptsvc",
+      "type": "软件"
+    },
+    {
+      "name": "WSUS",
+      "type": "系统"
+    },
+    {
+      "name": "SCCM",
+      "type": "系统"
+    },
+    {
+      "name": "Windows Update Assistant",
+      "type": "软件"
+    },
+    {
+      "name": "Media Creation Tool",
+      "type": "软件"
+    }
+  ]
+}

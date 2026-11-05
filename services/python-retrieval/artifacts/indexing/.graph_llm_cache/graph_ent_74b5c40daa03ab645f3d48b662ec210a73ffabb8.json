@@ -1,0 +1,118 @@
+{
+  "entities": [
+    {
+      "name": "多因素认证（MFA）",
+      "type": "概念"
+    },
+    {
+      "name": "Authenticator",
+      "type": "软件"
+    },
+    {
+      "name": "短信验证码",
+      "type": "概念"
+    },
+    {
+      "name": "SIM卡",
+      "type": "设备"
+    },
+    {
+      "name": "MFA管理后台",
+      "type": "系统"
+    },
+    {
+      "name": "Azure AD MFA",
+      "type": "系统"
+    },
+    {
+      "name": "Duo",
+      "type": "软件"
+    },
+    {
+      "name": "RSA",
+      "type": "软件"
+    },
+    {
+      "name": "MFA服务器",
+      "type": "系统"
+    },
+    {
+      "name": "注册二维码",
+      "type": "概念"
+    },
+    {
+      "name": "备用验证码",
+      "type": "概念"
+    },
+    {
+      "name": "令牌",
+      "type": "概念"
+    },
+    {
+      "name": "时间校正",
+      "type": "配置项"
+    },
+    {
+      "name": "自动设置",
+      "type": "配置项"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "多因素认证（MFA）",
+      "type": "概念"
+    },
+    {
+      "name": "Authenticator",
+      "type": "软件"
+    },
+    {
+      "name": "短信验证码",
+      "type": "概念"
+    },
+    {
+      "name": "SIM卡",
+      "type": "设备"
+    },
+    {
+      "name": "MFA管理后台",
+      "type": "系统"
+    },
+    {
+      "name": "Azure AD MFA",
+      "type": "系统"
+    },
+    {
+      "name": "Duo",
+      "type": "软件"
+    },
+    {
+      "name": "RSA",
+      "type": "软件"
+    },
+    {
+      "name": "MFA服务器",
+      "type": "系统"
+    },
+    {
+      "name": "注册二维码",
+      "type": "概念"
+    },
+    {
+      "name": "备用验证码",
+      "type": "概念"
+    },
+    {
+      "name": "令牌",
+      "type": "概念"
+    },
+    {
+      "name": "时间校正",
+      "type": "配置项"
+    },
+    {
+      "name": "自动设置",
+      "type": "配置项"
+    }
+  ]
+}

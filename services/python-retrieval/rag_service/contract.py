@@ -68,6 +68,12 @@ class RetrievedChunk(BaseModel):
     category_id: Optional[str] = Field(default=None, alias="categoryId")
     score: float = Field(ge=0.0, le=1.0)
     index_version: str = Field(alias="indexVersion")
+    # Task 11：图扩展三字段，全部 Optional/默认 None——缺省时经
+    # model_dump(by_alias=True, exclude_none=True) 序列化后**不在响应中**，
+    # 老生产者/老消费者零感知；graph_expanded=True 的条目必须能自证来源（另两键非空）。
+    graph_expanded: Optional[bool] = Field(default=None, alias="graphExpanded")
+    expanded_from: Optional[str] = Field(default=None, alias="expandedFrom")
+    relation: Optional[str] = Field(default=None, alias="relation")
 
 
 class RagRetrievalResponse(BaseModel):

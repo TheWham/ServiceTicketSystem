@@ -26,10 +26,13 @@ public final class DependencyHttpClient {
 
     public record SseFrame(String event, String data) {}
 
-    /** 流式 POST 请求，消费下游 Server-Sent Events (SSE) 事件。 */
-    public void postStream(URI uri, JsonNode body, Map<String, String> headers,
-                           RagCallContext context, long maximumMillis,
-                           java.util.function.Consumer<SseFrame> onFrame) {
+    /**
+     * 帧式流式 POST：消费下游 Server-Sent Events，按完整帧回调 event/data。
+     * 用于 Python agent_service 的 /chat/stream（其帧协议由 event 名区分）。
+     */
+    public void postSseFrames(URI uri, JsonNode body, Map<String, String> headers,
+                              RagCallContext context, long maximumMillis,
+                              java.util.function.Consumer<SseFrame> onFrame) {
         HttpRequest request = requestBuilder(uri, headers, context, maximumMillis)
                 .header("Accept", "text/event-stream")
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8)).build();
@@ -38,7 +41,7 @@ public final class DependencyHttpClient {
                     HttpResponse.BodyHandlers.ofInputStream());
             int status = response.statusCode();
             if (status != 200) {
-                throw new DependencyFailure(RagStatus.UNAVAILABLE, "HTTP_" + status, false);
+                throw coldStatus(status, null);
             }
             try (java.io.BufferedReader reader = new java.io.BufferedReader(
                     new java.io.InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
@@ -46,6 +49,7 @@ public final class DependencyHttpClient {
                 String currentEvent = null;
                 StringBuilder currentData = new StringBuilder();
                 while ((line = reader.readLine()) != null) {
+                    context.timeoutMillis(maximumMillis);
                     if (line.startsWith("event:")) {
                         currentEvent = line.substring("event:".length()).trim();
                     } else if (line.startsWith("data:")) {
@@ -62,8 +66,52 @@ public final class DependencyHttpClient {
             }
         } catch (DependencyFailure df) {
             throw df;
-        } catch (Exception e) {
-            throw new DependencyFailure(RagStatus.UNAVAILABLE, "STREAM_FAILED", true, e.getMessage());
+        } catch (HttpTimeoutException timeout) {
+            throw new DependencyFailure(RagStatus.TIMEOUT, "TIMEOUT", true);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new DependencyFailure(RagStatus.UNAVAILABLE, "INTERRUPTED", false);
+        } catch (java.io.IOException unavailable) {
+            throw new DependencyFailure(RagStatus.UNAVAILABLE, "STREAM_FAILED", true, unavailable.getMessage());
+        } catch (IllegalArgumentException invalidConfiguration) {
+            throw new DependencyFailure(RagStatus.UNAVAILABLE, "INVALID_CONFIGURATION", false);
+        }
+    }
+
+    /**
+     * 与 {@link #post} 同语义的流式 POST:响应体按 SSE 行逐行交给 lineSink(行内状态由调用方维护),
+     * 计入统一超时预算(每行消费前校验,排队或分段等待中到期即真实 TIMEOUT)。
+     * 冷状态码(认证/限流/5xx/其他 4xx)在首字节前判定,错误分类与 post 完全一致,无新枚举;
+     * 错误响应体的前几行作为真实原因随 PERMANENT_HTTP/拒绝理由携带,不静默丢弃。
+     */
+    public void postStream(URI uri, JsonNode body, Map<String, String> headers,
+                           RagCallContext context, long maximumMillis,
+                           java.util.function.Consumer<String> lineSink) {
+        HttpRequest request = requestBuilder(uri, headers, context, maximumMillis)
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8)).build();
+        try {
+            HttpResponse<java.util.stream.Stream<String>> response =
+                    http.send(request, HttpResponse.BodyHandlers.ofLines());
+            if (response.statusCode() != 200) {
+                String detail = response.body().limit(8)
+                        .collect(java.util.stream.Collectors.joining("\n"));
+                throw coldStatus(response.statusCode(), detail);
+            }
+            try (java.util.stream.Stream<String> lines = response.body()) {
+                lines.forEach(line -> {
+                    context.timeoutMillis(maximumMillis);
+                    lineSink.accept(line);
+                });
+            }
+        } catch (HttpTimeoutException timeout) {
+            throw new DependencyFailure(RagStatus.TIMEOUT, "TIMEOUT", true);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new DependencyFailure(RagStatus.UNAVAILABLE, "INTERRUPTED", false);
+        } catch (java.io.IOException unavailable) {
+            throw new DependencyFailure(RagStatus.UNAVAILABLE, "IO", true);
+        } catch (IllegalArgumentException invalidConfiguration) {
+            throw new DependencyFailure(RagStatus.UNAVAILABLE, "INVALID_CONFIGURATION", false);
         }
     }
 
@@ -72,6 +120,17 @@ public final class DependencyHttpClient {
                         RagCallContext context, long maximumMillis) {
         HttpRequest request = requestBuilder(uri, headers, context, maximumMillis).GET().build();
         return exchange(request, context, maximumMillis);
+    }
+
+    /** 冷状态码分类与 post/postStream 共享:鉴权/限流/5xx/永久 4xx,真实原因随详情携带。 */
+    private DependencyFailure coldStatus(int status, String detail) {
+        // 4xx 的真实原因在响应体里（如「分类不存在」「分类不能为空」）——
+        // 只抛 errorClass 的话，前端只能看到一句 internal error，用户无从修正。
+        if (status == 401 || status == 403)
+            return new DependencyFailure(RagStatus.UNAVAILABLE, "AUTH_FAILED", false);
+        if (status == 429) return new DependencyFailure(RagStatus.UNAVAILABLE, "RATE_LIMITED", true);
+        if (status >= 500) return new DependencyFailure(RagStatus.UNAVAILABLE, "UNAVAILABLE", true);
+        return new DependencyFailure(RagStatus.UNAVAILABLE, "PERMANENT_HTTP", false, detail);
     }
 
     private HttpRequest.Builder requestBuilder(URI uri, Map<String, String> headers,
@@ -89,19 +148,15 @@ public final class DependencyHttpClient {
             HttpResponse<String> response = http.send(request,
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             int status = response.statusCode();
-            if (status == 401 || status == 403)
-                throw new DependencyFailure(RagStatus.UNAVAILABLE, "AUTH_FAILED", false);
-            if (status == 429) throw new DependencyFailure(RagStatus.UNAVAILABLE, "RATE_LIMITED", true);
-            if (status >= 500) throw new DependencyFailure(RagStatus.UNAVAILABLE, "UNAVAILABLE", true);
             if (status != 200) {
-                // 4xx 的真实原因在响应体里（如「分类不存在」「分类不能为空」）——
-                // 只抛 errorClass 的话，前端只能看到一句 internal error，用户无从修正。
-                throw new DependencyFailure(RagStatus.UNAVAILABLE, "PERMANENT_HTTP", false,
-                        response.body() == null ? null : response.body());
+                throw coldStatus(status, response.body() == null ? null : response.body());
             }
             JsonNode root;
-            try { root = json.readTree(response.body()); }
-            catch (com.fasterxml.jackson.core.JsonProcessingException invalid) { throw DependencyFailure.invalid(); }
+            try {
+                root = json.readTree(response.body());
+            } catch (com.fasterxml.jackson.core.JsonProcessingException invalid) {
+                throw DependencyFailure.invalid();
+            }
             if (root == null || !root.isObject()) throw DependencyFailure.invalid();
             context.timeoutMillis(maximumMillis);
             return root;

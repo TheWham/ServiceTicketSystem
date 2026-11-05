@@ -1,5 +1,6 @@
 package com.itticket.consultation.adapter.generation;
 import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.itticket.consultation.adapter.*;
 import com.itticket.consultation.adapter.agent.PythonAgentClient;
@@ -37,24 +38,37 @@ public final class OpenAiCompatibleAnswerGenerator implements AnswerGenerator {
         this.model = model; this.ai = properties.getAi(); this.agent = agent;
     }
 
-    @Override public GenerationResult generate(RagQuery query, List<RetrievedKnowledge> material, RagCallContext context) {
+    @Override public GenerationResult generate(RagQuery query, List<RetrievedKnowledge> material, RagCallContext context, TokenSink sink) {
         // Structured untrusted input. Exactly the bounded evidence used to rebuild citations.
         var input = json.createObjectNode().put("question", query.question());
         input.set("priorTurns", json.valueToTree(query.priorTurns()));
         if (query.assetId() != null) input.put("assetId", query.assetId());
-        input.set("material", json.valueToTree(material));
+        // 身份标注投影:基础条目 role=SOURCE,图扩展邻居条目 role=NEIGHBOR(引用归邻居自身 versionId)。
+        // 邻居身份只看图扩展标记——准入谓词保证扩展条目必带三字段真值、基础条目三字段为 null。
+        ArrayNode materialArray = json.createArrayNode();
+        for (RetrievedKnowledge item : material) {
+            ObjectNode entry = materialArray.addObject();
+            entry.put("role", Boolean.TRUE.equals(item.graphExpanded()) ? "NEIGHBOR" : "SOURCE");
+            entry.setAll((ObjectNode) json.valueToTree(item));
+        }
+        input.set("material", materialArray);
 
         TicketDraftDto draft = null;
         GovernanceTraceDto governanceTrace = null;
         JsonNode payload;
         if (agent != null && agent.enabled()) {
-            // 生成侧在 Python:ReAct + 白名单工具;data 含 6 键 + 带外 ticketDraft + 治理 Trace
+            // 生成侧在 Python:ReAct + 白名单工具;data 含 6 键 + 带外 ticketDraft + 治理 Trace。
+            // 流式不可用:整段 answerText 在校验后单次外发(打字机退化为单帧),不重复、不拆分。
             PythonAgentClient.AgentResult result = agent.chat(query, material, context);
             payload = sixKeys(result.payload());
             draft = result.draft();
             governanceTrace = result.governanceTrace();
         } else {
-            payload = model.complete(systemPrompt(), input.toString(), ai.getMaxOutputTokens(), context);
+            // 本地路径走流式收口:answerText 增量经 sink 即时外发(预算内,见 completeStream)。
+            // 首字节哨兵在此武装:首个 token 到达即解除,超时则中断上游(见 AiChatStreamOrchestrator.StreamSink);
+            // agent/缓存命中路径豁免(裁决①,2026-11-05 流式评审 C1)。
+            sink.armFirstTokenGuard();
+            payload = model.completeStream(systemPrompt(), input.toString(), ai.getMaxOutputTokens(), context, sink);
         }
 
         if (payload.size() != 6 || !payload.path("replyType").isTextual()
@@ -75,6 +89,10 @@ public final class OpenAiCompatibleAnswerGenerator implements AnswerGenerator {
         for (JsonNode id : payload.path("usedVersionIds")) {
             if (!id.isTextual() || id.textValue().isBlank()) throw DependencyFailure.invalid();
             used.add(id.textValue());
+        }
+        if (agent != null && agent.enabled() && !sink.emitted()) {
+            // agent 路径整段一次性外发;仅一次不重复,拒答空文本由 TokenSink 忽略。
+            sink.accept(text);
         }
         AiRefusalReason reason = payload.path("offTopic").booleanValue() ? AiRefusalReason.OFF_TOPIC
                 : payload.path("knowledgeConflict").booleanValue() ? AiRefusalReason.CONFLICTING_KNOWLEDGE
@@ -116,6 +134,8 @@ public final class OpenAiCompatibleAnswerGenerator implements AnswerGenerator {
                 8. 无引用时必须明确说明这是通用办公 IT 建议，不能声称依据公司规定、内部知识或已确认企业配置。
                    不得编造企业内部网址/IP、邮箱、联系人、账号、政策、审批流程或来源；缺企业信息时请用户询问 IT。
                    有资料时也只能复述资料明确给出的企业事实，通用补充须与资料内容区分。
+                9. material 中 role=NEIGHBOR 的是源命中卡的关联知识，回答可参考，引用时引其自身的 versionId，
+                   不得把邻居卡的操作步骤陈述为源卡内容。
 
                 只输出一个 JSON 对象,不要加代码块标记,字段如下:
                 {

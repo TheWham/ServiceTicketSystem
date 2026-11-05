@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "Excel",
+      "type": "软件"
+    },
+    {
+      "name": "计算选项",
+      "type": "配置项"
+    },
+    {
+      "name": "显示公式模式",
+      "type": "配置项"
+    },
+    {
+      "name": "循环引用",
+      "type": "概念"
+    },
+    {
+      "name": "外部链接",
+      "type": "概念"
+    },
+    {
+      "name": "VBA宏",
+      "type": "概念"
+    },
+    {
+      "name": "受保护的视图",
+      "type": "配置项"
+    },
+    {
+      "name": "Power Query",
+      "type": "软件"
+    },
+    {
+      "name": "单元格格式",
+      "type": "配置项"
+    },
+    {
+      "name": "错误检查",
+      "type": "命令工具"
+    },
+    {
+      "name": "编辑链接",
+      "type": "命令工具"
+    },
+    {
+      "name": "Application.Calculation",
+      "type": "配置项"
+    },
+    {
+      "name": "xlCalculationManual",
+      "type": "配置项"
+    },
+    {
+      "name": "Evaluate Formula",
+      "type": "命令工具"
+    },
+    {
+      "name": "数组公式",
+      "type": "概念"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "Excel",
+      "type": "软件"
+    },
+    {
+      "name": "计算选项",
+      "type": "配置项"
+    },
+    {
+      "name": "显示公式模式",
+      "type": "配置项"
+    },
+    {
+      "name": "循环引用",
+      "type": "概念"
+    },
+    {
+      "name": "外部链接",
+      "type": "概念"
+    },
+    {
+      "name": "VBA宏",
+      "type": "概念"
+    },
+    {
+      "name": "受保护的视图",
+      "type": "配置项"
+    },
+    {
+      "name": "Power Query",
+      "type": "软件"
+    },
+    {
+      "name": "单元格格式",
+      "type": "配置项"
+    },
+    {
+      "name": "错误检查",
+      "type": "命令工具"
+    },
+    {
+      "name": "编辑链接",
+      "type": "命令工具"
+    },
+    {
+      "name": "Application.Calculation",
+      "type": "配置项"
+    },
+    {
+      "name": "xlCalculationManual",
+      "type": "配置项"
+    },
+    {
+      "name": "Evaluate Formula",
+      "type": "命令工具"
+    },
+    {
+      "name": "数组公式",
+      "type": "概念"
+    }
+  ]
+}

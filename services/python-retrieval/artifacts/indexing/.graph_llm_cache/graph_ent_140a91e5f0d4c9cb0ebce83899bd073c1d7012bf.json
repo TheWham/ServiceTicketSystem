@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "Outlook",
+      "type": "软件"
+    },
+    {
+      "name": "网页版邮箱（OWA）",
+      "type": "系统"
+    },
+    {
+      "name": "Exchange",
+      "type": "系统"
+    },
+    {
+      "name": "POP3/IMAP",
+      "type": "协议"
+    },
+    {
+      "name": "垃圾邮件过滤器",
+      "type": "系统"
+    },
+    {
+      "name": "邮箱存储配额",
+      "type": "配置项"
+    },
+    {
+      "name": "反垃圾邮件网关",
+      "type": "系统"
+    },
+    {
+      "name": "邮件追踪",
+      "type": "命令工具"
+    },
+    {
+      "name": "邮件接收失败",
+      "type": "故障现象"
+    },
+    {
+      "name": "邮箱规则",
+      "type": "配置项"
+    },
+    {
+      "name": "阻止发件人列表",
+      "type": "配置项"
+    },
+    {
+      "name": "安全发件人列表",
+      "type": "配置项"
+    },
+    {
+      "name": "传输规则",
+      "type": "配置项"
+    },
+    {
+      "name": "Exchange Online",
+      "type": "系统"
+    },
+    {
+      "name": "Exchange Server",
+      "type": "系统"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "Outlook",
+      "type": "软件"
+    },
+    {
+      "name": "网页版邮箱（OWA）",
+      "type": "系统"
+    },
+    {
+      "name": "Exchange",
+      "type": "系统"
+    },
+    {
+      "name": "POP3/IMAP",
+      "type": "协议"
+    },
+    {
+      "name": "垃圾邮件过滤器",
+      "type": "系统"
+    },
+    {
+      "name": "邮箱存储配额",
+      "type": "配置项"
+    },
+    {
+      "name": "反垃圾邮件网关",
+      "type": "系统"
+    },
+    {
+      "name": "邮件追踪",
+      "type": "命令工具"
+    },
+    {
+      "name": "邮件接收失败",
+      "type": "故障现象"
+    },
+    {
+      "name": "邮箱规则",
+      "type": "配置项"
+    },
+    {
+      "name": "阻止发件人列表",
+      "type": "配置项"
+    },
+    {
+      "name": "安全发件人列表",
+      "type": "配置项"
+    },
+    {
+      "name": "传输规则",
+      "type": "配置项"
+    },
+    {
+      "name": "Exchange Online",
+      "type": "系统"
+    },
+    {
+      "name": "Exchange Server",
+      "type": "系统"
+    }
+  ]
+}

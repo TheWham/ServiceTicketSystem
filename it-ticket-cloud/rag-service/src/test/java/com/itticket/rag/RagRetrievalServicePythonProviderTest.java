@@ -53,7 +53,7 @@ public class RagRetrievalServicePythonProviderTest {
 
     private RetrievedChunk chunk(String chunkId, String articleId, String score) {
         return new RetrievedChunk(chunkId, articleId, "ver-" + articleId, "标题", "片段", "正文内容",
-                "C_NET", new BigDecimal(score), "ver-" + articleId);
+                "C_NET", new BigDecimal(score), "ver-" + articleId, null, null, null);
     }
 
     private RagRetrievalResponse pyAnswer(List<RetrievedChunk> items, boolean reliable) {

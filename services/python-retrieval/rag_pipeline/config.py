@@ -10,6 +10,7 @@ manifest.json；检索评测加载持久化向量库前比对指纹，配置变�
 
 import hashlib
 import json
+import logging
 import os
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -84,6 +85,10 @@ WIKI_DIR = ARTIFACTS_ROOT / "output" / "wiki"          # demo: Wiki 卡片输入
 INDEXING_OUTPUT = ARTIFACTS_ROOT / "indexing"          # demo: 建库产物（向量库/缓存/报告）
 EVALUATION_OUTPUT = ARTIFACTS_ROOT / "evaluation"      # demo: 评测产物（报告）
 
+# D-23:「白名单不含 REPLACES」说明性告警的进程级 once-latch
+# （热路径每请求 load_config()，真正的刚需告警只发一次；测试可用 monkeypatch 归零）。
+_whitelist_notice_latched = False
+
 
 @dataclass
 class ChunkingConfig:
@@ -129,10 +134,41 @@ class DocstoreConfig:
 
 
 @dataclass
+class Neo4jConfig:
+    """Neo4j 连接参数。凭证不落明文：password 直填仅限本地测试（优先级更高），
+    为空时从 password_env 指名的环境变量取（进程环境 > REPO_ROOT/.env）。"""
+    uri: str = "bolt://localhost:7687"
+    username: str = "neo4j"
+    password_env: str = "NEO4J_PASSWORD"
+    password: str = ""
+
+
+@dataclass
+class ExpansionConfig:
+    """图扩展参数：白名单边的邻居按衰减分补进检索结果（分数严格低于源卡）。"""
+    edge_whitelist: List[str] = field(
+        default_factory=lambda: ["SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"]
+    )
+    max_neighbors: int = 2
+    decay: float = 0.5          # 扩展分 = 源卡分 × decay，加载期强制 0 < decay < 1
+    score_floor: float = 0.10
+    timeout_ms: int = 300
+
+
+@dataclass
+class GraphConfig:
+    """图知识库开关与参数（默认 enabled=false：写而不启用）。"""
+    enabled: bool = False
+    neo4j: Neo4jConfig = field(default_factory=Neo4jConfig)
+    expansion: ExpansionConfig = field(default_factory=ExpansionConfig)
+
+
+@dataclass
 class PipelineConfig:
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
     docstore: DocstoreConfig = field(default_factory=DocstoreConfig)
+    graph: GraphConfig = field(default_factory=GraphConfig)
     embedding_model: str = "qwen3-embedding-8b"
     embedding_cache_dir: str = "data/.emb_cache"
     store_persist_dir: str = "data/chroma_wiki_structured"
@@ -141,12 +177,85 @@ class PipelineConfig:
     reranker_backend: str = "dashscope"    # 仅走 KSP 网关时生效（直连供应商时忽略）
 
 
+def _as_bool(value: Any) -> bool:
+    """类型安全布尔解析（语义对齐 rag_service.assembly._env_bool 同集）：
+    bool 直接用；其余按字符串 strip+小写后仅接受 "1"/"true"/"yes"/"on"。
+    防止 yaml 带引号字符串 'false' 落进 bool("false")==True 的 truthiness 陷阱。"""
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
 def _fill(dc: Any, data: Optional[Dict[str, Any]]) -> Any:
     """把 YAML 片段填进 dataclass：未知键忽略、缺失键保留默认值。"""
     for k, v in (data or {}).items():
         if hasattr(dc, k) and v is not None:
             setattr(dc, k, v)
     return dc
+
+
+def _build_graph_config(raw: Optional[Dict[str, Any]]) -> GraphConfig:
+    """装配并校验 graph 段。
+
+    校验全部在加载期完成——配置错误必须在启动时炸，而不是在检索热路径上
+    才发现扩展分冒充了相似度（Review Focus 4）。
+    - REPLACES 进白名单 → ValueError（永不进热路径，配了即配错）；
+      enabled=true 且不含 REPLACES → 告警日志说明其不参与图扩展（由版本消歧
+      在检索层处理）。告警仅在 enabled=true 时打：默认关=静默，否则 policy
+      版本消歧热路径每次请求 load_config 都会刷一条误导性 WARNING；
+    - decay 必须严格 0<decay<1：decay>=1 使扩展分不低于源卡，搅浑准入/去重
+      语义与 topScore 复核；decay<=0 使扩展条目恒为 0 分；
+    - 凭证：password 直填（本地测试）优先，否则从 password_env 指名的环境变量取
+      （进程环境 > .env）；enabled=true 且两者皆空 → ValueError，不带空密码上路。
+
+    顺序约定：两条 ValueError（白名单/decay）与凭证校验前置，说明性告警
+    放在全部校验之后、返回之前——必炸的配置不会先留下声报级别的噪声日志。
+    """
+    raw = raw or {}
+    g = GraphConfig()
+    if raw.get("enabled") is not None:
+        g.enabled = _as_bool(raw["enabled"])
+    g.neo4j = _fill(Neo4jConfig(), raw.get("neo4j"))
+    g.expansion = _fill(ExpansionConfig(), raw.get("expansion"))
+
+    if "REPLACES" in g.expansion.edge_whitelist:
+        raise ValueError(
+            "graph.expansion.edge_whitelist 不允许包含 REPLACES：其语义已由版本消歧"
+            "（rag_pipeline.policy）在检索层处理，进图扩展热路径会与准入/去重"
+            "语义搅浑。请从白名单移除。"
+        )
+
+    if not (0 < g.expansion.decay < 1):
+        raise ValueError(
+            f"graph.expansion.decay 必须严格 0<decay<1（当前 {g.expansion.decay}）："
+            "decay>=1 会使扩展分不低于源卡分，破坏『扩展分严格低于基础分』"
+            "不变量；decay<=0 使扩展条目恒为 0 分。"
+        )
+
+    if not g.neo4j.password:
+        dotenv = _load_dotenv()
+        g.neo4j.password = (
+            os.environ.get(g.neo4j.password_env)
+            or dotenv.get(g.neo4j.password_env, "")
+        )
+    if g.enabled and not g.neo4j.password:
+        raise ValueError(
+            f"graph.enabled=true 但 Neo4j 凭证为空：请设置环境变量 "
+            f"{g.neo4j.password_env}（或 .env 同名键），本地测试可在 "
+            "graph.neo4j.password 直填（仅限本地）。"
+        )
+
+    if g.enabled and "REPLACES" not in g.expansion.edge_whitelist:
+        # D-23 once-latch：policy 版本消歧热路径每次请求都 load_config()，这条
+        # 设计说明同一进程只告警一次，避免每请求刷一条 WARNING（关图零告警不变）。
+        global _whitelist_notice_latched
+        if not _whitelist_notice_latched:
+            _whitelist_notice_latched = True
+            logging.getLogger(__name__).warning(
+                "graph.expansion.edge_whitelist 不含 REPLACES：REPLACES 边不参与图扩展"
+                "（由版本消歧在检索层处理），此为设计预期；如需其进热路径请先复核设计。"
+            )
+    return g
 
 
 def load_config(path: Optional[str] = None) -> PipelineConfig:
@@ -171,6 +280,7 @@ def load_config(path: Optional[str] = None) -> PipelineConfig:
         store_collection=(raw.get("store") or {}).get("collection", "wiki_structured_kb"),
         reranker_model=(raw.get("reranker") or {}).get("model", "qwen3-reranker-8b"),
         reranker_backend=(raw.get("reranker") or {}).get("backend", "dashscope"),
+        graph=_build_graph_config(raw.get("graph")),
     )
 
 

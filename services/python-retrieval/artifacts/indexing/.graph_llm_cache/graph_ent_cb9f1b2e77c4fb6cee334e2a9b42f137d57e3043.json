@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "DNS",
+      "type": "协议"
+    },
+    {
+      "name": "DHCP",
+      "type": "协议"
+    },
+    {
+      "name": "UDP 53端口",
+      "type": "概念"
+    },
+    {
+      "name": "阿里DNS",
+      "type": "系统"
+    },
+    {
+      "name": "DNS服务器",
+      "type": "系统"
+    },
+    {
+      "name": "防火墙",
+      "type": "系统"
+    },
+    {
+      "name": "VPN/代理软件",
+      "type": "软件"
+    },
+    {
+      "name": "nslookup",
+      "type": "命令工具"
+    },
+    {
+      "name": "ipconfig /flushdns",
+      "type": "命令工具"
+    },
+    {
+      "name": "ping",
+      "type": "命令工具"
+    },
+    {
+      "name": "ncpa.cpl",
+      "type": "命令工具"
+    },
+    {
+      "name": "hosts文件",
+      "type": "配置项"
+    },
+    {
+      "name": "Internet协议版本4",
+      "type": "配置项"
+    },
+    {
+      "name": "DNS_PROBE_FINISHED_NXDOMAIN",
+      "type": "故障现象"
+    },
+    {
+      "name": "ERR_NAME_NOT_RESOLVED",
+      "type": "故障现象"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "DNS",
+      "type": "协议"
+    },
+    {
+      "name": "DHCP",
+      "type": "协议"
+    },
+    {
+      "name": "UDP 53端口",
+      "type": "概念"
+    },
+    {
+      "name": "阿里DNS",
+      "type": "系统"
+    },
+    {
+      "name": "DNS服务器",
+      "type": "系统"
+    },
+    {
+      "name": "防火墙",
+      "type": "系统"
+    },
+    {
+      "name": "VPN/代理软件",
+      "type": "软件"
+    },
+    {
+      "name": "nslookup",
+      "type": "命令工具"
+    },
+    {
+      "name": "ipconfig /flushdns",
+      "type": "命令工具"
+    },
+    {
+      "name": "ping",
+      "type": "命令工具"
+    },
+    {
+      "name": "ncpa.cpl",
+      "type": "命令工具"
+    },
+    {
+      "name": "hosts文件",
+      "type": "配置项"
+    },
+    {
+      "name": "Internet协议版本4",
+      "type": "配置项"
+    },
+    {
+      "name": "DNS_PROBE_FINISHED_NXDOMAIN",
+      "type": "故障现象"
+    },
+    {
+      "name": "ERR_NAME_NOT_RESOLVED",
+      "type": "故障现象"
+    }
+  ]
+}

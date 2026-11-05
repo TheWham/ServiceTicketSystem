@@ -1,0 +1,46 @@
+{
+  "relations": [
+    {
+      "target": "ITKB-VPN-001",
+      "type": "replaces",
+      "note": "本卡为 v0.9 旧版已废止，现行版本为 ITKB-VPN-001（版本替代/溯源关系）",
+      "evidence": "已于 v1.0 全面废止。现行标准请以《ITKB-VPN-001 VPN连接失败（拨号/认证失败）》为准"
+    },
+    {
+      "target": "ITKB-VPN-002",
+      "type": "related",
+      "note": "同属VPN远程办公故障场景，与本卡连接失败排查前后衔接",
+      "evidence": "在家/出差期间连接公司VPN时，提示「连接失败」「无法建立VPN连接」「认证失败」"
+    }
+  ],
+  "graph_nodes": [
+    {
+      "kind": "symptom",
+      "name": "连接失败"
+    },
+    {
+      "kind": "symptom",
+      "name": "无法建立VPN连接"
+    },
+    {
+      "kind": "symptom",
+      "name": "认证失败"
+    },
+    {
+      "kind": "root_cause",
+      "name": "PPTP 协议未启用或被运营商封锁"
+    },
+    {
+      "kind": "root_cause",
+      "name": "防火墙未放行 TCP 1723 端口和 GRE 47 协议"
+    },
+    {
+      "kind": "tool",
+      "name": "PPTP"
+    },
+    {
+      "kind": "tool",
+      "name": "SSL VPN"
+    }
+  ]
+}

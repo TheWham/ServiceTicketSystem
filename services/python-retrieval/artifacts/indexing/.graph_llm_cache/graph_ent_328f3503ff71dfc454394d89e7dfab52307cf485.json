@@ -1,0 +1,70 @@
+{
+  "entities": [
+    {
+      "name": "软件闪退",
+      "type": "故障现象"
+    },
+    {
+      "name": "兼容模式",
+      "type": "配置项"
+    },
+    {
+      "name": "事件查看器",
+      "type": "命令工具"
+    },
+    {
+      "name": "事件 ID 1000",
+      "type": "概念"
+    },
+    {
+      "name": "VC++ 运行库",
+      "type": "软件"
+    },
+    {
+      "name": ".NET Framework",
+      "type": "软件"
+    },
+    {
+      "name": "Dependency Walker",
+      "type": "命令工具"
+    },
+    {
+      "name": "Process Monitor",
+      "type": "命令工具"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "软件闪退",
+      "type": "故障现象"
+    },
+    {
+      "name": "兼容模式",
+      "type": "配置项"
+    },
+    {
+      "name": "事件查看器",
+      "type": "命令工具"
+    },
+    {
+      "name": "事件 ID 1000",
+      "type": "概念"
+    },
+    {
+      "name": "VC++ 运行库",
+      "type": "软件"
+    },
+    {
+      "name": ".NET Framework",
+      "type": "软件"
+    },
+    {
+      "name": "Dependency Walker",
+      "type": "命令工具"
+    },
+    {
+      "name": "Process Monitor",
+      "type": "命令工具"
+    }
+  ]
+}

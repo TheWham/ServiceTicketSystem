@@ -1,0 +1,110 @@
+{
+  "entities": [
+    {
+      "name": "共享文件夹",
+      "type": "概念"
+    },
+    {
+      "name": "NTFS权限",
+      "type": "账号权限"
+    },
+    {
+      "name": "共享权限",
+      "type": "账号权限"
+    },
+    {
+      "name": "AD安全组",
+      "type": "账号权限"
+    },
+    {
+      "name": "UNC路径",
+      "type": "概念"
+    },
+    {
+      "name": "DFS命名空间",
+      "type": "系统"
+    },
+    {
+      "name": "Kerberos",
+      "type": "协议"
+    },
+    {
+      "name": "组策略",
+      "type": "系统"
+    },
+    {
+      "name": "gpupdate /force",
+      "type": "命令工具"
+    },
+    {
+      "name": "文件服务器",
+      "type": "设备"
+    },
+    {
+      "name": "NAS",
+      "type": "设备"
+    },
+    {
+      "name": "拒绝访问",
+      "type": "故障现象"
+    },
+    {
+      "name": "有效访问",
+      "type": "概念"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "共享文件夹",
+      "type": "概念"
+    },
+    {
+      "name": "NTFS权限",
+      "type": "账号权限"
+    },
+    {
+      "name": "共享权限",
+      "type": "账号权限"
+    },
+    {
+      "name": "AD安全组",
+      "type": "账号权限"
+    },
+    {
+      "name": "UNC路径",
+      "type": "概念"
+    },
+    {
+      "name": "DFS命名空间",
+      "type": "系统"
+    },
+    {
+      "name": "Kerberos",
+      "type": "协议"
+    },
+    {
+      "name": "组策略",
+      "type": "系统"
+    },
+    {
+      "name": "gpupdate /force",
+      "type": "命令工具"
+    },
+    {
+      "name": "文件服务器",
+      "type": "设备"
+    },
+    {
+      "name": "NAS",
+      "type": "设备"
+    },
+    {
+      "name": "拒绝访问",
+      "type": "故障现象"
+    },
+    {
+      "name": "有效访问",
+      "type": "概念"
+    }
+  ]
+}

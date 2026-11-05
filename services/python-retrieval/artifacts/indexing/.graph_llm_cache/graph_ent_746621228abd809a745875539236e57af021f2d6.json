@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "U盘",
+      "type": "设备"
+    },
+    {
+      "name": "移动硬盘",
+      "type": "设备"
+    },
+    {
+      "name": "USB",
+      "type": "协议"
+    },
+    {
+      "name": "磁盘管理",
+      "type": "软件"
+    },
+    {
+      "name": "设备管理器",
+      "type": "软件"
+    },
+    {
+      "name": "组策略",
+      "type": "配置项"
+    },
+    {
+      "name": "文件系统",
+      "type": "概念"
+    },
+    {
+      "name": "盘符",
+      "type": "概念"
+    },
+    {
+      "name": "无法识别的USB设备",
+      "type": "故障现象"
+    },
+    {
+      "name": "Windows",
+      "type": "系统"
+    },
+    {
+      "name": "APFS",
+      "type": "概念"
+    },
+    {
+      "name": "BIOS/UEFI",
+      "type": "系统"
+    },
+    {
+      "name": "gpedit.msc",
+      "type": "命令工具"
+    },
+    {
+      "name": "DiskPart",
+      "type": "命令工具"
+    },
+    {
+      "name": "DiskGenius",
+      "type": "软件"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "U盘",
+      "type": "设备"
+    },
+    {
+      "name": "移动硬盘",
+      "type": "设备"
+    },
+    {
+      "name": "USB",
+      "type": "协议"
+    },
+    {
+      "name": "磁盘管理",
+      "type": "软件"
+    },
+    {
+      "name": "设备管理器",
+      "type": "软件"
+    },
+    {
+      "name": "组策略",
+      "type": "配置项"
+    },
+    {
+      "name": "文件系统",
+      "type": "概念"
+    },
+    {
+      "name": "盘符",
+      "type": "概念"
+    },
+    {
+      "name": "无法识别的USB设备",
+      "type": "故障现象"
+    },
+    {
+      "name": "Windows",
+      "type": "系统"
+    },
+    {
+      "name": "APFS",
+      "type": "概念"
+    },
+    {
+      "name": "BIOS/UEFI",
+      "type": "系统"
+    },
+    {
+      "name": "gpedit.msc",
+      "type": "命令工具"
+    },
+    {
+      "name": "DiskPart",
+      "type": "命令工具"
+    },
+    {
+      "name": "DiskGenius",
+      "type": "软件"
+    }
+  ]
+}
