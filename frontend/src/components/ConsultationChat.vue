@@ -146,10 +146,19 @@
                   </div>
                 </div>
 
-                <div v-if="msg.content || msg.isStreaming" class="msg-text" :class="{ 'markdown-body': msg.senderType === 'AI' || msg.senderType === 'ENGINEER' }">
+                <!-- 流式进行中（T-7）：排队位置提示或思考中动效 -->
+                <div v-if="msg.pending" class="stream-pending">
+                  <span class="dot" /><span class="dot" /><span class="dot" />
+                  <span class="thinking-text">{{ msg.queuedPosition ? `已受理，排队中…前方还有 ${msg.queuedPosition} 条消息` : '正在分析你的 IT 问题…（可能需要几十秒）' }}</span>
+                </div>
+                <div v-if="msg.content || msg.streaming || msg.isStreaming" class="msg-text" :class="{ 'markdown-body': msg.senderType === 'AI' || msg.senderType === 'ENGINEER', 'streaming-text': msg.streaming }">
                   <div v-if="msg.senderType === 'AI' || msg.senderType === 'ENGINEER'" class="markdown-content" v-html="renderMarkdown(msg.content)"></div>
                   <template v-else>{{ msg.content }}</template>
-                  <span v-if="msg.isStreaming" class="stream-cursor">▌</span>
+                  <span v-if="msg.streaming" class="stream-caret" aria-hidden="true" />
+                </div>
+                <!-- 传输中断/error：保留已上屏文字并置灰标注，不伪装完整回复 -->
+                <div v-if="msg.interrupted" class="stream-interrupted-note">
+                  <el-icon><WarningFilled /></el-icon> 回复被中断（未完成）。内容仅供参考，可重新提问或转人工。
                 </div>
                 <ChatMessageAttachments v-if="msg.attachments?.length" :session-id="session.sessionId" :attachments="msg.attachments" />
 
@@ -262,16 +271,6 @@
             </div>
           </div>
 
-          <!-- AI 正在思考 -->
-          <div v-if="aiThinking && !isTerminal" class="msg-row row-left">
-            <div class="msg-avatar avatar-ai">AI</div>
-            <div class="msg-main">
-              <div class="msg-bubble bubble-ai thinking">
-                <span class="dot" /><span class="dot" /><span class="dot" />
-                <span class="thinking-text">正在分析你的 IT 问题…（可能需要几十秒）</span>
-              </div>
-            </div>
-          </div>
         </div>
 
         <button v-if="hasUnreadMessages" type="button" class="new-message-cue" @click="scrollToBottom(true)">有新消息 · 查看最新 ↓</button>
@@ -285,7 +284,7 @@
           <el-input id="support-message" ref="inputRef" v-model="draft" type="textarea"
                     :autosize="{ minRows: 1, maxRows: 3 }" resize="none"
                     :maxlength="inputMaxLength" show-word-limit
-                    :placeholder="inputPlaceholder" :disabled="sending || aiThinking || inputDisabled || closing || cancelingQueue"
+                    :placeholder="inputPlaceholder" :disabled="sending || inputDisabled || closing || cancelingQueue"
                     @keydown.enter.exact="send" />
           <ChatAttachmentUploader v-if="canAttach" :key="session.sessionId" ref="attachmentUploaderRef"
                                   v-model="attachmentDrafts" :session-id="session.sessionId" :disabled="attachmentDisabled" />
@@ -301,7 +300,7 @@
                          :disabled="cancelingQueue || transferring" @click="closeSession">
                 结束对话
               </el-button>
-              <el-button type="primary" size="small" :icon="Promotion" :loading="sending || aiThinking"
+              <el-button type="primary" size="small" :icon="Promotion" :loading="sending"
                          :disabled="(!draft.trim() && !attachmentDrafts.length) || attachmentBlocked || inputDisabled || closing || cancelingQueue" @click="send">
                 发送
               </el-button>
@@ -447,6 +446,10 @@ const pendingHumanSend = ref(null)
 const creating = ref(false)
 const sending = ref(false)
 const aiThinking = ref(false)
+// Mi4(2026-11-05 评审):记录在途流的中止器,切会话/结束会话/卸载时统一中断,避免后台继续消耗服务端预算
+const streamControllers = new Set()
+/** 在途 AI 流条数（T-7）：会话 FIFO 串行由服务端保证，客户端允许多条并发在途。 */
+const streamingCount = ref(0)
 const loadingMessages = ref(false)
 const booting = ref(false)
 const startupError = ref('')
@@ -581,6 +584,8 @@ async function startAi() {
     attachmentDragDepth.value = 0
     sending.value = false
     aiThinking.value = false
+    streamingCount.value = 0
+    abortInFlightStreams() // Mi4:新会话开始前中止旧会话在途流
     queueStatus.value = { assigned: false, waitingCount: 0 }
     messages.value = []
     messages.value.push(createGreeting())
@@ -614,17 +619,22 @@ async function reload() {
   }
 }
 
+/** 把成本治理 Trace 的时序节点投影成思考过程卡片可读的阶段文案。 */
+function stagesFromGovernanceTrace(trace) {
+  if (!trace || !Array.isArray(trace.stages)) return []
+  return trace.stages
+    .map(s => {
+      const name = s.name || s.stageId || ''
+      const summary = s.summary || s.status || ''
+      return name ? `${name}：${summary}` : summary
+    })
+    .filter(Boolean)
+}
+
 /** 把服务端消息投影转成本地渲染结构。拒答消息由 AI 侧的固定话术标识。 */
 function toLocalMessage(item) {
   const govTrace = item.governance_trace || item.governanceTrace || null
-  const stages = []
-  if (govTrace && Array.isArray(govTrace.stages)) {
-    govTrace.stages.forEach(s => {
-      const name = s.name || s.stageId || ''
-      const summary = s.summary || s.status || ''
-      stages.push(name ? `${name}：${summary}` : summary)
-    })
-  }
+  const stages = stagesFromGovernanceTrace(govTrace)
 
   return {
     id: item.message_id,
@@ -672,7 +682,7 @@ function pushLocal(senderType, content, extra = {}) {
   }
   messages.value.push(msg)
   scrollToBottom(senderType === 'EMPLOYEE')
-  return messages.value[messages.value.length - 1]
+  return msg
 }
 
 const GREETING_TEXT = '你好，我是 IT 智能助手小 T 👋 我可以帮你解决 VPN 连不上、邮箱收不到邮件、打印机故障、账号权限等常见 IT 问题。请描述你遇到的情况，我会先尝试帮你解决；如果解决不了，可以随时转接人工客服。'
@@ -719,7 +729,7 @@ async function send(event) {
   if (event?.isComposing || event?.keyCode === 229) return
   event?.preventDefault?.()
   const text = draft.value.trim()
-  if ((!text && !attachmentDrafts.value.length) || attachmentBlocked.value || !session.value || isTerminal.value || inputDisabled.value || sending.value || aiThinking.value || closing.value || cancelingQueue.value) return
+  if ((!text && !attachmentDrafts.value.length) || attachmentBlocked.value || !session.value || isTerminal.value || inputDisabled.value || sending.value || closing.value || cancelingQueue.value) return
   if (isAiHandling.value && (!text || attachmentDrafts.value.length)) return
   const sessionId = session.value.sessionId
   const revision = sessionRevision
@@ -727,131 +737,108 @@ async function send(event) {
   draft.value = ''
 
   if (isAiHandling.value) {
+    // 首问未完也能继续发（T-7）：服务端按会话 FIFO 串行，后到的先拿 queued 位置再依次回答。
     pushLocal('EMPLOYEE', text)
-    aiThinking.value = false
-    let thinkingTimer = null
-    const startTime = Date.now()
-
-    let aiMsg = pushLocal('AI', '', {
-      isStreaming: true,
-      isThinking: true,
-      thoughtStages: ['正在规划排障链路与模型资源…'],
-      reasoningContent: '',
-      thoughtCollapsed: false,
-      thinkingDuration: 1,
-      citations: [],
-      governanceTrace: null
-    })
-
-    thinkingTimer = setInterval(() => {
-      if (aiMsg && aiMsg.isThinking) {
-        aiMsg.thinkingDuration = Math.max(1, Math.floor((Date.now() - startTime) / 1000))
-      }
-    }, 500)
-    try {
-      await consultationApi.aiMessageStream(sessionId, text, {
-        onStage: (stageData) => {
-          if (!stillActive() || !isAiHandling.value || !aiMsg) return
-          let desc = ''
-          if (stageData.stage === 'ROUTED') {
-            desc = `模型路由：已匹配 ${stageData.tier || '标准'} 档位 (${stageData.model || ''})`
-          } else if (stageData.message) {
-            desc = stageData.message
-          } else if (stageData.reason) {
-            desc = stageData.reason
-          }
-          if (desc && !aiMsg.thoughtStages.includes(desc)) {
-            aiMsg.thoughtStages.push(desc)
-            scrollToBottom()
-          }
-        },
-        onReasoning: (reasoningChunk) => {
-          if (!stillActive() || !isAiHandling.value || !aiMsg) return
-          aiMsg.reasoningContent += reasoningChunk
-          scrollToBottom()
-        },
-        onDelta: (delta) => {
-          if (!stillActive() || !isAiHandling.value || !aiMsg) return
-          if (aiMsg.isThinking) {
-            aiMsg.isThinking = false
-            aiMsg.thoughtCollapsed = true
-            if (thinkingTimer) {
-              clearInterval(thinkingTimer)
-              thinkingTimer = null
-            }
-          }
-          aiMsg.content += delta
-          scrollToBottom()
-        },
-        onCitation: (citations) => {
-          if (aiMsg) {
-            aiMsg.citations = citations || []
-          }
-        },
-        onCompleted: (res) => {
-          if (thinkingTimer) {
-            clearInterval(thinkingTimer)
-            thinkingTimer = null
-          }
-          if (!stillActive() || !isAiHandling.value || !aiMsg) return
-          aiMsg.isThinking = false
-          aiMsg.isStreaming = false
-          const hasCitations = (res.citations || []).length > 0
-          if (res.replyType === 'REFUSE') {
-            aiMsg.content = ''
-            aiMsg.refusalReason = res.refusalReason
-            aiMsg.governanceTrace = res.governanceTrace || null
-          } else {
-            aiMsg.content = res.answer || res.answerText || aiMsg.content
-            aiMsg.citations = res.citations || []
-            aiMsg.interactionId = res.interactionId
-            aiMsg.suggestTransfer = res.suggestTransfer
-            aiMsg.replyType = res.replyType
-            aiMsg.generalAnswer = res.replyType === 'ANSWER' && !hasCitations
-            aiMsg.ticketDraft = res.ticketDraft || null
-            aiMsg.governanceTrace = res.governanceTrace || null
-          }
-          if (res.replyType === 'ANSWER' && !hasCitations) {
-            pushLocal('SYSTEM', '这条回答暂无知识库依据，仅供排查参考。你可以继续补充问题、反馈是否解决，或转人工处理。')
-          } else if (res.suggestTransfer) {
-            pushLocal('SYSTEM', '这个回答的把握不高，如果没解决问题建议转人工。')
-          }
-          scrollToBottom()
-        },
-        onError: (e) => {
-          if (thinkingTimer) {
-            clearInterval(thinkingTimer)
-            thinkingTimer = null
-          }
-          if (!stillActive()) return
-          if (aiMsg) {
-            aiMsg.isThinking = false
-            aiMsg.isStreaming = false
-          }
-          draft.value = text
-          pushLocal('SYSTEM', `AI 暂时不可用（${e.message}）。你可以转人工或直接提交工单。`)
-        }
-      })
-    } catch (e) {
-      if (thinkingTimer) {
-        clearInterval(thinkingTimer)
-        thinkingTimer = null
-      }
-      if (!stillActive()) return
-      draft.value = text
-      pushLocal('SYSTEM', `AI 暂时不可用（${e.message}）。你可以转人工或直接提交工单。`)
-    } finally {
-      if (thinkingTimer) {
-        clearInterval(thinkingTimer)
-        thinkingTimer = null
-      }
-      if (aiMsg) {
-        aiMsg.isThinking = false
-        aiMsg.isStreaming = false
-      }
-      if (revision === sessionRevision) aiThinking.value = false
-    }
+    await sendAiStreamed(sessionId, text, stillActive)
     return
+  }
+
+  /**
+   * AI 流式问答（T-7）：POST /ai-messages/stream。
+   * queued=排队位置；token=打字机增量；final=业务终态（与旧同步端点同一份载荷，含拒答）；
+   * error=真实失败（TIMEOUT/业务码/INTERNAL_ERROR，不静默回退）。
+   * 传输中断或 error 时已上屏的文字保留并置灰标注，不伪装完整回复。
+   */
+  async function sendAiStreamed(sessionId, text, stillActive) {
+    const msg = pushLocal('AI', '', {
+      pending: true,
+      streaming: false,
+      interrupted: false,
+      queuedPosition: null,
+      citations: [],
+      governanceTrace: null,
+      thoughtStages: [],
+      reasoningContent: '',
+      thoughtCollapsed: true,
+      isThinking: false,
+      isStreaming: false
+    })
+    const controller = new AbortController()
+    streamControllers.add(controller)
+    streamingCount.value++
+    aiThinking.value = true // aria-busy 与附录反馈排他用；不再阻塞输入（会话 FIFO 允许连发）
+    try {
+      const res = await consultationApi.aiMessageStream(sessionId, text, undefined, {
+        onQueued: position => {
+          if (!stillActive()) return
+          msg.queuedPosition = position
+          scrollToBottom()
+        },
+        onToken: part => {
+          if (!stillActive()) return
+          msg.pending = false
+          msg.queuedPosition = null
+          msg.streaming = true
+          msg.content += part
+          scrollToBottom()
+        }
+      }, controller.signal)
+      if (!stillActive() || !isAiHandling.value) return
+      settleAiAnswer(msg, res)
+    } catch (e) {
+      if (!stillActive()) return
+      if (!draft.value) draft.value = text // Mi6:仅当输入框为空时回填,不覆盖用户已开始输入的新草稿
+      msg.pending = false
+      msg.isThinking = false
+      if (String(e.interrupted) === 'true' && msg.content) {
+        // 已上屏过内容的失败：保留文字并置灰标注，由用户决定重问或转人工
+        msg.streaming = false
+        msg.interrupted = true
+      } else {
+        // 与旧同步端点相同的失败口径：不吞真实原因，保留转人工/提单入口(RD-013)
+        pushLocal('SYSTEM', `AI 暂时不可用（${e.message}）。你可以转人工或直接提交工单。`)
+      }
+    } finally {
+      streamControllers.delete(controller)
+      msg.streaming = false
+      streamingCount.value = Math.max(0, streamingCount.value - 1)
+      if (streamingCount.value === 0) aiThinking.value = false
+      scrollToBottom()
+    }
+  }
+
+  /** final 到达：填充本条 AI 回复；回复为拒答时回滚已上屏的打字机残留。 */
+  function settleAiAnswer(msg, res) {
+    msg.pending = false
+    msg.streaming = false
+    msg.queuedPosition = null
+    // 成本治理 Trace 与思考过程卡片在 final 到达时一次性回填（流式阶段不伪造模型思维链）
+    msg.governanceTrace = res.governanceTrace || null
+    msg.thoughtStages = stagesFromGovernanceTrace(msg.governanceTrace)
+    msg.reasoningContent = res.reasoningContent || ''
+    msg.isThinking = false
+    msg.isStreaming = false
+    msg.content = '' // 回滚打字机残留；拒答与正常回答都从空开始
+    if (res.replyType === 'REFUSE') {
+      // 拒答回滚：已流出的暂定文字不保留，走统一拒答气泡（与旧同步端点口径一致）
+      msg.refusalReason = res.refusalReason
+      msg.interactionId = res.interactionId
+      return
+    }
+    const hasCitations = (res.citations || []).length > 0
+    msg.content = res.answerText || ''
+    msg.citations = res.citations || []
+    msg.interactionId = res.interactionId
+    msg.suggestTransfer = res.suggestTransfer
+    msg.replyType = res.replyType
+    msg.generalAnswer = res.replyType === 'ANSWER' && !hasCitations
+    // AI 只产草稿不落库；由员工点「确认建单」才真正创建（人机回环）
+    msg.ticketDraft = res.ticketDraft || null
+    if (res.replyType === 'ANSWER' && !hasCitations) {
+      pushLocal('SYSTEM', '这条回答暂无知识库依据，仅供排查参考。你可以继续补充问题、反馈是否解决，或转人工处理。')
+    } else if (res.suggestTransfer) {
+      pushLocal('SYSTEM', '这个回答的把握不高，如果没解决问题建议转人工。')
+    }
   }
 
   // 人工咨询消息
@@ -1027,8 +1014,17 @@ function finishSession(status) {
   assignmentSeconds.value = null
   sending.value = false
   aiThinking.value = false
+  streamingCount.value = 0
+  abortInFlightStreams() // Mi4:会话终局后不再让旧流在后台拖服务端预算
   resetQueueStatus()
   stopPolling()
+}
+
+function abortInFlightStreams() {
+  for (const controller of streamControllers) {
+    try { controller.abort() } catch { /* 中止器已终结则忽略 */ }
+  }
+  streamControllers.clear()
 }
 
 function goCreateTicket() {
@@ -1204,7 +1200,7 @@ const formatTime = (iso) => {
 }
 
 onMounted(autoStart)
-onUnmounted(stopPolling)
+onUnmounted(() => { stopPolling(); abortInFlightStreams() })
 </script>
 
 <style scoped>
@@ -1389,6 +1385,21 @@ onUnmounted(stopPolling)
 /* 思考动画 */
 .thinking { display: flex; align-items: center; gap: 4px; }
 .thinking-text { margin-left: 6px; font-size: 13px; color: var(--el-text-color-secondary); }
+/* T-7 流式动效：排队/思考中提示复用 dot 动画 */
+.stream-pending { display: flex; align-items: center; gap: 4px; }
+/* 打字机光标：仅流式进行中显示 */
+.stream-caret {
+  display: inline-block; width: 8px; height: 15px; margin-left: 2px;
+  background: var(--el-color-primary); vertical-align: -2px;
+  animation: stream-caret-blink 1s steps(1) infinite;
+}
+@keyframes stream-caret-blink { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+/* 传输中断置灰：保留已上屏文字，不伪装完整回复（不伪装成功） */
+.stream-interrupted-note {
+  margin-top: 6px; display: flex; align-items: center; gap: 4px;
+  font-size: 12px; color: var(--el-color-warning);
+}
+.streaming-text { display: inline; }
 .dot {
   width: 6px; height: 6px; border-radius: 50%; background: var(--el-color-primary);
   animation: blink 1.4s infinite both;

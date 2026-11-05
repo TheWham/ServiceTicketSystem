@@ -4,7 +4,9 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 
 /** 咨询域可配置项。默认值取自 PRD 与 spec,平台管理员可在允许范围内覆盖。 */
@@ -121,9 +123,60 @@ public class ConsultationProperties {
         private int circuitHalfOpenSuccessThreshold = 3;
         /** AI-001:高风险主题关键词,命中即拒答并引导转人工。 */
 
+        /** 图扩展邻居准入谓词参数,默认与 python 侧 rag_pipeline.config 一致。 */
+        private GraphExpansion graphExpansion = new GraphExpansion();
+
         /** Function Calling 智能体配置(生成侧下沉到 Python agent_service)。 */
         private Agent agent = new Agent();
+
+        /** 跨工单分析链路配置(默认关闭)。 */
         private Analytics analytics = new Analytics();
+
+        /** 语义答案缓存(带知识版本哨兵),默认关闭。 */
+        private Cache cache = new Cache();
+
+        /** 流式回答(T-6):入端点常在,开关只决定"生成期间增量令牌上屏"还是"整段单发"。 */
+        private Streaming streaming = new Streaming();
+
+        /**
+         * 语义答案缓存配置。正确性锚定在 MySQL 知识版本哨兵上:缓存条目必须携带非空
+         * citations(检索到的知识版本号),命中出缓存前逐条对当前版本复核,失效即驱逐。
+         * 不同 embedding 模型的向量彼此不可比,条目按模型名分命名空间。
+         */
+        @Data
+        public static class Cache {
+            /** 总开关。默认关闭:关闭时与引入缓存前的行为完全一致。 */
+            private boolean enabled = false;
+            /** 问题向量余弦相似度命中门槛;低于 0.90 的取值在装配期被拒绝(语义漂移风险)。 */
+            private double threshold = 0.93;
+            /** 条目上限(进程内有界结构,LRU 逐出)。 */
+            private int maxEntries = 500;
+            /** 兜底 TTL:命中条目最长存活 7 天,防止知识后补后旧答案长期不被哨兵驱逐。 */
+            private long ttlSeconds = 604800;
+            /** 嵌入模型 ID;enabled=true 时必填,否则启动失败(不提供半启用状态)。 */
+            private String embeddingModel;
+            /** OpenAI 兼容嵌入端点基址(不含 /embeddings);为空回退 ai.base-url。 */
+            private String embeddingBaseUrl;
+            /** 嵌入调用时长上限,计入请求统一超时预算。 */
+            private long embeddingTimeoutMs = 1000;
+            /** 同条目刷新去抖窗口(秒);0 表示每次都刷新。 */
+            private long minWriteIntervalSeconds = 0;
+        }
+    }
+
+    /**
+     * 图扩展邻居准入谓词:五条件全满足才收,任一不满足仅丢该扩展条目,不影响拒答门。
+     * 默认值与 python 侧 rag_pipeline.config.ExpansionConfig 一致。
+     */
+    @Data
+    public static class GraphExpansion {
+        /** 白名单;REPLACES 与共指边在工业共识上不是列证依据,永不入场。 */
+        private LinkedHashSet<String> edgeWhitelist = new LinkedHashSet<>(
+                Arrays.asList("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"));
+        /** 扩展条目分下限。 */
+        private BigDecimal scoreFloor = new BigDecimal("0.10");
+        /** 单个源卡可携带的邻居上限。 */
+        private int maxNeighbors = 2;
     }
 
     /**
@@ -152,5 +205,14 @@ public class ConsultationProperties {
         private boolean enabled = false;
         /** Python analytics_service 基址,如 http://127.0.0.1:8340。 */
         private String serviceBaseUrl;
+    }
+
+    /** 流式回答开关与保活节奏(T-6)。 */
+    @Data
+    public static class Streaming {
+        /** false=入/写与旧同步端点完全一致(生成期间令牌不上屏,整段单发后 final)。 */
+        private boolean enabled = false;
+        /** SSE 空转帧间隔;排队与生成期间都有,兼作断连探测。 */
+        private long keepAliveMillis = 15_000;
     }
 }

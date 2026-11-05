@@ -1,0 +1,58 @@
+{
+  "relations": [
+    {
+      "target": "ITKB-HW-001",
+      "type": "related",
+      "note": "两卡均涉及黑屏/无显示现象，但场景不同：HW-001为整机无法开机黑屏，本卡为外接显示器无信号黑屏，易混淆需区分",
+      "evidence": "外接显示器黑屏并提示「无信号」「No Signal」或「检查信号线」"
+    },
+    {
+      "target": "ITKB-APPENDIX-2",
+      "type": "process_applies",
+      "note": "本卡按线缆、输入源、驱动、分辨率分层逐项排查，符合IT故障排查通用流程的分层排查规范",
+      "evidence": "按线缆、输入源、投屏模式、驱动与分辨率逐项排查"
+    }
+  ],
+  "graph_nodes": [
+    {
+      "kind": "symptom",
+      "name": "外接显示器黑屏并提示「无信号」"
+    },
+    {
+      "kind": "symptom",
+      "name": "画面模糊、闪烁、颜色异常"
+    },
+    {
+      "kind": "symptom",
+      "name": "分辨率不正确"
+    },
+    {
+      "kind": "root_cause",
+      "name": "视频线（HDMI/VGA/DP/Type-C）松动或损坏"
+    },
+    {
+      "kind": "root_cause",
+      "name": "显示器未切换到正确的输入源"
+    },
+    {
+      "kind": "root_cause",
+      "name": "显卡驱动问题，无法正确识别外接显示器"
+    },
+    {
+      "kind": "root_cause",
+      "name": "分辨率/刷新率设置超出显示器支持范围"
+    },
+    {
+      "kind": "root_cause",
+      "name": "转接头/扩展坞兼容性问题"
+    },
+    {
+      "kind": "tool",
+      "name": "Win+P"
+    },
+    {
+      "kind": "tool",
+      "name": "设备管理器"
+    }
+  ]
+}

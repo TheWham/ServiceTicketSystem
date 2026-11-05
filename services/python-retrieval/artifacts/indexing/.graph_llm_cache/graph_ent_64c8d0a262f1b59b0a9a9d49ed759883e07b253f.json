@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "浏览器",
+      "type": "软件"
+    },
+    {
+      "name": "Chrome",
+      "type": "软件"
+    },
+    {
+      "name": "Edge",
+      "type": "软件"
+    },
+    {
+      "name": "Firefox",
+      "type": "软件"
+    },
+    {
+      "name": "缓存",
+      "type": "概念"
+    },
+    {
+      "name": "Cookie",
+      "type": "概念"
+    },
+    {
+      "name": "浏览器扩展",
+      "type": "软件"
+    },
+    {
+      "name": "SSL证书",
+      "type": "概念"
+    },
+    {
+      "name": "代理",
+      "type": "概念"
+    },
+    {
+      "name": "HTTPS扫描",
+      "type": "概念"
+    },
+    {
+      "name": "杀毒软件",
+      "type": "软件"
+    },
+    {
+      "name": "ERR_SSL_PROTOCOL_ERROR",
+      "type": "故障现象"
+    },
+    {
+      "name": "系统时间",
+      "type": "配置项"
+    },
+    {
+      "name": "inetcpl.cpl",
+      "type": "命令工具"
+    },
+    {
+      "name": "hosts文件",
+      "type": "配置项"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "浏览器",
+      "type": "软件"
+    },
+    {
+      "name": "Chrome",
+      "type": "软件"
+    },
+    {
+      "name": "Edge",
+      "type": "软件"
+    },
+    {
+      "name": "Firefox",
+      "type": "软件"
+    },
+    {
+      "name": "缓存",
+      "type": "概念"
+    },
+    {
+      "name": "Cookie",
+      "type": "概念"
+    },
+    {
+      "name": "浏览器扩展",
+      "type": "软件"
+    },
+    {
+      "name": "SSL证书",
+      "type": "概念"
+    },
+    {
+      "name": "代理",
+      "type": "概念"
+    },
+    {
+      "name": "HTTPS扫描",
+      "type": "概念"
+    },
+    {
+      "name": "杀毒软件",
+      "type": "软件"
+    },
+    {
+      "name": "ERR_SSL_PROTOCOL_ERROR",
+      "type": "故障现象"
+    },
+    {
+      "name": "系统时间",
+      "type": "配置项"
+    },
+    {
+      "name": "inetcpl.cpl",
+      "type": "命令工具"
+    },
+    {
+      "name": "hosts文件",
+      "type": "配置项"
+    }
+  ]
+}

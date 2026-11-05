@@ -26,6 +26,9 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class RagCompositionHttpTest {
+    private static long deadline(long millis) {
+        return System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(millis);
+    }
     private final ObjectMapper json = new ObjectMapper();
     private HttpServer server;
     private ConsultationProperties config;
@@ -71,18 +74,26 @@ class RagCompositionHttpTest {
         server.createContext("/chat/completions", exchange -> {
             JsonNode request = json.readTree(exchange.getRequestBody());
             JsonNode input = json.readTree(request.path("messages").get(1).path("content").textValue());
-            JsonNode content;
+            byte[] response;
             int responseStatus;
             if (input.has("material")) {
-                generationInputs.add(input); pause(modelDelay); content = modelReply;
+                // 生成调用已切换 completeStream:SSE 帧 delta.content 返回整段 modelReply。
+                generationInputs.add(input); pause(modelDelay);
+                ObjectNode frame = json.createObjectNode();
+                ObjectNode choice = frame.putArray("choices").addObject();
+                choice.putObject("delta").put("content", modelReply.toString());
+                choice.put("finish_reason", "stop");
+                exchange.getResponseHeaders().add("Content-Type", "text/event-stream; charset=utf-8");
+                response = ("data: " + frame + "\n\n" + "data: [DONE]\n\n").getBytes(StandardCharsets.UTF_8);
                 responseStatus = generationStatus;
             } else {
+                // 分类调用仍走非流式 complete(),保持单 JSON 形状。
                 classificationInputs.add(input);
-                content = json.createObjectNode().put("decision", classification);
+                JsonNode content = json.createObjectNode().put("decision", classification);
+                response = json.writeValueAsBytes(Map.of("choices", List.of(Map.of("finish_reason", "stop",
+                        "message", Map.of("content", content.toString(), "reasoning_content", "never expose")))));
                 responseStatus = classificationInputs.size() == 1 ? 200 : subsequentClassificationStatus;
             }
-            byte[] response = json.writeValueAsBytes(Map.of("choices", List.of(Map.of("finish_reason", "stop",
-                    "message", Map.of("content", content.toString(), "reasoning_content", "never expose")))));
             exchange.sendResponseHeaders(responseStatus, response.length);
             exchange.getResponseBody().write(response); exchange.close();
         });
@@ -100,13 +111,13 @@ class RagCompositionHttpTest {
         var http = new DependencyHttpClient();
         var model = new OpenAiCompatibleModelClient(config, http);
         client = new GuardedRagClient(new ComposedRagAdapter(new SemanticRequestClassifier(model),
-                new RagServiceKnowledgeRetriever(config, http), new RetrievalPolicy(knowledge),
+                new RagServiceKnowledgeRetriever(config, http), new RetrievalPolicy(knowledge, Set.of("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"), new BigDecimal("0.10"), 2),
                 new OpenAiCompatibleAnswerGenerator(model, config, null),
-                false, null), config);
+                false, null, com.itticket.consultation.adapter.cache.SemanticAnswerCache.disabled()), config);
     }
     private RagResult ask() {
         return client.answer(new RagQuery("S1", "开会别人听不到我", "C_NET", "ASSET1", 5,
-                new RagCaller("U_EMP01", "EMPLOYEE")), "request-1");
+                new RagCaller("U_EMP01", "EMPLOYEE")), "request-1", TokenSink.discarding(), deadline(60_000));
     }
     private ObjectNode data() { return (ObjectNode) envelope.get("data"); }
     private ArrayNode items() { return (ArrayNode) data().get("items"); }
@@ -315,7 +326,12 @@ class RagCompositionHttpTest {
         config.getAi().setRequestTimeoutMs(650); config.getAi().setRagRequestTimeoutMs(5000);
         ragDelay = 350; modelDelay = 450; assemble();
         long start = System.nanoTime();
-        RagResult result = ask();
+        // M1(2026-11-05 评审):统一预算由调用方在受理时刻定下(生产=chatStreamed 按 requestTimeoutMs
+        // 起算);本用例镜像生产口径,验证检索腿吃掉的预算会真实压缩生成腿。
+        RagResult result = client.answer(
+                new RagQuery("S1", "开会别人听不到我", "C_NET", "ASSET1", 5,
+                        new RagCaller("U_EMP01", "EMPLOYEE")), "request-1",
+                TokenSink.discarding(), deadline(650));
         assertThat(result.status()).isEqualTo(RagStatus.TIMEOUT);
         assertThat((System.nanoTime() - start) / 1_000_000).isLessThan(1100);
         assertThat(ragRequests).hasSize(1);
@@ -357,7 +373,8 @@ class RagCompositionHttpTest {
             assertThat(context.getBeansOfType(RagAdapter.class)).hasSize(1);
             RagResult result = context.getBean(RagAdapter.class).answer(new RagQuery("S1", "开会别人听不到我", null,
                     null, 5, new RagCaller("U_EMP01", "EMPLOYEE")),
-                    new RagCallContext("composition", System.nanoTime() + 3_000_000_000L, new RagExecutionAudit()));
+                    new RagCallContext("composition", System.nanoTime() + 3_000_000_000L, new RagExecutionAudit()),
+                    TokenSink.discarding());
             assertThat(result.replyType()).isEqualTo(AiReplyType.ANSWER);
             assertThat(result.citations()).hasSize(1);
             assertThat(result.modelVersion()).isEqualTo("local".equals(provider) ? "local-extractive" : config.getAi().getModel());

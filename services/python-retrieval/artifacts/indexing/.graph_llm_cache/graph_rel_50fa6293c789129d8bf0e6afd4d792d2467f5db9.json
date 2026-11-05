@@ -1,0 +1,82 @@
+{
+  "relations": [
+    {
+      "target": "ITKB-APPENDIX-1",
+      "type": "process_applies",
+      "note": "本卡设有员工自助排查步骤，适用员工IT故障自助排查流程。",
+      "evidence": "步骤1：复制文件到本地桌面后再打开（不要直接打开邮件附件或U盘上的文件）。"
+    },
+    {
+      "target": "ITKB-APPENDIX-2",
+      "type": "process_applies",
+      "note": "本卡设有IT工程师进阶处理，适用IT故障排查通用流程。",
+      "evidence": "1. 使用专业修复工具（如 Stellar Repair、Kernel for Office）尝试修复文件。"
+    },
+    {
+      "target": "ITKB-OFF-002",
+      "type": "related",
+      "note": "同属WPS/Office故障域，本卡将Office/WPS安装损坏列为根因。",
+      "evidence": "Office/WPS 安装损坏或激活失效"
+    },
+    {
+      "target": "ITKB-OFF-003",
+      "type": "related",
+      "note": "WPS云文档同步冲突或上传占用可能导致文件被锁定、版本异常或需恢复。",
+      "evidence": "文件正在被另一个程序占用（如正在上传中）"
+    },
+    {
+      "target": "ITKB-STO-003",
+      "type": "related",
+      "note": "OneDrive/WPS云盘同步挂起或上传占用，与本卡文件被程序占用根因相连。",
+      "evidence": "文件正在被另一个程序占用（如正在上传中）"
+    },
+    {
+      "target": "ITKB-STO-001",
+      "type": "related",
+      "note": "业务关键文件若损坏无法修复，需转入数据恢复处置。",
+      "evidence": "如文件为业务关键数据，联系数据恢复专业服务。"
+    }
+  ],
+  "graph_nodes": [
+    {
+      "kind": "symptom",
+      "name": "文件已损坏，无法打开"
+    },
+    {
+      "kind": "symptom",
+      "name": "文件格式与文件扩展名不匹配"
+    },
+    {
+      "kind": "symptom",
+      "name": "文件被其他程序锁定"
+    },
+    {
+      "kind": "root_cause",
+      "name": "文件传输过程中损坏（下载不完整、U盘不正常拔出）"
+    },
+    {
+      "kind": "root_cause",
+      "name": "文件来自旧版Office（.doc），在当前版本兼容性问题"
+    },
+    {
+      "kind": "root_cause",
+      "name": "文件被加密或设置了权限保护"
+    },
+    {
+      "kind": "root_cause",
+      "name": "Office/WPS 安装损坏或激活失效"
+    },
+    {
+      "kind": "root_cause",
+      "name": "文件正在被另一个程序占用（如正在上传中）"
+    },
+    {
+      "kind": "tool",
+      "name": "打开并修复"
+    },
+    {
+      "kind": "tool",
+      "name": "LibreOffice"
+    }
+  ]
+}

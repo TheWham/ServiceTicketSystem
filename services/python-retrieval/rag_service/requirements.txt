@@ -2,3 +2,5 @@ fastapi>=0.115
 uvicorn[standard]>=0.30
 pydantic>=2
 networkx>=3.7
+neo4j>=5.0
+pymysql>=1.1

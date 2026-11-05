@@ -1,0 +1,54 @@
+{
+  "entities": [
+    {
+      "name": "DNS",
+      "type": "协议"
+    },
+    {
+      "name": "DHCP",
+      "type": "协议"
+    },
+    {
+      "name": "223.5.5.5",
+      "type": "配置项"
+    },
+    {
+      "name": "10.0.0.1",
+      "type": "配置项"
+    },
+    {
+      "name": "QQ",
+      "type": "软件"
+    },
+    {
+      "name": "DNS 解析失败",
+      "type": "故障现象"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "DNS",
+      "type": "协议"
+    },
+    {
+      "name": "DHCP",
+      "type": "协议"
+    },
+    {
+      "name": "223.5.5.5",
+      "type": "配置项"
+    },
+    {
+      "name": "10.0.0.1",
+      "type": "配置项"
+    },
+    {
+      "name": "QQ",
+      "type": "软件"
+    },
+    {
+      "name": "DNS 解析失败",
+      "type": "故障现象"
+    }
+  ]
+}

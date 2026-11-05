@@ -52,11 +52,11 @@ class AnalyticsRoutingTest {
         var adapter = new ComposedRagAdapter(
                 (query, ctx) -> RequestVerdict.analyticsRequest(),
                 (query, ctx) -> { retrieved.set(true); return anything(); },
-                new RetrievalPolicy(mock(KnowledgeQueryService.class)),
-                (query, material, ctx) -> {
+                new RetrievalPolicy(mock(KnowledgeQueryService.class), java.util.Set.of(), new BigDecimal("0.10"), 2),
+                (query, material, ctx, sink) -> {
                     throw new AssertionError("分析路径不应调用知识生成器");
                 },
-                false, null);
+                false, null, com.itticket.consultation.adapter.cache.SemanticAnswerCache.disabled());
 
         RagResult result = adapter.answer(ask("总结本季度各类故障的分布"), context());
 
@@ -70,11 +70,11 @@ class AnalyticsRoutingTest {
         var adapter = new ComposedRagAdapter(
                 (query, ctx) -> RequestVerdict.analyticsRequest(),
                 (query, ctx) -> anything(),
-                new RetrievalPolicy(mock(KnowledgeQueryService.class)),
-                (query, material, ctx) -> new com.itticket.consultation.adapter.generation.GenerationResult(
+                new RetrievalPolicy(mock(KnowledgeQueryService.class), java.util.Set.of(), new BigDecimal("0.10"), 2),
+                (query, material, ctx, sink) -> new com.itticket.consultation.adapter.generation.GenerationResult(
                         AiReplyType.ANSWER, "知识库里的排查步骤……", List.of(), BigDecimal.ONE,
                         null, "test", null),
-                false, null);
+                false, null, com.itticket.consultation.adapter.cache.SemanticAnswerCache.disabled());
 
         RagResult result = adapter.answer(ask("统计本季度全部工单的故障分布"), context());
 

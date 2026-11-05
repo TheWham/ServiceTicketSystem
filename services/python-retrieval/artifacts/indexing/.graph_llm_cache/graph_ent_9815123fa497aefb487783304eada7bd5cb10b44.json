@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "VPN",
+      "type": "概念"
+    },
+    {
+      "name": "split tunnel",
+      "type": "概念"
+    },
+    {
+      "name": "DNS",
+      "type": "协议"
+    },
+    {
+      "name": "IP段冲突",
+      "type": "故障现象"
+    },
+    {
+      "name": "Windows防火墙",
+      "type": "软件"
+    },
+    {
+      "name": "VPN客户端",
+      "type": "软件"
+    },
+    {
+      "name": "Always-On VPN",
+      "type": "系统"
+    },
+    {
+      "name": "路由表",
+      "type": "配置项"
+    },
+    {
+      "name": "DNS后缀",
+      "type": "配置项"
+    },
+    {
+      "name": "VPN策略",
+      "type": "配置项"
+    },
+    {
+      "name": "管理员权限",
+      "type": "账号权限"
+    },
+    {
+      "name": "家庭路由器",
+      "type": "设备"
+    },
+    {
+      "name": "ping",
+      "type": "命令工具"
+    },
+    {
+      "name": "ipconfig",
+      "type": "命令工具"
+    },
+    {
+      "name": "route print",
+      "type": "命令工具"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "VPN",
+      "type": "概念"
+    },
+    {
+      "name": "split tunnel",
+      "type": "概念"
+    },
+    {
+      "name": "DNS",
+      "type": "协议"
+    },
+    {
+      "name": "IP段冲突",
+      "type": "故障现象"
+    },
+    {
+      "name": "Windows防火墙",
+      "type": "软件"
+    },
+    {
+      "name": "VPN客户端",
+      "type": "软件"
+    },
+    {
+      "name": "Always-On VPN",
+      "type": "系统"
+    },
+    {
+      "name": "路由表",
+      "type": "配置项"
+    },
+    {
+      "name": "DNS后缀",
+      "type": "配置项"
+    },
+    {
+      "name": "VPN策略",
+      "type": "配置项"
+    },
+    {
+      "name": "管理员权限",
+      "type": "账号权限"
+    },
+    {
+      "name": "家庭路由器",
+      "type": "设备"
+    },
+    {
+      "name": "ping",
+      "type": "命令工具"
+    },
+    {
+      "name": "ipconfig",
+      "type": "命令工具"
+    },
+    {
+      "name": "route print",
+      "type": "命令工具"
+    }
+  ]
+}

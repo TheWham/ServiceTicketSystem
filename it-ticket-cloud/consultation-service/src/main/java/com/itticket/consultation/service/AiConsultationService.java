@@ -5,6 +5,8 @@ import com.itticket.consultation.adapter.GuardedRagClient;
 import com.itticket.consultation.adapter.RagQuery;
 import com.itticket.consultation.adapter.RagCaller;
 import com.itticket.consultation.adapter.RagResult;
+import com.itticket.consultation.adapter.StreamAbortedException;
+import com.itticket.consultation.adapter.TokenSink;
 import com.itticket.consultation.api.ApiCode;
 import com.itticket.consultation.api.ApiException;
 import com.itticket.consultation.api.RequestContext;
@@ -14,7 +16,6 @@ import com.itticket.consultation.dto.AiChatResponse;
 import com.itticket.consultation.dto.AiFeedbackRequest;
 import com.itticket.consultation.dto.AiFeedbackResponse;
 import com.itticket.consultation.dto.GovernanceTraceDto;
-import com.itticket.consultation.dto.KnowledgeCitationDto;
 import com.itticket.consultation.dto.TicketDraftDto;
 import com.itticket.consultation.entity.AiInteraction;
 import com.itticket.consultation.entity.Consultation;
@@ -27,22 +28,10 @@ import com.itticket.consultation.support.Times;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.itticket.consultation.adapter.RagCallContext;
-import com.itticket.consultation.adapter.RagExecutionAudit;
-import com.itticket.consultation.adapter.agent.PythonAgentClient;
-import com.itticket.consultation.dto.AiStreamEvent;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import java.time.LocalDateTime;
-import java.math.BigDecimal;
-import com.itticket.consultation.enums.AiRefusalReason;
-import java.util.List;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -80,12 +69,24 @@ public class AiConsultationService {
     private final AuthzService authzService;
     private final IdempotencyService idempotencyService;
     private final ConsultationProperties properties;
-    private final PythonAgentClient pythonAgentClient;
-    private final ObjectMapper json = new ObjectMapper();
 
     /** AI-API-002:已发布知识优先，资料不足时提供范围受限的办公 IT 通用建议。 */
     public AiChatResponse chat(CurrentUser user, String sessionId, AiChatRequest request,
                                String idempotencyKey) {
+        // 旧同步端点不外发增量令牌:传丢弃型 sink,行为与接入流式前完全一致。
+        // 统一预算从端点进入点起算,覆盖鉴权/历史装载/检索/生成全程(2026-11-05 评审 M1)。
+        long deadlineNanos = System.nanoTime()
+                + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(properties.getAi().getRequestTimeoutMs());
+        return chatStreamed(user, sessionId, request, idempotencyKey, TokenSink.discarding(), deadlineNanos);
+    }
+
+    /**
+     * 流式引擎门面(T-5):供流式编排器注入。与旧端点共用同一条幂等鉴权链,
+     * 差别仅在把编排器的 TokenSink 传入 RAG 链——增量令牌由此上屏,业务链路不变。
+     * deadlineNanos 是编排器在受理时刻定下的统一预算截止(排队等待也计入)。
+     */
+    public AiChatResponse chatStreamed(CurrentUser user, String sessionId, AiChatRequest request,
+                                       String idempotencyKey, TokenSink sink, long deadlineNanos) {
         Consultation consultation = transitionService.load(sessionId);
         // AI 对话只发生在员工与 AI 之间,工程师不通过该接口介入
         authzService.requireCreator(user, consultation);
@@ -93,157 +94,11 @@ public class AiConsultationService {
 
         return idempotencyService.execute(user.userId(), OP_CHAT + ':' + sessionId, idempotencyKey,
                 request, AiChatResponse.class,
-                () -> doChat(user, sessionId, request, idempotencyKey)).value();
-    }
-
-    /**
-     * AI-007 流式对话接口：建立 SSE 单向长连接，实时推送 answer_delta 增量并在完成时持久化。
-     */
-    public void chatStream(CurrentUser user, String sessionId, AiChatRequest request,
-                           String idempotencyKey, SseEmitter emitter) {
-        Consultation consultation = transitionService.load(sessionId);
-        authzService.requireCreator(user, consultation);
-        requireAiActive(consultation);
-
-        String currentClientMessageId = "ai-q:" + idempotencyKey;
-        List<RagQuery.Turn> history = messageService.loadAiHistory(
-                sessionId, consultation.getCreatorId(), currentClientMessageId,
-                properties.getAi().getContextMaxMessages(), properties.getAi().getContextMaxChars());
-
-        // 员工提问先落库
-        messageService.appendEmployeeMessage(sessionId, user.userId(),
-                currentClientMessageId, request.message());
-
-        emitter.onTimeout(() -> {
-            log.warn("SseEmitter timed out for session {}", sessionId);
-            emitter.complete();
-        });
-        emitter.onError(err -> {
-            log.error("SseEmitter error for session {}", sessionId, err);
-        });
-
-        CompletableFuture.runAsync(() -> {
-            AtomicInteger seq = new AtomicInteger(1);
-            try {
-                if (pythonAgentClient != null && pythonAgentClient.enabled()) {
-                    RagQuery query = new RagQuery(sessionId, request.message(), history,
-                            contextCategory(consultation, request), contextAsset(request),
-                            properties.getAi().getTopK(), new RagCaller(user.userId(), user.role().name()));
-
-                    RagCallContext ragContext = new RagCallContext(RequestContext.get(),
-                            System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(180000L),
-                            new RagExecutionAudit());
-
-                    pythonAgentClient.chatStream(query, List.of(), ragContext, frame -> {
-                        try {
-                            if ("delta".equals(frame.event())) {
-                                JsonNode node = json.readTree(frame.data());
-                                String deltaText = node.path("delta").asText("");
-                                if (!deltaText.isEmpty()) {
-                                    emitter.send(SseEmitter.event().name("answer_delta")
-                                            .data(AiStreamEvent.delta(sessionId, seq.getAndIncrement(), deltaText)));
-                                }
-                            } else if ("stage".equals(frame.event())) {
-                                JsonNode node = json.readTree(frame.data());
-                                emitter.send(SseEmitter.event().name("stage").data(node));
-                            } else if ("reasoning".equals(frame.event())) {
-                                JsonNode node = json.readTree(frame.data());
-                                String reasoningDelta = node.path("delta").asText("");
-                                if (!reasoningDelta.isEmpty()) {
-                                    emitter.send(SseEmitter.event().name("reasoning_delta")
-                                            .data(AiStreamEvent.reasoning(sessionId, seq.getAndIncrement(), reasoningDelta)));
-                                }
-                            } else if ("done".equals(frame.event())) {
-                                JsonNode doneNode = json.readTree(frame.data());
-                                String answerText = doneNode.path("answerText").asText("");
-                                String replyType = doneNode.path("replyType").asText("ANSWER");
-                                double confidence = doneNode.path("confidence").asDouble(0.95);
-                                boolean offTopic = doneNode.path("offTopic").asBoolean(false);
-
-                                TicketDraftDto draft = null;
-                                if (doneNode.has("ticketDraft") && doneNode.path("ticketDraft").isObject()) {
-                                    draft = json.treeToValue(doneNode.path("ticketDraft"), TicketDraftDto.class);
-                                }
-                                GovernanceTraceDto trace = null;
-                                if (doneNode.has("governanceTrace") && doneNode.path("governanceTrace").isObject()) {
-                                    trace = json.treeToValue(doneNode.path("governanceTrace"), GovernanceTraceDto.class);
-                                }
-
-                                List<KnowledgeCitationDto> citations = new ArrayList<>();
-                                if (doneNode.has("citations") && doneNode.path("citations").isArray()) {
-                                    for (JsonNode cNode : doneNode.path("citations")) {
-                                        citations.add(new KnowledgeCitationDto(
-                                                cNode.path("articleId").asText(""),
-                                                cNode.path("versionId").asText(""),
-                                                cNode.path("title").asText(""),
-                                                BigDecimal.valueOf(cNode.path("score").asDouble(1.0)),
-                                                cNode.path("snippet").asText("")
-                                        ));
-                                    }
-                                }
-
-                                requireAiActive(transitionService.loadForUpdate(sessionId));
-
-                                AiAnswerGuard.Verdict verdict = "REFUSE".equals(replyType)
-                                        ? AiAnswerGuard.Verdict.refuse(offTopic ? AiRefusalReason.OFF_TOPIC : AiRefusalReason.NO_RELIABLE_KNOWLEDGE, BigDecimal.ZERO)
-                                        : new AiAnswerGuard.Verdict(AiReplyType.ANSWER, answerText, citations, BigDecimal.valueOf(confidence), null, false);
-
-                                String interactionId = persistInteraction(sessionId, null, verdict);
-                                persistAiMessage(sessionId, idempotencyKey, interactionId, verdict, draft, trace);
-
-                                Map<String, Object> completeData = new LinkedHashMap<>();
-                                completeData.put("sessionId", sessionId);
-                                completeData.put("replyType", verdict.replyType());
-                                completeData.put("answer", verdict.answerText());
-                                completeData.put("citations", verdict.citations());
-                                completeData.put("confidence", verdict.confidence());
-                                completeData.put("suggestTransfer", verdict.suggestTransfer());
-                                completeData.put("ticketDraft", draft);
-                                completeData.put("governanceTrace", trace);
-
-                                emitter.send(SseEmitter.event().name("answer_completed")
-                                        .data(AiStreamEvent.completed(sessionId, seq.getAndIncrement(), completeData)));
-                                emitter.complete();
-                            }
-                        } catch (Exception ex) {
-                            log.error("Failed handling SSE frame from agent", ex);
-                        }
-                    });
-                } else {
-                    AiChatResponse syncResp = doChat(user, sessionId, request, idempotencyKey);
-                    if (syncResp.answerText() != null && !syncResp.answerText().isEmpty()) {
-                        emitter.send(SseEmitter.event().name("answer_delta")
-                                .data(AiStreamEvent.delta(sessionId, seq.getAndIncrement(), syncResp.answerText())));
-                    }
-                    Map<String, Object> completeData = new LinkedHashMap<>();
-                    completeData.put("sessionId", sessionId);
-                    completeData.put("replyType", syncResp.replyType());
-                    completeData.put("answer", syncResp.answerText());
-                    completeData.put("citations", syncResp.citations());
-                    completeData.put("confidence", syncResp.confidence());
-                    completeData.put("suggestTransfer", syncResp.suggestTransfer());
-                    completeData.put("ticketDraft", syncResp.ticketDraft());
-                    completeData.put("governanceTrace", syncResp.governanceTrace());
-
-                    emitter.send(SseEmitter.event().name("answer_completed")
-                            .data(AiStreamEvent.completed(sessionId, seq.getAndIncrement(), completeData)));
-                    emitter.complete();
-                }
-            } catch (Exception e) {
-                log.error("SSE chat stream execution error for session {}", sessionId, e);
-                try {
-                    emitter.send(SseEmitter.event().name("error")
-                            .data(AiStreamEvent.error(sessionId, seq.getAndIncrement(), "AI_UNAVAILABLE", e.getMessage())));
-                    emitter.complete();
-                } catch (Exception ignored) {
-                    emitter.completeWithError(e);
-                }
-            }
-        });
+                () -> doChat(user, sessionId, request, idempotencyKey, sink, deadlineNanos)).value();
     }
 
     private AiChatResponse doChat(CurrentUser user, String sessionId, AiChatRequest request,
-                                  String idempotencyKey) {
+                                  String idempotencyKey, TokenSink sink, long deadlineNanos) {
         Consultation consultation = transitionService.load(sessionId);
         authzService.requireCreator(user, consultation);
         requireAiActive(consultation);
@@ -262,7 +117,12 @@ public class AiConsultationService {
             RagQuery query = new RagQuery(sessionId, request.message(), history,
                     contextCategory(consultation, request), contextAsset(request),
                     properties.getAi().getTopK(), new RagCaller(user.userId(), user.role().name()));
-            result = ragClient.answer(query, RequestContext.get());
+            result = ragClient.answer(query, RequestContext.get(), sink, deadlineNanos);
+        }
+
+        // 断连门槛:客户端已断开时不再落库,沿用与旧端点一致的"AI 侧不半落"纪律。
+        if (sink.clientGone()) {
+            throw new StreamAbortedException("客户端已断开,本次回答不落库");
         }
 
         // 模型调用耗时较长，期间员工可结束会话。只在落库阶段加锁，
@@ -274,20 +134,17 @@ public class AiConsultationService {
                 knowledgeQueryService::isPublishedCurrentVersion);
 
         String interactionId = persistInteraction(sessionId, result, verdict);
-
-        // 建单草稿只在正常回答时透出(拒答不携带草稿);员工确认后才经 /ticket-draft/confirm 建单
-        TicketDraftDto draft = verdict.replyType() == AiReplyType.REFUSE
-                ? null : (result == null ? null : result.ticketDraft());
-
-        GovernanceTraceDto trace = result == null ? null : result.governanceTrace();
-
-        // 草稿与治理 Trace 要**随消息一起落库**，支持前端历史回放
-        persistAiMessage(sessionId, idempotencyKey, interactionId, verdict, draft, trace);
+        persistAiMessage(sessionId, idempotencyKey, interactionId, result, verdict);
 
         if (verdict.replyType() == AiReplyType.REFUSE) {
             log.info("[ai] 拒答 session={} reason={} requestId={}",
                     sessionId, verdict.refusalReason(), RequestContext.get());
         }
+
+        // 建单草稿只在正常回答时透出(拒答不携带草稿);员工确认后才经 /ticket-draft/confirm 建单
+        TicketDraftDto draft = verdict.replyType() == AiReplyType.REFUSE
+                ? null : (result == null ? null : result.ticketDraft());
+        GovernanceTraceDto trace = result == null ? null : result.governanceTrace();
 
         return new AiChatResponse(
                 sessionId,
@@ -352,7 +209,7 @@ public class AiConsultationService {
     }
 
     private void persistAiMessage(String sessionId, String idempotencyKey, String interactionId,
-                                  AiAnswerGuard.Verdict verdict, TicketDraftDto draft, GovernanceTraceDto trace) {
+                                  RagResult result, AiAnswerGuard.Verdict verdict) {
         boolean refused = verdict.replyType() == AiReplyType.REFUSE;
         String content = refused ? refusalTranscript(verdict) : verdict.answerText();
         Map<String, Object> metadata = new LinkedHashMap<>();
@@ -363,11 +220,20 @@ public class AiConsultationService {
         metadata.put("refusalReason", verdict.refusalReason());
         metadata.put("generalAnswer", verdict.replyType() == AiReplyType.ANSWER && verdict.citations().isEmpty());
         // 追加式键：老读者（含 RefusalCaseMapper 的 JSON_EXTRACT）不受影响，schemaVersion 保持 1。
+        TicketDraftDto draft = refused || result == null ? null : result.ticketDraft();
         if (draft != null) {
             metadata.put("ticketDraft", draft);
         }
+        GovernanceTraceDto trace = result == null ? null : result.governanceTrace();
         if (trace != null) {
             metadata.put("governanceTrace", trace);
+        }
+        // 语义缓存命中审计（schemaVersion=1 追加字段）：仅命中时写入,
+        // 实时路径不写 cacheHit 键——历史留白不伪装成“未命中”。
+        if (result != null && result.cacheHit() != null) {
+            metadata.put("cacheHit", true);
+            metadata.put("cacheSimilarity", result.cacheHit().similarity());
+            metadata.put("cacheScope", result.cacheHit().scope());
         }
         messageService.appendAiMessage(sessionId, "ai-a:" + idempotencyKey, content, Json.write(metadata));
     }

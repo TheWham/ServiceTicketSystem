@@ -141,7 +141,74 @@ def test_serialized_json_uses_camelcase_and_omits_null_reason():
     item = payload["items"][0]
     for key in ("chunkId", "articleId", "versionId", "indexVersion", "title", "snippet", "content", "score"):
         assert key in item, key
+    # Task 11：无图字段输入的条目，三键不得出场（老等价性）
+    for key in ("graphExpanded", "expandedFrom", "relation"):
+        assert key not in item, key
     assert item["indexVersion"] == item["versionId"]
+
+
+def _expanded_item(from_id="ITKB-ACC-002", relation="RELATED", rerank_score=0.4,
+                  parent_id="ITKB-PRN-002"):
+    """Task 10 扩展条目形态：父块代表 + 顶层内部键 graph_expanded/graph_expanded_from/graph_relation。"""
+    it = _item(child_id=None, chunk_id=None, parent_id=parent_id, rerank_score=rerank_score)
+    it["graph_expanded"] = True
+    it["graph_expanded_from"] = from_id
+    it["graph_relation"] = relation
+    return it
+
+
+def test_graph_expanded_entries_mapped_to_contract_fields():
+    """Task 11：内部三键 → 契约三字段（camelCase alias）；基础条目零感知。"""
+    resp = build_response(_search_res([_item(child_id="ITKB-ACC-002#c1"),
+                                       _expanded_item()]),
+                          wiki_mapping=MAPPING, request_category_id=None)
+    base, expanded = resp.items
+    assert base.graph_expanded is None and base.expanded_from is None and base.relation is None
+    assert expanded.graph_expanded is True
+    assert expanded.expanded_from == "ITKB-ACC-002"
+    assert expanded.relation == "RELATED"
+    base_score = base.score
+    payload = json.loads(resp.model_dump_json(by_alias=True, exclude_none=True))
+    p_base, p_exp = payload["items"]
+    assert "graphExpanded" not in p_base and "expandedFrom" not in p_base and "relation" not in p_base
+    assert p_exp["graphExpanded"] is True
+    assert p_exp["expandedFrom"] == "ITKB-ACC-002"
+    assert p_exp["relation"] == "RELATED"
+    assert p_base["score"] == base_score      # 基础条目 score 不受扩展条目影响
+
+
+def test_topscore_computed_only_from_base_entries():
+    """常规场景：基础 0.8 + 扩展 0.4（源×decay）→ topScore==0.8，扩展分不抬高。"""
+    resp = build_response(_search_res([_item(child_id="b#c0", rerank_score=0.8),
+                                       _expanded_item(rerank_score=0.4)]),
+                          wiki_mapping=MAPPING, request_category_id=None)
+    assert resp.top_score == 0.8
+    assert resp.items[1].score == 0.4
+
+
+def test_topscore_ignores_expanded_score_even_if_higher():
+    """防御场景：扩展分并列/反超基础分（现实被 decay<1 排除）时 topScore 仍只取基础条目。"""
+    resp = build_response(_search_res([_item(child_id="b#c0", rerank_score=0.4),
+                                       _expanded_item(rerank_score=0.9)]),
+                          wiki_mapping=MAPPING, request_category_id=None)
+    base_scores = [i.score for i in resp.items if not i.graph_expanded]
+    assert resp.top_score == max(base_scores) == 0.4
+
+
+def test_all_expanded_without_base_refuses_without_crash():
+    """防御场景：全扩展无基础（现实中 expander 只扩基础命中，不可能为空）→ top=0.0。
+    带 reject_threshold 时走拒答路径；不带阈值也不崩、不拿扩展分充当 topScore。"""
+    items = [_expanded_item(rerank_score=0.9),
+             _expanded_item(rerank_score=0.7, parent_id="ITKB-NET-003")]
+    resp = build_response(_search_res(items), wiki_mapping=MAPPING,
+                          request_category_id=None, reject_threshold=0.3)
+    assert resp.suggested_reply_type == "REFUSE"
+    assert resp.suggested_refusal_reason == "LOW_CONFIDENCE"
+    assert resp.items == []
+    assert resp.top_score == 0.0
+    resp2 = build_response(_search_res([_expanded_item(rerank_score=0.9)]),
+                           wiki_mapping=MAPPING, request_category_id=None)
+    assert resp2.top_score == 0.0            # 不以扩展分充当 topScore
 
 
 def test_content_keeps_markdown_structure_while_snippet_collapses():

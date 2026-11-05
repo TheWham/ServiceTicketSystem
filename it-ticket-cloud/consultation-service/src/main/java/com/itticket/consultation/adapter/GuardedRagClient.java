@@ -108,18 +108,27 @@ public class GuardedRagClient {
      *
      * @param query     检索入参,允许为 null(按 INVALID_RESPONSE 降级)
      * @param requestId 请求追踪 ID(RD-010)
+     * @param deadlineNanos 统一预算截止(编排器排队与生成共享同一份;同步入口从端点进入点起算)。
+     *                      本类不再自起满血预算(2026-11-05 流式评审 M1)。
      * @return 永不为 null,永不抛异常;{@code status != SUCCESS} 即为降级结果
      */
-    public RagResult answer(RagQuery query, String requestId) {
+    public RagResult answer(RagQuery query, String requestId, TokenSink tokenSink, long deadlineNanos) {
         long startNanos = System.nanoTime();
         RagExecutionAudit audit = new RagExecutionAudit();
-        // 整次调用的总预算 = 起点 + timeoutMillis()（默认 request-timeout-ms）。
-        // context 会随调用一路传下去，检索器/生成器各自从 remainingMillis() 里扣自己的耗时——
-        // 超时预算是"一次请求共享一份"，而不是每个环节各自重新计时。
-        RagCallContext context = new RagCallContext(requestId,
-                startNanos + TimeUnit.MILLISECONDS.toNanos(timeoutMillis()), audit);
+        // 调用方给定的统一 deadline 随 context 一路传下去,检索/生成各自从 remainingMillis() 扣耗时;
+        // 超时预算是"一次请求共享一份"(排队等待也计入),而不是每个环节各自重新计时。
+        RagCallContext context = new RagCallContext(requestId, deadlineNanos, audit);
         String sessionId = query == null ? null : query.sessionId();
+        // 流式外发统一经 sink;非流式调用方传 discarding()。null 容错仅此处归一,下游不再判断。
+        TokenSink sink = tokenSink == null ? TokenSink.discarding() : tokenSink;
         try {
+            // ---- 快速失败⓪:统一预算已耗尽的调用不再消耗断路器/并发额度,直接按真实超时降级 ----
+            if (System.nanoTime() > deadlineNanos) {
+                RagResult expired = RagResult.degraded(RagStatus.TIMEOUT, ERROR_TIMEOUT, 0L)
+                        .withRetrievedVersionIds(audit.retrievedVersionIds());
+                logDegraded(expired, requestId, sessionId, 0);
+                return expired;
+            }
             // ---- 快速失败①：连问题都没有，不值得消耗断路器/并发额度 ----
             if (query == null) {
                 RagResult invalid = RagResult.degraded(
@@ -144,7 +153,7 @@ public class GuardedRagClient {
 
                 // 【真正干活的一行】attemptOnce = 并发许可 → 独立线程池跑 adapter.answer
                 //   → 限时等待 → validate 输出校验。检索、生成、拼 citation 全在这条委托链里。
-                last = attemptOnce(query, context);
+                last = attemptOnce(query, context, sink);
                 // 审计登记：本次实际检索到过哪些知识版本（跨重试累计）。
                 // 用途：上游 AiAnswerGuard 引用复核时，模型声明的 usedVersionIds 必须落在这个集合里，
                 // 写了"检索中从未出现过的版本"即伪造，整次回答作废。
@@ -169,11 +178,13 @@ public class GuardedRagClient {
                 // 然后决定这一轮失败要不要重试。
                 circuitBreaker.recordFailure();
                 logDegraded(last, requestId, sessionId, attempt);
-                // 【检查点 2】两类失败不重试：
+                // 【检查点 2】三类失败不重试：
                 //   ① retryableFailure()=false —— INVALID_RESPONSE 属业务性拒绝（输出不合法），
                 //      再跑一遍结果不会变，重试只是浪费；
-                //   ② 总预算耗尽 —— 重试了也必然超时，不如把已有结果（哪怕是降级结果）返回。
-                if (!last.retryableFailure() || context.remainingMillis() == 0) {
+                //   ② 已向外发过 token —— 重试会让客户端看到重复字，只能以真实失败终态返回，
+                //      由上层决定文案回滚；
+                //   ③ 总预算耗尽 —— 重试了也必然超时，不如把已有结果（哪怕是降级结果）返回。
+                if (!last.retryableFailure() || sink.emitted() || context.remainingMillis() == 0) {
                     break;
                 }
                 // 只有 TIMEOUT / UNAVAILABLE（且预算还有剩）才会进入下一轮 attempt 重试
@@ -207,7 +218,7 @@ public class GuardedRagClient {
     }
 
     /** 单次尝试:并发许可 → 线程池执行 → 限时等待 → 输出校验。 */
-    private RagResult attemptOnce(RagQuery query, RagCallContext context) {
+    private RagResult attemptOnce(RagQuery query, RagCallContext context, TokenSink sink) {
         long attemptStart = System.nanoTime();
         if (!permits.tryAcquire()) {
             // RD-007:并发已满立即降级,不阻塞排队
@@ -215,7 +226,7 @@ public class GuardedRagClient {
                     RagStatus.UNAVAILABLE, ERROR_CONCURRENCY_LIMIT, elapsedMs(attemptStart));
         }
         // 显式声明 Callable,避免 submit(Runnable) / submit(Callable) 的重载歧义
-        Callable<RagResult> task = () -> adapter.answer(query, context);
+        Callable<RagResult> task = () -> adapter.answer(query, context, sink);
         Future<RagResult> future = null;
         try {
             future = executor.submit(task);

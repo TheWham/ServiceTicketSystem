@@ -2,6 +2,7 @@ package com.itticket.consultation.controller;
 
 import com.itticket.consultation.api.ApiEnvelope;
 import com.itticket.consultation.api.RequestContext;
+import com.itticket.consultation.config.ConsultationProperties;
 import com.itticket.consultation.dto.AiChatRequest;
 import com.itticket.consultation.dto.AiChatResponse;
 import com.itticket.consultation.dto.AiFeedbackRequest;
@@ -14,6 +15,7 @@ import com.itticket.consultation.service.AiConsultationService;
 import com.itticket.consultation.service.AuthzService;
 import com.itticket.consultation.service.ConsultationService;
 import com.itticket.consultation.service.CurrentUser;
+import com.itticket.consultation.service.stream.AiChatStreamOrchestrator;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
@@ -23,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 /**
  * 智能客服与转人工接口(AI-005 的 AI-API-002 / 003 / 004)。
@@ -39,6 +42,8 @@ public class AiConsultationController {
     private final AiConsultationService aiConsultationService;
     private final ConsultationService consultationService;
     private final AuthzService authzService;
+    private final AiChatStreamOrchestrator aiChatStreamOrchestrator;
+    private final ConsultationProperties properties;
 
     /** AI-API-002:发送 AI 消息（非流式，默认 Accept: application/json）。 */
     @PostMapping(value = "/{id}/ai-messages", produces = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
@@ -50,16 +55,29 @@ public class AiConsultationController {
         return ok(aiConsultationService.chat(user, id, request, idempotencyKey));
     }
 
-    /** AI-007:流式对话接口（Accept: text/event-stream）。 */
-    @PostMapping(value = "/{id}/ai-messages", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
-    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter chatStream(
+    /**
+     * AI-API-002 流式变体(T-6):SSE 端点常在,事件 queued/token/final/error。
+     * 会话内严格串行(FIFO);同 Idempotency-Key 重放由幂等服务处理。
+     * final 搬与旧同步端点同一份 AiChatResponse;error 只给真实 errorClass。
+     * 断连(容器回调三选一)即 close,编排器中止本流并让队列腾位。
+     */
+    @PostMapping("/{id}/ai-messages/stream")
+    public ResponseBodyEmitter chatStream(
             @PathVariable String id,
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody AiChatRequest request) {
         CurrentUser user = authzService.currentUser();
-        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
-                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(180000L);
-        aiConsultationService.chatStream(user, id, request, idempotencyKey, emitter);
+        // 容器异步超时必须盖住整个统一预算:排队+首字节+生成(RD-003 120s)+裕量,
+        // 默认 30s 会在长答案上把活跃流掐断(2026-11-05 流式评审 C2);断连由三回调兜底。
+        ConsultationProperties.Ai ai = properties.getAi();
+        ResponseBodyEmitter emitter = new ResponseBodyEmitter(
+                ai.getRequestTimeoutMs() + ai.getFirstTokenTimeoutMs() + 30_000L);
+        SseChatEventSink events = new SseChatEventSink(emitter);
+        AiChatStreamOrchestrator.SseHandle handle =
+                aiChatStreamOrchestrator.openStream(user, id, request, idempotencyKey, events);
+        emitter.onCompletion(handle::close);
+        emitter.onError(cause -> handle.close());
+        emitter.onTimeout(handle::close);
         return emitter;
     }
 

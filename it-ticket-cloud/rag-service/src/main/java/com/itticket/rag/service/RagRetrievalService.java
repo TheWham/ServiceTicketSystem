@@ -230,13 +230,14 @@ public class RagRetrievalService {
         return outcome(domain, false, null, verified, topScore, null, reliable);
     }
 
-    /** Python 命中 → 内部 ChunkHit（indexVersion 缺失时退化为 versionId，保持不变量）。 */
+    /** Python 命中 → 内部 ChunkHit（indexVersion 缺失时退化为 versionId，保持不变量；图扩展三元数据直通）。 */
     private static ChunkHit toChunkHit(RetrievedChunk item) {
         String indexVersion = item.indexVersion() == null || item.indexVersion().isBlank()
                 ? item.versionId() : item.indexVersion();
-        return ChunkHit.raw(item.chunkId(), item.articleId(), item.versionId(), indexVersion,
+        return new ChunkHit(item.chunkId(), item.articleId(), item.versionId(), indexVersion,
                 item.title(), item.content(), item.categoryId(),
-                item.score() == null ? zero() : item.score());
+                item.score() == null ? zero() : item.score(),
+                -1, -1, 0d, item.graphExpanded(), item.expandedFrom(), item.relation());
     }
 
     /**
@@ -319,7 +320,10 @@ public class RagRetrievalService {
                         hit.content(),
                         hit.categoryId(),
                         hit.cosineSimilarity(),
-                        hit.indexVersion()))
+                        hit.indexVersion(),
+                        hit.graphExpanded(),
+                        hit.expandedFrom(),
+                        hit.relation()))
                 .toList();
         return new RagRetrievalResponse(
                 items,

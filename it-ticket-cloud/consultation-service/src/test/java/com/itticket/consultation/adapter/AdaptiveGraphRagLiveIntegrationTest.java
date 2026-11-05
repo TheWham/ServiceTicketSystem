@@ -155,7 +155,7 @@ public class AdaptiveGraphRagLiveIntegrationTest {
         RequestClassifier classifier = (query, ctx) -> new RequestVerdict(OfficeDomain.OFFICE_IT, RequestVerdict.NO_TOOL, false);
 
         // 3. 模拟 AnswerGenerator：验证它接收到了前置注入了因果链的材料
-        AnswerGenerator mockGenerator = (query, material, ctx) -> {
+        AnswerGenerator mockGenerator = (query, material, ctx, sink) -> {
             assertThat(material).isNotEmpty();
             RetrievedKnowledge mat0 = material.get(0);
             assertThat(mat0.content()).contains("【知识图谱因果推导】");
@@ -178,7 +178,8 @@ public class AdaptiveGraphRagLiveIntegrationTest {
                 policy,
                 mockGenerator,
                 false,
-                null
+                null,
+                com.itticket.consultation.adapter.cache.SemanticAnswerCache.disabled()
         );
 
         GuardedRagClient client = new GuardedRagClient(adapter, config);

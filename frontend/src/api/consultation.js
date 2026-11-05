@@ -1,6 +1,5 @@
 import axios from 'axios'
 import { useUserStore } from '../stores/user.js'
-import { readSseStream } from '../utils/sseReader.js'
 
 /**
  * 咨询服务(智能客服/转人工)专用客户端。
@@ -71,6 +70,67 @@ http.interceptors.response.use(
   }
 )
 
+/**
+ * 消费 /ai-messages/stream 的 SSE 响应（SSE 协议手工解析，见 SseChatEventSinkTest 帧字面量）。
+ *
+ * 事件：queued{position} / token{text} / final{AiChatResponse} / error{errorClass,message}；
+ * ": keep-alive" 是注释行帧，忽略。final 与旧同步端点同一份载荷；
+ * 流在 final/error 之前断开时抛 interrupted 标记的错（已上屏文字不清理，由调用方置灰标注）。
+ * 不做任何静默回退：error 只抛真实 errorClass，不谎称完成。
+ */
+export async function consumeAiSseStream(response, handlers) {
+  const onToken = handlers?.onToken
+  const onQueued = handlers?.onQueued
+  if (!response.ok) {
+    let body = null
+    try { body = await response.json() } catch { /* 非 JSON 错误体按网络错误口径上报 */ }
+    const error = new Error(body?.message || (response.status === 401 ? '登录已过期，请重新登录' : `请求失败（HTTP ${response.status}）`))
+    error.code = body?.code || 'NETWORK_ERROR'
+    throw error
+  }
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let boundary
+    while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+      const frame = buffer.slice(0, boundary)
+      buffer = buffer.slice(boundary + 2)
+      if (frame.startsWith(':')) continue // keep-alive 注释行
+      let event = null
+      let data = null
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('event: ')) event = line.slice(7)
+        else if (line.startsWith('data: ')) data = data === null ? line.slice(6) : `${data}\n${line.slice(6)}`
+      }
+      // 帧 data 非法一律按协议错上报,不静默丢弃(Mi5,2026-11-05 评审)
+      let payload = null
+      try { payload = JSON.parse(data ?? '') } catch { payload = null }
+      if (data !== null && payload === null) {
+        const protocolError = new Error('AI 流式回复数据帧异常，请重试或转人工')
+        protocolError.code = 'PROTOCOL'
+        protocolError.interrupted = true
+        throw protocolError
+      }
+      if (event === 'queued') onQueued?.(payload.position)
+      else if (event === 'token') onToken?.(payload.text)
+      else if (event === 'final') return payload
+      else if (event === 'error') {
+        const error = new Error(payload?.message || payload?.errorClass || 'AI 服务异常')
+        error.code = payload?.errorClass
+        error.interrupted = true // 已上屏令牌不回滚，按“回复被中断”置灰
+        throw error
+      }
+    }
+  }
+  const interrupted = new Error('回复传输中断（未完成）')
+  interrupted.interrupted = true
+  throw interrupted
+}
+
 export const consultationApi = {
   /** AI-API-001 创建咨询。source: AI | HUMAN_DIRECT | TICKET_FOLLOW_UP */
   create: (source, categoryId) =>
@@ -91,40 +151,25 @@ export const consultationApi = {
       contextRefs ? { message, contextRefs } : { message },
       { timeout: AI_TIMEOUT }),
 
-  /** AI-007 发送 AI 消息（SSE 流式连接，Accept: text/event-stream）。 */
-  aiMessageStream: async (id, message, { onDelta, onReasoning, onCitation, onCompleted, onError, onRefusal, onStage, contextRefs } = {}) => {
+  /**
+   * AI-API-002 流式变体（T-7）：POST /ai-messages/stream，SSE 事件见 consumeAiSseStream。
+   * 不走 axios：检索/生成实测几十秒起步，流式期间按帧推进，不做整体超时；
+   * 携手 axios 拦截器同构的三头（Authorization/X-Request-Id/Idempotency-Key）。
+   */
+  aiMessageStream: (id, message, contextRefs, handlers, signal) => {
     const userStore = useUserStore()
     const headers = {
       'Content-Type': 'application/json',
-      'Accept': 'text/event-stream',
       'X-Request-Id': randomId('req'),
-      'Idempotency-Key': randomId('idem'),
+      'Idempotency-Key': randomId('idem')
     }
-    if (userStore.token) {
-      headers['Authorization'] = `Bearer ${userStore.token}`
-    }
-
-    const body = contextRefs ? { message, contextRefs } : { message }
-
-    const resp = await fetch(`/api/v1/consultations/${id}/ai-messages`, {
+    if (userStore.token) headers['Authorization'] = `Bearer ${userStore.token}`
+    return fetch(`/api/v1/consultations/${id}/ai-messages/stream`, {
       method: 'POST',
       headers,
-      body: JSON.stringify(body)
-    })
-
-    if (!resp.ok) {
-      let errorMsg = `HTTP ${resp.status}`
-      try {
-        const errJson = await resp.json()
-        errorMsg = errJson.message || errorMsg
-      } catch {}
-      const err = new Error(errorMsg)
-      err.status = resp.status
-      if (onError) onError(err)
-      throw err
-    }
-
-    return readSseStream(resp, { onDelta, onReasoning, onCitation, onCompleted, onError, onRefusal, onStage })
+      body: JSON.stringify(contextRefs ? { message, contextRefs } : { message }),
+      signal
+    }).then(response => consumeAiSseStream(response, handlers))
   },
 
   /** AI-API-003 反馈。feedback: HELPFUL | NOT_HELPFUL | INCORRECT */
@@ -176,6 +221,17 @@ export const consultationApi = {
 
   /** OpenAPI 05 getTicketDraftFromConsultation:咨询转单预填(员工可修改) */
   ticketDraft: (id) => http.get(`/consultations/${id}/ticket-draft`),
+
+  /**
+   * 员工确认 AI 拟好的建单草稿——人机回环第二步。
+   * AI 只能起草(不落库),这一步才是建单真正发生的地方;归属由服务端绑定当前登录员工。
+   */
+  confirmTicketDraft: (id, draft) => http.post(`/consultations/${id}/ticket-draft/confirm`, {
+    title: draft.title,
+    category: draft.category || null,
+    description: draft.description,
+    priority: draft.priority || 'MEDIUM'
+  }),
 
   /** AI-API-005 知识搜索,只返回已发布版本 */
   searchKnowledge: (query, category, page = 1, pageSize = 10) =>

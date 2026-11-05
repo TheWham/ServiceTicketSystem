@@ -5,7 +5,8 @@ import com.itticket.consultation.enums.*;
 import java.util.List;
 /** Extractive answer confidence estimates evidence relevance, not a model probability. */
 public final class LocalKnowledgeAnswerGenerator implements AnswerGenerator {
-    @Override public GenerationResult generate(RagQuery query, List<RetrievedKnowledge> material, RagCallContext context) {
+    /** 本地抽取式结果整段返回,无增量可流,不外发 token;编排层在终态一次性处理。 */
+    @Override public GenerationResult generate(RagQuery query, List<RetrievedKnowledge> material, RagCallContext context, TokenSink sink) {
         context.timeoutMillis(Long.MAX_VALUE);
         if (material.isEmpty()) return new GenerationResult(AiReplyType.REFUSE, null, List.of(),
                 RagResult.ZERO_CONFIDENCE, AiRefusalReason.NO_RELIABLE_KNOWLEDGE, "local-extractive");

@@ -49,7 +49,10 @@ public final class RagServiceKnowledgeRetriever implements KnowledgeRetriever {
             if (!version.equals(index)) throw DependencyFailure.invalid();
             items.add(new RetrievedKnowledge(chunk, article, version, text(item, "title"),
                     text(item, "snippet"), text(item, "content"),
-                    nullableText(item.path("categoryId")), score(item.path("score"), true), index));
+                    nullableText(item.path("categoryId")), score(item.path("score"), true), index,
+                    nullableBoolean(item.path("graphExpanded")),
+                    nullableText(item.path("expandedFrom")),
+                    nullableText(item.path("relation"))));
         }
         BigDecimal maximum = items.stream().map(RetrievedKnowledge::score).filter(Objects::nonNull)
                 .max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
@@ -88,6 +91,12 @@ public final class RagServiceKnowledgeRetriever implements KnowledgeRetriever {
         if (value.isNull() || value.isMissingNode()) return null;
         if (!value.isTextual()) throw DependencyFailure.invalid();
         return value.textValue();
+    }
+    /** 图扩展三键缺省即 null(契约 exclude_none),在场但非布尔即非法 wire。 */
+    private static Boolean nullableBoolean(JsonNode value) {
+        if (value.isNull() || value.isMissingNode()) return null;
+        if (!value.isBoolean()) throw DependencyFailure.invalid();
+        return value.booleanValue();
     }
     private static BigDecimal score(JsonNode value, boolean nullable) {
         if (nullable && (value.isNull() || value.isMissingNode())) return null;

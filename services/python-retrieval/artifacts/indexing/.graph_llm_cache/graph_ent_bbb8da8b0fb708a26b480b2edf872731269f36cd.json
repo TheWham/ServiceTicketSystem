@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "回收站",
+      "type": "概念"
+    },
+    {
+      "name": "共享文件夹",
+      "type": "概念"
+    },
+    {
+      "name": "文件服务器",
+      "type": "系统"
+    },
+    {
+      "name": "卷影副本",
+      "type": "概念"
+    },
+    {
+      "name": "快照",
+      "type": "概念"
+    },
+    {
+      "name": "NAS",
+      "type": "设备"
+    },
+    {
+      "name": "数据恢复软件",
+      "type": "软件"
+    },
+    {
+      "name": "磁盘镜像",
+      "type": "概念"
+    },
+    {
+      "name": "备份系统",
+      "type": "系统"
+    },
+    {
+      "name": "Veeam",
+      "type": "系统"
+    },
+    {
+      "name": "Acronis",
+      "type": "系统"
+    },
+    {
+      "name": "Windows Backup",
+      "type": "系统"
+    },
+    {
+      "name": "Recuva",
+      "type": "软件"
+    },
+    {
+      "name": "R-Studio",
+      "type": "软件"
+    },
+    {
+      "name": "DiskGenius",
+      "type": "软件"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "回收站",
+      "type": "概念"
+    },
+    {
+      "name": "共享文件夹",
+      "type": "概念"
+    },
+    {
+      "name": "文件服务器",
+      "type": "系统"
+    },
+    {
+      "name": "卷影副本",
+      "type": "概念"
+    },
+    {
+      "name": "快照",
+      "type": "概念"
+    },
+    {
+      "name": "NAS",
+      "type": "设备"
+    },
+    {
+      "name": "数据恢复软件",
+      "type": "软件"
+    },
+    {
+      "name": "磁盘镜像",
+      "type": "概念"
+    },
+    {
+      "name": "备份系统",
+      "type": "系统"
+    },
+    {
+      "name": "Veeam",
+      "type": "系统"
+    },
+    {
+      "name": "Acronis",
+      "type": "系统"
+    },
+    {
+      "name": "Windows Backup",
+      "type": "系统"
+    },
+    {
+      "name": "Recuva",
+      "type": "软件"
+    },
+    {
+      "name": "R-Studio",
+      "type": "软件"
+    },
+    {
+      "name": "DiskGenius",
+      "type": "软件"
+    }
+  ]
+}

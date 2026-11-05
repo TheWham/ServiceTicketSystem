@@ -1,0 +1,126 @@
+{
+  "entities": [
+    {
+      "name": "远程桌面无法连接到远程计算机",
+      "type": "故障现象"
+    },
+    {
+      "name": "远程桌面",
+      "type": "系统"
+    },
+    {
+      "name": "mstsc",
+      "type": "命令工具"
+    },
+    {
+      "name": "VPN",
+      "type": "系统"
+    },
+    {
+      "name": "TCP 3389",
+      "type": "配置项"
+    },
+    {
+      "name": "网络级身份验证",
+      "type": "配置项"
+    },
+    {
+      "name": "Windows防火墙",
+      "type": "系统"
+    },
+    {
+      "name": "组策略",
+      "type": "系统"
+    },
+    {
+      "name": "Remote Desktop Users",
+      "type": "账号权限"
+    },
+    {
+      "name": "AD账号",
+      "type": "账号权限"
+    },
+    {
+      "name": "DHCP",
+      "type": "协议"
+    },
+    {
+      "name": "IP地址",
+      "type": "配置项"
+    },
+    {
+      "name": "ping",
+      "type": "命令工具"
+    },
+    {
+      "name": "ipconfig",
+      "type": "命令工具"
+    },
+    {
+      "name": "远程桌面服务",
+      "type": "系统"
+    }
+  ],
+  "new_entities": [
+    {
+      "name": "远程桌面无法连接到远程计算机",
+      "type": "故障现象"
+    },
+    {
+      "name": "远程桌面",
+      "type": "系统"
+    },
+    {
+      "name": "mstsc",
+      "type": "命令工具"
+    },
+    {
+      "name": "VPN",
+      "type": "系统"
+    },
+    {
+      "name": "TCP 3389",
+      "type": "配置项"
+    },
+    {
+      "name": "网络级身份验证",
+      "type": "配置项"
+    },
+    {
+      "name": "Windows防火墙",
+      "type": "系统"
+    },
+    {
+      "name": "组策略",
+      "type": "系统"
+    },
+    {
+      "name": "Remote Desktop Users",
+      "type": "账号权限"
+    },
+    {
+      "name": "AD账号",
+      "type": "账号权限"
+    },
+    {
+      "name": "DHCP",
+      "type": "协议"
+    },
+    {
+      "name": "IP地址",
+      "type": "配置项"
+    },
+    {
+      "name": "ping",
+      "type": "命令工具"
+    },
+    {
+      "name": "ipconfig",
+      "type": "命令工具"
+    },
+    {
+      "name": "远程桌面服务",
+      "type": "系统"
+    }
+  ]
+}

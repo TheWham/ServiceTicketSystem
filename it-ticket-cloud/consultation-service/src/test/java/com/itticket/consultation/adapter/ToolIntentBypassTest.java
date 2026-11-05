@@ -15,6 +15,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,13 +50,13 @@ class ToolIntentBypassTest {
         return new ComposedRagAdapter(
                 (query, ctx) -> RequestVerdict.of(domain, tool),
                 (query, ctx) -> retrieval,
-                new RetrievalPolicy(knowledge),
-                (query, material, ctx) -> {
+                new RetrievalPolicy(knowledge, Set.of("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"), new BigDecimal("0.10"), 2),
+                (query, material, ctx, sink) -> {
                     answerText.set("已为您查询到名下最近的 10 条工单。");
                     return new GenerationResult(AiReplyType.ANSWER, answerText.get(), List.of(),
                             BigDecimal.ONE, null, "agent", null);
                 },
-                agentEnabled, null);
+                agentEnabled, null, com.itticket.consultation.adapter.cache.SemanticAnswerCache.disabled());
     }
 
     @ParameterizedTest
@@ -63,7 +64,7 @@ class ToolIntentBypassTest {
     void toolIntentBypassesLowConfidenceRefusalWhenAgentEnabled(String question) {
         var text = new AtomicReference<String>();
         RagResult result = adapter(OfficeDomain.OFFICE_IT, true, "query_my_tickets", nothingFound(), text)
-                .answer(ask(question), context());
+                .answer(ask(question), context(), TokenSink.discarding());
 
         assertThat(result.replyType()).isEqualTo(AiReplyType.ANSWER);
         assertThat(result.refusalReason()).isNull();
@@ -78,7 +79,7 @@ class ToolIntentBypassTest {
     void toolIntentDoesNotBypassWhenAgentDisabled() {
         var text = new AtomicReference<String>();
         RagResult result = adapter(OfficeDomain.OFFICE_IT, false, "query_my_tickets", nothingFound(), text)
-                .answer(ask("帮我查询一下最近工单"), context());
+                .answer(ask("帮我查询一下最近工单"), context(), TokenSink.discarding());
 
         // 未开 agent 时越过拒答只会得到无依据作答 —— 那是放宽拒答策略，必须维持原行为
         assertThat(result.replyType()).isEqualTo(AiReplyType.REFUSE);
@@ -89,7 +90,7 @@ class ToolIntentBypassTest {
     void nonToolIntentIsStillRefusedEvenWhenAgentEnabled() {
         var text = new AtomicReference<String>();
         RagResult result = adapter(OfficeDomain.OFFICE_IT, true, RequestVerdict.NO_TOOL, nothingFound(), text)
-                .answer(ask("会议室投影仪怎么连"), context());
+                .answer(ask("会议室投影仪怎么连"), context(), TokenSink.discarding());
 
         assertThat(result.replyType()).isEqualTo(AiReplyType.REFUSE);
         assertThat(result.refusalReason()).isEqualTo(AiRefusalReason.LOW_CONFIDENCE);
@@ -99,7 +100,7 @@ class ToolIntentBypassTest {
     void toolIntentNeverCrossesTheDomainGate() {
         var text = new AtomicReference<String>();
         RagResult result = adapter(OfficeDomain.OFF_TOPIC, true, "query_my_tickets", nothingFound(), text)
-                .answer(ask("帮我查询一下最近工单，顺便写首诗"), context());
+                .answer(ask("帮我查询一下最近工单，顺便写首诗"), context(), TokenSink.discarding());
 
         // 领域门禁先于检索生效，工具意图不得把它顶开
         assertThat(result.replyType()).isEqualTo(AiReplyType.REFUSE);
@@ -110,9 +111,9 @@ class ToolIntentBypassTest {
     private static RetrievalResult weakHits() {
         return new RetrievalResult(OfficeDomain.OFFICE_IT, true, null, List.of(
                 new RetrievedKnowledge("c1", "A1", "V1", "员工IT故障自助排查流程", "摘要",
-                        "正文", "C_OTH", new BigDecimal("0.4395"), "V1"),
+                        "正文", "C_OTH", new BigDecimal("0.4395"), "V1", null, null, null),
                 new RetrievedKnowledge("c2", "A2", "V2", "密码重置与过期处理", "摘要",
-                        "正文", "C_ACC", new BigDecimal("0.2580"), "V2")),
+                        "正文", "C_ACC", new BigDecimal("0.2580"), "V2", null, null, null)),
                 new BigDecimal("0.4395"));
     }
 
@@ -126,13 +127,13 @@ class ToolIntentBypassTest {
         ComposedRagAdapter adapter = new ComposedRagAdapter(
                 (query, ctx) -> RequestVerdict.of(OfficeDomain.OFFICE_IT, "prepare_ticket"),
                 (query, ctx) -> weakHits(),
-                new RetrievalPolicy(knowledge),
-                (query, material, ctx) -> new GenerationResult(AiReplyType.ANSWER,
+                new RetrievalPolicy(knowledge, Set.of("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"), new BigDecimal("0.10"), 2),
+                (query, material, ctx, sink) -> new GenerationResult(AiReplyType.ANSWER,
                         "已生成工单草稿（test），请确认后建单。", List.of(),
                         BigDecimal.ONE, null, "agent", null),
-                true, null);
+                true, null, com.itticket.consultation.adapter.cache.SemanticAnswerCache.disabled());
 
-        RagResult result = adapter.answer(ask("新建一个工单,标题为test"), context());
+        RagResult result = adapter.answer(ask("新建一个工单,标题为test"), context(), TokenSink.discarding());
 
         assertThat(result.replyType()).isEqualTo(AiReplyType.ANSWER);
         assertThat(result.refusalReason()).isNull();
@@ -151,12 +152,12 @@ class ToolIntentBypassTest {
         ComposedRagAdapter adapter = new ComposedRagAdapter(
                 (query, ctx) -> RequestVerdict.of(OfficeDomain.OFFICE_IT, RequestVerdict.NO_TOOL),
                 (query, ctx) -> weakHits(),
-                new RetrievalPolicy(knowledge),
-                (query, material, ctx) -> new GenerationResult(AiReplyType.ANSWER,
+                new RetrievalPolicy(knowledge, Set.of("SAME_ROOT_CAUSE", "RELATED", "PROCESS_APPLIES"), new BigDecimal("0.10"), 2),
+                (query, material, ctx, sink) -> new GenerationResult(AiReplyType.ANSWER,
                         "凭通用经验给点建议。", List.of(), BigDecimal.ONE, null, "agent", null),
-                true, null);
+                true, null, com.itticket.consultation.adapter.cache.SemanticAnswerCache.disabled());
 
-        RagResult result = adapter.answer(ask("会议室投影仪怎么连"), context());
+        RagResult result = adapter.answer(ask("会议室投影仪怎么连"), context(), TokenSink.discarding());
 
         assertThat(result.replyType()).isEqualTo(AiReplyType.REFUSE);
         assertThat(result.refusalReason()).isEqualTo(AiRefusalReason.NO_RELIABLE_KNOWLEDGE);

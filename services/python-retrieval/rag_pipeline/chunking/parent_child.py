@@ -151,7 +151,8 @@ class ParentChildChunker:
         # （metadata 不参与向量化；想喂给向量模型的信息必须写进文本，这两样就是为此存在）
         # ① 检索增强行：把 frontmatter 的规范化术语直接送进向量空间，补口语 query 与书面正文的语义鸿沟
         kw_txt = "、".join(frontmatter_meta.get("keywords") or [])
-        ent_txt = "、".join(frontmatter_meta.get("entities") or [])
+        # entities 单一形态 {name, type}：拼入检索增强行取 name，无 isinstance 兼容分支
+        ent_txt = "、".join(e["name"] for e in (frontmatter_meta.get("entities") or []))
         boost = f"【检索增强：关键词 {kw_txt}｜实体 {ent_txt}】\n" if (kw_txt or ent_txt) else ""
         if self.cfg.boost_injection == "none":
             boost = ""
