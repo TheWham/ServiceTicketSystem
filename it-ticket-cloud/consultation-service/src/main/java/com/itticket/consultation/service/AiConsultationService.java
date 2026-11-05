@@ -5,6 +5,7 @@ import com.itticket.consultation.adapter.GuardedRagClient;
 import com.itticket.consultation.adapter.RagQuery;
 import com.itticket.consultation.adapter.RagCaller;
 import com.itticket.consultation.adapter.RagResult;
+import com.itticket.consultation.adapter.TokenSink;
 import com.itticket.consultation.api.ApiCode;
 import com.itticket.consultation.api.ApiException;
 import com.itticket.consultation.api.RequestContext;
@@ -100,7 +101,8 @@ public class AiConsultationService {
             RagQuery query = new RagQuery(sessionId, request.message(), history,
                     contextCategory(consultation, request), contextAsset(request),
                     properties.getAi().getTopK(), new RagCaller(user.userId(), user.role().name()));
-            result = ragClient.answer(query, RequestContext.get());
+            // 旧同步端点不外发增量令牌:传丢弃型 sink,行为与接入流式前完全一致。
+            result = ragClient.answer(query, RequestContext.get(), TokenSink.discarding());
         }
 
         // 模型调用耗时较长，期间员工可结束会话。只在落库阶段加锁，

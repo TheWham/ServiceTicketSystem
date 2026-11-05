@@ -123,7 +123,7 @@ class SemanticCacheHttpTest {
 
     private RagResult ask(String question, String requestId) {
         return client.answer(new RagQuery("S1", question, "C_NET", "ASSET1", 5,
-                new RagCaller("U_EMP01", "EMPLOYEE")), requestId);
+                new RagCaller("U_EMP01", "EMPLOYEE")), requestId, TokenSink.discarding());
     }
 
     private ObjectNode item(String chunk, String article, String version, BigDecimal score, String content) {

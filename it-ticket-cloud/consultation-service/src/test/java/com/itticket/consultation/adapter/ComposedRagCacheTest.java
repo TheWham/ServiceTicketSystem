@@ -18,6 +18,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -106,7 +107,7 @@ class ComposedRagCacheTest {
         SemanticAnswerCache cache = SemanticAnswerCache.disabled();
         RagResult result = adapter(OfficeDomain.OFFICE_IT, RequestVerdict.NO_TOOL, reliable(),
                 cache, knowledgeAnswer(), retrievals, generations)
-                .answer(ask(QUESTION), context());
+                .answer(ask(QUESTION), context(), TokenSink.discarding());
 
         assertThat(result.status()).isEqualTo(RagStatus.SUCCESS);
         assertThat(result.cacheHit()).isNull();
@@ -123,12 +124,12 @@ class ComposedRagCacheTest {
         ComposedRagAdapter rag = adapter(OfficeDomain.OFFICE_IT, RequestVerdict.NO_TOOL, reliable(),
                 cache, knowledgeAnswer(), retrievals, generations);
 
-        RagResult first = rag.answer(ask(QUESTION), context());
+        RagResult first = rag.answer(ask(QUESTION), context(), TokenSink.discarding());
         assertThat(first.cacheHit()).isNull();
         assertThat(first.citations()).hasSize(1);
         assertThat(cache.stats().entries()).isEqualTo(1);
 
-        RagResult hit = rag.answer(ask(QUESTION), context());
+        RagResult hit = rag.answer(ask(QUESTION), context(), TokenSink.discarding());
         assertThat(hit.cacheHit()).isNotNull();
         assertThat(hit.cacheHit().similarity()).isEqualTo(1.0);
         assertThat(hit.answerText()).isEqualTo(first.answerText());
@@ -148,12 +149,12 @@ class ComposedRagCacheTest {
         AtomicInteger generations = new AtomicInteger();
         ComposedRagAdapter honest = adapter(OfficeDomain.OFFICE_IT, RequestVerdict.NO_TOOL, reliable(),
                 cache, knowledgeAnswer(), retrievals, generations);
-        honest.answer(ask(QUESTION), context());
+        honest.answer(ask(QUESTION), context(), TokenSink.discarding());
         assertThat(cache.stats().entries()).isEqualTo(1);
 
         RagResult refused = adapter(OfficeDomain.HIGH_RISK, RequestVerdict.NO_TOOL, reliable(),
                 cache, knowledgeAnswer(), retrievals, generations)
-                .answer(ask(QUESTION), context());
+                .answer(ask(QUESTION), context(), TokenSink.discarding());
 
         assertThat(refused.replyType()).isEqualTo(AiReplyType.REFUSE);
         assertThat(refused.refusalReason()).isEqualTo(AiRefusalReason.HIGH_RISK_TOPIC);
@@ -178,7 +179,7 @@ class ComposedRagCacheTest {
                 true,
                 cache);
 
-        RagResult result = rag.answer(ask("帮我查询最近工单"), context());
+        RagResult result = rag.answer(ask("帮我查询最近工单"), context(), TokenSink.discarding());
 
         assertThat(result.replyType()).isEqualTo(AiReplyType.ANSWER);
         assertThat(result.cacheHit()).isNull();
@@ -201,7 +202,7 @@ class ComposedRagCacheTest {
         ComposedRagAdapter rag = adapter(OfficeDomain.OFFICE_IT, RequestVerdict.NO_TOOL, reliable(),
                 cache, knowledgeAnswer(), retrievals, generations);
 
-        RagResult result = rag.answer(ask(QUESTION), context());
+        RagResult result = rag.answer(ask(QUESTION), context(), TokenSink.discarding());
 
         // 缓存嵌入挂了不能拖垮实时链路; lookup+write 两次嵌入尝试都按依赖失败计数
         assertThat(result.status()).isEqualTo(RagStatus.SUCCESS);
@@ -221,7 +222,7 @@ class ComposedRagCacheTest {
         AtomicInteger generations = new AtomicInteger();
         RagResult clarify = adapter(OfficeDomain.UNCERTAIN, RequestVerdict.NO_TOOL, reliable(),
                 cache, knowledgeAnswer(), retrievals, generations)
-                .answer(ask(QUESTION), context());
+                .answer(ask(QUESTION), context(), TokenSink.discarding());
         assertThat(clarify.replyType()).isEqualTo(AiReplyType.CLARIFY);
         assertThat(cache.stats().entries()).isZero();
 
@@ -233,9 +234,50 @@ class ComposedRagCacheTest {
                 (query, material, ctx, sink) -> knowledgeAnswer(),
                 false,
                 cache)
-                .answer(ask(QUESTION), context());
+                .answer(ask(QUESTION), context(), TokenSink.discarding());
         assertThat(failed.status()).isNotEqualTo(RagStatus.SUCCESS);
         assertThat(cache.stats().entries()).isZero();
+    }
+
+    @Test
+    void cacheHitStreamsWholeAnswerAsASingleToken() {
+        AtomicInteger retrievals = new AtomicInteger();
+        AtomicInteger generations = new AtomicInteger();
+        SemanticAnswerCache cache = enabledCache();
+        ComposedRagAdapter rag = adapter(OfficeDomain.OFFICE_IT, RequestVerdict.NO_TOOL, reliable(),
+                cache, knowledgeAnswer(), retrievals, generations);
+
+        // 未命中:令牌由真实生成器外发(本测试生成桩不外发),适配器自身不得额外发字
+        List<String> firstTokens = new CopyOnWriteArrayList<>();
+        rag.answer(ask(QUESTION), context(), TokenSink.of(firstTokens::add));
+        assertThat(firstTokens).isEmpty();
+
+        // 命中:适配器把缓存答案整段单发一次,服务层无需感知"这条来自缓存"
+        List<String> hitTokens = new CopyOnWriteArrayList<>();
+        RagResult hit = rag.answer(ask(QUESTION), context(), TokenSink.of(hitTokens::add));
+        assertThat(hit.cacheHit()).isNotNull();
+        assertThat(hitTokens).containsExactly(hit.answerText());
+    }
+
+    @Test
+    void refusalAndClarifyNeverEmitTokens() {
+        SemanticAnswerCache cache = enabledCache();
+        AtomicInteger retrievals = new AtomicInteger();
+        AtomicInteger generations = new AtomicInteger();
+
+        List<String> refusedTokens = new CopyOnWriteArrayList<>();
+        RagResult refused = adapter(OfficeDomain.HIGH_RISK, RequestVerdict.NO_TOOL, reliable(),
+                cache, knowledgeAnswer(), retrievals, generations)
+                .answer(ask(QUESTION), context(), TokenSink.of(refusedTokens::add));
+        assertThat(refused.replyType()).isEqualTo(AiReplyType.REFUSE);
+        assertThat(refusedTokens).isEmpty();
+
+        List<String> clarifyTokens = new CopyOnWriteArrayList<>();
+        RagResult clarified = adapter(OfficeDomain.UNCERTAIN, RequestVerdict.NO_TOOL, reliable(),
+                cache, knowledgeAnswer(), retrievals, generations)
+                .answer(ask(QUESTION), context(), TokenSink.of(clarifyTokens::add));
+        assertThat(clarified.replyType()).isEqualTo(AiReplyType.CLARIFY);
+        assertThat(clarifyTokens).isEmpty();
     }
 
     @Test
@@ -251,11 +293,11 @@ class ComposedRagCacheTest {
         ComposedRagAdapter rag = adapter(OfficeDomain.OFFICE_IT, RequestVerdict.NO_TOOL, reliable(),
                 cache, draftAnswer, retrievals, generations);
 
-        RagResult first = rag.answer(ask("新建打印机报修工单"), context());
+        RagResult first = rag.answer(ask("新建打印机报修工单"), context(), TokenSink.discarding());
         assertThat(first.ticketDraft()).isNotNull();
         assertThat(cache.stats().entries()).isZero();
 
-        RagResult second = rag.answer(ask("新建打印机报修工单"), context());
+        RagResult second = rag.answer(ask("新建打印机报修工单"), context(), TokenSink.discarding());
         assertThat(second.cacheHit()).isNull();
         assertThat(second.ticketDraft()).isEqualTo(first.ticketDraft());
         assertThat(second.answerText()).isEqualTo(first.answerText());

@@ -198,7 +198,8 @@ class ComposedModelProtocolTest {
 
     private RagResult ask(String question) {
         return adapter.answer(new RagQuery("S-1", question, null, null, 5, new RagCaller("U_EMP01", "EMPLOYEE")),
-                new RagCallContext("req-test", System.nanoTime() + 5_000_000_000L, new RagExecutionAudit()));
+                new RagCallContext("req-test", System.nanoTime() + 5_000_000_000L, new RagExecutionAudit()),
+                TokenSink.discarding());
     }
 
     private static String answer(String text, String ids, boolean offTopic) {

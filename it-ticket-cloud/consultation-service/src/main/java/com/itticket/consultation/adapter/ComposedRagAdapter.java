@@ -55,7 +55,7 @@ public final class ComposedRagAdapter implements RagAdapter {
         this.classifier = classifier; this.retriever = retriever; this.policy = policy; this.generator = generator;
         this.toolBypassEnabled = toolBypassEnabled; this.cache = cache;
     }
-    @Override public RagResult answer(RagQuery query, RagCallContext context) {
+    @Override public RagResult answer(RagQuery query, RagCallContext context, TokenSink tokenSink) {
         List<String> retrieved = List.of();
         try {
             // 一次判定给全「走哪条路」与「要不要调工具」；拒答/澄清的门禁仍最靠前，不被工具意图越过
@@ -71,6 +71,8 @@ public final class ComposedRagAdapter implements RagAdapter {
                 CachedAnswer hit = cache.lookup(query, context).orElse(null);
                 if (hit != null) {
                     context.audit().recordRetrievedVersions(hit.result().retrievedVersionIds());
+                    // 命中答案整段单发一次:打字机最后一屏一次到达,服务层无需感知缓存。
+                    tokenSink.accept(hit.result().answerText());
                     return hit.result()
                             .withLatency(java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(
                                     System.nanoTime() - startedAt))
@@ -96,7 +98,7 @@ public final class ComposedRagAdapter implements RagAdapter {
                 return RagResult.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, null, retrieved);
             context.timeoutMillis(Long.MAX_VALUE);
             // Task 4 会把 SSE 出口贯通到此处;本地默认路径无流可发,先用丢弃式出口。
-            GenerationResult generated = generator.generate(query, material, context, TokenSink.discarding());
+            GenerationResult generated = generator.generate(query, material, context, tokenSink);
             context.timeoutMillis(Long.MAX_VALUE);
             Map<String, RetrievedKnowledge> byVersion = new LinkedHashMap<>();
             material.forEach(item -> byVersion.put(item.versionId(), item));

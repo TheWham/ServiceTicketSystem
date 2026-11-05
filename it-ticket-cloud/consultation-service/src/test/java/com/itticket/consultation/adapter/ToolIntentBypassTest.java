@@ -64,7 +64,7 @@ class ToolIntentBypassTest {
     void toolIntentBypassesLowConfidenceRefusalWhenAgentEnabled(String question) {
         var text = new AtomicReference<String>();
         RagResult result = adapter(OfficeDomain.OFFICE_IT, true, "query_my_tickets", nothingFound(), text)
-                .answer(ask(question), context());
+                .answer(ask(question), context(), TokenSink.discarding());
 
         assertThat(result.replyType()).isEqualTo(AiReplyType.ANSWER);
         assertThat(result.refusalReason()).isNull();
@@ -79,7 +79,7 @@ class ToolIntentBypassTest {
     void toolIntentDoesNotBypassWhenAgentDisabled() {
         var text = new AtomicReference<String>();
         RagResult result = adapter(OfficeDomain.OFFICE_IT, false, "query_my_tickets", nothingFound(), text)
-                .answer(ask("帮我查询一下最近工单"), context());
+                .answer(ask("帮我查询一下最近工单"), context(), TokenSink.discarding());
 
         // 未开 agent 时越过拒答只会得到无依据作答 —— 那是放宽拒答策略，必须维持原行为
         assertThat(result.replyType()).isEqualTo(AiReplyType.REFUSE);
@@ -90,7 +90,7 @@ class ToolIntentBypassTest {
     void nonToolIntentIsStillRefusedEvenWhenAgentEnabled() {
         var text = new AtomicReference<String>();
         RagResult result = adapter(OfficeDomain.OFFICE_IT, true, RequestVerdict.NO_TOOL, nothingFound(), text)
-                .answer(ask("会议室投影仪怎么连"), context());
+                .answer(ask("会议室投影仪怎么连"), context(), TokenSink.discarding());
 
         assertThat(result.replyType()).isEqualTo(AiReplyType.REFUSE);
         assertThat(result.refusalReason()).isEqualTo(AiRefusalReason.LOW_CONFIDENCE);
@@ -100,7 +100,7 @@ class ToolIntentBypassTest {
     void toolIntentNeverCrossesTheDomainGate() {
         var text = new AtomicReference<String>();
         RagResult result = adapter(OfficeDomain.OFF_TOPIC, true, "query_my_tickets", nothingFound(), text)
-                .answer(ask("帮我查询一下最近工单，顺便写首诗"), context());
+                .answer(ask("帮我查询一下最近工单，顺便写首诗"), context(), TokenSink.discarding());
 
         // 领域门禁先于检索生效，工具意图不得把它顶开
         assertThat(result.replyType()).isEqualTo(AiReplyType.REFUSE);
@@ -133,7 +133,7 @@ class ToolIntentBypassTest {
                         BigDecimal.ONE, null, "agent", null),
                 true, com.itticket.consultation.adapter.cache.SemanticAnswerCache.disabled());
 
-        RagResult result = adapter.answer(ask("新建一个工单,标题为test"), context());
+        RagResult result = adapter.answer(ask("新建一个工单,标题为test"), context(), TokenSink.discarding());
 
         assertThat(result.replyType()).isEqualTo(AiReplyType.ANSWER);
         assertThat(result.refusalReason()).isNull();
@@ -157,7 +157,7 @@ class ToolIntentBypassTest {
                         "凭通用经验给点建议。", List.of(), BigDecimal.ONE, null, "agent", null),
                 true, com.itticket.consultation.adapter.cache.SemanticAnswerCache.disabled());
 
-        RagResult result = adapter.answer(ask("会议室投影仪怎么连"), context());
+        RagResult result = adapter.answer(ask("会议室投影仪怎么连"), context(), TokenSink.discarding());
 
         assertThat(result.replyType()).isEqualTo(AiReplyType.REFUSE);
         assertThat(result.refusalReason()).isEqualTo(AiRefusalReason.NO_RELIABLE_KNOWLEDGE);

@@ -49,7 +49,7 @@ class AiConsultationPolicyTest {
         var order = inOrder(fixture.messages, fixture.rag);
         order.verify(fixture.messages).loadAiHistory("S1", "U1", "ai-q:idempotent-1", 6, 900);
         order.verify(fixture.messages).appendEmployeeMessage("S1", "U1", "ai-q:idempotent-1", "Restarted; still broken");
-        order.verify(fixture.rag).answer(query.capture(), nullable(String.class));
+        order.verify(fixture.rag).answer(query.capture(), nullable(String.class), any());
         assertThat(query.getValue().question()).isEqualTo("Restarted; still broken");
         assertThat(query.getValue().priorTurns()).containsExactlyElementsOf(history);
     }
@@ -194,7 +194,7 @@ class AiConsultationPolicyTest {
             IdempotencyService idempotency = mock(IdempotencyService.class);
             when(idempotency.execute(anyString(), anyString(), anyString(), any(), eq(AiChatResponse.class), any()))
                     .thenAnswer(call -> new IdempotentResult<>(((Supplier<?>) call.getArgument(5)).get(), false));
-            when(rag.answer(any(), nullable(String.class))).thenReturn(answer);
+            when(rag.answer(any(), nullable(String.class), any())).thenReturn(answer);
             service = new AiConsultationService(transitions, messages, knowledge, rag,
                     mock(AiInteractionMapper.class), new AuthzService(properties), idempotency, properties);
         }

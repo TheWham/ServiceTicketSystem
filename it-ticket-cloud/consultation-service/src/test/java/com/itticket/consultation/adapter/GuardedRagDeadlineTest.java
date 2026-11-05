@@ -22,12 +22,12 @@ class GuardedRagDeadlineTest {
     @Test
     void authenticationFailureIsNeverRetried() {
         AtomicInteger calls = new AtomicInteger();
-        GuardedRagClient client = new GuardedRagClient((query, context) -> {
+        GuardedRagClient client = new GuardedRagClient((query, context, sink) -> {
             calls.incrementAndGet();
             return RagResult.degraded(RagStatus.UNAVAILABLE, "AUTH_FAILED", 0);
         }, new ConsultationProperties());
         try {
-            assertThat(client.answer(query(), "req").status()).isEqualTo(RagStatus.UNAVAILABLE);
+            assertThat(client.answer(query(), "req", TokenSink.discarding()).status()).isEqualTo(RagStatus.UNAVAILABLE);
             assertThat(calls).hasValue(1);
         } finally { client.shutdown(); }
     }
@@ -38,7 +38,7 @@ class GuardedRagDeadlineTest {
         properties.getAi().setRequestTimeoutMs(1000);
         java.util.List<Long> deadlines = new java.util.concurrent.CopyOnWriteArrayList<>();
         java.util.List<Long> budgets = new java.util.concurrent.CopyOnWriteArrayList<>();
-        GuardedRagClient client = new GuardedRagClient((query, context) -> {
+        GuardedRagClient client = new GuardedRagClient((query, context, sink) -> {
             deadlines.add(context.deadlineNanos());
             budgets.add(context.remainingMillis());
             try { Thread.sleep(60); }
@@ -46,7 +46,7 @@ class GuardedRagDeadlineTest {
             return RagResult.degraded(RagStatus.UNAVAILABLE, "UNAVAILABLE", 0);
         }, properties);
         try {
-            client.answer(query(), "req");
+            client.answer(query(), "req", TokenSink.discarding());
             assertThat(deadlines).hasSize(2);
             assertThat(deadlines.get(1)).isEqualTo(deadlines.get(0));
             assertThat(budgets.get(1)).isLessThan(budgets.get(0) - 30);
@@ -85,7 +85,7 @@ class GuardedRagDeadlineTest {
         var client = new GuardedRagClient(adapter, properties);
         try {
             long began = System.nanoTime();
-            RagResult result = client.answer(query(), "hard-deadline");
+            RagResult result = client.answer(query(), "hard-deadline", TokenSink.discarding());
             assertThat(result.status()).isEqualTo(RagStatus.TIMEOUT);
             assertThat(started.getCount()).isZero();
             assertThat(result.retrievedVersionIds()).containsExactly("V1");

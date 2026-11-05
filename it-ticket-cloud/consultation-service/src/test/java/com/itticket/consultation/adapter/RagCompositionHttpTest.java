@@ -114,7 +114,7 @@ class RagCompositionHttpTest {
     }
     private RagResult ask() {
         return client.answer(new RagQuery("S1", "开会别人听不到我", "C_NET", "ASSET1", 5,
-                new RagCaller("U_EMP01", "EMPLOYEE")), "request-1");
+                new RagCaller("U_EMP01", "EMPLOYEE")), "request-1", TokenSink.discarding());
     }
     private ObjectNode data() { return (ObjectNode) envelope.get("data"); }
     private ArrayNode items() { return (ArrayNode) data().get("items"); }
@@ -365,7 +365,8 @@ class RagCompositionHttpTest {
             assertThat(context.getBeansOfType(RagAdapter.class)).hasSize(1);
             RagResult result = context.getBean(RagAdapter.class).answer(new RagQuery("S1", "开会别人听不到我", null,
                     null, 5, new RagCaller("U_EMP01", "EMPLOYEE")),
-                    new RagCallContext("composition", System.nanoTime() + 3_000_000_000L, new RagExecutionAudit()));
+                    new RagCallContext("composition", System.nanoTime() + 3_000_000_000L, new RagExecutionAudit()),
+                    TokenSink.discarding());
             assertThat(result.replyType()).isEqualTo(AiReplyType.ANSWER);
             assertThat(result.citations()).hasSize(1);
             assertThat(result.modelVersion()).isEqualTo("local".equals(provider) ? "local-extractive" : config.getAi().getModel());
