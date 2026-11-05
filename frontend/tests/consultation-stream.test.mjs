@@ -149,3 +149,35 @@ test('final answer payload fills citations, ticket draft and system hints like t
   assert.match(source, /msg\.citations = res\.citations \|\| \[\]/)
   assert.match(source, /这条回答暂无知识库依据，仅供排查参考/)
 })
+
+test('multi-line data frames are joined with a newline before parsing (Mi5 fix, 2026-11-05)', async () => {
+  // SSE 允许一帧多行 data:;按规范以 \n 连接后才是合法 JSON——此前无分隔符拼接会解析出错误对象
+  const result = await consumeAiSseStream(sseResponse([
+    'event: token\ndata: {"text":"第一行"}\n\n',
+    'event: final\ndata: {"replyType":"ANSWER",\ndata: "answerText":"好的"}\n\n'
+  ]), { onToken: () => {} })
+  assert.equal(result.replyType, 'ANSWER')
+  assert.equal(result.answerText, '好的')
+})
+
+test('a malformed data frame fails loudly as PROTOCOL instead of throwing a raw JSON error (Mi5)', async () => {
+  await assert.rejects(consumeAiSseStream(sseResponse([
+    'event: token\ndata: {"text":"已流出"}\n\n',
+    'event: final\ndata: {this is not json}\n\n'
+  ]), { onToken: () => {} }), error =>
+    error.code === 'PROTOCOL' && error.interrupted === true)
+})
+
+test('in-flight streams are aborted instead of running in the background (Mi4, 2026-11-05)', () => {
+  assert.match(source, /const streamControllers = new Set\(\)/)
+  assert.match(source, /new AbortController\(\)/)
+  assert.match(source, /\}, controller\.signal\)/)
+  assert.match(source, /function abortInFlightStreams\(\)/)
+  assert.match(source, /onUnmounted\(\(\) => \{ stopPolling\(\); abortInFlightStreams\(\) \}\)/)
+  assert.match(source, /abortInFlightStreams\(\) \/\/ Mi4:会话终局后不再让旧流在后台拖服务端预算/)
+})
+
+test('failed send only refills the draft when the input is empty (Mi6, 2026-11-05)', () => {
+  // 用户可能已开始输入下一条——错误回填不得覆盖正在编辑的新草稿
+  assert.match(source, /if \(!draft\.value\) draft\.value = text \/\/ Mi6/)
+})

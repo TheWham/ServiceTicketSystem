@@ -101,18 +101,26 @@ export async function consumeAiSseStream(response, handlers) {
       buffer = buffer.slice(boundary + 2)
       if (frame.startsWith(':')) continue // keep-alive 注释行
       let event = null
-      let data = ''
+      let data = null
       for (const line of frame.split('\n')) {
         if (line.startsWith('event: ')) event = line.slice(7)
-        else if (line.startsWith('data: ')) data += line.slice(6)
+        else if (line.startsWith('data: ')) data = data === null ? line.slice(6) : `${data}\n${line.slice(6)}`
       }
-      if (event === 'queued') onQueued?.(JSON.parse(data).position)
-      else if (event === 'token') onToken?.(JSON.parse(data).text)
-      else if (event === 'final') return JSON.parse(data)
+      // 帧 data 非法一律按协议错上报,不静默丢弃(Mi5,2026-11-05 评审)
+      let payload = null
+      try { payload = JSON.parse(data ?? '') } catch { payload = null }
+      if (data !== null && payload === null) {
+        const protocolError = new Error('AI 流式回复数据帧异常，请重试或转人工')
+        protocolError.code = 'PROTOCOL'
+        protocolError.interrupted = true
+        throw protocolError
+      }
+      if (event === 'queued') onQueued?.(payload.position)
+      else if (event === 'token') onToken?.(payload.text)
+      else if (event === 'final') return payload
       else if (event === 'error') {
-        const payload = JSON.parse(data)
-        const error = new Error(payload.message || payload.errorClass || 'AI 服务异常')
-        error.code = payload.errorClass
+        const error = new Error(payload?.message || payload?.errorClass || 'AI 服务异常')
+        error.code = payload?.errorClass
         error.interrupted = true // 已上屏令牌不回滚，按“回复被中断”置灰
         throw error
       }

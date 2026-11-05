@@ -322,6 +322,8 @@ const pendingHumanSend = ref(null)
 const creating = ref(false)
 const sending = ref(false)
 const aiThinking = ref(false)
+// Mi4(2026-11-05 评审):记录在途流的中止器,切会话/结束会话/卸载时统一中断,避免后台继续消耗服务端预算
+const streamControllers = new Set()
 /** 在途 AI 流条数（T-7）：会话 FIFO 串行由服务端保证，客户端允许多条并发在途。 */
 const streamingCount = ref(0)
 const loadingMessages = ref(false)
@@ -459,6 +461,7 @@ async function startAi() {
     sending.value = false
     aiThinking.value = false
     streamingCount.value = 0
+    abortInFlightStreams() // Mi4:新会话开始前中止旧会话在途流
     queueStatus.value = { assigned: false, waitingCount: 0 }
     messages.value = []
     messages.value.push(createGreeting())
@@ -601,6 +604,8 @@ async function send(event) {
    */
   async function sendAiStreamed(sessionId, text, stillActive) {
     const msg = pushLocal('AI', '', { pending: true, streaming: false, interrupted: false, queuedPosition: null })
+    const controller = new AbortController()
+    streamControllers.add(controller)
     streamingCount.value++
     aiThinking.value = true // aria-busy 与附录反馈排他用；不再阻塞输入（会话 FIFO 允许连发）
     try {
@@ -618,12 +623,12 @@ async function send(event) {
           msg.content += part
           scrollToBottom()
         }
-      })
+      }, controller.signal)
       if (!stillActive() || !isAiHandling.value) return
       settleAiAnswer(msg, res)
     } catch (e) {
       if (!stillActive()) return
-      draft.value = text
+      if (!draft.value) draft.value = text // Mi6:仅当输入框为空时回填,不覆盖用户已开始输入的新草稿
       msg.pending = false
       if (String(e.interrupted) === 'true' && msg.content) {
         // 已上屏过内容的失败：保留文字并置灰标注，由用户决定重问或转人工
@@ -634,6 +639,7 @@ async function send(event) {
         pushLocal('SYSTEM', `AI 暂时不可用（${e.message}）。你可以转人工或直接提交工单。`)
       }
     } finally {
+      streamControllers.delete(controller)
       msg.streaming = false
       streamingCount.value = Math.max(0, streamingCount.value - 1)
       if (streamingCount.value === 0) aiThinking.value = false
@@ -843,8 +849,16 @@ function finishSession(status) {
   sending.value = false
   aiThinking.value = false
   streamingCount.value = 0
+  abortInFlightStreams() // Mi4:会话终局后不再让旧流在后台拖服务端预算
   resetQueueStatus()
   stopPolling()
+}
+
+function abortInFlightStreams() {
+  for (const controller of streamControllers) {
+    try { controller.abort() } catch { /* 中止器已终结则忽略 */ }
+  }
+  streamControllers.clear()
 }
 
 function goCreateTicket() {
@@ -985,7 +999,7 @@ const formatTime = (iso) => {
 }
 
 onMounted(autoStart)
-onUnmounted(stopPolling)
+onUnmounted(() => { stopPolling(); abortInFlightStreams() })
 </script>
 
 <style scoped>
