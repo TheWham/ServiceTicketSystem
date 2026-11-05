@@ -642,6 +642,8 @@ public class ConsultationService {
             query.eq(Consultation::getCurrentEngineerId, user.userId());
         } else if (user.isConsultationRequester()) {
             query.eq(Consultation::getCreatorId, user.userId());
+            // 员工侧会话历史限制：只展示最近一个月（30天）内的会话记录
+            query.ge(Consultation::getCreatedAt, java.time.LocalDateTime.now().minusDays(30));
         } else {
             throw new ApiException(ApiCode.FORBIDDEN, "当前角色无咨询查询权限");
         }

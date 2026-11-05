@@ -177,4 +177,32 @@ class MessageProjectionTest {
         assertEquals("ANSWER", result.path("reply_type").asText());
         assertFalse(result.hasNonNull("ticket_draft"));
     }
+
+    /** 思考过程与耗时随消息落库：刷新后思考步骤、耗时与思维链 100% 完整复现 */
+    @Test
+    void history_retains_thought_stages_and_duration_so_it_survives_reload() {
+        JsonNode result = json(message("""
+                {"schemaVersion":1,"citations":[],"replyType":"ANSWER",
+                 "thoughtStages":["模型路由：已匹配标准档位","主管规划排障链路","排障方案合成"],
+                 "reasoningContent":"分析用户电脑无法连接WiFi的原因...",
+                 "thinkingDuration":4}
+                """));
+        assertEquals("ANSWER", result.path("reply_type").asText());
+        assertTrue(result.hasNonNull("thought_stages"));
+        assertEquals(3, result.path("thought_stages").size());
+        assertEquals("模型路由：已匹配标准档位", result.path("thought_stages").get(0).asText());
+        assertEquals("主管规划排障链路", result.path("thought_stages").get(1).asText());
+        assertEquals("分析用户电脑无法连接WiFi的原因...", result.path("reasoning_content").asText());
+        assertEquals(4, result.path("thinking_duration").asInt());
+    }
+
+    @Test
+    void history_omits_thought_stages_when_absent() {
+        JsonNode result = json(message("""
+                {"schemaVersion":1,"citations":[],"replyType":"ANSWER"}
+                """));
+        assertFalse(result.hasNonNull("thought_stages"));
+        assertFalse(result.hasNonNull("reasoning_content"));
+        assertFalse(result.hasNonNull("thinking_duration"));
+    }
 }
