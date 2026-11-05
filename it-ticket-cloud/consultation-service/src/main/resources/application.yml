@@ -169,6 +169,14 @@ itticket:
         # 同义改写防抖窗口(秒):窗口内同义写入不刷新条目
         min-write-interval-seconds: ${AI_SEMANTIC_CACHE_MIN_WRITE_INTERVAL:0}
 
+      # 流式回答(T-6):/stream 端点常在;开关只决定生成期间增量令牌是否上屏。
+      # false=与旧同步端点口径完全一致(引擎内丢弃型 sink,整段单发后 final),前端单一路径。
+      streaming:
+        enabled: ${AI_STREAMING_ENABLED:false}
+        # SSE 空转帧间隔(毫秒);排队与生成期间都有,兼作断连探测
+        keep-alive-millis: ${AI_STREAM_KEEP_ALIVE_MILLIS:15000}
+
+
 logging:
   level:
     root: info

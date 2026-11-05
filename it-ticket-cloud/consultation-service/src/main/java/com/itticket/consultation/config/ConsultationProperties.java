@@ -131,6 +131,9 @@ public class ConsultationProperties {
 
         /** 语义答案缓存(带知识版本哨兵),默认关闭。 */
         private Cache cache = new Cache();
+
+        /** 流式回答(T-6):入端点常在,开关只决定"生成期间增量令牌上屏"还是"整段单发"。 */
+        private Streaming streaming = new Streaming();
         /**
          * 语义答案缓存配置。正确性锚定在 MySQL 知识版本哨兵上:缓存条目必须携带非空
          * citations(检索到的知识版本号),命中出缓存前逐条对当前版本复核,失效即驱逐。
@@ -183,5 +186,14 @@ public class ConsultationProperties {
         private String serviceBaseUrl;
         /** ticket-service 内部接口基址(供「确认建单」回写工单;工单是 ticket-service 事实源)。 */
         private String ticketServiceBaseUrl;
+    }
+
+    /** 流式回答开关与保活节奏(T-6)。 */
+    @Data
+    public static class Streaming {
+        /** false=入/写与旧同步端点完全一致(生成期间令牌不上屏,整段单发后 final)。 */
+        private boolean enabled = false;
+        /** SSE 空转帧间隔;排队与生成期间都有,兼作断连探测。 */
+        private long keepAliveMillis = 15_000;
     }
 }

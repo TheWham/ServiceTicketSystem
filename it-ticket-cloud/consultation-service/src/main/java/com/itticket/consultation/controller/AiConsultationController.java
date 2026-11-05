@@ -14,6 +14,7 @@ import com.itticket.consultation.service.AiConsultationService;
 import com.itticket.consultation.service.AuthzService;
 import com.itticket.consultation.service.ConsultationService;
 import com.itticket.consultation.service.CurrentUser;
+import com.itticket.consultation.service.stream.AiChatStreamOrchestrator;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 /**
  * 智能客服与转人工接口(AI-005 的 AI-API-002 / 003 / 004)。
@@ -39,6 +41,7 @@ public class AiConsultationController {
     private final AiConsultationService aiConsultationService;
     private final ConsultationService consultationService;
     private final AuthzService authzService;
+    private final AiChatStreamOrchestrator aiChatStreamOrchestrator;
 
     /** AI-API-002:发送 AI 消息,仅使用已发布知识。 */
     @PostMapping("/{id}/ai-messages")
@@ -48,6 +51,28 @@ public class AiConsultationController {
             @Valid @RequestBody AiChatRequest request) {
         CurrentUser user = authzService.currentUser();
         return ok(aiConsultationService.chat(user, id, request, idempotencyKey));
+    }
+
+    /**
+     * AI-API-002 流式变体(T-6):SSE 端点常在,事件 queued/token/final/error。
+     * 会话内严格串行(FIFO);同 Idempotency-Key 重放由幂等服务处理。
+     * final 搬与旧同步端点同一份 AiChatResponse;error 只给真实 errorClass。
+     * 断连(容器回调三选一)即 close,编排器中止本流并让队列腾位。
+     */
+    @PostMapping("/{id}/ai-messages/stream")
+    public ResponseBodyEmitter chatStream(
+            @PathVariable String id,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @Valid @RequestBody AiChatRequest request) {
+        CurrentUser user = authzService.currentUser();
+        ResponseBodyEmitter emitter = new ResponseBodyEmitter();
+        SseChatEventSink events = new SseChatEventSink(emitter);
+        AiChatStreamOrchestrator.SseHandle handle =
+                aiChatStreamOrchestrator.openStream(user, id, request, idempotencyKey, events);
+        emitter.onCompletion(handle::close);
+        emitter.onError(cause -> handle.close());
+        emitter.onTimeout(handle::close);
+        return emitter;
     }
 
     /** AI-API-003:AI 回答反馈。无帮助与内容错误进入知识优化队列。 */
