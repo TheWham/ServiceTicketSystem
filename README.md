@@ -48,10 +48,10 @@
 | gateway | 8080 | 唯一入口：JWT 校验（白名单）、校验用户 ACTIVE、剥离/注入 `X-User-*` 透传头、路由、CORS |
 | user-service | 8101 | 登录（BCrypt+JWT）、忘记/修改密码、账号管理（建号/改角色/重置密码）、用户查询、提单草稿 |
 | ticket-service | 8201 | 工单全业务：提单（幂等）、自动路由、9 态状态机、优先级矩阵、SLA 计时、通知、异常队列、照片附件、**派单草案（HITL 写操作门禁）** |
-| consultation-service | 8301 | 智能客服编排：AI 咨询（问答/澄清/拒答）、知识搜索、转人工与人工会话、咨询附件、AI 反馈、**确认建单（人机回环）** |
+| consultation-service | 8301 | 智能客服编排：AI 咨询（问答/澄清/拒答）、**AI-007 SSE 流式问答长连接（逐字打字机 + 阶段广播）**、知识搜索、转人工与人工会话、咨询附件、AI 反馈、**全景成本治理溯源与确认建单（人机回环）** |
 | rag-service | 8302 | RAG 编排：知识生命周期状态机、文档入库、检索结果 ④ MySQL PUBLISHED 复核、AI 反馈沉淀知识；检索内核默认下沉 Python `rag_service`（provider 可切 `es` 回滚） |
 | rag_service（Python） | 8310 | 检索内核：自适应意图路由 + 向量/BM25 双路召回 + RRF + Cross-Encoder 精排 + GraphRAG (Neo4j 多跳因果推导 + Docstore 回溯) + 版本消歧 `/api/v1/policy/resolve` |
-| agent_service（Python） | 8320 | 生成侧：Function Calling（ReAct 循环 + 白名单工具：查本人工单/产建单草稿/补搜知识），带 Trace→Span→Generation 链路追踪；`AI_AGENT_ENABLED=true` 时由 consultation-service 调用 |
+| agent_service（Python） | 8320 | 生成侧：**LangGraph Supervisor-Worker 主从多智能体编排**（知识专家 + 工单专家 + Guardrails 双向安全护栏）、**Model Router 动态选模与 Token 成本治理**、**SSE 流式端点 (/api/v1/agent/chat/stream)**、白名单工具与全链路 Trace 审计 |
 | Neo4j 图数据库 | 7687 / 7474 | 知识图谱：全量 38 篇 IT 卡片实体三元组拓扑存储、2-Hop 关联推导与废止剪枝（Bolt: 7687，控制台: 7474） |
 | common / common-web | — | 统一 Result/错误码/JWT 工具；全局异常、`UserContext` 透传头解析、时间格式 |
 
@@ -232,6 +232,18 @@ npm run dev                                                # http://127.0.0.1:51
 - **降级语义（RD-006）**：模型/检索故障统一表达为结构化拒答 + `suggestTransfer=true`，不静默回退、不把服务故障解释为"无命中"；密钥缺失仅 AI 问答降级，知识搜索/人工咨询不受影响。
 - **转人工**：加权负载选工程师（候选上限 8）→ 10 工作分钟响应 SLA → 人工会话 → 提交结论 → 员工确认 → 24h 内可重开；可一键转工单（预填标题/描述，经 ticket-service 建单后回写 `CONVERTED_TO_TICKET`）。
 - **AI 反馈沉淀**：员工对 AI 回答点"已解决"后，反馈经脱敏自动沉淀为待审核知识文章（Redis 幂等标记，5s 扫描 `ai_interaction`），审核发布后进入检索。
+- **AI-007 SSE 流式全双工问答与打字机交互**：
+  - **极速响应与打字机直出**：采用 W3C 标准 `text/event-stream` 长连接管道（`POST /{id}/ai-messages`），实现毫秒级首字响应（TTFT），大幅改善长时间等待焦虑。
+  - **思考过程与阶段广播**：实时广播模型路由决策（ROUTED）、主管意图规划（SUPERVISOR）、子智能体任务派发（DELEGATE_TICKET / DELEGATE_KNOWLEDGE）与排障方案合成（SYNTHESIZING），并提供深度思考耗时动态秒级统计。
+  - **工单与知识严格隔离防线**：建单指令极速短路；纯工单流转与建单草稿场景下强制零知识引用，彻底防止知识库图谱推导胶囊在工单场景下残留误触。
+- **LangGraph Supervisor-Worker 主从多智能体架构**：
+  - **自适应任务规划执行队列**：主管根据 Query 意图与语法结构自适应规划执行队列，支持指令级纯工单事务（0ms 极速短路）、技术知识排障流以及「先排障、若未解决再建单」的复合时序流水线。
+  - **垂直领域专职专家子图**：KnowledgeWorker 专注结合 Neo4j 因果推导与双路召回提炼结构化排障方案；TicketWorker 专注挂载 query_my_tickets 与 prepare_ticket 白名单工具，严格执行防误触红线（只起草、不落库）。
+  - **Guardrails 输入输出双向安全护栏**：输入端防御 Prompt 越狱注入攻击并进行 PII 敏感信息掩码至会话 Vault；输出端在出网前无损精准解密还原真实隐私数据。
+- **Model Router 动态选模与成本治理全景看板**：
+  - **自适应动态选模**：轻量任务（纯建单指令、普通问答）自动匹配高性价比 LITE 档位（如 qwen2.5-flash），复杂多跳排障自动匹配 PREMIUM 旗舰档位，大幅降低算力成本与响应延迟。
+  - **Token 预算防超支熔断**：具备预扣额度与滑动窗口实时结算机制，超额预算自动降级熔断，防止突发流量打垮模型预算。
+  - **全景治理 Trace 抽屉**：回答气泡底部轻量展示选模档位、消耗 Token、预估成本与节省率；一键唤起全景治理抽屉，支持查看选模决策依据、阶段耗时瀑布流与完整调用链路。
 - **知识图谱因果推导（GraphRAG，Neo4j 双轨检索）**：
   - **自适应意图路由（Adaptive Query Router）**：单维事实（0ms 纯向量/BM25 检索）vs 多维并发级联故障（触发 GraphRAG 多跳因果推导），内置规则自愈兜底，毫秒级自适应分流。
   - **Neo4j 生产级图数据库（:7687）**：存储 38 篇 IT 卡片抽取出的刚性因果拓扑三元组（实体/关系/属性），支持 2-Hop BFS 关系路径遍历、废止规则替代（REPLACES）、CMDB 资产与网络依赖追溯。
@@ -268,7 +280,9 @@ npm run dev                                                # http://127.0.0.1:51
 | POST | /api/v1/dispatch-drafts/:draftId/claim | 认领草案（防双人同裁） | PLATFORM_ADMIN |
 | POST | /api/v1/dispatch-drafts/:draftId/decide | 裁决草案 approve/reject（门禁放行点） | PLATFORM_ADMIN |
 | POST | /api/v1/consultations | 创建咨询会话（AI / 转人工） | 登录 |
-| POST | /api/v1/consultations/:id/ai-messages | AI 问答（ANSWER/CLARIFY/REFUSE） | 登录 |
+| POST | /api/v1/consultations/:id/ai-messages | AI 问答（普通 JSON 响应） | 登录 |
+| POST | /api/v1/consultations/:id/ai-messages | **AI-007 SSE 流式问答（Accept: text/event-stream）** | 登录 |
+| POST | /api/v1/agent/chat/stream | Python agent_service SSE 流式智能体接口 | 内部 |
 | GET | /api/v1/consultations/:id/ticket-draft | 查看建单草稿 | 登录 |
 | POST | /api/v1/consultations/:id/ticket-draft/confirm | 程序化确认建单（人机回环放行点） | 登录 |
 | POST | /api/v1/consultations/:id/transfer | 转人工（幂等触发自动分配） | 登录 |
@@ -289,7 +303,8 @@ npm run dev                                                # http://127.0.0.1:51
 | 提单链路验收（pytest，27 项：TC-01~10 + M-01~09 + 状态机/守卫） | `acceptance/` | `python -m pytest -v`；`python scripts/run.py` 生成评测报告 | 27/27 通过（2026-10-08 报告，V2 §4.2 综合判定通过） |
 | RAG/AI 咨询端到端冒烟（Node） | `acceptance/ai-rag-smoke.mjs` | `node acceptance/ai-rag-smoke.mjs [--require-answer]`（需网关 + consultation + rag + Python 服务已启动） | 验证领域判定/拒答/引用/持久化 |
 | 后端单元/集成测试（JUnit，61 个测试类） | `it-ticket-cloud/*/src/test` | `mvn -pl consultation-service,rag-service -am test`（或按模块） | RAG 集成范围 262 项通过（consultation 206 / rag 48 / gateway 2，见 spec 记录） |
-| Python 检索与智能体单测（pytest，70 项） | `services/python-retrieval/{rag_service,agent_service}/tests` | `cd services/python-retrieval && python -m pytest rag_service/tests agent_service/tests -q` | 70/70 通过（2026-10-22 实测；rag_service 68 + agent_service 2） |
+| 后端 AI 流式集成测试（JUnit） | it-ticket-cloud/consultation-service | mvn test -Dtest=AiConsultationStreamTest | 2/2 通过（流式端点与治理数据封装） |
+| Python 检索与智能体单测（pytest，77+ 项） | services/python-retrieval/{rag_service,agent_service}/tests | cd services/python-retrieval && python -m pytest rag_service/tests agent_service/tests -q | 全绿通过（含 Supervisor 动态规划、双向 Guardrails、流式生成与成本治理） |
 | Python 检索 HTTP 契约与回归 | `services/python-retrieval/tools/` | `python tools/check_contract.py`（85 项不变量）；`python tools/run_service_regression.py --pace 1.5`（黄金集 20 题 vs 冻结基线） | 黄金集基线仅对 `query_rewrite=true` 成立 |
 | 前端单元/契约测试 | `frontend/tests/*.test.mjs` | `npm test`（node --test，20 个文件） | — |
 | 前端浏览器测试（Playwright，8 个 spec） | `frontend/tests/browser/` | `npm run test:browser`（端口 5176） | — |
