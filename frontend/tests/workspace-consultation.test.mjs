@@ -119,7 +119,7 @@ test('consultation list failure cannot silently create a replacement conversatio
 
 test('IME Enter does not send an unfinished consultation message', async () => {
   let sends = 0
-  const { state: c } = component('components/ConsultationChat', { aiMessage: async () => { sends++; return {} } })
+  const { state: c } = component('components/ConsultationChat', { aiMessageStream: async () => { sends++; return {} } })
   c.session.value = { sessionId: 'S1', status: 'AI_ACTIVE' }
   c.draft.value = '网络'
   await c.send({ isComposing: true })

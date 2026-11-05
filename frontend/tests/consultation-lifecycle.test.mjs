@@ -86,7 +86,7 @@ for (const name of ['ConsultationChat', 'EngineerConsultation']) {
 
 test('RAG clarification is not presented as a general answer or feedback ingestion', async () => {
   const { state: c } = component('ConsultationChat', {
-    aiMessage: async () => ({ replyType: 'CLARIFY', answerText: '请补充具体的设备和报错。', citations: [], interactionId: 'I1' })
+    aiMessageStream: async () => ({ replyType: 'CLARIFY', answerText: '请补充具体的设备和报错。', citations: [], interactionId: 'I1' })
   })
   c.session.value = { sessionId: 'S1', status: 'AI_ACTIVE' }
   c.draft.value = '用不了'
@@ -98,7 +98,7 @@ test('RAG clarification is not presented as a general answer or feedback ingesti
 
 test('Chinese input composition Enter does not send or clear the draft', async () => {
   let calls = 0
-  const { state: c } = component('ConsultationChat', { aiMessage: async () => { calls++ } })
+  const { state: c } = component('ConsultationChat', { aiMessageStream: async () => { calls++ } })
   c.session.value = { sessionId: 'S1', status: 'AI_ACTIVE' }
   c.draft.value = '网络无法连接'
   await c.send({ isComposing: true })
@@ -108,7 +108,7 @@ test('Chinese input composition Enter does not send or clear the draft', async (
 
 test('failed AI request restores the question for editing and retry', async () => {
   const { state: c } = component('ConsultationChat', {
-    aiMessage: async () => { throw new Error('服务不可用') }
+    aiMessageStream: async () => { throw new Error('服务不可用') }
   })
   c.session.value = { sessionId: 'S1', status: 'AI_ACTIVE' }
   c.draft.value = 'VPN 无法连接'
@@ -447,7 +447,7 @@ test('a delayed status poll cannot reactivate a closed employee conversation', a
 test('a late AI response does not enter a new conversation after closing the old one', async () => {
   const pending = deferred()
   const { state: c } = component('ConsultationChat', {
-    aiMessage: () => pending.promise, close: async () => ({ status: 'CLOSED' }),
+    aiMessageStream: () => pending.promise, close: async () => ({ status: 'CLOSED' }),
     create: async () => ({ sessionId: 'S2', status: 'AI_ACTIVE' })
   })
   c.session.value = { sessionId: 'S1', status: 'AI_ACTIVE' }
