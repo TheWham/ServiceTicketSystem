@@ -16,7 +16,14 @@ from langgraph.checkpoint.memory import MemorySaver
 from rag_pipeline.observability.tracer import Tracer
 
 from . import config as acfg
-from .contract import AgentChatRequest, AgentChatResponse, TicketDraft, TraceSummary
+from .contract import AgentChatRequest, AgentChatResponse, GovernanceTrace, TicketDraft, TraceSummary
+from .cost_governance import (
+    BudgetExceeded,
+    CostGovernor,
+    ModelRouter,
+    TokenBudgetManager,
+    estimate_tokens,
+)
 from .graph import AgentGraphState, build_react_agent_graph, build_subagent_supervisor_graph
 from .model_client import ModelClient, ModelError
 from .observability.langfuse_exporter import LangfuseExporter
@@ -110,12 +117,17 @@ class AgentRunner:
     """
 
     def __init__(self, model_client: Optional[ModelClient] = None, max_steps: Optional[int] = None,
-                 langfuse_exporter: Optional[LangfuseExporter] = None, mode: Optional[str] = None):
+                 langfuse_exporter: Optional[LangfuseExporter] = None, mode: Optional[str] = None,
+                 cost_governor: Optional[CostGovernor] = None):
         self.model = model_client or ModelClient()
         self.max_steps = max(1, max_steps or acfg.MAX_STEPS)
         self.langfuse = langfuse_exporter or LangfuseExporter()
         self.checkpointer = MemorySaver()
         self.mode = mode or acfg.AGENT_MODE
+        self.governor = cost_governor or CostGovernor(
+            router=ModelRouter(client=getattr(self.model, "client", None)),
+            budget=TokenBudgetManager()
+        )
         if self.mode == "supervisor":
             self.graph = build_subagent_supervisor_graph(checkpointer=self.checkpointer)
         else:
@@ -125,6 +137,46 @@ class AgentRunner:
             request_id: str = "", session_id: str = "") -> AgentChatResponse:
         resp, _ = self.run_graph(req, user_id, role, request_id, session_id)
         return resp
+
+    def run_stream(self, req: AgentChatRequest, user_id: str, role: str,
+                   request_id: str = "", session_id: str = ""):
+        """流式执行智能体问答管线，产出 (event_type, payload_dict) 生成器。"""
+        import queue
+        import threading
+
+        q: queue.Queue = queue.Queue()
+
+        def stream_worker():
+            def callback(kind: str, data: Any):
+                if kind == "stage":
+                    q.put(("stage", data))
+                elif kind == "delta":
+                    q.put(("delta", {"delta": data}))
+                elif kind == "reasoning":
+                    q.put(("reasoning", {"delta": data}))
+                elif kind == "tool":
+                    q.put(("tool", data))
+
+            original_callback = getattr(self.model, "stream_callback", None)
+            try:
+                self.model.stream_callback = callback
+                resp, _ = self.run_graph(req, user_id, role, request_id, session_id)
+                q.put(("done", resp.model_dump(by_alias=True, exclude_none=True)))
+            except Exception as e:
+                log.exception("AgentRunner run_stream failed")
+                q.put(("error", {"code": "AI_UNAVAILABLE", "message": str(e)}))
+            finally:
+                self.model.stream_callback = original_callback
+                q.put(None)
+
+        worker_thread = threading.Thread(target=stream_worker, daemon=True)
+        worker_thread.start()
+
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            yield item
 
     def run_graph(self, req: AgentChatRequest, user_id: str, role: str,
                   request_id: str = "", session_id: str = "") -> Tuple[AgentChatResponse, Dict[str, Any]]:
@@ -136,70 +188,160 @@ class AgentRunner:
                         user_id=user_id or "", session_id=session_id or "")
         ctx = ToolContext(user_id, role, request_id, question=req.question)
 
-        if self.mode == "supervisor":
-            initial_state: SupervisorTeamState = {
-                "question": req.question or "",
-                "sanitized_question": "",
-                "pii_vault": {},
-                "security_flag": True,
-                "security_message": "",
-                "next_action": "",
-                "knowledge_evidence": None,
-                "used_version_ids": [m.version_id for m in req.material],
-                "ticket_evidence": None,
-                "ticket_draft": None,
-                "final_content": None,
-                "audit_trail": [f"【启动 LangGraph Supervisor】开启主从多智能体编排，会话单号: {ctx.request_id}"]
-            }
-            config = {
-                "configurable": {
-                    "thread_id": ctx.request_id,
-                    "model_client": self.model,
-                    "ctx": ctx,
-                    "tracer": tracer,
-                    "max_steps": self.max_steps
-                }
-            }
-            final_state = self.graph.invoke(initial_state, config=config)
-            final_content = final_state.get("final_content")
-            draft_data = final_state.get("ticket_draft")
-            draft_obj = TicketDraft(**draft_data) if isinstance(draft_data, dict) else ctx.draft
+        # 1. 成本治理与 Model Router 动态选模
+        extra_tokens = sum(estimate_tokens(m.content) for m in req.material) + \
+                       sum(estimate_tokens(t.content) for t in req.history)
+        try:
+            plan = self.governor.plan(
+                request_id=ctx.request_id,
+                query=req.question or "",
+                user_id=user_id or "anonymous",
+                dept_id=role or "DEFAULT",
+                history_turns=len(req.history),
+                extra_prompt_tokens=extra_tokens
+            )
+        except BudgetExceeded as exc:
+            log.warning("CostGovernor 预算/熔断拦截: %s", exc.detail)
+            gov_trace = GovernanceTrace(
+                traceId=ctx.request_id,
+                chosenTier="PREMIUM" if exc.is_circuit_breaker else "LITE",
+                chosenModel="circuit_breaker" if exc.is_circuit_breaker else "budget_cap",
+                routingReason=exc.detail,
+                riskScore=5.0 if exc.is_circuit_breaker else 1.0,
+                intent="HIGH_RISK" if exc.is_circuit_breaker else "BUDGET_EXCEEDED",
+                totalTokens=0,
+                promptTokens=0,
+                completionTokens=0,
+                totalLatencyMs=0.0,
+                actualCostRmb=0.0,
+                savedVsPremiumRmb=0.0,
+                savingsRatePercent=0.0,
+                isDegraded=True,
+                degradationReason=exc.detail,
+                stages=[]
+            )
+            return AgentChatResponse(
+                replyType="REFUSE",
+                answerText=f"当前咨询涉及Token用量较高或配额管控限制（{exc.detail}），建议转人工客服协助处理。",
+                usedVersionIds=[],
+                confidence=0.0,
+                knowledgeConflict=False,
+                offTopic=False,
+                ticketDraft=None,
+                traceId=tracer.trace_id,
+                governanceTrace=gov_trace
+            ), {}
+
+        # 为本次调用派生指定模型的客户端（线程安全隔离）
+        cb = getattr(self.model, "stream_callback", None)
+        if cb:
+            try:
+                cb("stage", {
+                    "stage": "ROUTED",
+                    "tier": plan.model.tier.name,
+                    "model": plan.model.model_name,
+                    "reason": ", ".join(plan.reasons) if plan.reasons else (plan.decision.reason if plan.decision else ""),
+                    "riskScore": float(plan.score)
+                })
+            except Exception as e:
+                log.warning("stream_callback stage error: %s", e)
+
+        if hasattr(self.model, "clone_with_model"):
+            try:
+                scoped_model = self.model.clone_with_model(plan.model.model_name, stream_callback=cb)
+            except Exception:
+                scoped_model = self.model
         else:
-            messages: List[Dict[str, Any]] = [
-                {"role": "system", "content": _system_prompt()},
-                {"role": "user", "content": _build_user_input(req)},
-            ]
-            specs = tool_specs()
-            initial_state: AgentGraphState = {
-                "messages": messages,
-                "user_id": user_id or "",
-                "role": role or "",
-                "request_id": ctx.request_id,
-                "question": req.question or "",
-                "step": 0,
-                "max_steps": self.max_steps,
-                "latest_tool_calls": [],
-                "final_content": None,
-                "draft": None,
-                "audit_trail": [f"【启动 LangGraph】开启智能体编排，会话单号: {ctx.request_id}"]
-            }
-            config = {
-                "configurable": {
-                    "thread_id": ctx.request_id,
-                    "model_client": self.model,
-                    "specs": specs,
-                    "ctx": ctx,
-                    "tracer": tracer
+            scoped_model = self.model
+
+        try:
+            if self.mode == "supervisor":
+                initial_state: SupervisorTeamState = {
+                    "question": req.question or "",
+                    "sanitized_question": "",
+                    "pii_vault": {},
+                    "security_flag": True,
+                    "security_message": "",
+                    "next_action": "",
+                    "intent_plan": None,
+                    "execution_plan": None,
+                    "knowledge_evidence": None,
+                    "used_version_ids": [m.version_id for m in req.material],
+                    "ticket_evidence": None,
+                    "ticket_draft": None,
+                    "final_content": None,
+                    "audit_trail": [f"【启动 LangGraph Supervisor】开启主从多智能体编排，会话单号: {ctx.request_id}"]
                 }
-            }
-            final_state = self.graph.invoke(initial_state, config=config)
-            final_content = final_state.get("final_content")
-            draft_obj = ctx.draft
+                config = {
+                    "configurable": {
+                        "thread_id": ctx.request_id,
+                        "model_client": scoped_model,
+                        "ctx": ctx,
+                        "tracer": tracer,
+                        "max_steps": self.max_steps
+                    }
+                }
+                final_state = self.graph.invoke(initial_state, config=config)
+                final_content = final_state.get("final_content")
+                draft_data = final_state.get("ticket_draft")
+                draft_obj = TicketDraft(**draft_data) if isinstance(draft_data, dict) else ctx.draft
+            else:
+                messages: List[Dict[str, Any]] = [
+                    {"role": "system", "content": _system_prompt()},
+                    {"role": "user", "content": _build_user_input(req)},
+                ]
+                specs = tool_specs()
+                initial_state: AgentGraphState = {
+                    "messages": messages,
+                    "user_id": user_id or "",
+                    "role": role or "",
+                    "request_id": ctx.request_id,
+                    "question": req.question or "",
+                    "step": 0,
+                    "max_steps": self.max_steps,
+                    "latest_tool_calls": [],
+                    "final_content": None,
+                    "draft": None,
+                    "audit_trail": [f"【启动 LangGraph】开启智能体编排，会话单号: {ctx.request_id}"]
+                }
+                config = {
+                    "configurable": {
+                        "thread_id": ctx.request_id,
+                        "model_client": scoped_model,
+                        "specs": specs,
+                        "ctx": ctx,
+                        "tracer": tracer
+                    }
+                }
+                final_state = self.graph.invoke(initial_state, config=config)
+                final_content = final_state.get("final_content")
+                draft_obj = ctx.draft
+        except Exception:
+            self.governor.budget.release(ctx.request_id)
+            raise
 
         if final_content is None:
+            self.governor.budget.release(ctx.request_id)
             raise ModelError("ReAct 步数超限")
+
         tracer.finish()   # 打上 Trace 结束时间：端到端总时延 = 起点到这一刻
         summary = tracer.summary()
+
+        # 结算真实消耗并构建治理 Trace
+        actual_in = int(summary.get("totalInputTokens") or 0)
+        actual_out = int(summary.get("totalOutputTokens") or 0)
+        if actual_in == 0 and actual_out == 0:
+            actual_in = max(1, estimate_tokens(_build_user_input(req)) + 200)
+            actual_out = max(1, estimate_tokens(final_content or ""))
+        actual_total = int(summary.get("totalTokens") or (actual_in + actual_out))
+        self.governor.budget.settle(ctx.request_id, actual_total)
+
+        gov_trace_dict = self.governor.build_trace(
+            plan=plan,
+            prompt_tokens=actual_in,
+            completion_tokens=actual_out,
+            latency_ms=float(summary.get("totalLatencyMs") or 0.0),
+        )
         summary["requestId"] = ctx.request_id
         summary["inputSha256"] = _sha(_build_user_input(req))
         summary["materialCount"] = len(req.material)
@@ -222,6 +364,7 @@ class AgentRunner:
         response = _to_response(payload, draft_obj)
         response.trace_id = tracer.trace_id
         response.trace = _trace_summary(summary)
+        response.governance_trace = GovernanceTrace(**gov_trace_dict)
         # 只在业务成功完成后带上安全的输出摘要再上报；失败也不影响回答链路。
         summary["outputSha256"] = _sha(response.answer_text or "")
         summary["replyType"] = response.reply_type
@@ -250,6 +393,18 @@ def _to_response(payload: Any, draft: Optional[TicketDraft]) -> AgentChatRespons
     if reply == "REFUSE" and text.strip():
         raise ModelError("REFUSE 的 answerText 必须为空")
     used = [x for x in (payload.get("usedVersionIds") or []) if isinstance(x, str) and x.strip()]
+    from .contract import CitationItem
+    raw_citations = payload.get("citations") or []
+    citations = []
+    for c in raw_citations:
+        if isinstance(c, dict) and c.get("versionId"):
+            citations.append(CitationItem(
+                articleId=str(c.get("articleId") or ""),
+                versionId=str(c.get("versionId") or ""),
+                title=str(c.get("title") or ""),
+                score=float(c.get("score") or 1.0),
+                snippet=str(c.get("snippet") or "")
+            ))
     try:
         confidence = float(payload.get("confidence"))
     except (TypeError, ValueError):
@@ -258,6 +413,7 @@ def _to_response(payload: Any, draft: Optional[TicketDraft]) -> AgentChatRespons
         replyType=reply,
         answerText=text,
         usedVersionIds=used,
+        citations=citations,
         confidence=min(1.0, max(0.0, confidence)),
         knowledgeConflict=bool(payload.get("knowledgeConflict")),
         offTopic=bool(payload.get("offTopic")),

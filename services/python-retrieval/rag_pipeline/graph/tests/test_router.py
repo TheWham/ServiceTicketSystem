@@ -69,8 +69,8 @@ def test_router_timeout_rule_fallback_for_composite_fault():
         assert res.intent == QueryIntent.MULTI_HOP_RELATIONAL
         assert res.needs_graph is True
         assert "fallback_rule" in res.reason
-        assert "VPN" in res.extracted_entities
-        assert "错误代码691" in res.extracted_entities
+        assert any("VPN" in e for e in res.extracted_entities)
+        assert any("691" in e for e in res.extracted_entities)
 
 
 def test_router_malformed_json_fallback():

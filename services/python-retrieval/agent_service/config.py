@@ -62,7 +62,9 @@ MAX_STEPS = int(os.environ.get("AGENT_MAX_STEPS", "5"))
 TICKET_SERVICE_BASE_URL = _cfg("TICKET_SERVICE_BASE_URL", default="http://127.0.0.1:8201")
 # consultation-service 知识搜索接口基址（GET /api/v1/knowledge/search）
 KNOWLEDGE_SEARCH_BASE_URL = _cfg("KNOWLEDGE_SEARCH_BASE_URL", default="http://127.0.0.1:8301")
-TOOL_TIMEOUT = float(os.environ.get("AGENT_TOOL_TIMEOUT", "8"))
+# Python 检索内核基址（POST /api/v1/rag/retrievals，提供自适应 Neo4j 图谱 + 双路召回）
+RAG_SERVICE_BASE_URL = _cfg("RAG_SERVICE_BASE_URL", default="http://127.0.0.1:8310")
+TOOL_TIMEOUT = float(os.environ.get("AGENT_TOOL_TIMEOUT", "30"))
 SEARCH_MAX_RESULTS = int(os.environ.get("AGENT_SEARCH_MAX_RESULTS", "5"))
 DRAFT_TITLE_MAX = int(os.environ.get("AGENT_DRAFT_TITLE_MAX", "100"))
 DRAFT_DESC_MAX = int(os.environ.get("AGENT_DRAFT_DESC_MAX", "2000"))

@@ -134,9 +134,9 @@ def tool_node(state: AgentGraphState, config: Optional[RunnableConfig] = None) -
         args = call.get("arguments", {})
 
         if tracer:
-            with tracer.span(name=f"tool:{name}", kind="TOOL", input={"arguments": args}) as span:
+            with tracer.span(name=f"tool:{name}", kind="TOOL") as span:
                 result = dispatch(name, args, ctx)
-                span.record(output=result)
+                span.record(output=result, detail={"arguments": args})
         else:
             result = dispatch(name, args, ctx)
 
@@ -197,6 +197,10 @@ def knowledge_worker_node(state: SupervisorTeamState, config: Optional[RunnableC
         "messages": [{"role": "user", "content": question}],
         "step": 0,
         "max_steps": max_steps,
+        "intent": None,
+        "needs_graph": False,
+        "extracted_entities": [],
+        "retrieval_items": [],
         "latest_tool_calls": [],
         "knowledge_evidence": None,
         "used_version_ids": state.get("used_version_ids", []),
@@ -210,6 +214,7 @@ def knowledge_worker_node(state: SupervisorTeamState, config: Optional[RunnableC
     return {
         "knowledge_evidence": evidence or "已排查相关知识",
         "used_version_ids": result.get("used_version_ids", []),
+        "retrieval_items": result.get("retrieval_items", []),
         "audit_trail": result.get("audit_trail", [])
     }
 

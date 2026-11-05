@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { useUserStore } from '../stores/user.js'
+import { readSseStream } from '../utils/sseReader.js'
 
 /**
  * 咨询服务(智能客服/转人工)专用客户端。
@@ -89,6 +90,42 @@ export const consultationApi = {
     http.post(`/consultations/${id}/ai-messages`,
       contextRefs ? { message, contextRefs } : { message },
       { timeout: AI_TIMEOUT }),
+
+  /** AI-007 发送 AI 消息（SSE 流式连接，Accept: text/event-stream）。 */
+  aiMessageStream: async (id, message, { onDelta, onReasoning, onCitation, onCompleted, onError, onRefusal, onStage, contextRefs } = {}) => {
+    const userStore = useUserStore()
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+      'X-Request-Id': randomId('req'),
+      'Idempotency-Key': randomId('idem'),
+    }
+    if (userStore.token) {
+      headers['Authorization'] = `Bearer ${userStore.token}`
+    }
+
+    const body = contextRefs ? { message, contextRefs } : { message }
+
+    const resp = await fetch(`/api/v1/consultations/${id}/ai-messages`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body)
+    })
+
+    if (!resp.ok) {
+      let errorMsg = `HTTP ${resp.status}`
+      try {
+        const errJson = await resp.json()
+        errorMsg = errJson.message || errorMsg
+      } catch {}
+      const err = new Error(errorMsg)
+      err.status = resp.status
+      if (onError) onError(err)
+      throw err
+    }
+
+    return readSseStream(resp, { onDelta, onReasoning, onCitation, onCompleted, onError, onRefusal, onStage })
+  },
 
   /** AI-API-003 反馈。feedback: HELPFUL | NOT_HELPFUL | INCORRECT */
   feedback: (id, interactionId, feedback, comment) =>

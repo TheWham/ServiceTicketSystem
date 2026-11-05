@@ -112,10 +112,58 @@
                     </div>
                   </template>
                   <template v-else>
-                    <div v-if="msg.content" class="msg-text">{{ msg.content }}</div>
+                    <!-- 思考过程卡片 (参考 Claude / Codex / DeepSeek R1 交互标准) -->
+                    <div v-if="msg.senderType === 'AI' && ((msg.thoughtStages && msg.thoughtStages.length) || msg.reasoningContent || msg.isThinking)" class="thought-container">
+                      <div class="thought-header" role="button" tabindex="0" @click="toggleThought(msg)" @keydown.enter="toggleThought(msg)">
+                        <span class="thought-status">
+                          <el-icon v-if="msg.isThinking" class="is-loading"><Loading /></el-icon>
+                          <el-icon v-else class="thought-done-icon"><Check /></el-icon>
+                          <span class="thought-title">{{ msg.isThinking ? '思考中…' : `已深度思考 (${msg.thinkingDuration || 1}s)` }}</span>
+                        </span>
+                        <span class="thought-toggle">
+                          <span>{{ msg.thoughtCollapsed ? '展开思考过程' : '收起' }}</span>
+                          <el-icon :class="{ 'is-rotated': !msg.thoughtCollapsed }"><ArrowDown /></el-icon>
+                        </span>
+                      </div>
+
+                      <div v-show="!msg.thoughtCollapsed" class="thought-content">
+                        <!-- 编排时序节点 -->
+                        <div v-if="msg.thoughtStages && msg.thoughtStages.length" class="thought-stages">
+                          <div v-for="(st, idx) in msg.thoughtStages" :key="idx" class="thought-stage-item">
+                            <span class="stage-dot"></span>
+                            <span class="stage-text">{{ st }}</span>
+                          </div>
+                        </div>
+                        <!-- 模型思维链流式内容 (Reasoning Content) -->
+                        <div v-if="msg.reasoningContent" class="thought-reasoning">
+                          <pre class="reasoning-text">{{ msg.reasoningContent }}</pre>
+                        </div>
+                      </div>
+                    </div>
+                    <div v-if="msg.content" class="msg-text" :class="{ 'markdown-body': msg.senderType === 'AI' || msg.senderType === 'ENGINEER' }">
+                      <div v-if="msg.senderType === 'AI' || msg.senderType === 'ENGINEER'" class="markdown-content" v-html="renderMarkdown(msg.content)"></div>
+                      <template v-else>{{ msg.content }}</template>
+                    </div>
                     <ChatMessageAttachments v-if="msg.attachments?.length" :session-id="selected.session_id" :attachments="msg.attachments"
                                             @preview-change="attachmentPreviewOpen = $event" />
                     <div v-if="msg.generalAnswer" class="general-answer-note">AI 通用建议 · 无知识库引用</div>
+                    <!-- Model Router 动态选模与成本治理调用链路胶囊 (DeepSeek Harness) -->
+                    <div v-if="hasGovTrace(msg)" class="governance-trace-badge-bar">
+                      <div class="governance-pill" role="button" tabindex="0"
+                           :title="'点击展开 ' + (getGovTrace(msg).chosenModel || '大模型') + ' 动态选模决策与调用链路'"
+                           @click="showGovTrace(msg)" @keydown.enter="showGovTrace(msg)">
+                        <span class="gov-pill-icon"><el-icon><Cpu /></el-icon></span>
+                        <span class="gov-pill-tier" :class="'tier-' + getGovTrace(msg).chosenTier.toLowerCase()">{{ getGovTrace(msg).chosenTier }}</span>
+                        <span class="gov-pill-model">{{ getGovTrace(msg).chosenModel }}</span>
+                        <span class="gov-pill-tokens">{{ getGovTrace(msg).totalTokens }}T</span>
+                        <span class="gov-pill-cost">{{ formatCostRmb(getGovTrace(msg).actualCostRmb) }}</span>
+                        <span v-if="getGovTrace(msg).savingsRatePercent > 0" class="gov-pill-savings">
+                          省{{ getGovTrace(msg).savingsRatePercent.toFixed(0) }}%
+                        </span>
+                        <span class="gov-pill-link">调用链路 <el-icon><ArrowRight /></el-icon></span>
+                      </div>
+                    </div>
+
                     <!-- 知识图谱思维链路高光角标（当命中 GraphRAG 多跳因果推导时激活） -->
                     <div v-if="hasGraph(msg)" class="graph-reasoning-badge-bar">
                       <div class="graph-reasoning-pill" role="button" tabindex="0"
@@ -192,6 +240,12 @@
       v-model="graphDrawerVisible"
       :reasoning="activeGraphReasoning"
     />
+
+    <!-- Model Router 与成本治理全景调用链路抽屉 (DeepSeek Harness) -->
+    <TraceGovernanceDrawer
+      v-model="govDrawerVisible"
+      :trace="activeGovTrace"
+    />
   </el-drawer>
 </template>
 
@@ -200,12 +254,16 @@ import ChatAttachmentUploader from './ChatAttachmentUploader.vue'
 import ChatMessageAttachments from './ChatMessageAttachments.vue'
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Promotion, CircleCheck, Document, Tickets } from '@element-plus/icons-vue'
+import { Refresh, Promotion, CircleCheck, Document, Tickets, Loading, Check, ArrowDown } from '@element-plus/icons-vue'
 import { userApi } from '../api/index.js'
 import {
   consultationApi, TERMINAL_STATUS, TICKET_ENTRY_MESSAGE
 } from '../api/consultation.js'
 import GraphReasoningDrawer from './GraphReasoningDrawer.vue'
+import { renderMarkdown } from '../utils/markdown.js'
+import TraceGovernanceDrawer from './TraceGovernanceDrawer.vue'
+import { hasGovernanceTrace, parseGovernanceTrace, formatCostRmb } from '../utils/governanceTrace.js'
+import { Cpu } from '@element-plus/icons-vue' 
 import { hasGraphReasoning, parseGraphReasoning } from '../utils/graphReasoning.js'
 
 /**
@@ -235,6 +293,25 @@ const selected = ref(null)
 const graphDrawerVisible = ref(false)
 const activeGraphReasoning = ref(null)
 
+const govDrawerVisible = ref(false)
+const activeGovTrace = ref(null)
+
+function hasGovTrace(msg) {
+  return hasGovernanceTrace(msg)
+}
+
+function getGovTrace(msg) {
+  return parseGovernanceTrace(msg)
+}
+
+function showGovTrace(msg) {
+  const parsed = parseGovernanceTrace(msg)
+  if (parsed) {
+    activeGovTrace.value = parsed.raw || parsed
+    govDrawerVisible.value = true
+  }
+}
+
 function hasGraph(msg) {
   return hasGraphReasoning(msg)
 }
@@ -245,6 +322,10 @@ function showGraphReasoning(msg) {
     activeGraphReasoning.value = parsed
     graphDrawerVisible.value = true
   }
+}
+
+function toggleThought(msg) {
+  msg.thoughtCollapsed = !msg.thoughtCollapsed
 }
 const messages = ref([])
 const draft = ref('')
@@ -456,6 +537,7 @@ function toLocalMessage(item) {
     attachments: item.attachments || [],
     citations: item.citations || [],
     generalAnswer: item.general_answer === true,
+    governanceTrace: item.governance_trace || item.governanceTrace || null,
     sentAt: item.sent_at,
     withdrawnAt: item.withdrawn_at
   }
@@ -758,6 +840,69 @@ const formatTime = (iso) => {
   background: var(--el-bg-color); border: 1px solid var(--el-border-color-lighter);
 }
 .msg-text { white-space: pre-wrap; word-break: break-word; }
+.msg-text.markdown-body { white-space: normal; }
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4) {
+  margin: 10px 0 6px 0;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--el-text-color-primary);
+}
+.markdown-body :deep(h1) { font-size: 17px; }
+.markdown-body :deep(h2) { font-size: 15px; }
+.markdown-body :deep(h3) { font-size: 14px; }
+.markdown-body :deep(h4) { font-size: 13px; }
+.markdown-body :deep(p) {
+  margin: 0 0 8px 0;
+  line-height: 1.6;
+}
+.markdown-body :deep(p:last-child) {
+  margin-bottom: 0;
+}
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  margin: 4px 0 8px 0;
+  padding-left: 20px;
+}
+.markdown-body :deep(li) {
+  margin-bottom: 4px;
+  line-height: 1.6;
+}
+.markdown-body :deep(strong) {
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+.markdown-body :deep(code) {
+  background: rgba(127, 127, 127, 0.12);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+.markdown-body :deep(pre) {
+  background: rgba(127, 127, 127, 0.08);
+  padding: 10px 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.markdown-body :deep(pre code) {
+  background: none;
+  padding: 0;
+}
+.markdown-body :deep(blockquote) {
+  border-left: 4px solid var(--el-color-primary);
+  margin: 6px 0;
+  padding: 4px 12px;
+  color: var(--el-text-color-secondary);
+}
+.markdown-body :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--el-border-color-lighter);
+  margin: 12px 0;
+}
 .general-answer-note { margin-top: 8px; font-size: 12px; color: var(--el-text-color-secondary); }
 .ticket-entry-sent {
   display: flex; align-items: center; gap: 6px;
@@ -767,6 +912,92 @@ const formatTime = (iso) => {
 .bubble-system {
   background: transparent; border: none; color: var(--el-text-color-secondary);
   font-size: 13px; padding: 4px 0;
+}
+
+/* Model Router 与成本治理调用链路角标 */
+.governance-trace-badge-bar {
+  margin-top: 8px;
+  margin-bottom: 6px;
+}
+.governance-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: linear-gradient(135deg, rgba(8, 117, 140, 0.08) 0%, rgba(36, 93, 206, 0.12) 100%);
+  border: 1px solid rgba(8, 117, 140, 0.32);
+  padding: 5px 12px;
+  border-radius: 18px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(8, 117, 140, 0.08);
+}
+.governance-pill:hover {
+  background: linear-gradient(135deg, rgba(8, 117, 140, 0.16) 0%, rgba(36, 93, 206, 0.22) 100%);
+  border-color: rgba(8, 117, 140, 0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(8, 117, 140, 0.18);
+}
+.gov-pill-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #08758C;
+  color: #fff;
+  font-size: 11px;
+}
+.gov-pill-tier {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+.gov-pill-tier.tier-lite {
+  background: #E6F4EA;
+  color: #137333;
+  border: 1px solid rgba(19, 115, 51, 0.25);
+}
+.gov-pill-tier.tier-standard {
+  background: #FEF7E0;
+  color: #B06000;
+  border: 1px solid rgba(176, 96, 0, 0.25);
+}
+.gov-pill-tier.tier-premium {
+  background: #FCE8E6;
+  color: #C5221F;
+  border: 1px solid rgba(197, 34, 31, 0.25);
+}
+.gov-pill-model {
+  font-size: 11px;
+  font-weight: 600;
+  color: #1E293B;
+  font-family: monospace;
+}
+.gov-pill-tokens, .gov-pill-cost {
+  font-size: 11px;
+  color: #64748B;
+  font-family: monospace;
+}
+.gov-pill-savings {
+  font-size: 10px;
+  font-weight: 700;
+  color: #059669;
+  background: #ECFDF5;
+  border: 1px solid rgba(5, 150, 105, 0.25);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.gov-pill-link {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #08758C;
+  margin-left: 2px;
 }
 
 /* 知识图谱思维链路角标 */
@@ -870,4 +1101,109 @@ const formatTime = (iso) => {
   .state-banner { flex: none; }
 }
 @media (prefers-reduced-motion: reduce) { .session-item { transition: none; } }
+
+/* 思考过程卡片 (参考 Claude / Codex / DeepSeek R1 交互标准) */
+.thought-container {
+  margin-bottom: 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  font-size: 13px;
+  transition: all 0.2s ease;
+}
+
+.thought-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #f1f5f9;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  color: #475569;
+  transition: background 0.15s ease;
+}
+.thought-header:hover {
+  background: #e2e8f0;
+}
+
+.thought-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.thought-status .is-loading {
+  color: var(--el-color-primary);
+  animation: rotating 1.5s linear infinite;
+}
+
+.thought-status .thought-done-icon {
+  color: #10b981;
+}
+
+.thought-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.thought-toggle .el-icon {
+  transition: transform 0.2s ease;
+}
+.thought-toggle .el-icon.is-rotated {
+  transform: rotate(180deg);
+}
+
+.thought-content {
+  padding: 10px 12px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.thought-stages {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.thought-stage-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.thought-stage-item .stage-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3b82f6;
+  flex-shrink: 0;
+}
+
+.thought-reasoning {
+  max-height: 180px;
+  overflow-y: auto;
+  background: #0f172a;
+  color: #94a3b8;
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin-top: 6px;
+}
+
+.reasoning-text {
+  margin: 0;
+  font-family: 'JetBrains Mono', Consolas, Monaco, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 </style>

@@ -14,6 +14,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 
+from .. import config as acfg
 from ..model_client import ModelClient, ModelTurn
 from ..tools import ToolContext, dispatch, tool_specs
 
@@ -59,7 +60,18 @@ def ticket_model_node(state: TicketSubagentState, config: Optional[RunnableConfi
     if not any(m.get("role") == "system" for m in messages):
         full_messages = [{"role": "system", "content": _ticket_system_prompt()}] + messages
 
-    turn: ModelTurn = model.complete_with_tools(full_messages, specs, tool_choice)
+    tracer = configurable.get("tracer")
+    if tracer:
+        with tracer.generation(f"TicketWorker轮{step + 1}", model=getattr(model, "model", acfg.LLM_MODEL)) as gen_span:
+            turn: ModelTurn = model.complete_with_tools(full_messages, specs, tool_choice)
+            gen_span.record(
+                output={"toolCalls": [c.name for c in turn.tool_calls], "hasToolCalls": turn.has_tool_calls},
+                tokens_in=turn.usage.tokens_in,
+                tokens_out=turn.usage.tokens_out,
+                tokens_source=turn.usage.tokens_source
+            )
+    else:
+        turn = model.complete_with_tools(full_messages, specs, tool_choice)
 
     if not turn.has_tool_calls:
         evidence = turn.content or "已完成工单流转与草稿整理"

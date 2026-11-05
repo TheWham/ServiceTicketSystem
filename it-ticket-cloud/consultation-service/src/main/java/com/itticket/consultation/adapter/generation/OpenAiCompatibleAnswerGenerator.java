@@ -6,6 +6,7 @@ import com.itticket.consultation.adapter.agent.PythonAgentClient;
 import com.itticket.consultation.adapter.model.OpenAiCompatibleModelClient;
 import com.itticket.consultation.adapter.retrieval.RetrievedKnowledge;
 import com.itticket.consultation.config.ConsultationProperties;
+import com.itticket.consultation.dto.GovernanceTraceDto;
 import com.itticket.consultation.dto.TicketDraftDto;
 import com.itticket.consultation.enums.*;
 import java.math.BigDecimal;
@@ -44,12 +45,14 @@ public final class OpenAiCompatibleAnswerGenerator implements AnswerGenerator {
         input.set("material", json.valueToTree(material));
 
         TicketDraftDto draft = null;
+        GovernanceTraceDto governanceTrace = null;
         JsonNode payload;
         if (agent != null && agent.enabled()) {
-            // 生成侧在 Python:ReAct + 白名单工具;data 含 6 键 + 带外 ticketDraft
+            // 生成侧在 Python:ReAct + 白名单工具;data 含 6 键 + 带外 ticketDraft + 治理 Trace
             PythonAgentClient.AgentResult result = agent.chat(query, material, context);
             payload = sixKeys(result.payload());
             draft = result.draft();
+            governanceTrace = result.governanceTrace();
         } else {
             payload = model.complete(systemPrompt(), input.toString(), ai.getMaxOutputTokens(), context);
         }
@@ -78,7 +81,7 @@ public final class OpenAiCompatibleAnswerGenerator implements AnswerGenerator {
                 : replyType == AiReplyType.REFUSE ? AiRefusalReason.NO_RELIABLE_KNOWLEDGE : null;
         return new GenerationResult(replyType, text, List.copyOf(used),
                 payload.path("confidence").decimalValue().setScale(4, RoundingMode.HALF_UP), reason,
-                model.modelVersion(), draft);
+                model.modelVersion(), draft, governanceTrace);
     }
 
     /** 从 Python 返回的 data(含 ticketDraft)中抽出 6 键,套用同一套严格校验。 */

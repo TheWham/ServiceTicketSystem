@@ -143,7 +143,7 @@ class AiConsultationPolicyTest {
                     .thenAnswer(call -> new IdempotentResult<>(((Supplier<?>) call.getArgument(5)).get(), false));
             when(rag.answer(any(), nullable(String.class))).thenReturn(answer);
             service = new AiConsultationService(transitions, messages, mock(KnowledgeQueryService.class), rag,
-                    mock(AiInteractionMapper.class), new AuthzService(properties), idempotency, properties);
+                    mock(AiInteractionMapper.class), new AuthzService(properties), idempotency, properties, null);
         }
 
         /** 员工身份发一条问题（固定幂等键 idempotent-1） */

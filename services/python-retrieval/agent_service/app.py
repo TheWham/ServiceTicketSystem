@@ -7,11 +7,12 @@
 - 统一 Result 包络（`{code,msg,data}`，code=0 成功）；模型不可用 → 503 code=5032。
 """
 from contextlib import asynccontextmanager
+import json
 import logging
 
 from fastapi import FastAPI, Header
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from rag_service.contract import ResultEnvelope
 
@@ -84,5 +85,24 @@ def create_app(runner: AgentRunner = None) -> FastAPI:
         response = runner_.run(req, x_user_id, x_user_role, x_request_id, session_id=session_id)
         return ResultEnvelope.ok(response.model_dump(by_alias=True, exclude_none=True)) \
             .model_dump(by_alias=True, exclude_none=True)
+
+    @app.post("/api/v1/agent/chat/stream")
+    def chat_stream(req: AgentChatRequest,
+                    x_user_id: str = Header(default="", alias="X-User-Id"),
+                    x_user_role: str = Header(default="", alias="X-User-Role"),
+                    x_request_id: str = Header(default="", alias="X-Request-Id"),
+                    x_session_id: str = Header(default="", alias="X-Session-Id")):
+        runner_ = app.state.runner
+        if runner_ is None:                       # 懒加载：模型未配置时启动不崩，请求时才报 503
+            runner_ = AgentRunner(langfuse_exporter=app.state.langfuse_exporter)
+            app.state.runner = runner_
+        session_id = req.session_id or x_session_id
+
+        def event_stream():
+            for evt_type, data in runner_.run_stream(req, x_user_id, x_user_role, x_request_id, session_id=session_id):
+                payload_json = json.dumps(data, ensure_ascii=False)
+                yield f"event: {evt_type}\ndata: {payload_json}\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     return app

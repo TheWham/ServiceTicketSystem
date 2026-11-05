@@ -41,30 +41,19 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
 
-  // 已登录用户访问登录页 → 直接回各自主页
+  // 刷新页面或会话恢复：若持有凭证则向后端复核当前有效身份
+  await userStore.restoreSession(userApi.getMe)
+
+  // 已登录用户访问登录页 → 直接回各自主页（若带工单参数则透传）
   if (to.path === '/login') {
     if (userStore.userId && userStore.currentUser) {
-      return next(HOME[userStore.currentUser.role] || '/login')
+      const home = HOME[userStore.currentUser.role] || '/login'
+      return next(to.query?.ticket ? { path: home, query: { ticket: to.query.ticket } } : home)
     }
     return next()
   }
 
-  if (!userStore.userId) return next('/login')
-
-  // 有 userId 但缺用户信息（旧版本残留 / 手动写入）→ 从后端恢复
-  if (!userStore.currentUser) {
-    try {
-      const res = await userApi.getMe()
-      if (res?.data) userStore.setUser(res.data)
-    } catch (e) {
-      // 恢复失败：登录态已失效
-    }
-  }
-
-  if (!userStore.currentUser) {
-    userStore.logout()
-    return next('/login')
-  }
+  if (!userStore.currentUser) return next('/login')
 
   const allowed = to.meta.role
   if (allowed) {

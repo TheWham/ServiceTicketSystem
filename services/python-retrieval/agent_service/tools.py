@@ -171,12 +171,56 @@ def _http_get(url: str, params: Dict[str, Any], ctx: ToolContext) -> Dict[str, A
 
 
 def _search_knowledge(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
-    base = acfg.KNOWLEDGE_SEARCH_BASE_URL
-    if not base:
-        return {"success": False, "error": "知识搜索未配置（KNOWLEDGE_SEARCH_BASE_URL）"}
     query = str(args.get("query") or "").strip()
     if not query:
         return {"success": False, "error": "缺少检索关键词 query"}
+
+    # 1. 优先尝试对接 Python rag_service (:8310) 检索内核
+    #    该内核具备完整的自适应 Neo4j 图谱 BFS 因果推导与 Dense+BM25 双路召回
+    rag_base = getattr(acfg, "RAG_SERVICE_BASE_URL", "")
+    if rag_base:
+        try:
+            url = rag_base.rstrip("/") + "/api/v1/rag/retrievals"
+            req_body = {
+                "question": query,
+                "topK": acfg.SEARCH_MAX_RESULTS,
+                "categoryId": args.get("categoryId")
+            }
+            headers = {
+                "X-User-Id": ctx.user_id,
+                "X-User-Role": ctx.role,
+                "X-Request-Id": ctx.request_id
+            }
+            with httpx.Client(timeout=acfg.TOOL_TIMEOUT) as client:
+                resp = client.post(url, json=req_body, headers=headers)
+                if resp.status_code == 200:
+                    body = resp.json()
+                    if body.get("code") == 0:
+                        data = body.get("data") or {}
+                        items = data.get("items") or []
+                        has_graph = any("【知识图谱因果推导】" in (i.get("snippet") or "") for i in items)
+                        return {
+                            "success": True,
+                            "total": len(items),
+                            "items": [
+                                {
+                                    "articleId": i.get("articleId"),
+                                    "versionId": i.get("versionId"),
+                                    "title": i.get("title"),
+                                    "summary": i.get("snippet") or i.get("content") or "",
+                                    "score": i.get("score", 0.0)
+                                }
+                                for i in items
+                            ],
+                            "graph_enhanced": has_graph
+                        }
+        except Exception as e:
+            log.warning("rag_service (8310) 检索异常或超时 (timeout=%ss): %s，将回退至知识搜索接口", acfg.TOOL_TIMEOUT, e)
+
+    # 2. 回退到 consultation-service 的 /api/v1/knowledge/search 接口
+    base = acfg.KNOWLEDGE_SEARCH_BASE_URL
+    if not base:
+        return {"success": False, "error": "知识搜索未配置（KNOWLEDGE_SEARCH_BASE_URL）"}
     params: Dict[str, Any] = {"query": query, "page": 1, "pageSize": acfg.SEARCH_MAX_RESULTS}
     category = str(args.get("categoryId") or "").strip()
     if category:
@@ -187,11 +231,8 @@ def _search_knowledge(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
         return {"success": False, "error": f"知识搜索失败: {e}"}
     data = body.get("data") or {}
     items = data.get("items") or []
-    # 刻意不回传 versionId：Java 侧引用守卫只认预检索 material 里的 versionId，
-    # 补搜结果的 id 一旦被模型写进 usedVersionIds，整次回答会被判伪造作废。
-    # 补搜的价值在内容（完善排查思路），引用一律以 material 为准。
     return {"success": True, "total": data.get("total", len(items)),
-            "items": [{"articleId": i.get("articleId"), "title": i.get("title"),
+            "items": [{"articleId": i.get("articleId"), "versionId": i.get("versionId"), "title": i.get("title"),
                        "summary": i.get("summary")} for i in items]}
 
 
@@ -241,7 +282,7 @@ def _leaf_category_ids(ctx: "ToolContext") -> Optional[set]:
 
 
 def _clean_field_value(value: str) -> str:
-    return value.strip().strip("，,。.;；")
+    return value.strip().strip("，,。.;；:：")
 
 
 def _explicit_ticket_fields(employee_message: str) -> Optional[tuple]:
@@ -309,7 +350,7 @@ def _prepare_ticket(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
 
 
 _HANDLERS = {
-    "search_knowledge": _search_knowledge,
-    "query_my_tickets": _query_my_tickets,
-    "prepare_ticket": _prepare_ticket,
+    "search_knowledge": lambda args, ctx: _search_knowledge(args, ctx),
+    "query_my_tickets": lambda args, ctx: _query_my_tickets(args, ctx),
+    "prepare_ticket": lambda args, ctx: _prepare_ticket(args, ctx),
 }

@@ -6,7 +6,7 @@
   knowledgeConflict/offTopic）——Java 侧 `OpenAiCompatibleAnswerGenerator` 会校验键数；
 - 建单草稿走**带外字段** `ticketDraft`（由 prepare_ticket 工具产出），不混进模型 JSON。
 """
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -63,14 +63,60 @@ class TraceSummary(BaseModel):
     slowest_span_duration_ms: float = Field(default=0.0, alias="slowestSpanDurationMs")
 
 
+class GovernanceStage(BaseModel):
+    """DeepSeek Harness 风格调用链路单阶段指标"""
+    model_config = ConfigDict(populate_by_name=True)
+
+    stage_id: str = Field(alias="stageId")
+    name: str
+    status: str  # SUCCESS | DEGRADED | WARNING
+    duration_ms: float = Field(alias="durationMs")
+    summary: str
+    details: Dict[str, Any] = Field(default_factory=dict)
+
+
+class GovernanceTrace(BaseModel):
+    """Model Router 与成本治理全景调用链路 Trace"""
+    model_config = ConfigDict(populate_by_name=True)
+
+    trace_id: str = Field(alias="traceId")
+    chosen_tier: str = Field(alias="chosenTier")
+    chosen_model: str = Field(alias="chosenModel")
+    routing_reason: str = Field(alias="routingReason")
+    risk_score: float = Field(alias="riskScore")
+    intent: str
+    total_tokens: int = Field(alias="totalTokens")
+    prompt_tokens: int = Field(alias="promptTokens")
+    completion_tokens: int = Field(alias="completionTokens")
+    total_latency_ms: float = Field(alias="totalLatencyMs")
+    actual_cost_rmb: float = Field(alias="actualCostRmb")
+    saved_vs_premium_rmb: float = Field(alias="savedVsPremiumRmb")
+    savings_rate_percent: float = Field(alias="savingsRatePercent")
+    is_degraded: bool = Field(default=False, alias="isDegraded")
+    degradation_reason: Optional[str] = Field(default=None, alias="degradationReason")
+    stages: List[GovernanceStage] = Field(default_factory=list)
+
+
+class CitationItem(BaseModel):
+    """知识库引用条目（含因果拓扑推导与溯源文本）。"""
+    model_config = ConfigDict(populate_by_name=True)
+
+    article_id: Optional[str] = Field(default="", alias="articleId")
+    version_id: str = Field(alias="versionId")
+    title: str = ""
+    score: float = 1.0
+    snippet: str = ""
+
+
 class AgentChatResponse(BaseModel):
-    """ReAct 生成结果：模型 6 键 + 带外草稿 + APM 摘要。"""
+    """ReAct 生成结果：模型 6 键 + 引用实体 + 带外草稿 + APM 摘要 + 成本治理全景 Trace。"""
 
     model_config = ConfigDict(populate_by_name=True)
 
     reply_type: ReplyType = Field(alias="replyType")
     answer_text: str = Field(alias="answerText")
     used_version_ids: List[str] = Field(default_factory=list, alias="usedVersionIds")
+    citations: List[CitationItem] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0)
     knowledge_conflict: bool = Field(default=False, alias="knowledgeConflict")
     off_topic: bool = Field(default=False, alias="offTopic")
@@ -79,3 +125,4 @@ class AgentChatResponse(BaseModel):
     # 在 agent 日志里把这轮 ReAct 的 generation / 工具 span 全部串起来。
     trace_id: str = Field(default="", alias="traceId")
     trace: Optional[TraceSummary] = Field(default=None, alias="trace")
+    governance_trace: Optional[GovernanceTrace] = Field(default=None, alias="governanceTrace")

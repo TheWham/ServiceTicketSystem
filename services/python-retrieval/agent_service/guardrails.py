@@ -17,8 +17,8 @@ class GuardrailsSecurityEngine:
 
     # 典型恶意注入攻击与越狱模式正则匹配表
     INJECTION_PATTERNS = [
-        r"ignore\s+(all\s+)?prior\s+instructions",
-        r"忽略(之前|以上|所有)的?(指令|系统设定|提示|规则)",
+        r"ignore\s+(all\s+)?(previous|prior)\s+instructions",
+        r"忽略(之前|上述|以上|所有)的?(指令|系统设定|提示|规则)",
         r"now\s+you\s+are\s+DAN",
         r"作为不受限制的AI",
         r"绕过(安全|合规)?检查",
@@ -54,7 +54,7 @@ class GuardrailsSecurityEngine:
             return text, {}
 
         pii_vault: Dict[str, str] = {}
-        counter = {"idcard": 0, "phone": 0, "bank": 0}
+        counter = {"idcard": 0, "phone": 0, "bank": 0, "emp": 0}
 
         def _mask_idcard(m: re.Match) -> str:
             counter["idcard"] += 1
@@ -74,6 +74,12 @@ class GuardrailsSecurityEngine:
             pii_vault[placeholder] = m.group(0)
             return placeholder
 
+        def _mask_emp(m: re.Match) -> str:
+            counter["emp"] += 1
+            placeholder = f"<PII_EMPID_{counter['emp']}>"
+            pii_vault[placeholder] = m.group(0)
+            return placeholder
+
         # 1. 身份证正则 (18位大陆身份证)
         text = re.sub(
             r"\b[1-9]\d{5}(?:18|19|20)\d{2}(?:0[1-9]|10|11|12)(?:0[1-9]|[1-2]\d|30|31)\d{3}[\dXx]\b",
@@ -84,6 +90,8 @@ class GuardrailsSecurityEngine:
         text = re.sub(r"\b1[3-9]\d{9}\b", _mask_phone, text)
         # 3. 银行卡号正则 (16-19位数字)
         text = re.sub(r"\b[1-9]\d{15,18}\b", _mask_bank, text)
+        # 4. 企业员工工号正则 (如 E10023, U_ADMIN01)
+        text = re.sub(r"(?<![a-zA-Z0-9])(U_[A-Z0-9]+|E\d{4,6})(?![a-zA-Z0-9])", _mask_emp, text)
 
         return text, pii_vault
 

@@ -161,7 +161,10 @@ def main(args=None):
     kg.load_from_triples(triples, batch_size=100)
 
     # 4.5 自动执行精细化纯中文语义标签注入 (:知识卡片 / :核心根因 / :故障症状 / :业务系统 / :处置动作 / :运维团队)
-    from enrich_neo4j_labels import enrich_labels
+    try:
+        from tools.enrich_neo4j_labels import enrich_labels
+    except ImportError:
+        from enrich_neo4j_labels import enrich_labels
     enrich_labels(uri=kg.uri, user=kg.user, password=kg.password)
 
     elapsed = time.time() - start_time

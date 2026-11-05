@@ -26,7 +26,9 @@ public record AiChatResponse(
         String modelVersion,
         String interactionId,
         /** 建单草稿(人机回环):AI 只产草稿,员工确认后才建单;非建单场景省略。 */
-        @JsonInclude(JsonInclude.Include.NON_NULL) TicketDraftDto ticketDraft) {
+        @JsonInclude(JsonInclude.Include.NON_NULL) TicketDraftDto ticketDraft,
+        /** 成本治理与模型路由全景调用链路 Trace (DeepSeek Harness 规范)。 */
+        @JsonInclude(JsonInclude.Include.NON_NULL) GovernanceTraceDto governanceTrace) {
 
     /**
      * AI-004.3 把 citations 与 confidence 列为 required(REFUSE 分支同样必须出现),
@@ -37,12 +39,21 @@ public record AiChatResponse(
         confidence = confidence == null ? BigDecimal.ZERO.setScale(4) : confidence;
     }
 
-    /** 向后兼容构造(无建单草稿)。 */
+    /** 兼容构造(无治理 Trace)。 */
+    public AiChatResponse(String sessionId, AiReplyType replyType, String answerText,
+                          List<KnowledgeCitationDto> citations, BigDecimal confidence,
+                          boolean suggestTransfer, AiRefusalReason refusalReason,
+                          String modelVersion, String interactionId, TicketDraftDto ticketDraft) {
+        this(sessionId, replyType, answerText, citations, confidence, suggestTransfer,
+                refusalReason, modelVersion, interactionId, ticketDraft, null);
+    }
+
+    /** 向后兼容构造(无建单草稿与 Trace)。 */
     public AiChatResponse(String sessionId, AiReplyType replyType, String answerText,
                           List<KnowledgeCitationDto> citations, BigDecimal confidence,
                           boolean suggestTransfer, AiRefusalReason refusalReason,
                           String modelVersion, String interactionId) {
         this(sessionId, replyType, answerText, citations, confidence, suggestTransfer,
-                refusalReason, modelVersion, interactionId, null);
+                refusalReason, modelVersion, interactionId, null, null);
     }
 }

@@ -660,6 +660,43 @@ def publish_index_node(state: KnowledgeFlowState) -> Dict[str, Any]:
     except Exception as e:
         logs.append(f"【Node 5 入库发布】Docstore 写入完成（{e}）")
 
+    # 4.1 写入本地持久化 Chroma 向量库，保证新沉淀知识在下一次提问中即刻被向量检索召回
+    try:
+        repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        chroma_db_path = os.path.join(repo_dir, "artifacts", "indexing", "chroma_wiki_structured", "chroma.sqlite3")
+        if os.path.exists(chroma_db_path):
+            import sqlite3
+            import struct
+            from rag_pipeline.embedding import KspEmbeddingProvider
+            embedder = KspEmbeddingProvider()
+            doc_text = f"【标题】{title}\n【排障指南】\n{body}"
+            vec = embedder.embed_query(doc_text)
+            packed_vec = struct.pack(f"<{len(vec)}f", *vec)
+            meta_dict = {
+                "title": title,
+                "wiki_title": title,
+                "version_id": version_id,
+                "wiki_version": "v1.0",
+                "category_id": category_id,
+                "wiki_category": category_id,
+                "chroma:document": doc_text,
+                "wiki_summary": state.get("summary") or title,
+                "parent_id": f"doc_{candidate_id}"
+            }
+            with sqlite3.connect(chroma_db_path) as c_conn:
+                c_cur = c_conn.cursor()
+                max_seq = c_cur.execute("SELECT MAX(seq_id) FROM embeddings_queue").fetchone()[0] or 0
+                topic_row = c_cur.execute("SELECT topic FROM embeddings_queue LIMIT 1").fetchone()
+                topic = topic_row[0] if topic_row else "persistent://default/default/chroma_wiki_structured"
+                c_cur.execute(
+                    "INSERT INTO embeddings_queue (seq_id, operation, topic, id, vector, encoding, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (max_seq + 1, 2, topic, str(uuid.uuid4()), packed_vec, "FLOAT32", json.dumps(meta_dict, ensure_ascii=False))
+                )
+                c_conn.commit()
+            logs.append(f"【Node 5 入库发布】已同步持久化切片至本地 Chroma 向量库（新索引项 seq_id={max_seq + 1}）")
+    except Exception as e:
+        logs.append(f"【Node 5 入库发布】同步写入 Chroma 向量库跳过（{e}）")
+
     # 5. 双写同步至企业 MySQL 关系型数据库，实现与前端「知识管理」台账联动
     published_article_id: Optional[str] = None
     try:

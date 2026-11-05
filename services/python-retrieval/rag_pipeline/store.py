@@ -43,7 +43,12 @@ class SimpleVectorStore:
     def from_chroma_sqlite(cls, persist_directory: str, embedding_provider: KspEmbeddingProvider) -> Optional["SimpleVectorStore"]:
         db_file = Path(persist_directory) / "chroma.sqlite3"
         if not db_file.exists():
-            return None
+            # 容错：尝试在 services/python-retrieval 目录下匹配相对路径
+            candidate = Path(__file__).resolve().parent.parent / persist_directory / "chroma.sqlite3"
+            if candidate.exists():
+                db_file = candidate
+            else:
+                return None
         try:
             conn = sqlite3.connect(str(db_file))
             cur = conn.cursor()
@@ -63,6 +68,13 @@ class SimpleVectorStore:
             return cls(documents=docs, embeddings=vecs, embedding_provider=embedding_provider)
         except Exception:
             return None
+
+    def add_documents(self, documents: List[Document]) -> None:
+        """动态添加切片到向量库。"""
+        new_vecs = self.embedding_provider.embed_documents([d.page_content for d in documents])
+        self.documents.extend(documents)
+        self.embeddings.extend(new_vecs)
+        self._fallback_doc_embeddings = None
 
     @staticmethod
     def _cosine(a: List[float], b: List[float]) -> float:

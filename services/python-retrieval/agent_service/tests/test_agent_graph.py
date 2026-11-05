@@ -49,7 +49,7 @@ def test_react_graph_direct_answer():
         usage=ModelUsage(tokens_in=50, tokens_out=30, total_tokens=80, reported=True)
     )
     mock_model = MockModelClient([mock_turn])
-    runner = AgentRunner(model_client=mock_model, max_steps=3)
+    runner = AgentRunner(model_client=mock_model, max_steps=3, mode="react")
 
     req = AgentChatRequest(
         question="电脑连不上网怎么办？",
@@ -100,7 +100,7 @@ def test_react_graph_with_tool_calling(monkeypatch):
     )
 
     mock_model = MockModelClient([turn_1, turn_2])
-    runner = AgentRunner(model_client=mock_model, max_steps=5)
+    runner = AgentRunner(model_client=mock_model, max_steps=5, mode="react")
 
     req = AgentChatRequest(
         question="VPN连不上了，帮我查一下知识库",
@@ -127,7 +127,7 @@ def test_react_graph_step_limit_exceeded():
     )
     # 模拟两轮都返回工具调用，设置 max_steps=2
     mock_model = MockModelClient([infinite_tool_turn, infinite_tool_turn, infinite_tool_turn])
-    runner = AgentRunner(model_client=mock_model, max_steps=2)
+    runner = AgentRunner(model_client=mock_model, max_steps=2, mode="react")
 
     req = AgentChatRequest(
         question="测试死循环",
@@ -162,7 +162,7 @@ def test_fastapi_app_integration():
         usage=ModelUsage(10, 10, 20, True)
     )
     mock_model = MockModelClient([mock_turn])
-    runner = AgentRunner(model_client=mock_model, max_steps=3)
+    runner = AgentRunner(model_client=mock_model, max_steps=3, mode="react")
     app = create_app(runner=runner)
 
     client = TestClient(app)

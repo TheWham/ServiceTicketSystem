@@ -24,6 +24,49 @@ public final class DependencyHttpClient {
         return exchange(request, context, maximumMillis);
     }
 
+    public record SseFrame(String event, String data) {}
+
+    /** 流式 POST 请求，消费下游 Server-Sent Events (SSE) 事件。 */
+    public void postStream(URI uri, JsonNode body, Map<String, String> headers,
+                           RagCallContext context, long maximumMillis,
+                           java.util.function.Consumer<SseFrame> onFrame) {
+        HttpRequest request = requestBuilder(uri, headers, context, maximumMillis)
+                .header("Accept", "text/event-stream")
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8)).build();
+        try {
+            HttpResponse<java.io.InputStream> response = http.send(request,
+                    HttpResponse.BodyHandlers.ofInputStream());
+            int status = response.statusCode();
+            if (status != 200) {
+                throw new DependencyFailure(RagStatus.UNAVAILABLE, "HTTP_" + status, false);
+            }
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+                String line;
+                String currentEvent = null;
+                StringBuilder currentData = new StringBuilder();
+                while ((line = reader.readLine()) != null) {
+                    if (line.startsWith("event:")) {
+                        currentEvent = line.substring("event:".length()).trim();
+                    } else if (line.startsWith("data:")) {
+                        if (currentData.length() > 0) currentData.append("\n");
+                        currentData.append(line.substring("data:".length()).trim());
+                    } else if (line.isEmpty()) {
+                        if (currentEvent != null && currentData.length() > 0) {
+                            onFrame.accept(new SseFrame(currentEvent, currentData.toString()));
+                        }
+                        currentEvent = null;
+                        currentData.setLength(0);
+                    }
+                }
+            }
+        } catch (DependencyFailure df) {
+            throw df;
+        } catch (Exception e) {
+            throw new DependencyFailure(RagStatus.UNAVAILABLE, "STREAM_FAILED", true, e.getMessage());
+        }
+    }
+
     /** 只读 GET(查工单等内部只读接口)。响应格式与错误语义同 {@link #post}。 */
     public JsonNode get(URI uri, Map<String, String> headers,
                         RagCallContext context, long maximumMillis) {

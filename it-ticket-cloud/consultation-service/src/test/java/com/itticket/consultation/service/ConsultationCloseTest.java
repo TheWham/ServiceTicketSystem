@@ -135,7 +135,7 @@ class ConsultationCloseTest {
         ConsultationMessageService messages = mock(ConsultationMessageService.class);
         AiConsultationService service = new AiConsultationService(transitions, messages,
                 mock(KnowledgeQueryService.class), mock(GuardedRagClient.class), mock(AiInteractionMapper.class),
-                authz, idempotency, properties);
+                authz, idempotency, properties, null);
 
         ApiException error = assertThrows(ApiException.class, () -> service.chat(employee, "S1",
                 new AiChatRequest("打印机离线", null), "ai-1"));

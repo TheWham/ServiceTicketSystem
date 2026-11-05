@@ -117,13 +117,63 @@
 
               <!-- 普通气泡 -->
               <div v-else class="msg-bubble" :class="bubbleClass(msg)">
-                <div v-if="msg.content" class="msg-text">{{ msg.content }}</div>
+                <!-- 思考过程卡片 (参考 Claude / Codex / DeepSeek R1 交互标准) -->
+                <div v-if="msg.senderType === 'AI' && ((msg.thoughtStages && msg.thoughtStages.length) || msg.reasoningContent || msg.isThinking)" class="thought-container">
+                  <div class="thought-header" role="button" tabindex="0" @click="toggleThought(msg)" @keydown.enter="toggleThought(msg)">
+                    <span class="thought-status">
+                      <el-icon v-if="msg.isThinking" class="is-loading"><Loading /></el-icon>
+                      <el-icon v-else class="thought-done-icon"><Check /></el-icon>
+                      <span class="thought-title">{{ msg.isThinking ? '思考中…' : `已深度思考 (${msg.thinkingDuration || 1}s)` }}</span>
+                    </span>
+                    <span class="thought-toggle">
+                      <span>{{ msg.thoughtCollapsed ? '展开思考过程' : '收起' }}</span>
+                      <el-icon :class="{ 'is-rotated': !msg.thoughtCollapsed }"><ArrowDown /></el-icon>
+                    </span>
+                  </div>
+
+                  <div v-show="!msg.thoughtCollapsed" class="thought-content">
+                    <!-- 编排时序节点 -->
+                    <div v-if="msg.thoughtStages && msg.thoughtStages.length" class="thought-stages">
+                      <div v-for="(st, idx) in msg.thoughtStages" :key="idx" class="thought-stage-item">
+                        <span class="stage-dot"></span>
+                        <span class="stage-text">{{ st }}</span>
+                      </div>
+                    </div>
+                    <!-- 模型思维链流式内容 (Reasoning Content) -->
+                    <div v-if="msg.reasoningContent" class="thought-reasoning">
+                      <pre class="reasoning-text">{{ msg.reasoningContent }}</pre>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="msg.content || msg.isStreaming" class="msg-text" :class="{ 'markdown-body': msg.senderType === 'AI' || msg.senderType === 'ENGINEER' }">
+                  <div v-if="msg.senderType === 'AI' || msg.senderType === 'ENGINEER'" class="markdown-content" v-html="renderMarkdown(msg.content)"></div>
+                  <template v-else>{{ msg.content }}</template>
+                  <span v-if="msg.isStreaming" class="stream-cursor">▌</span>
+                </div>
                 <ChatMessageAttachments v-if="msg.attachments?.length" :session-id="session.sessionId" :attachments="msg.attachments" />
 
                 <!-- 通用能力回答标识(冷启动放宽策略:无知识库依据) -->
                 <div v-if="msg.generalAnswer" class="general-answer-note">
                   <el-icon><MagicStick /></el-icon>
                   这条回答基于 AI 通用知识，暂无知识库依据。
+                </div>
+
+                <!-- Model Router 动态选模与成本治理调用链路胶囊 (DeepSeek Harness) -->
+                <div v-if="hasGovTrace(msg)" class="governance-trace-badge-bar">
+                  <div class="governance-pill" role="button" tabindex="0"
+                       :title="'点击展开 ' + (getGovTrace(msg).chosenModel || '大模型') + ' 动态选模决策与调用链路'"
+                       @click="showGovTrace(msg)" @keydown.enter="showGovTrace(msg)">
+                    <span class="gov-pill-icon"><el-icon><Cpu /></el-icon></span>
+                    <span class="gov-pill-tier" :class="'tier-' + getGovTrace(msg).chosenTier.toLowerCase()">{{ getGovTrace(msg).chosenTier }}</span>
+                    <span class="gov-pill-model">{{ getGovTrace(msg).chosenModel }}</span>
+                    <span class="gov-pill-tokens">{{ getGovTrace(msg).totalTokens }}T</span>
+                    <span class="gov-pill-cost">{{ formatCostRmb(getGovTrace(msg).actualCostRmb) }}</span>
+                    <span v-if="getGovTrace(msg).savingsRatePercent > 0" class="gov-pill-savings">
+                      省{{ getGovTrace(msg).savingsRatePercent.toFixed(0) }}%
+                    </span>
+                    <span class="gov-pill-link">调用链路 <el-icon><ArrowRight /></el-icon></span>
+                  </div>
                 </div>
 
                 <!-- 知识图谱思维链路高光角标（当命中 GraphRAG 多跳因果推导时激活） -->
@@ -299,6 +349,12 @@
       v-model="graphDrawerVisible"
       :reasoning="activeGraphReasoning"
     />
+
+    <!-- Model Router 成本治理与决策链路详情抽屉 -->
+    <TraceGovernanceDrawer
+      v-model="govDrawerVisible"
+      :trace="activeGovTrace"
+    />
   </div>
 </template>
 
@@ -312,13 +368,17 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ChatDotRound, Service, Close, Promotion, Tickets,
   Document, WarningFilled, CircleCheck, RefreshLeft, MagicStick,
-  Monitor, Connection, Message, Printer, ArrowRight, Edit
+  Monitor, Connection, Message, Printer, ArrowRight, Edit, Loading, Check, ArrowDown
 } from '@element-plus/icons-vue'
 import {
   consultationApi, REFUSAL_REASON, TERMINAL_STATUS, TICKET_ENTRY_MESSAGE, CONSULTATION_STATUS
 } from '../api/consultation.js'
 import { saveAiTicketDraft } from '../utils/aiTicketDraft.js'
+import { renderMarkdown } from '../utils/markdown.js'
 import GraphReasoningDrawer from './GraphReasoningDrawer.vue'
+import TraceGovernanceDrawer from './TraceGovernanceDrawer.vue'
+import { hasGovernanceTrace, parseGovernanceTrace, formatCostRmb } from '../utils/governanceTrace.js'
+import { Cpu } from '@element-plus/icons-vue'
 import { hasGraphReasoning, parseGraphReasoning } from '../utils/graphReasoning.js'
 
 /**
@@ -344,6 +404,28 @@ const categories = [
 const session = ref(null)
 const graphDrawerVisible = ref(false)
 const activeGraphReasoning = ref(null)
+const govDrawerVisible = ref(false)
+const activeGovTrace = ref(null)
+
+function hasGovTrace(msg) {
+  return hasGovernanceTrace(msg)
+}
+
+function getGovTrace(msg) {
+  return parseGovernanceTrace(msg)
+}
+
+function showGovTrace(msg) {
+  const trace = parseGovernanceTrace(msg)
+  if (trace) {
+    activeGovTrace.value = trace
+    govDrawerVisible.value = true
+  }
+}
+
+function toggleThought(msg) {
+  msg.thoughtCollapsed = !msg.thoughtCollapsed
+}
 
 function hasGraph(msg) {
   return hasGraphReasoning(msg)
@@ -534,6 +616,16 @@ async function reload() {
 
 /** 把服务端消息投影转成本地渲染结构。拒答消息由 AI 侧的固定话术标识。 */
 function toLocalMessage(item) {
+  const govTrace = item.governance_trace || item.governanceTrace || null
+  const stages = []
+  if (govTrace && Array.isArray(govTrace.stages)) {
+    govTrace.stages.forEach(s => {
+      const name = s.name || s.stageId || ''
+      const summary = s.summary || s.status || ''
+      stages.push(name ? `${name}：${summary}` : summary)
+    })
+  }
+
   return {
     id: item.message_id,
     serverId: item.message_id,
@@ -547,6 +639,12 @@ function toLocalMessage(item) {
     generalAnswer: item.general_answer === true,
     // AI 建单草稿随消息落库，所以**刷新后草稿卡还在**（服务端元数据里的 ticketDraft）
     ticketDraft: item.ticket_draft || null,
+    governanceTrace: govTrace,
+    thoughtStages: item.metadata?.thought_stages || item.thoughtStages || stages,
+    reasoningContent: item.metadata?.reasoning_content || item.reasoningContent || '',
+    thoughtCollapsed: true,
+    isThinking: false,
+    isStreaming: false,
     feedback: null,
     local: false,
     sentAt: item.sent_at,
@@ -564,15 +662,17 @@ function upsertServerMessage(item) {
 }
 
 function pushLocal(senderType, content, extra = {}) {
-  messages.value.push({
+  const msg = {
     id: `local-${++localSeq}`,
     senderType,
     content,
     ...(senderType === 'AI' ? { feedback: null } : {}),
     sentAt: new Date().toISOString(),
     ...extra
-  })
+  }
+  messages.value.push(msg)
   scrollToBottom(senderType === 'EMPLOYEE')
+  return messages.value[messages.value.length - 1]
 }
 
 const GREETING_TEXT = '你好，我是 IT 智能助手小 T 👋 我可以帮你解决 VPN 连不上、邮箱收不到邮件、打印机故障、账号权限等常见 IT 问题。请描述你遇到的情况，我会先尝试帮你解决；如果解决不了，可以随时转接人工客服。'
@@ -628,35 +728,127 @@ async function send(event) {
 
   if (isAiHandling.value) {
     pushLocal('EMPLOYEE', text)
-    aiThinking.value = true
-    try {
-      const res = await consultationApi.aiMessage(sessionId, text)
-      if (!stillActive() || !isAiHandling.value) return
-      if (res.replyType === 'REFUSE') {
-        pushLocal('AI', '', { refusalReason: res.refusalReason, interactionId: res.interactionId })
-      } else {
-        const hasCitations = (res.citations || []).length > 0
-        pushLocal('AI', res.answerText, {
-          citations: res.citations || [],
-          interactionId: res.interactionId,
-          suggestTransfer: res.suggestTransfer,
-          replyType: res.replyType,
-          generalAnswer: res.replyType === 'ANSWER' && !hasCitations,
-          // AI 只产草稿不落库；由员工点「确认建单」才真正创建（人机回环）
-          ticketDraft: res.ticketDraft || null
-        })
-        if (res.replyType === 'ANSWER' && !hasCitations) {
-          pushLocal('SYSTEM', '这条回答暂无知识库依据，仅供排查参考。你可以继续补充问题、反馈是否解决，或转人工处理。')
-        } else if (res.suggestTransfer) {
-          pushLocal('SYSTEM', '这个回答的把握不高，如果没解决问题建议转人工。')
-        }
+    aiThinking.value = false
+    let thinkingTimer = null
+    const startTime = Date.now()
+
+    let aiMsg = pushLocal('AI', '', {
+      isStreaming: true,
+      isThinking: true,
+      thoughtStages: ['正在规划排障链路与模型资源…'],
+      reasoningContent: '',
+      thoughtCollapsed: false,
+      thinkingDuration: 1,
+      citations: [],
+      governanceTrace: null
+    })
+
+    thinkingTimer = setInterval(() => {
+      if (aiMsg && aiMsg.isThinking) {
+        aiMsg.thinkingDuration = Math.max(1, Math.floor((Date.now() - startTime) / 1000))
       }
+    }, 500)
+    try {
+      await consultationApi.aiMessageStream(sessionId, text, {
+        onStage: (stageData) => {
+          if (!stillActive() || !isAiHandling.value || !aiMsg) return
+          let desc = ''
+          if (stageData.stage === 'ROUTED') {
+            desc = `模型路由：已匹配 ${stageData.tier || '标准'} 档位 (${stageData.model || ''})`
+          } else if (stageData.message) {
+            desc = stageData.message
+          } else if (stageData.reason) {
+            desc = stageData.reason
+          }
+          if (desc && !aiMsg.thoughtStages.includes(desc)) {
+            aiMsg.thoughtStages.push(desc)
+            scrollToBottom()
+          }
+        },
+        onReasoning: (reasoningChunk) => {
+          if (!stillActive() || !isAiHandling.value || !aiMsg) return
+          aiMsg.reasoningContent += reasoningChunk
+          scrollToBottom()
+        },
+        onDelta: (delta) => {
+          if (!stillActive() || !isAiHandling.value || !aiMsg) return
+          if (aiMsg.isThinking) {
+            aiMsg.isThinking = false
+            aiMsg.thoughtCollapsed = true
+            if (thinkingTimer) {
+              clearInterval(thinkingTimer)
+              thinkingTimer = null
+            }
+          }
+          aiMsg.content += delta
+          scrollToBottom()
+        },
+        onCitation: (citations) => {
+          if (aiMsg) {
+            aiMsg.citations = citations || []
+          }
+        },
+        onCompleted: (res) => {
+          if (thinkingTimer) {
+            clearInterval(thinkingTimer)
+            thinkingTimer = null
+          }
+          if (!stillActive() || !isAiHandling.value || !aiMsg) return
+          aiMsg.isThinking = false
+          aiMsg.isStreaming = false
+          const hasCitations = (res.citations || []).length > 0
+          if (res.replyType === 'REFUSE') {
+            aiMsg.content = ''
+            aiMsg.refusalReason = res.refusalReason
+            aiMsg.governanceTrace = res.governanceTrace || null
+          } else {
+            aiMsg.content = res.answer || res.answerText || aiMsg.content
+            aiMsg.citations = res.citations || []
+            aiMsg.interactionId = res.interactionId
+            aiMsg.suggestTransfer = res.suggestTransfer
+            aiMsg.replyType = res.replyType
+            aiMsg.generalAnswer = res.replyType === 'ANSWER' && !hasCitations
+            aiMsg.ticketDraft = res.ticketDraft || null
+            aiMsg.governanceTrace = res.governanceTrace || null
+          }
+          if (res.replyType === 'ANSWER' && !hasCitations) {
+            pushLocal('SYSTEM', '这条回答暂无知识库依据，仅供排查参考。你可以继续补充问题、反馈是否解决，或转人工处理。')
+          } else if (res.suggestTransfer) {
+            pushLocal('SYSTEM', '这个回答的把握不高，如果没解决问题建议转人工。')
+          }
+          scrollToBottom()
+        },
+        onError: (e) => {
+          if (thinkingTimer) {
+            clearInterval(thinkingTimer)
+            thinkingTimer = null
+          }
+          if (!stillActive()) return
+          if (aiMsg) {
+            aiMsg.isThinking = false
+            aiMsg.isStreaming = false
+          }
+          draft.value = text
+          pushLocal('SYSTEM', `AI 暂时不可用（${e.message}）。你可以转人工或直接提交工单。`)
+        }
+      })
     } catch (e) {
+      if (thinkingTimer) {
+        clearInterval(thinkingTimer)
+        thinkingTimer = null
+      }
       if (!stillActive()) return
-      // AI 故障不阻塞主链路:提示并保留转人工/提单入口(RD-013)
       draft.value = text
       pushLocal('SYSTEM', `AI 暂时不可用（${e.message}）。你可以转人工或直接提交工单。`)
     } finally {
+      if (thinkingTimer) {
+        clearInterval(thinkingTimer)
+        thinkingTimer = null
+      }
+      if (aiMsg) {
+        aiMsg.isThinking = false
+        aiMsg.isStreaming = false
+      }
       if (revision === sessionRevision) aiThinking.value = false
     }
     return
@@ -1336,5 +1528,288 @@ onUnmounted(stopPolling)
 @media (prefers-reduced-motion: reduce) {
   .dot { animation: none; opacity: .7; }
   .suggestion-card { transition: none; }
+}
+
+/* 思考过程卡片 (参考 Claude / Codex / DeepSeek R1 交互标准) */
+.thought-container {
+  margin-bottom: 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  font-size: 13px;
+  transition: all 0.2s ease;
+}
+
+.thought-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #f1f5f9;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  color: #475569;
+  transition: background 0.15s ease;
+}
+.thought-header:hover {
+  background: #e2e8f0;
+}
+
+.thought-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.thought-status .is-loading {
+  color: var(--el-color-primary);
+  animation: rotating 1.5s linear infinite;
+}
+
+.thought-status .thought-done-icon {
+  color: #10b981;
+}
+
+.thought-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.thought-toggle .el-icon {
+  transition: transform 0.2s ease;
+}
+.thought-toggle .el-icon.is-rotated {
+  transform: rotate(180deg);
+}
+
+.thought-content {
+  padding: 10px 12px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.thought-stages {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.thought-stage-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.thought-stage-item .stage-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3b82f6;
+  flex-shrink: 0;
+}
+
+.thought-reasoning {
+  max-height: 180px;
+  overflow-y: auto;
+  background: #0f172a;
+  color: #94a3b8;
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin-top: 6px;
+}
+
+.reasoning-text {
+  margin: 0;
+  font-family: 'JetBrains Mono', Consolas, Monaco, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Markdown 排版样式 (适配 v-html 深度作用域，间隙紧凑优雅) */
+.markdown-body {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: inherit;
+  word-break: break-word;
+}
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4) {
+  margin-top: 10px;
+  margin-bottom: 4px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--el-text-color-primary);
+}
+.markdown-body :deep(h1:first-child),
+.markdown-body :deep(h2:first-child),
+.markdown-body :deep(h3:first-child),
+.markdown-body :deep(h4:first-child) {
+  margin-top: 0;
+}
+.markdown-body :deep(h1) { font-size: 16px; border-bottom: 1px solid var(--el-border-color-lighter); padding-bottom: 2px; }
+.markdown-body :deep(h2) { font-size: 15px; border-bottom: 1px solid var(--el-border-color-lighter); padding-bottom: 2px; }
+.markdown-body :deep(h3) { font-size: 14px; }
+.markdown-body :deep(h4) { font-size: 13.5px; }
+
+.markdown-body :deep(p) {
+  margin-top: 0;
+  margin-bottom: 5px;
+  line-height: 1.55;
+}
+.markdown-body :deep(p:last-child) {
+  margin-bottom: 0;
+}
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  padding-left: 18px;
+  margin-top: 2px;
+  margin-bottom: 5px;
+}
+.markdown-body :deep(li) {
+  margin-bottom: 2px;
+  line-height: 1.55;
+}
+.markdown-body :deep(code) {
+  font-family: monospace;
+  font-size: 12px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--el-fill-color-light);
+  color: var(--el-color-danger);
+}
+.markdown-body :deep(pre) {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #1e293b;
+  color: #e2e8f0;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 6px 0;
+}
+.markdown-body :deep(pre code) {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
+.markdown-body :deep(blockquote) {
+  margin: 4px 0;
+  padding: 4px 10px;
+  border-left: 3px solid var(--el-color-primary);
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-secondary);
+}
+.markdown-body :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--el-border-color-lighter);
+  margin: 6px 0;
+}
+.stream-cursor {
+  display: inline-block;
+  color: var(--el-color-primary);
+  font-weight: bold;
+  animation: cursor-blink 1s step-start infinite;
+  margin-left: 2px;
+}
+@keyframes cursor-blink {
+  50% { opacity: 0; }
+}
+
+/* Model Router 治理调用链路胶囊 */
+.governance-trace-badge-bar {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+.governance-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, rgba(8, 117, 140, 0.08) 0%, rgba(36, 93, 206, 0.12) 100%);
+  border: 1px solid rgba(8, 117, 140, 0.35);
+  padding: 4px 10px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(8, 117, 140, 0.08);
+}
+.governance-pill:hover {
+  background: linear-gradient(135deg, rgba(8, 117, 140, 0.16) 0%, rgba(36, 93, 206, 0.22) 100%);
+  border-color: rgba(8, 117, 140, 0.6);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(8, 117, 140, 0.18);
+}
+.gov-pill-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #08758C;
+  color: #fff;
+  font-size: 11px;
+}
+.gov-pill-tier {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+.gov-pill-tier.tier-lite {
+  background: #E6F4EA;
+  color: #137333;
+  border: 1px solid rgba(19, 115, 51, 0.25);
+}
+.gov-pill-tier.tier-standard {
+  background: #FEF7E0;
+  color: #B06000;
+  border: 1px solid rgba(176, 96, 0, 0.25);
+}
+.gov-pill-tier.tier-premium {
+  background: #FCE8E6;
+  color: #C5221F;
+  border: 1px solid rgba(197, 34, 31, 0.25);
+}
+.gov-pill-model {
+  font-size: 11px;
+  font-weight: 600;
+  color: #1E293B;
+  font-family: monospace;
+}
+.gov-pill-tokens, .gov-pill-cost {
+  font-size: 11px;
+  color: #64748B;
+  font-family: monospace;
+}
+.gov-pill-savings {
+  font-size: 10px;
+  font-weight: 700;
+  color: #059669;
+  background: #ECFDF5;
+  border: 1px solid rgba(5, 150, 105, 0.25);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.gov-pill-link {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #08758C;
+  margin-left: 2px;
 }
 </style>

@@ -22,7 +22,7 @@ import java.util.List;
  */
 @JsonInclude(JsonInclude.Include.ALWAYS)
 @JsonPropertyOrder({"message_id", "sender_type", "content", "attachments", "citations",
-        "interaction_id", "reply_type", "refusal_reason", "general_answer", "ticket_draft",
+        "interaction_id", "reply_type", "refusal_reason", "general_answer", "ticket_draft", "governance_trace",
         "sent_at", "withdrawn_at"})
 public record MessageProjection(
         @JsonProperty("message_id") String messageId,
@@ -41,6 +41,7 @@ public record MessageProjection(
          * 于是**刷新页面卡片就没了** —— 员工看到"AI 已拟好草稿"的正文却无从点起。
          */
         @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("ticket_draft") TicketDraftDto ticketDraft,
+        @JsonInclude(JsonInclude.Include.NON_NULL) @JsonProperty("governance_trace") GovernanceTraceDto governanceTrace,
         @JsonProperty("sent_at") String sentAt,
         @JsonProperty("withdrawn_at") String withdrawnAt) {
 
@@ -64,15 +65,17 @@ public record MessageProjection(
                 metadata.refusalReason(),
                 metadata.generalAnswer(),
                 metadata.ticketDraft(),
+                metadata.governanceTrace(),
                 Times.iso(message.getSentAt()),
                 Times.iso(message.getWithdrawnAt()));
     }
 
     private record Metadata(List<KnowledgeCitationDto> citations, String interactionId,
                             String replyType, String refusalReason, Boolean generalAnswer,
-                            List<AttachmentProjection> attachments, TicketDraftDto ticketDraft) {
+                            List<AttachmentProjection> attachments, TicketDraftDto ticketDraft,
+                            GovernanceTraceDto governanceTrace) {
         private static final Metadata EMPTY =
-                new Metadata(null, null, null, null, null, List.of(), null);
+                new Metadata(null, null, null, null, null, List.of(), null, null);
     }
 
     private static Metadata parseMetadata(String citationJson) {
@@ -82,14 +85,15 @@ public record MessageProjection(
         try {
             JsonNode root = Json.read(citationJson, JsonNode.class);
             if (root.isArray()) {
-                return new Metadata(readCitations(root), null, null, null, null, List.of(), null);
+                return new Metadata(readCitations(root), null, null, null, null, List.of(), null, null);
             }
             if (!root.isObject() || root.path("schemaVersion").asInt() != 1) return Metadata.EMPTY;
             return new Metadata(readCitations(root.path("citations")),
                     text(root, "interactionId"), text(root, "replyType"), text(root, "refusalReason"),
                     root.path("generalAnswer").isBoolean() ? root.path("generalAnswer").asBoolean() : null,
                     readAttachments(root.path("attachments")),
-                    readTicketDraft(root.path("ticketDraft")));
+                    readTicketDraft(root.path("ticketDraft")),
+                    readGovernanceTrace(root.path("governanceTrace")));
         } catch (RuntimeException e) {
             // 旧数据或元数据损坏不影响正文展示，也不猜测引用、交互 ID 或草稿。
             return Metadata.EMPTY;
@@ -124,5 +128,13 @@ public record MessageProjection(
 
     private static List<AttachmentProjection> readAttachments(JsonNode node) {
         return node.isArray() ? List.of(Json.read(node.toString(), AttachmentProjection[].class)) : List.of();
+    }
+    private static GovernanceTraceDto readGovernanceTrace(JsonNode node) {
+        if (!node.isObject()) return null;
+        try {
+            return Json.read(node.toString(), GovernanceTraceDto.class);
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 }

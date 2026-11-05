@@ -96,7 +96,8 @@ public final class ComposedRagAdapter implements RagAdapter {
             if (generated.usedVersionIds().stream().anyMatch(id -> !byVersion.containsKey(id)))
                 throw DependencyFailure.invalid();
             if (generated.refusalReason() != null)
-                return RagResult.refuse(generated.refusalReason(), generated.modelVersion(), retrieved, result.topScore());
+                return RagResult.refuse(generated.refusalReason(), generated.modelVersion(), retrieved, result.topScore())
+                        .withGovernanceTrace(generated.governanceTrace());
             // 「有材料却零引用=伪造嫌疑」守卫：但工具意图放行的作答实据来自工具返回
             // （工单列表/建单草稿），本就不依赖知识引用——检索给建单类请求带出的低分杂项
             // （如「员工IT故障自助排查流程」0.44）不构成引用义务，零引用是合法状态。
@@ -117,9 +118,9 @@ public final class ComposedRagAdapter implements RagAdapter {
                 text = "以下为通用办公 IT 建议，无知识库依据。\n\n" + text;
             if (text != null && text.length() > 12000) throw DependencyFailure.invalid();
             RagResult answered = new RagResult(RagStatus.SUCCESS, generated.replyType(), text, citations,
-                    generated.confidence(), null, generated.modelVersion(), retrieved, 0, null, general, false);
-            // 人机回环:AI 只产建单草稿(不落库),随结果返回员工确认后才建单
-            return generated.ticketDraft() == null ? answered : answered.withTicketDraft(generated.ticketDraft());
+                    generated.confidence(), null, generated.modelVersion(), retrieved, 0, null, general, false,
+                    generated.ticketDraft(), generated.governanceTrace());
+            return answered;
         } catch (RetrievalPolicy.StaleKnowledge stale) {
             return RagResult.refuse(AiRefusalReason.NO_RELIABLE_KNOWLEDGE, null, retrieved, null);
         } catch (DependencyFailure failure) {

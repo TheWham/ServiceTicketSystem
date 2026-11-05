@@ -40,14 +40,27 @@ public class AiConsultationController {
     private final ConsultationService consultationService;
     private final AuthzService authzService;
 
-    /** AI-API-002:发送 AI 消息,仅使用已发布知识。 */
-    @PostMapping("/{id}/ai-messages")
+    /** AI-API-002:发送 AI 消息（非流式，默认 Accept: application/json）。 */
+    @PostMapping(value = "/{id}/ai-messages", produces = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
     public ApiEnvelope<AiChatResponse> chat(
             @PathVariable String id,
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody AiChatRequest request) {
         CurrentUser user = authzService.currentUser();
         return ok(aiConsultationService.chat(user, id, request, idempotencyKey));
+    }
+
+    /** AI-007:流式对话接口（Accept: text/event-stream）。 */
+    @PostMapping(value = "/{id}/ai-messages", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter chatStream(
+            @PathVariable String id,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @Valid @RequestBody AiChatRequest request) {
+        CurrentUser user = authzService.currentUser();
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(180000L);
+        aiConsultationService.chatStream(user, id, request, idempotencyKey, emitter);
+        return emitter;
     }
 
     /** AI-API-003:AI 回答反馈。无帮助与内容错误进入知识优化队列。 */

@@ -11,6 +11,7 @@ import com.itticket.consultation.adapter.RagStatus;
 import com.itticket.consultation.adapter.model.DependencyHttpClient;
 import com.itticket.consultation.adapter.retrieval.RetrievedKnowledge;
 import com.itticket.consultation.config.ConsultationProperties;
+import com.itticket.consultation.dto.GovernanceTraceDto;
 import com.itticket.consultation.dto.TicketDraftDto;
 
 import java.net.URI;
@@ -23,7 +24,7 @@ import java.util.Map;
  * <p>Function Calling（ReAct 循环 + 白名单工具）已下沉到 Python `agent_service`
  * （`services/python-retrieval/agent_service`，`POST /api/v1/agent/chat`，端口 8320）。
  * 本类只负责:把问题、历史、预检索材料与已认证主体（X-User-Id/Role）传给 Python,
- * 取回结构化生成结果（6 键 JSON）与带外建单草稿。
+ * 取回结构化生成结果（6 键 JSON）、带外建单草稿以及 Model Router 成本治理全景 Trace。
  *
  * <p>引用守卫、会话状态、建单确认仍由 Java/前端建单页负责（ComposedRagAdapter / AiAnswerGuard /
  * ConsultationService.confirmTicketDraft）——Python 只负责「脑+手」，Java 负责「门禁+账本」。
@@ -72,7 +73,30 @@ public final class PythonAgentClient {
         }
         JsonNode data = root.path("data");
         if (!data.isObject()) throw DependencyFailure.invalid();
-        return new AgentResult(data, draftOf(data.path("ticketDraft")));
+        return new AgentResult(data, draftOf(data.path("ticketDraft")), traceOf(data.path("governanceTrace"), json));
+    }
+
+    /** 流式调用 Python agent 跑一轮生成，逐帧回调 SseFrame。 */
+    public void chatStream(RagQuery query, List<RetrievedKnowledge> material, RagCallContext context,
+                           java.util.function.Consumer<DependencyHttpClient.SseFrame> onFrame) {
+        ObjectNode body = json.createObjectNode().put("question", query.question());
+        ArrayNode history = body.putArray("history");
+        for (RagQuery.Turn turn : query.priorTurns()) {
+            history.addObject().put("role", turn.role()).put("content", turn.content());
+        }
+        ArrayNode materials = body.putArray("material");
+        for (RetrievedKnowledge item : material) {
+            materials.addObject().put("versionId", item.versionId())
+                    .put("title", item.title() == null ? "" : item.title())
+                    .put("content", item.content() == null ? "" : item.content());
+        }
+        if (query.categoryId() != null) body.put("categoryId", query.categoryId());
+        if (query.assetId() != null) body.put("assetId", query.assetId());
+
+        String base = agent.getServiceBaseUrl().replaceAll("/+$", "");
+        http.postStream(URI.create(base + "/api/v1/agent/chat/stream"), body,
+                Map.of("X-User-Id", query.caller().userId(), "X-User-Role", query.caller().role()),
+                context, REQUEST_TIMEOUT_MS, onFrame);
     }
 
     private static TicketDraftDto draftOf(JsonNode node) {
@@ -82,6 +106,15 @@ public final class PythonAgentClient {
         if (title.isBlank() && description.isBlank()) return null;
         return new TicketDraftDto(title, nullableText(node, "category"), description,
                 text(node, "priority").isBlank() ? "MEDIUM" : text(node, "priority"));
+    }
+
+    private static GovernanceTraceDto traceOf(JsonNode node, ObjectMapper json) {
+        if (!node.isObject()) return null;
+        try {
+            return json.treeToValue(node, GovernanceTraceDto.class);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static String text(JsonNode node, String field) {
@@ -94,7 +127,10 @@ public final class PythonAgentClient {
         return value.isBlank() ? null : value;
     }
 
-    /** 结果:payload 为 6 键生成 JSON, draft 为带外建单草稿(无则 null)。 */
-    public record AgentResult(JsonNode payload, TicketDraftDto draft) {
+    /** 结果:payload 为 6 键生成 JSON, draft 为带外建单草稿(无则 null), governanceTrace 为成本治理全景 Trace。 */
+    public record AgentResult(JsonNode payload, TicketDraftDto draft, GovernanceTraceDto governanceTrace) {
+        public AgentResult(JsonNode payload, TicketDraftDto draft) {
+            this(payload, draft, null);
+        }
     }
 }

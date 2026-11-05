@@ -131,5 +131,8 @@ export function parseGraphReasoning(msg) {
 
 export function hasGraphReasoning(msg) {
   if (!msg) return false
+  if (msg.ticketDraft && (!msg.citations || msg.citations.length === 0)) {
+    return false
+  }
   return parseGraphReasoning(msg) !== null
 }
