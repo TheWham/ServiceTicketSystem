@@ -109,7 +109,7 @@ it-ticket-system/
 │       └── docs/runbook-python-retrieval.md  # 运维手册 ⭐
 ├── design-system/            # it-service-desk 已实施设计规范（MASTER.md）
 ├── db/                       # 根级单文件初始化脚本 it_ticket_system_init_v2.sql（41 表，可能落后于 db/init，以 db/init/00-schema.sql 为准）
-├── docs/                     # PRD、需求归因文档、技术 SPEC、验收协议 V2、specs/ 契约 01-11、superpowers/ 设计与计划
+├── docs/                     # PRD、需求归因、技术 SPEC、契约 01-11、链路讲解、deliverables/ 阶段交付资产大盘
 ├── .github/workflows/        # docker-ghcr.yml：构建 7 个镜像推 GHCR
 └── README.md                 # 本文档
 ```
@@ -364,7 +364,9 @@ docker compose up -d      # 见 deploy/README.md：镜像 pull、启动顺序、
 | [docs/IT服务工单系统-验收评测协议书-V2.md](docs/IT服务工单系统-验收评测协议书-V2.md) | 验收评测协议（指标/用例/判定规则）；实测报告在 `acceptance/reports/` |
 | [it-ticket-cloud/consultation-service/RAG-INTEGRATION.md](it-ticket-cloud/consultation-service/RAG-INTEGRATION.md) / [rag-service/INTEGRATION.md](it-ticket-cloud/rag-service/INTEGRATION.md) | RAG 集成契约（检索/引用/阈值/反馈沉淀） |
 | [design-system/it-service-desk/MASTER.md](design-system/it-service-desk/MASTER.md) | 已实施的前端设计规范（深空蓝黑 + 电光青，亮/暗双主题） |
-| [工单提交流程讲解.md](工单提交流程讲解.md) | 提单链路讲解（AI 预审 → 前置校验 → 后置生成，面向答辩/演示） |
+| [docs/工单提交流程讲解.md](docs/工单提交流程讲解.md) | 提单链路讲解（AI 预审 → 前置校验 → 后置生成，面向答辩/演示） |
+| [docs/三个问题的工具调用链路详解.md](docs/三个问题的工具调用链路详解.md) | 咨询与工具调用全链路详解（Java 门禁与 Python 智能体协同执行链路） |
+| [docs/deliverables/](docs/deliverables/README.md) | 阶段交付物与演进资产大盘（Day 01 ~ Day 30 完整工程资产与报告归档） |
 | [AGENTS.md](AGENTS.md) | 工程协作约束（接口变更同步迁移调用方、不做静默回退等） |
 
 ## 仓库

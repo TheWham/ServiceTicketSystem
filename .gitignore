@@ -64,11 +64,5 @@ skills_backup_*.txt
 fc.json
 rag_test.json
 
-# 课程讲义资料(本地留档,不入库)
-day17/
-day18/
-day19/
-day20/
-
-# 本地临时演示脚本（仅本地调试与演示，不推送到生产主仓库）
-day28/*demo*.py
+# 课程讲义资料与本地临时演示(本地留档,不推送到远程主仓库)
+/day*/
