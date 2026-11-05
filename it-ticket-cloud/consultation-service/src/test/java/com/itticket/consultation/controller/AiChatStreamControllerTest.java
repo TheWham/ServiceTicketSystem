@@ -2,6 +2,7 @@ package com.itticket.consultation.controller;
 
 import com.itticket.consultation.api.ApiCode;
 import com.itticket.consultation.api.ApiException;
+import com.itticket.consultation.config.ConsultationProperties;
 import com.itticket.consultation.dto.AiChatRequest;
 import com.itticket.consultation.service.AiConsultationService;
 import com.itticket.consultation.service.AuthzService;
@@ -49,7 +50,8 @@ class AiChatStreamControllerTest {
         when(authz.currentUser()).thenThrow(new ApiException(ApiCode.UNAUTHENTICATED, "未登录"));
         AiChatStreamOrchestrator orchestrator = mock(AiChatStreamOrchestrator.class);
         AiConsultationController controller = new AiConsultationController(
-                mock(AiConsultationService.class), mock(ConsultationService.class), authz, orchestrator);
+                mock(AiConsultationService.class), mock(ConsultationService.class), authz, orchestrator,
+                new ConsultationProperties());
 
         assertThatThrownBy(() -> controller.chatStream("C-1", "key-1", request("投影仪没有信号")))
                 .isInstanceOf(ApiException.class)
@@ -64,13 +66,18 @@ class AiChatStreamControllerTest {
         AiChatStreamOrchestrator orchestrator = mock(AiChatStreamOrchestrator.class);
         AiChatStreamOrchestrator.SseHandle handle = mock(AiChatStreamOrchestrator.SseHandle.class);
         when(orchestrator.openStream(any(), any(), any(), any(), any())).thenReturn(handle);
+        // 评审 C2:容器异步超时必须显式覆盖统一预算(不设默认 30s 会掐断长答案)。
+        ConsultationProperties properties = new ConsultationProperties();
+        properties.getAi().setRequestTimeoutMs(120_000);
         AiConsultationController controller = new AiConsultationController(
-                mock(AiConsultationService.class), mock(ConsultationService.class), authz, orchestrator);
+                mock(AiConsultationService.class), mock(ConsultationService.class), authz, orchestrator,
+                properties);
 
         ResponseBodyEmitter emitter =
                 controller.chatStream("C-1", "key-1", request("投影仪没有信号"));
 
         assertThat(emitter).isNotNull();
+        assertThat(emitter.getTimeout()).isEqualTo(120_000L + 5_000L + 30_000L);
         ArgumentCaptor<AiChatStreamOrchestrator.EventSink> sink =
                 ArgumentCaptor.forClass(AiChatStreamOrchestrator.EventSink.class);
         verify(orchestrator).openStream(org.mockito.ArgumentMatchers.eq(employee()),

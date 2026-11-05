@@ -86,6 +86,22 @@ class StreamingJsonExtractorTest {
     }
 
     @Test
+    void nullAnswerTextEmitsNothingInsteadOfLeakingNextKey() {
+        // Mi1(2026-11-05 评审): "answerText":null 时不得把后续键名当答案流出
+        assertThat(drain("{\"replyType\":\"ANSWER\",\"answerText\":null,\"confidence\":0.9,"
+                + "\"knowledgeConflict\":false,\"offTopic\":false,\"usedVersionIds\":[\"V1\"]}"))
+                .isEmpty();
+    }
+
+    @Test
+    void nonStringAnswerValuesSilenceTheStream() {
+        assertThat(drain("{\"answerText\":true,\"confidence\":0.9}")).isEmpty();
+        assertThat(drain("{\"answerText\":123,\"confidence\":0.9}")).isEmpty();
+        assertThat(drain("{\"answerText\":[\"a\"],\"confidence\":0.9}")).isEmpty();
+        assertThat(drain("{\"answerText\":{\"nested\":\"x\"},\"confidence\":0.9}")).isEmpty();
+    }
+
+    @Test
     void feedAfterAnswerFieldIsIgnored() {
         StringBuilder out = new StringBuilder();
         StreamingJsonExtractor extractor = new StreamingJsonExtractor(out::append);

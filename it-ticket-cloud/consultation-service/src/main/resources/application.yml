@@ -125,7 +125,7 @@ itticket:
       # ⚠ 当前有意偏离:qwen3-vl-32b-thinking 实测单次小规模问答约 14 秒,topK 增大后会更久,
       # 按 15 秒会几乎每次都降级成 MODEL_UNAVAILABLE。这里放宽到 120 秒以保证功能可用,
       # 属于已知的性能契约偏离,上线前必须二选一:换更快的模型,或走变更流程修订 RD-003。
-      first-token-timeout-ms: 5000
+      first-token-timeout-ms: ${AI_FIRST_TOKEN_TIMEOUT_MS:5000}
       request-timeout-ms: ${AI_REQUEST_TIMEOUT_MS:120000}
       # RD-003 同一请求最多重试 1 次
       max-attempts: 2

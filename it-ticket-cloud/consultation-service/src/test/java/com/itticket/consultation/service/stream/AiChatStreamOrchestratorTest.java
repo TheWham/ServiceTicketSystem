@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -73,7 +74,7 @@ class AiChatStreamOrchestratorTest {
         List<String> order = new ArrayList<>();
         AtomicInteger first = new AtomicInteger();
         AtomicInteger second = new AtomicInteger();
-        AiChatStreamOrchestrator.ChunkedChat engine = (user, sessionId, request, key, sink) -> {
+        AiChatStreamOrchestrator.ChunkedChat engine = (user, sessionId, request, key, sink, deadlineNanos) -> {
             if (key.startsWith("k1")) {
                 first.incrementAndGet();
                 order.add("start1");
@@ -108,7 +109,7 @@ class AiChatStreamOrchestratorTest {
     void differentSessionsRunConcurrently() throws Exception {
         CountDownLatch firstStarted = new CountDownLatch(1);
         CountDownLatch releaseFirst = new CountDownLatch(1);
-        AiChatStreamOrchestrator.ChunkedChat engine = (user, sessionId, request, key, sink) -> {
+        AiChatStreamOrchestrator.ChunkedChat engine = (user, sessionId, request, key, sink, deadlineNanos) -> {
             if (sessionId.equals("S1")) {
                 firstStarted.countDown();
                 releaseFirst.await();
@@ -134,7 +135,7 @@ class AiChatStreamOrchestratorTest {
         CountDownLatch releaseFirst = new CountDownLatch(1);
         AtomicInteger slowEngineRuns = new AtomicInteger();
         AtomicInteger doomedEngineRuns = new AtomicInteger();
-        AiChatStreamOrchestrator.ChunkedChat engine = (user, sessionId, request, key, sink) -> {
+        AiChatStreamOrchestrator.ChunkedChat engine = (user, sessionId, request, key, sink, deadlineNanos) -> {
             if (key.equals("k-first")) {
                 slowEngineRuns.incrementAndGet();
                 firstStarted.countDown();
@@ -169,7 +170,7 @@ class AiChatStreamOrchestratorTest {
         CountDownLatch firstStarted = new CountDownLatch(1);
         CountDownLatch releaseFirst = new CountDownLatch(1);
         AtomicInteger cancelledRuns = new AtomicInteger();
-        AiChatStreamOrchestrator.ChunkedChat engine = (user, sessionId, request, key, sink) -> {
+        AiChatStreamOrchestrator.ChunkedChat engine = (user, sessionId, request, key, sink, deadlineNanos) -> {
             if (key.equals("k1")) {
                 firstStarted.countDown();
                 releaseFirst.await();
@@ -201,7 +202,7 @@ class AiChatStreamOrchestratorTest {
     void disconnectedClientAbortsStreamWithoutFinalAndReleasesQueue() throws Exception {
         CountDownLatch tokenEmitted = new CountDownLatch(1);
         CountDownLatch engineSawAbort = new CountDownLatch(1);
-        AiChatStreamOrchestrator.ChunkedChat dispatcher = (user, sessionId, request, key, sink) -> {
+        AiChatStreamOrchestrator.ChunkedChat dispatcher = (user, sessionId, request, key, sink, deadlineNanos) -> {
             if (key.equals("k1")) {
                 sink.accept("第一");
                 tokenEmitted.countDown();
@@ -246,7 +247,7 @@ class AiChatStreamOrchestratorTest {
     void firstTokenGuardInterruptsStalledLocalGeneration() throws Exception {
         CountDownLatch interrupted = new CountDownLatch(1);
         CountDownLatch guardArmed = new CountDownLatch(1);
-        AiChatStreamOrchestrator.ChunkedChat engine = (user, sessionId, request, key, sink) -> {
+        AiChatStreamOrchestrator.ChunkedChat engine = (user, sessionId, request, key, sink, deadlineNanos) -> {
             sink.armFirstTokenGuard();
             guardArmed.countDown();
             try {
@@ -274,7 +275,7 @@ class AiChatStreamOrchestratorTest {
     @Test
     void unemittedResponseIsReplayedAsSingleTokenBeforeFinal() throws Exception {
         AiChatStreamOrchestrator.ChunkedChat engine =
-                (user, sessionId, request, key, sink) -> answer("整段回答");
+                (user, sessionId, request, key, sink, deadlineNanos) -> answer("整段回答");
         try (AiChatStreamOrchestrator o = orchestrator(engine, 5_000)) {
             RecordingSink a = new RecordingSink();
             o.openStream(USER, "S1", REQUEST, "k1", a);
@@ -288,7 +289,7 @@ class AiChatStreamOrchestratorTest {
 
     @Test
     void engineExceptionSurfacesAsErrorEventWithClass() throws Exception {
-        AiChatStreamOrchestrator.ChunkedChat engine = (user, sessionId, request, key, sink) -> {
+        AiChatStreamOrchestrator.ChunkedChat engine = (user, sessionId, request, key, sink, deadlineNanos) -> {
             throw new IllegalStateException("booh");
         };
         try (AiChatStreamOrchestrator o = orchestrator(engine, 5_000)) {
@@ -297,6 +298,60 @@ class AiChatStreamOrchestratorTest {
             await(() -> !a.events.isEmpty(), 2_000);
             assertThat(a.events).contains("error:INTERNAL_ERROR");
         }
+    }
+
+    // ---------------------------------------------------------------- 统一预算(M1, 2026-11-05 评审)
+
+    @Test
+    void secondQueuedCallInheritsEnqueueDeadlineNotRefreshedBudget() throws Exception {
+        // 排队等待必须烧入自身预算:引擎收到的 deadline 是受理时定下的那一份,
+        // 而不是在轮到自己时刷新的满血预算。
+        CountDownLatch firstStarted = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        List<Long> remainingsAtStart = new CopyOnWriteArrayList<>();
+        AiChatStreamOrchestrator.ChunkedChat engine = (user, sessionId, request, key, sink, deadlineNanos) -> {
+            remainingsAtStart.add(deadlineNanos - System.nanoTime());
+            if (key.startsWith("k1")) {
+                firstStarted.countDown();
+                releaseFirst.await(1, TimeUnit.SECONDS);
+            }
+            return answer(key.replace("k", "答"));
+        };
+        try (AiChatStreamOrchestrator o = orchestrator(engine, 5_000)) {
+            RecordingSink a = new RecordingSink();
+            RecordingSink b = new RecordingSink();
+            o.openStream(USER, "S1", REQUEST, "k1", a);
+            assertThat(firstStarted.await(2, TimeUnit.SECONDS)).isTrue();
+            Thread.sleep(120); // 第二问在这段时间窗口内入队
+            o.openStream(USER, "S1", REQUEST, "k2", b);
+            await(() -> b.events.contains("final:答2") && a.events.contains("final:答1"), 3_000);
+
+            assertThat(remainingsAtStart).hasSize(2);
+            long budgetNanos = TimeUnit.MILLISECONDS.toNanos(BUDGET_MS);
+            assertThat(remainingsAtStart.get(0))
+                    .as("第一问几乎立即开始,剩余预算应接近整份")
+                    .isGreaterThan(budgetNanos - TimeUnit.MILLISECONDS.toNanos(500));
+            assertThat(remainingsAtStart.get(1))
+                    .as("第二问等待超过 100ms,剩余预算应明显小于整份(未被刷新)")
+                    .isLessThan(budgetNanos - TimeUnit.MILLISECONDS.toNanos(100));
+        }
+    }
+
+    // ---------------------------------------------------------------- 关停(Mi3)
+
+    @Test
+    void closedOrchestratorFailsNewStreamsInsteadOfHanging() {
+        // Mi3(2026-11-05 评审): close 后新流不得静默卡死——提交被拒时以真实 INTERNAL_ERROR 终态。
+        AiChatStreamOrchestrator.ChunkedChat engine =
+                (user, sessionId, request, key, sink, deadlineNanos) -> answer("不应执行");
+        AiChatStreamOrchestrator o = orchestrator(engine, 5_000);
+        o.close();
+        RecordingSink a = new RecordingSink();
+
+        o.openStream(USER, "S1", REQUEST, "k1", a);
+
+        await(() -> !a.events.isEmpty(), 2_000);
+        assertThat(a.events).contains("error:INTERNAL_ERROR");
     }
 
     private static void assertVisibleEvents(RecordingSink sink, String... expectedPrefixes) {

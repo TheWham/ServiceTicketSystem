@@ -73,15 +73,19 @@ public class AiConsultationService {
     public AiChatResponse chat(CurrentUser user, String sessionId, AiChatRequest request,
                                String idempotencyKey) {
         // 旧同步端点不外发增量令牌:传丢弃型 sink,行为与接入流式前完全一致。
-        return chatStreamed(user, sessionId, request, idempotencyKey, TokenSink.discarding());
+        // 统一预算从端点进入点起算,覆盖鉴权/历史装载/检索/生成全程(2026-11-05 评审 M1)。
+        long deadlineNanos = System.nanoTime()
+                + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(properties.getAi().getRequestTimeoutMs());
+        return chatStreamed(user, sessionId, request, idempotencyKey, TokenSink.discarding(), deadlineNanos);
     }
 
     /**
      * 流式引擎门面(T-5):供流式编排器注入。与旧端点共用同一条幂等鉴权链,
      * 差别仅在把编排器的 TokenSink 传入 RAG 链——增量令牌由此上屏,业务链路不变。
+     * deadlineNanos 是编排器在受理时刻定下的统一预算截止(排队等待也计入)。
      */
     public AiChatResponse chatStreamed(CurrentUser user, String sessionId, AiChatRequest request,
-                                       String idempotencyKey, TokenSink sink) {
+                                       String idempotencyKey, TokenSink sink, long deadlineNanos) {
         Consultation consultation = transitionService.load(sessionId);
         // AI 对话只发生在员工与 AI 之间,工程师不通过该接口介入
         authzService.requireCreator(user, consultation);
@@ -89,11 +93,11 @@ public class AiConsultationService {
 
         return idempotencyService.execute(user.userId(), OP_CHAT + ':' + sessionId, idempotencyKey,
                 request, AiChatResponse.class,
-                () -> doChat(user, sessionId, request, idempotencyKey, sink)).value();
+                () -> doChat(user, sessionId, request, idempotencyKey, sink, deadlineNanos)).value();
     }
 
     private AiChatResponse doChat(CurrentUser user, String sessionId, AiChatRequest request,
-                                  String idempotencyKey, TokenSink sink) {
+                                  String idempotencyKey, TokenSink sink, long deadlineNanos) {
         Consultation consultation = transitionService.load(sessionId);
         authzService.requireCreator(user, consultation);
         requireAiActive(consultation);
@@ -112,7 +116,7 @@ public class AiConsultationService {
             RagQuery query = new RagQuery(sessionId, request.message(), history,
                     contextCategory(consultation, request), contextAsset(request),
                     properties.getAi().getTopK(), new RagCaller(user.userId(), user.role().name()));
-            result = ragClient.answer(query, RequestContext.get(), sink);
+            result = ragClient.answer(query, RequestContext.get(), sink, deadlineNanos);
         }
 
         // 断连门槛:客户端已断开时不再落库,沿用与旧端点一致的"AI 侧不半落"纪律。

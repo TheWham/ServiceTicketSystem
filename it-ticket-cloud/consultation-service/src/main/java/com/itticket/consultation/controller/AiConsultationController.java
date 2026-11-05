@@ -2,6 +2,7 @@ package com.itticket.consultation.controller;
 
 import com.itticket.consultation.api.ApiEnvelope;
 import com.itticket.consultation.api.RequestContext;
+import com.itticket.consultation.config.ConsultationProperties;
 import com.itticket.consultation.dto.AiChatRequest;
 import com.itticket.consultation.dto.AiChatResponse;
 import com.itticket.consultation.dto.AiFeedbackRequest;
@@ -42,6 +43,7 @@ public class AiConsultationController {
     private final ConsultationService consultationService;
     private final AuthzService authzService;
     private final AiChatStreamOrchestrator aiChatStreamOrchestrator;
+    private final ConsultationProperties properties;
 
     /** AI-API-002:发送 AI 消息,仅使用已发布知识。 */
     @PostMapping("/{id}/ai-messages")
@@ -65,7 +67,11 @@ public class AiConsultationController {
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody AiChatRequest request) {
         CurrentUser user = authzService.currentUser();
-        ResponseBodyEmitter emitter = new ResponseBodyEmitter();
+        // 容器异步超时必须盖住整个统一预算:排队+首字节+生成(RD-003 120s)+裕量,
+        // 默认 30s 会在长答案上把活跃流掐断(2026-11-05 流式评审 C2);断连由三回调兜底。
+        ConsultationProperties.Ai ai = properties.getAi();
+        ResponseBodyEmitter emitter = new ResponseBodyEmitter(
+                ai.getRequestTimeoutMs() + ai.getFirstTokenTimeoutMs() + 30_000L);
         SseChatEventSink events = new SseChatEventSink(emitter);
         AiChatStreamOrchestrator.SseHandle handle =
                 aiChatStreamOrchestrator.openStream(user, id, request, idempotencyKey, events);

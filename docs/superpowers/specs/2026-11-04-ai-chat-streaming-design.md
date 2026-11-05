@@ -98,7 +98,7 @@ event: error   data: {"errorClass":"TIMEOUT",      // 0..1 次,终态,流中途�
   `OpenAiCompatibleAnswerGenerator` 本地路径传给 `completeStream`,
   agent 路径在拿到整文后单次 `sink.accept(text)`（保证前端一次拿到全文）
 - `RagAdapter/GuardedRagClient.answer(query, requestId, TokenSink)` 增参并迁移全部调用点;
-  `ComposedRagAdapter` 把 sink 传入 generator;语义缓存命中路径不调 sink（由服务层整文单发）
+  `ComposedRagAdapter` 把 sink 传入 generator;语义缓存命中路径在**适配器层**单次 `sink.accept` 整文（Mi8 修正:在 ComposedRagAdapter.java 命中分支,非服务层;编排器仅负责把未外发的结果重放为单 token）
 - **重试与重复语义（红线）**: GuardedRagClient 的可重试重试**仅在尚未外发任何 token 时**
   允许;已外发 token 的尝试失败 → 直接以真实 errorClass 走 error 终态,不静默重发
   （避免用户看到拼接重复文本,也避免静默回退）
@@ -134,7 +134,7 @@ event: error   data: {"errorClass":"TIMEOUT",      // 0..1 次,终态,流中途�
 
 ### 7. 语义缓存共存
 
-- 命中: 服务层单 token 事件（整文）+ final——零模型调用,延迟最优
+- 命中: 适配器层单 token 事件（整文）+ final——零模型调用,延迟最优
 - 未命中: 流式生成,成功后按现 write 规则入缓存（缓存的是终稿,与流式无关）
 - 流式路径**不读缓存旁路**（lookup 仍在 adapter 域门禁后,不变）
 
@@ -174,3 +174,14 @@ event: error   data: {"errorClass":"TIMEOUT",      // 0..1 次,终态,流中途�
 - 队列深度上限（若设）:倾向不设——预算哨兵已封顶最坏等待
 - DependencyHttpClient 新增 postStream（ofLines 流式读取,错误语义与 post 完全一致）
 - 幂等冲突边界:appendEmployeeMessage 在事务内,流式路径沿用现有 IdempotencyService 语义,不重造
+
+## 实施结果与部署说明（2026-11-05 完成）
+
+- **传输件**：选 `ResponseBodyEmitter`（非 SseEmitter）——SseEmitter 只有 `complete`/`completeWithError`，无客户端断连回调挂钩需要的对称语义；emitter 的 `onCompletion/onError/onTimeout` 三回调统一转 `handle.close()` 中断上游并释放会话队列。
+- **gateway SSE 空闲超时**：未实测网关层（无 spring-cloud-gateway 显式 SSE 配置变更的前提下依赖 15s keep-alive 注释帧防空闲断连；keep-alive 帧在排队期与生成期均持续发送，由 `itticket.consultation.ai.streaming.keep-alive-millis`（`AI_STREAM_KEEP_ALIVE_MILLIS`，默认 15000）控制）。部署在带反向代理（nginx 等）时需确认其 `proxy_read_timeout > keep-alive 间隔`。
+- **帧格式**（与代码共同为准）：`event: <name>\ndata: <json>\n\n`；注释帧 `: keep-alive\n\n`。事件名 queued/token/final/error。
+- **背压**：本期无界缓冲+写失败即中断流（单答案体量 ≤12k 字，无可观察内存风险）。
+- **帧解析器位置**：前端 api 层（`consumeAiSseStream`，随 consultation.js 导出）——组件直接消费，无 util 间接层。
+- **队列深度上限**：不设。排队等待计入各请求自身统一预算（requestTimeoutMs），到期即 TIMEOUT 终态，不堵死通道。
+- **幂等**：沿用现有 IdempotencyService 语义实现于 `chatStreamed`（编排器引擎内部），同 key 重复请求被会话 FIFO 串行化后按既有幂等重放处理，不新造挂起原语。
+- **遗留（外部验证项）**：gateway/nginx 实测空闲断连阈值——本地开发直连 5173/8302 无网关；上线前用 staging 走一次真实网关链路确认 `X-Accel-Buffering: no` 是否需要补发（当前未发该头，Spring MVC 对 `text/event-stream` 默认禁用响应缓冲）。

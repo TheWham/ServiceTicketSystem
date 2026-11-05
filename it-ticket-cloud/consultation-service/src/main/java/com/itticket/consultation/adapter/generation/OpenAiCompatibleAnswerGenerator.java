@@ -62,6 +62,9 @@ public final class OpenAiCompatibleAnswerGenerator implements AnswerGenerator {
             draft = result.draft();
         } else {
             // 本地路径走流式收口:answerText 增量经 sink 即时外发(预算内,见 completeStream)。
+            // 首字节哨兵在此武装:首个 token 到达即解除,超时则中断上游(见 AiChatStreamOrchestrator.StreamSink);
+            // agent/缓存命中路径豁免(裁决①,2026-11-05 流式评审 C1)。
+            sink.armFirstTokenGuard();
             payload = model.completeStream(systemPrompt(), input.toString(), ai.getMaxOutputTokens(), context, sink);
         }
 

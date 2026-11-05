@@ -50,7 +50,7 @@ class AiConsultationPolicyTest {
         var order = inOrder(fixture.messages, fixture.rag);
         order.verify(fixture.messages).loadAiHistory("S1", "U1", "ai-q:idempotent-1", 6, 900);
         order.verify(fixture.messages).appendEmployeeMessage("S1", "U1", "ai-q:idempotent-1", "Restarted; still broken");
-        order.verify(fixture.rag).answer(query.capture(), nullable(String.class), any());
+        order.verify(fixture.rag).answer(query.capture(), nullable(String.class), any(), anyLong());
         assertThat(query.getValue().question()).isEqualTo("Restarted; still broken");
         assertThat(query.getValue().priorTurns()).containsExactlyElementsOf(history);
     }
@@ -186,11 +186,12 @@ class AiConsultationPolicyTest {
 
         AiChatResponse response = fixture.service.chatStreamed(
                 new CurrentUser("U1", RoleCode.EMPLOYEE, Actor.EMPLOYEE),
-                "S1", new AiChatRequest("打印机不进纸", null), "idempotent-1", sink);
+                "S1", new AiChatRequest("打印机不进纸", null), "idempotent-1", sink,
+                System.nanoTime() + 60_000_000_000L);
 
         // 编排器的 sink 必须原样进入 RAG 链,增量令牌才能真正外发
         ArgumentCaptor<TokenSink> captured = ArgumentCaptor.forClass(TokenSink.class);
-        verify(fixture.rag).answer(any(RagQuery.class), nullable(String.class), captured.capture());
+        verify(fixture.rag).answer(any(RagQuery.class), nullable(String.class), captured.capture(), anyLong());
         assertThat(captured.getValue()).isSameAs(sink);
         // 旧端点退化链不变:chat() 仍走丢弃型 sink
         verify(fixture.messages).appendAiMessage(eq("S1"), eq("ai-a:idempotent-1"), eq(response.answerText()), anyString());
@@ -207,7 +208,8 @@ class AiConsultationPolicyTest {
 
         assertThatThrownBy(() -> fixture.service.chatStreamed(
                 new CurrentUser("U1", RoleCode.EMPLOYEE, Actor.EMPLOYEE),
-                "S1", new AiChatRequest("打印机不进纸", null), "idempotent-1", gone))
+                "S1", new AiChatRequest("打印机不进纸", null), "idempotent-1", gone,
+                        System.nanoTime() + 60_000_000_000L))
                 .isInstanceOf(StreamAbortedException.class);
 
         // 断连后不落库:AI 回答与交互审计都不写
@@ -231,7 +233,7 @@ class AiConsultationPolicyTest {
             IdempotencyService idempotency = mock(IdempotencyService.class);
             when(idempotency.execute(anyString(), anyString(), anyString(), any(), eq(AiChatResponse.class), any()))
                     .thenAnswer(call -> new IdempotentResult<>(((Supplier<?>) call.getArgument(5)).get(), false));
-            when(rag.answer(any(), nullable(String.class), any())).thenReturn(answer);
+            when(rag.answer(any(), nullable(String.class), any(), anyLong())).thenReturn(answer);
             service = new AiConsultationService(transitions, messages, knowledge, rag,
                     mock(AiInteractionMapper.class), new AuthzService(properties), idempotency, properties);
         }

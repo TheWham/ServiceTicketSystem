@@ -18,6 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -52,7 +53,7 @@ public class AiChatStreamOrchestrator implements AutoCloseable, SmartLifecycle {
     /** 流式引擎门面:即 AiConsultationService#chatStreamed。 */
     public interface ChunkedChat {
         AiChatResponse run(CurrentUser user, String sessionId, AiChatRequest request,
-                           String idempotencyKey, TokenSink sink) throws Exception;
+                           String idempotencyKey, TokenSink sink, long deadlineNanos) throws Exception;
     }
 
     /** SSE 事件出口。所有回调要求幂等安全;isOpen=false 之后不得再收到任何事件。 */
@@ -208,6 +209,9 @@ public class AiChatStreamOrchestrator implements AutoCloseable, SmartLifecycle {
             if (queue.active) {
                 queue.waiting.addLast(call);
                 position = queue.waiting.size();
+                // Mi2(2026-11-05 评审):queued 事件在队列锁内发出,避免“入队后、发事件前”
+                // 被并发终态插队而出现位置跳变;EventSink 实现不再回调编排器,无死锁环。
+                out.queued(position);
                 immediate = false;
             } else {
                 queue.active = true;
@@ -216,16 +220,25 @@ public class AiChatStreamOrchestrator implements AutoCloseable, SmartLifecycle {
             }
         }
         if (immediate) {
-            call.workerFuture = executor.submit(() -> run(call, queue));
+            submitWorker(call, queue);
         } else {
-            out.queued(position);
             // 裁决 m00909:排队等待计入自身统一预算;到期仍未轮到即以真实原因终态。
-            call.queueDeadlineTask = scheduler.schedule(
-                    () -> expireWhileQueued(call, queue), budgetMillis, TimeUnit.MILLISECONDS);
+            try {
+                call.queueDeadlineTask = scheduler.schedule(
+                        () -> expireWhileQueued(call, queue), budgetMillis, TimeUnit.MILLISECONDS);
+            } catch (RejectedExecutionException rejected) {
+                // 调度器已关停:预算到期哨兵不可布设。若工作池同已关停,首条 ACTIVE 流
+                // 会经 submitWorker 以 INTERNAL_ERROR 终态并逐条放行队列,不会静默悬挂。
+                call.queueDeadlineTask = null;
+            }
         }
         if (keepAliveMillis > 0) {
-            call.keepAliveTask = scheduler.scheduleAtFixedRate(() -> keepAlive(call),
-                    keepAliveMillis, keepAliveMillis, TimeUnit.MILLISECONDS);
+            try {
+                call.keepAliveTask = scheduler.scheduleAtFixedRate(() -> keepAlive(call),
+                        keepAliveMillis, keepAliveMillis, TimeUnit.MILLISECONDS);
+            } catch (RejectedExecutionException rejected) {
+                call.keepAliveTask = null; // 已在关停中:保活缺失不影响终态链路。
+            }
         }
         return () -> clientClose(call, queue);
     }
@@ -262,7 +275,7 @@ public class AiChatStreamOrchestrator implements AutoCloseable, SmartLifecycle {
                 return;
             }
             AiChatResponse response = engine.run(call.user, call.sessionId,
-                    call.request, call.idempotencyKey, call.sink);
+                    call.request, call.idempotencyKey, call.sink, call.deadlineNanos);
             if (call.sink.clientGone()) return;
             // 幂等重放与 agent 整段场景统一收口:引擎没外发过任何令牌时,这里整段单发一次,
             // 前端打字机一次性收尾,final 随后即达。
@@ -314,7 +327,21 @@ public class AiChatStreamOrchestrator implements AutoCloseable, SmartLifecycle {
                 started.queueDeadlineTask.cancel(false);
                 started.queueDeadlineTask = null;
             }
-            started.workerFuture = executor.submit(() -> run(started, queue));
+            submitWorker(started, queue);
+        }
+    }
+
+    /**
+     * Mi3(2026-11-05 评审):提交被拒(编排器已 close 或池饱和)时流不得静默卡死——
+     * 以真实 INTERNAL_ERROR 终态回执,并用 finish() 释放会话队列,让排队消息继续。
+     */
+    private void submitWorker(StreamCall call, SessionQueue queue) {
+        try {
+            call.workerFuture = executor.submit(() -> run(call, queue));
+        } catch (RejectedExecutionException rejected) {
+            log.warn("[ai-stream] 工作池已拒绝新任务, 流以 INTERNAL_ERROR 终态 idKey={}", call.idempotencyKey);
+            call.out.failed("INTERNAL_ERROR", "流式执行器不可用");
+            finish(call, queue);
         }
     }
 

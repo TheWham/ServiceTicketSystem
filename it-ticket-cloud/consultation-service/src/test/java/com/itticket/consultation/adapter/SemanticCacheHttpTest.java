@@ -30,6 +30,9 @@ import static org.mockito.Mockito.*;
  * 嵌入依赖失败按依赖失败计数并穿透实时链路、命中结果可过输出守卫。
  */
 class SemanticCacheHttpTest {
+    private static long deadline(long millis) {
+        return System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(millis);
+    }
     private final ObjectMapper json = new ObjectMapper();
     private HttpServer server;
     private ConsultationProperties config;
@@ -123,7 +126,7 @@ class SemanticCacheHttpTest {
 
     private RagResult ask(String question, String requestId) {
         return client.answer(new RagQuery("S1", question, "C_NET", "ASSET1", 5,
-                new RagCaller("U_EMP01", "EMPLOYEE")), requestId, TokenSink.discarding());
+                new RagCaller("U_EMP01", "EMPLOYEE")), requestId, TokenSink.discarding(), deadline(60_000));
     }
 
     private ObjectNode item(String chunk, String article, String version, BigDecimal score, String content) {

@@ -13,6 +13,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class GuardedRagBudgetTest {
+    private static long deadline(long millis) {
+        return System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(millis);
+    }
     @Test
     void retrySharesTheOverallRequestDeadline() {
         ConsultationProperties config = new ConsultationProperties();
@@ -29,7 +32,7 @@ class GuardedRagBudgetTest {
         };
         GuardedRagClient client = new GuardedRagClient(adapter, config);
         try {
-            assertThat(client.answer(query(), "deadline-test", TokenSink.discarding()).status()).isEqualTo(RagStatus.TIMEOUT);
+            assertThat(client.answer(query(), "deadline-test", TokenSink.discarding(), deadline(400)).status()).isEqualTo(RagStatus.TIMEOUT);
             assertThat(attempts).hasValue(2);
         } finally { client.shutdown(); }
     }
@@ -42,7 +45,7 @@ class GuardedRagBudgetTest {
             return RagResult.degraded(RagStatus.UNAVAILABLE, "NOT_CONFIGURED", 0);
         }, new ConsultationProperties());
         try {
-            assertThat(client.answer(query(), "config-test", TokenSink.discarding()).errorClass()).isEqualTo("NOT_CONFIGURED");
+            assertThat(client.answer(query(), "config-test", TokenSink.discarding(), deadline(60_000)).errorClass()).isEqualTo("NOT_CONFIGURED");
             assertThat(attempts).hasValue(1);
         } finally { client.shutdown(); }
     }
@@ -60,7 +63,7 @@ class GuardedRagBudgetTest {
         };
         GuardedRagClient client = new GuardedRagClient(adapter, config);
         try {
-            assertThat(client.answer(query(), "stream-retry", TokenSink.of(tokens::add)).status())
+            assertThat(client.answer(query(), "stream-retry", TokenSink.of(tokens::add), deadline(60_000)).status())
                     .isEqualTo(RagStatus.TIMEOUT);
             assertThat(attempts).hasValue(1);
             assertThat(tokens).containsExactly("部分");

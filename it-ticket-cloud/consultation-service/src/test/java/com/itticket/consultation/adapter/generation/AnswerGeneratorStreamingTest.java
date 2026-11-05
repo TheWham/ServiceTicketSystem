@@ -141,6 +141,53 @@ class AnswerGeneratorStreamingTest {
     }
 
     @Test
+    void localPathArmsFirstTokenGuardBeforeStreamingOut() throws Exception {
+        // 2026-11-05 评审 C1:首字节哨兵必须由生成本地路径武装,而非只依赖编排器测试手工布设。
+        String full = sixKeyAnswerJson();
+        server = startSseAnswerServer(full);
+        int port = server.getAddress().getPort();
+        OpenAiCompatibleAnswerGenerator generator = new OpenAiCompatibleAnswerGenerator(
+                new OpenAiCompatibleModelClient(config("http://127.0.0.1:" + port),
+                        new DependencyHttpClient()),
+                config("http://127.0.0.1:" + port), null);
+        List<String> order = new ArrayList<>();
+        TokenSink sink = new GuardRecordingSink(order);
+
+        generator.generate(query(), material(), context(), sink);
+
+        assertThat(order).containsExactly("arm", "token", "token");
+    }
+
+    private static final class GuardRecordingSink extends TokenSink {
+        private final List<String> order;
+        GuardRecordingSink(List<String> order) { super(null); this.order = order; }
+        @Override public void accept(String token) { if (token != null && !token.isEmpty()) order.add("token"); }
+        @Override public void armFirstTokenGuard() { order.add("arm"); }
+    }
+
+    @Test
+    void agentPathNeverArmsFirstTokenGuard() {
+        // agent 路径豁免首字节哨兵(裁决①):Python ReAct 无流,不应武装。
+        PythonAgentClient agent = mock(PythonAgentClient.class);
+        when(agent.enabled()).thenReturn(true);
+        ObjectNode payload = om.createObjectNode().put("replyType", "ANSWER")
+                .put("answerText", "整段答案文本")
+                .put("confidence", 0.9).put("knowledgeConflict", false).put("offTopic", false);
+        payload.set("usedVersionIds", om.createArrayNode().add("V1"));
+        when(agent.chat(any(), anyList(), any()))
+                .thenReturn(new PythonAgentClient.AgentResult(payload, null));
+        OpenAiCompatibleAnswerGenerator generator = new OpenAiCompatibleAnswerGenerator(
+                new OpenAiCompatibleModelClient(new ConsultationProperties(), new DependencyHttpClient()),
+                new ConsultationProperties(), agent);
+        List<String> order = new ArrayList<>();
+        TokenSink sink = new GuardRecordingSink(order);
+
+        generator.generate(query(), material(), context(), sink);
+
+        assertThat(order).containsExactly("token");
+    }
+
+    @Test
     void extractiveGeneratorIgnoresSinkAndStaysUnemitted() {
         LocalKnowledgeAnswerGenerator generator = new LocalKnowledgeAnswerGenerator();
         List<String> tokens = new ArrayList<>();
@@ -152,6 +199,31 @@ class AnswerGeneratorStreamingTest {
         assertThat(sink.emitted()).isFalse();
         assertThat(result.answerText()).isEqualTo("完整内容");
         assertThat(result.usedVersionIds()).containsExactly("V1");
+    }
+
+    /** 起一个 SSE 生成存根:把 full 切成两帧增量后 [DONE] 收尾。 */
+    private HttpServer startSseAnswerServer(String full) throws IOException {
+        int cut = full.indexOf("第一步") + "第一步".length();
+        HttpServer s = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        s.createContext("/chat/completions", ex -> {
+            ex.getResponseHeaders().add("Content-Type", "text/event-stream; charset=utf-8");
+            ex.sendResponseHeaders(200, 0);
+            OutputStream body = ex.getResponseBody();
+            for (String payload : List.of(
+                    "{\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}",
+                    "{\"choices\":[{\"delta\":{\"content\":" + quote(full.substring(0, cut))
+                            + "},\"finish_reason\":null}]}",
+                    "{\"choices\":[{\"delta\":{\"content\":" + quote(full.substring(cut))
+                            + "},\"finish_reason\":null}]}",
+                    "{\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}")) {
+                body.write(("data: " + payload + "\n\n").getBytes(StandardCharsets.UTF_8));
+                body.flush();
+            }
+            body.write("data: [DONE]\n\n".getBytes(StandardCharsets.UTF_8));
+            ex.close();
+        });
+        s.start();
+        return s;
     }
 
     /** JSON 文本片段包成字符串字面量。 */

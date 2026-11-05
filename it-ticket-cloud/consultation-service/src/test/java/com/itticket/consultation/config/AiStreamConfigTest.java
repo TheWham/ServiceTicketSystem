@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -54,7 +55,7 @@ class AiStreamConfigTest {
 
     private static AiConsultationService engine(AtomicReference<TokenSink> captured) {
         AiConsultationService service = mock(AiConsultationService.class);
-        when(service.chatStreamed(any(), any(), any(), any(), any())).thenAnswer(invocation -> {
+        when(service.chatStreamed(any(), any(), any(), any(), any(), anyLong())).thenAnswer(invocation -> {
             TokenSink sink = invocation.getArgument(4);
             captured.set(sink);
             sink.accept("增量");
@@ -76,7 +77,7 @@ class AiStreamConfigTest {
                     new AiChatRequest("投影仪没有信号", null), "key-1", sink);
             awaitFinal(sink);
             ArgumentCaptor<TokenSink> engineSink = ArgumentCaptor.forClass(TokenSink.class);
-            verify(engine).chatStreamed(any(), any(), any(), any(), engineSink.capture());
+            verify(engine).chatStreamed(any(), any(), any(), any(), engineSink.capture(), anyLong());
             return new Wired(sink, new AtomicReference<>(engineSink.getValue()));
         } finally {
             orchestrator.close();

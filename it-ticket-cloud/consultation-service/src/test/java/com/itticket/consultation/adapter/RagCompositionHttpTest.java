@@ -26,6 +26,9 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class RagCompositionHttpTest {
+    private static long deadline(long millis) {
+        return System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(millis);
+    }
     private final ObjectMapper json = new ObjectMapper();
     private HttpServer server;
     private ConsultationProperties config;
@@ -114,7 +117,7 @@ class RagCompositionHttpTest {
     }
     private RagResult ask() {
         return client.answer(new RagQuery("S1", "开会别人听不到我", "C_NET", "ASSET1", 5,
-                new RagCaller("U_EMP01", "EMPLOYEE")), "request-1", TokenSink.discarding());
+                new RagCaller("U_EMP01", "EMPLOYEE")), "request-1", TokenSink.discarding(), deadline(60_000));
     }
     private ObjectNode data() { return (ObjectNode) envelope.get("data"); }
     private ArrayNode items() { return (ArrayNode) data().get("items"); }
@@ -323,7 +326,12 @@ class RagCompositionHttpTest {
         config.getAi().setRequestTimeoutMs(650); config.getAi().setRagRequestTimeoutMs(5000);
         ragDelay = 350; modelDelay = 450; assemble();
         long start = System.nanoTime();
-        RagResult result = ask();
+        // M1(2026-11-05 评审):统一预算由调用方在受理时刻定下(生产=chatStreamed 按 requestTimeoutMs
+        // 起算);本用例镜像生产口径,验证检索腿吃掉的预算会真实压缩生成腿。
+        RagResult result = client.answer(
+                new RagQuery("S1", "开会别人听不到我", "C_NET", "ASSET1", 5,
+                        new RagCaller("U_EMP01", "EMPLOYEE")), "request-1",
+                TokenSink.discarding(), deadline(650));
         assertThat(result.status()).isEqualTo(RagStatus.TIMEOUT);
         assertThat((System.nanoTime() - start) / 1_000_000).isLessThan(1100);
         assertThat(ragRequests).hasSize(1);

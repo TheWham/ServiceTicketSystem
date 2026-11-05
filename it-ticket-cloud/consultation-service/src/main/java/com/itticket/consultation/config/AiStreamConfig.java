@@ -24,9 +24,9 @@ public class AiStreamConfig {
         ConsultationProperties.Ai ai = properties.getAi();
         AiChatStreamOrchestrator.ChunkedChat engine = ai.getStreaming().isEnabled()
                 ? aiConsultationService::chatStreamed
-                : (user, sessionId, request, idempotencyKey, sink) ->
+                : (user, sessionId, request, idempotencyKey, sink, deadlineNanos) ->
                         aiConsultationService.chatStreamed(user, sessionId, request, idempotencyKey,
-                                TokenSink.discarding());
+                                TokenSink.discarding(), deadlineNanos);
         return new AiChatStreamOrchestrator(engine,
                 ai.getRequestTimeoutMs(),
                 ai.getFirstTokenTimeoutMs(),

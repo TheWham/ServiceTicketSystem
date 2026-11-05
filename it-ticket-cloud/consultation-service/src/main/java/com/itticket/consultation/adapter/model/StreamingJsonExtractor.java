@@ -101,6 +101,14 @@ public final class StreamingJsonExtractor {
             }
             return;
         }
+        // Mi1(2026-11-05 评审): answerText 值不是字符串(null/true/数字/数组/对象)时,
+        // 终止流式外发——否则后续键名(如 "confidence")会被当作答案文本流出。
+        // 非法载荷仍由终帧六键校验拒绝,这里只避免流式放大故障。
+        if (depth == 1 && MARK_ANSWER.equals(keyBuffer.toString())
+                && c != '"' && !Character.isWhitespace(c)) {
+            phase = Phase.DONE;
+            return;
+        }
         switch (c) {
             case '"' -> {
                 if (depth == 1 && MARK_ANSWER.equals(keyBuffer.toString())) {

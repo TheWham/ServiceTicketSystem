@@ -19,6 +19,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class GuardedRagDeadlineTest {
+
+    private static long deadline(long millis) {
+        return System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(millis);
+    }
     @Test
     void authenticationFailureIsNeverRetried() {
         AtomicInteger calls = new AtomicInteger();
@@ -27,7 +31,7 @@ class GuardedRagDeadlineTest {
             return RagResult.degraded(RagStatus.UNAVAILABLE, "AUTH_FAILED", 0);
         }, new ConsultationProperties());
         try {
-            assertThat(client.answer(query(), "req", TokenSink.discarding()).status()).isEqualTo(RagStatus.UNAVAILABLE);
+            assertThat(client.answer(query(), "req", TokenSink.discarding(), deadline(60_000)).status()).isEqualTo(RagStatus.UNAVAILABLE);
             assertThat(calls).hasValue(1);
         } finally { client.shutdown(); }
     }
@@ -46,7 +50,7 @@ class GuardedRagDeadlineTest {
             return RagResult.degraded(RagStatus.UNAVAILABLE, "UNAVAILABLE", 0);
         }, properties);
         try {
-            client.answer(query(), "req", TokenSink.discarding());
+            client.answer(query(), "req", TokenSink.discarding(), deadline(1_000));
             assertThat(deadlines).hasSize(2);
             assertThat(deadlines.get(1)).isEqualTo(deadlines.get(0));
             assertThat(budgets.get(1)).isLessThan(budgets.get(0) - 30);
@@ -85,7 +89,7 @@ class GuardedRagDeadlineTest {
         var client = new GuardedRagClient(adapter, properties);
         try {
             long began = System.nanoTime();
-            RagResult result = client.answer(query(), "hard-deadline", TokenSink.discarding());
+            RagResult result = client.answer(query(), "hard-deadline", TokenSink.discarding(), deadline(60_000));
             assertThat(result.status()).isEqualTo(RagStatus.TIMEOUT);
             assertThat(started.getCount()).isZero();
             assertThat(result.retrievedVersionIds()).containsExactly("V1");
@@ -99,4 +103,23 @@ class GuardedRagDeadlineTest {
     }
 
     private RagQuery query() { return new RagQuery("S", "打印机连接", null, null, 5, new RagCaller("U_EMP01", "EMPLOYEE")); }
+    @Test
+    void expiredUnifiedDeadlineFailsFastWithoutCallingAdapter() {
+        // M1(2026-11-05 评审): 调用方给定的统一 deadline 已过 → 快速按真实超时降级,
+        // 不再消耗断路器/并发额度,更不发起上游调用。
+        AtomicInteger calls = new AtomicInteger();
+        GuardedRagClient client = new GuardedRagClient((query, context, sink) -> {
+            calls.incrementAndGet();
+            return new RagResult(RagStatus.SUCCESS, AiReplyType.ANSWER, "答案", List.of(),
+                    java.math.BigDecimal.ONE, null, "test", List.of(), 0, null, false, false);
+        }, new ConsultationProperties());
+        try {
+            RagResult result = client.answer(query(), "expired",
+                    TokenSink.discarding(), System.nanoTime() - 1_000_000L);
+            assertThat(result.status()).isEqualTo(RagStatus.TIMEOUT);
+            assertThat(result.errorClass()).isEqualTo("TIMEOUT");
+            assertThat(calls.get()).isZero();
+        } finally { client.shutdown(); }
+    }
+
 }
