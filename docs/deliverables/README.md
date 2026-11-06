@@ -80,7 +80,7 @@ docs/deliverables/
 | **Day 27** | [`Day27/`](file:///d:/day12/demos/docs/deliverables/Day27) | • `mcp_verification_report.md`<br>• `mcp_config.json`<br>• `run_day27_enterprise_finance_mcp.py`<br>• `run_day27_it_mcp_client.py`<br>• `run_day27_it_ticket_mcp.py`<br>• `2026-11-03-it-ticket-mcp-server-design.md`<br>• `2026-11-03-it-ticket-mcp-server.md` | Anthropic FastMCP 工业互联规范、三层架构握手报文抓包、生产级 MCP Server 验证交付报告 |
 | **Day 28** | [`Day28/`](file:///d:/day12/demos/docs/deliverables/Day28) | • `run_day28_supervisor_guardrails.py`<br>• `run_it_supervisor_guardrails_demo.py`<br>• `run_end_to_end_audit.py`<br>• `2026-11-03-langgraph-subagent-guardrails.md` | Supervisor-Worker 主从协同架构、Prompt 越狱安全护栏、PII 动态脱敏与还原、全生命周期闭环审计套件 |
 | **Day 29** | [`Day29/`](file:///d:/day12/demos/docs/deliverables/Day29) | • `cost_governance.py`<br>• `long_task_worker.py`<br>• `run_cost_governance_web_demo.py`<br>• `test_demo_endpoints.py`<br>• `semantic_cache_fastapi_server.py` <br>• mermaid-diagram3.svg| 语义缓存（0 Token、50ms 极速响应）、Model Router 动态阶梯选模、Token 预算控制台 Web Demo、SSE 流式打字机输出 |
-| **Day 30** | [Day30/](file:///d:/day12/demos/docs/deliverables/Day30) | • 武汉柯莱特企培_Day30_终极大验收：Capstone商业级交付发布会与客户签字封版讲义.md | 全栈六维技术资产总装、客户攻防盲测、商业交付确认书与终极大验收签字封版 |
+| **Day 30** | [`Day30/`](file:///d:/day12/demos/docs/deliverables/Day30) | • `Capstone_10-15Min_Presentation.html`<br>• `Capstone_10-15Min_Presentation.md`<br>• `PPT与逐字演讲稿1对1对照演练手册.md`<br>• `商业交付终审验收确认书与成果履约报告_评审专属版.md`<br>• `个人核心研发成果与交付履约白皮书_Day11至Day29.md`<br>• `个人核心研发工作总结与交付实录_非演讲稿版.md`<br>• `逐字演讲稿_10-15分钟交付汇报_RAG到Day29.md` | Capstone 商业级交付发布会全套资产：14 屏交互 PPT、1对1演练手册、ISO/CMMI 商业验收签字确认书、研发白皮书与答辩实录 |
 
 ---
 
