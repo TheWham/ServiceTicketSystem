@@ -2,7 +2,7 @@
 
 ## Goal
 
-Connect the Spring Cloud services to the remote MySQL instance at `120.92.138.195:3306` while retaining the existing AI knowledge base and consultation history.
+Connect the Spring Cloud services to the remote MySQL instance at `<REMOTE_MYSQL_HOST>:3306` while retaining the existing AI knowledge base and consultation history.
 
 ## Database Boundaries
 
@@ -17,7 +17,7 @@ The databases remain separate because the Java entities and current service cont
 
 Core services continue to use the existing profile configuration and receive these runtime variables:
 
-- `MYSQL_HOST=120.92.138.195`
+- `MYSQL_HOST=<REMOTE_MYSQL_HOST>`
 - `MYSQL_PORT=3306`
 - `MYSQL_DB=it_ticket_system`
 - `MYSQL_USERNAME=root`

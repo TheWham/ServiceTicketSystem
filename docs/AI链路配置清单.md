@@ -427,5 +427,5 @@ curl -s "http://127.0.0.1:8201/api/internal/tickets/analytics/scan?created_after
 | `frontend/.env.local` 的 `API_PROXY_TARGET` | 无（`.env.example` 写 28080） | 前端代理目标，**不含 AI 密钥**；端口与网关必须一致 |
 | 网关端口 | `8080` | 本机被 Dify 占用，实际跑 `--server.port=28080` |
 | `ES_HOST` / `ES_PORT` | `localhost:9200` | 只有走 ES 检索或知识入库才需要 |
-| MySQL 地址 | yml 内置远程库 `120.92.138.195` | 不用额外配 |
+| MySQL 地址 | 支持环境变量注入 `MYSQL_HOST` | 不用额外配 |
 | `JWT_SECRET` | dev 内置默认 | 生产必须注入 |

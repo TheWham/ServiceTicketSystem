@@ -16,10 +16,10 @@ spring:
   application:
     name: rag-service
   datasource:
-    url: jdbc:mysql://${MYSQL_HOST:120.92.138.195}:${MYSQL_PORT:3306}/it_ticket_system?useSSL=false&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/it_ticket_system?useSSL=false&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: ${MYSQL_USERNAME:root}
     # 与 main 侧一致：口令仅由环境变量注入，不内置默认值
-    password: ${MYSQL_PASSWORD:clt123456}
+    password: ${MYSQL_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
   servlet:
     multipart:

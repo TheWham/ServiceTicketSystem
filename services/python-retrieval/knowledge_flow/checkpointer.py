@@ -192,10 +192,10 @@ class MySqlFlowCheckpointer(BaseFlowCheckpointer):
 
     def __init__(self, fallback: Optional[BaseFlowCheckpointer] = None):
         self.fallback = fallback or SqliteFlowCheckpointer()
-        self.host = os.environ.get("DB_HOST") or os.environ.get("MYSQL_HOST") or "120.92.138.195"
+        self.host = os.environ.get("DB_HOST") or os.environ.get("MYSQL_HOST") or "127.0.0.1"
         self.port = int(os.environ.get("DB_PORT") or os.environ.get("MYSQL_PORT") or 3306)
         self.user = os.environ.get("DB_USER") or os.environ.get("MYSQL_USERNAME") or "root"
-        self.password = os.environ.get("DB_PASSWORD") or os.environ.get("MYSQL_PASSWORD") or "clt123456"
+        self.password = os.environ.get("DB_PASSWORD") or os.environ.get("MYSQL_PASSWORD") or ""
         self.database = os.environ.get("DB_NAME") or os.environ.get("MYSQL_DATABASE") or "it_ticket_system"
         self._available = False
         self._init_mysql()

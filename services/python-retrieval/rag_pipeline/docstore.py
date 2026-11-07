@@ -76,10 +76,10 @@ class MySqlDocstore(BaseDocstore):
         table_name: str = "rag_parent_docstore",
         mapping_path: Optional[Path] = None,
     ) -> None:
-        self.host = host or os.environ.get("DB_HOST") or os.environ.get("MYSQL_HOST") or "120.92.138.195"
+        self.host = host or os.environ.get("DB_HOST") or os.environ.get("MYSQL_HOST") or "127.0.0.1"
         self.port = int(port or os.environ.get("DB_PORT") or os.environ.get("MYSQL_PORT") or 3306)
         self.user = user or os.environ.get("DB_USER") or os.environ.get("MYSQL_USERNAME") or "root"
-        self.password = password or os.environ.get("DB_PASSWORD") or os.environ.get("MYSQL_PASSWORD") or "clt123456"
+        self.password = password or os.environ.get("DB_PASSWORD") or os.environ.get("MYSQL_PASSWORD") or ""
         self.database = database or os.environ.get("DB_NAME") or os.environ.get("MYSQL_DATABASE") or "it_ticket_system"
         self.table_name = table_name
         self.mapping_path = mapping_path or (

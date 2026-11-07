@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AiFeedbackSourceMysqlTest {
     @Test void selectsOnlyHelpfulGeneralAnswersPairsByRequestAndExcludesCapturedSources() throws Exception {
         String url = System.getenv().getOrDefault("MYSQL_TEST_URL",
-                "jdbc:mysql://120.92.138.195:3306/it_ticket_system?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8");
+                "jdbc:mysql://localhost:3306/it_ticket_system?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8");
         try (Connection connection = DriverManager.getConnection(url,
                 System.getenv().getOrDefault("MYSQL_USERNAME", "root"), System.getenv("MYSQL_PASSWORD"))) {
             try (var sql = connection.createStatement()) {

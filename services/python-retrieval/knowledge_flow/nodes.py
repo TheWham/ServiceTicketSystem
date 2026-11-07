@@ -702,10 +702,10 @@ def publish_index_node(state: KnowledgeFlowState) -> Dict[str, Any]:
     try:
         import pymysql
         # 读取数据库连接配置（优先从环境变量读取，缺省使用标准内网配置）
-        host = os.environ.get("DB_HOST") or os.environ.get("MYSQL_HOST") or "120.92.138.195"
+        host = os.environ.get("DB_HOST") or os.environ.get("MYSQL_HOST") or "127.0.0.1"
         port = int(os.environ.get("DB_PORT") or os.environ.get("MYSQL_PORT") or 3306)
         user = os.environ.get("DB_USER") or os.environ.get("MYSQL_USERNAME") or "root"
-        password = os.environ.get("DB_PASSWORD") or os.environ.get("MYSQL_PASSWORD") or "clt123456"
+        password = os.environ.get("DB_PASSWORD") or os.environ.get("MYSQL_PASSWORD") or ""
         database = os.environ.get("DB_NAME") or "it_ticket_system"
 
         art_id: str = f"art-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4]}"

@@ -45,7 +45,7 @@
        └───────────┬───────────┘
                    ▼
         ┌──────────────────────┐
-        │ MySQL it_ticket_system│  统一远程库 120.92.138.195
+        │ MySQL it_ticket_system│  标准库(支持本地/环境变量注入)
         │ 41 张表(单库)         │
         └──────────────────────┘
         ┌──────────────────────┐
@@ -100,7 +100,7 @@ it-ticket-cloud/
 
 ### 0. 数据库（统一远程）
 
-数据库**统一连远程库** `120.92.138.195:3306`（默认密码 `clt123456`，库名 `it_ticket_system`），无需本地起 MySQL。首次初始化：
+数据库支持通过环境变量或本地 MySQL 配置（默认库名 `it_ticket_system`）。首次初始化：
 
 ```bash
 scripts\init-db.cmd    # 默认连远程库,建表+种子;可用 MYSQL_HOST/MYSQL_PASSWORD 覆盖
@@ -153,8 +153,8 @@ java -jar ticket-service/target/it-ticket-ticket-service-1.0.0.jar
 | `SPRING_PROFILES_ACTIVE` | `dev` | 环境: dev 本地连远程库 / prod 生产 |
 | `NACOS_ADDR` | `127.0.0.1:8848` | Nacos 地址 |
 | `NACOS_CONFIG_ENABLED` | `false` | 是否启用 Nacos 配置中心(默认本地 profile) |
-| `MYSQL_HOST` / `MYSQL_PORT` | `120.92.138.195` / `3306` | 数据库地址 |
-| `MYSQL_PASSWORD` | `clt123456` | 数据库密码(所有环境默认 clt123456,可用环境变量覆盖) |
+| `MYSQL_HOST` / `MYSQL_PORT` | `localhost` / `3306` | 数据库地址 |
+| `MYSQL_PASSWORD` | (环境变量注入) | 数据库密码(可用环境变量覆盖) |
 | `JWT_SECRET` | dev 弱密钥 | JWT 签名密钥(prod 必须注入) |
 
 配置分层：`application.yml`(启动项) → `application-{profile}.yml`(业务) → Nacos(可选覆盖)。
@@ -283,7 +283,7 @@ PRD §9，**9 态**（英文枚举）：`NEW / ASSIGNED / IN_PROGRESS / PENDING_
 
 | 现象 | 排查 |
 |:---|:---|
-| 登录 401 | 确认连的是远程库(120.92.138.195)；种子密码是否被改；JWT_SECRET 是否一致 |
+| 登录 401 | 确认数据库连接配置；种子密码是否被改；JWT_SECRET 是否一致 |
 | 提单后无人接 | 查 `exception_queue` 是否有路由失败记录；该分类是否配 `category_route`；团队是否有 ACTIVE 工程师 |
 | 分类下拉空 | 确认 gateway 已重启(路由 `/api/v1/categories/**`)；category 表有末级分类 |
 | 通知不跳转 | 确认 ticket-service 为含 `@JsonNaming` 蛇形的新 jar；Notification 返回字段应为 `action_url` |

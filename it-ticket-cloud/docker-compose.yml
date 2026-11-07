@@ -1,11 +1,11 @@
 # IT 工单系统微服务依赖:Nacos(注册+配置) + Redis + MySQL 8
-# 注意:数据库已统一连远程库 120.92.138.195:3306（密码由 MYSQL_PASSWORD 注入）,
+# 注意:数据库支持连本地或由环境变量注入远程库,
 #       本 compose 里的 MySQL 仅为「离线/无远程库时的可选本地库」或 CI 用,
 #       日常联调不需要启动它(服务默认连远程)。
 # 用法:
 #   Nacos:  docker compose up -d nacos
 #   Redis:  docker compose up -d redis
-#   MySQL(可选):docker compose up -d mysql 起来后,注入 MYSQL_HOST=127.0.0.1 MYSQL_PASSWORD=clt123456
+#   MySQL(可选):docker compose up -d mysql 起来后,注入 MYSQL_HOST=127.0.0.1 MYSQL_PASSWORD=root123
 # MySQL 初始化自动执行 db/init/ 下的建库与种子脚本
 
 networks:
@@ -45,7 +45,7 @@ services:
     image: mysql:8.0
     container_name: it-ticket-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-clt123456}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-root123}
       TZ: Asia/Shanghai
     ports:
       - "3306:3306"

@@ -100,7 +100,7 @@ def connect():
         print("[中止] 缺少必填环境变量 DB_PASSWORD", file=sys.stderr)
         sys.exit(2)
     return pymysql.connect(
-        host=os.environ.get("DB_HOST", "120.92.138.195"),
+        host=os.environ.get("DB_HOST", "127.0.0.1"),
         port=int(os.environ.get("DB_PORT", "3306")),
         user=os.environ.get("DB_USER", "root"),
         password=password,

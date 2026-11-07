@@ -62,7 +62,7 @@ Python 返回的 `articleId/versionId` 必须能通过 Java 侧 ④ MySQL PUBLIS
 因此先把 35 张现行 Wiki 卡灌进 rag-service：
 
 ```bash
-# rag-service 依赖：Nacos(:8848)、Redis(:6379)、ES(:9200)、MySQL（默认远程 120.92.138.195:3306）
+# rag-service 依赖：Nacos(:8848)、Redis(:6379)、ES(:9200)、MySQL（默认 127.0.0.1:3306，支持环境变量覆盖）
 cd /path/to/ServiceTicketSystem/it-ticket-cloud && docker compose up -d nacos redis
 # ES 8.11 需另行提供（ES_HOST/ES_PORT 注入）
 python tools/sync_wiki_to_rag_service.py            # 幂等；--force 强制重灌

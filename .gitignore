@@ -66,3 +66,12 @@ rag_test.json
 
 # 课程讲义资料与本地临时演示(本地留档,不推送到远程主仓库)
 /day*/
+
+# Claude Code 与本地开发工具配置（含命令记录与鉴权凭据，绝不入库）
+.claude/
+*.local.json
+
+# 前端临时依赖与构建缓存
+frontend/.vite/
+.vite/
+
